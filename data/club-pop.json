@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "products": [
+    {
+      "id": "camisa-rosa-neon",
+      "name": "Camisa Poliamida - Rosa neon",
+      "category": "Roupas",
+      "price": 69.9,
+      "fitcoins": 300,
+      "discountPrice": 49.9,
+      "stock": 15,
+      "status": "Ativo",
+      "featured": true,
+      "imageUrl": "",
+      "description": "Camisa Bike Pop em poliamida, cor rosa neon."
+    },
+    {
+      "id": "agua",
+      "name": "Água mineral",
+      "category": "Hidratação",
+      "price": 5,
+      "fitcoins": 120,
+      "discountPrice": 3,
+      "stock": 50,
+      "status": "Ativo",
+      "featured": false,
+      "imageUrl": "",
+      "description": "Água mineral."
+    }
+  ],
+  "banners": [],
+  "benefits": [],
+  "missions": {
+    "presence": {
+      "active": true,
+      "title": "Missão Frequência",
+      "start": "2026-09-01",
+      "end": "2026-09-30",
+      "firstMilestone": 8,
+      "maxGoal": 12,
+      "rewards8": [
+        "Massagem • 10 minutos",
+        "Bioimpedância"
+      ],
+      "rewards12": [
+        "Massagem • 15 minutos",
+        "1 Aula Avulsa"
+      ]
+    },
+    "consistency": {
+      "active": true,
+      "title": "3 dias por semana",
+      "start": "2026-09-01",
+      "end": "2026-09-30",
+      "daysPerWeek": 3,
+      "weeks": 4,
+      "rewards": [
+        "Prêmio da Missão Constância"
+      ]
+    }
+  }
+}

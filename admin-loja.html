@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CLUB POP — Admin Loja</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--ink:#111318;--muted:#747b86;--blue:#00a9e8;--line:#e6e9ee;--green:#14804a}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Arial;background:var(--bg);color:var(--ink)}
+.sidebar{position:fixed;inset:0 auto 0 0;width:235px;background:#111318;color:#fff;padding:25px 18px}.logo{font-size:23px;font-weight:950}.logo span{color:var(--blue)}.slogan{font-size:10px;color:#9da5af;margin:3px 0 30px}.menu a{display:block;padding:12px 13px;margin:5px 0;border-radius:11px;color:#aeb5bf;text-decoration:none;font-size:13px;font-weight:800}.menu a.active{background:#20242a;color:#fff}.menu a.active:before{content:"";border-left:3px solid var(--blue);margin-right:10px}
+.mobiletop{display:none}.wrap{margin-left:235px;padding:30px;max-width:1240px}.titlebar{display:flex;justify-content:space-between;gap:15px;align-items:center}.titlebar>div:first-child{min-width:0}.titlebar h1{margin:0;font-size:29px}.titlebar p{margin:5px 0;color:var(--muted);font-size:13px}
+button{font:inherit}.primary{border:0;background:#111;color:#fff;padding:12px 16px;border-radius:11px;font-size:12px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;min-height:42px}.primary span{color:#58d6ff}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}.stat,.block{background:#fff;border:1px solid var(--line);border-radius:17px}.stat{padding:17px}.stat small{font-size:9px;color:var(--muted);font-weight:900}.stat strong{display:block;font-size:23px;margin-top:6px}.stat em{font-size:10px;color:var(--muted);font-style:normal}
+.block{margin:14px 0;overflow:hidden}.blockhead{padding:17px 18px;display:flex;align-items:center;justify-content:space-between;cursor:pointer}.blockhead h2{font-size:15px;margin:0}.blockhead p{font-size:10px;color:var(--muted);margin:4px 0 0}.chev{font-weight:900}.content{padding:0 18px 18px}.block.closed .content{display:none}
+.product{border:1px solid var(--line);border-radius:14px;padding:13px;display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;margin-top:10px;cursor:pointer}.pic{height:52px;border-radius:12px;background:#eef8fc;display:grid;place-items:center;font-size:24px}.product h3{font-size:12px;margin:0 0 3px}.product p{margin:0;color:var(--muted);font-size:10px}.offer{margin-top:5px;font-size:10px;font-weight:850}.offer b{color:var(--blue)}.status{font-size:9px;font-weight:900;padding:6px 8px;border-radius:99px;background:#eaf8f1;color:var(--green)}.edit{font-size:10px;font-weight:900;color:var(--blue);margin-top:6px;text-align:right}
+.form{display:none;padding-top:4px}.form.show{display:block}.formtitle{display:flex;justify-content:space-between;align-items:center;margin:8px 0 14px}.formtitle h3{margin:0;font-size:17px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{margin-bottom:12px}.field.full{grid-column:1/-1}.field label{display:block;font-size:9px;font-weight:900;color:#656d78;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;border:1px solid #dfe3e8;border-radius:10px;padding:11px;background:#fff;font:inherit;font-size:12px}.field textarea{min-height:72px;resize:vertical}.hint{font-size:9px;color:var(--muted);margin-top:5px}.preview{border:1px solid var(--line);border-radius:14px;padding:14px;background:#f9fafb;margin:5px 0 14px}.preview small{font-weight:900;color:var(--blue)}.preview h4{margin:5px 0;font-size:14px}.preview .prices{font-size:11px;line-height:1.65}.actions{display:flex;gap:9px}.save{flex:1;border:0;border-radius:11px;padding:12px;background:#111;color:#fff;font-weight:900;font-size:11px}.cancel{border:1px solid #d7dbe0;background:#fff;border-radius:11px;padding:12px 16px;font-weight:900;font-size:11px}.bannerrow{border:1px solid var(--line);border-radius:14px;padding:13px;display:grid;grid-template-columns:72px 1fr auto;gap:12px;align-items:center;margin-top:10px}.bannerthumb{height:46px;border-radius:10px;background:linear-gradient(135deg,#111,#0875d1);display:grid;place-items:center;color:#fff;font-size:9px;font-weight:900}.bannerrow h3{font-size:12px;margin:0 0 3px}.bannerrow p{font-size:9px;color:var(--muted);margin:0}.banneractions{display:flex;gap:6px;margin-top:7px}.mini{border:1px solid #dfe3e8;background:#fff;border-radius:8px;padding:6px 8px;font-size:9px;font-weight:900;cursor:pointer}.bannerform{margin-top:12px;border-top:1px solid var(--line);padding-top:14px}.history{font-size:10px;color:#555;line-height:1.7}.history b{color:#111}.drawer,.shade{display:none}
+@media(max-width:760px){.titlebar{display:grid;grid-template-columns:1fr auto;gap:10px}.primary{padding:11px 13px;font-size:11px}.sidebar{display:none}.mobiletop{display:flex;position:sticky;top:0;z-index:20;background:#fff;padding:14px 17px;border-bottom:1px solid var(--line);justify-content:space-between;align-items:center}.mobiletop .logo{font-size:19px}.mobiletop .slogan{margin:1px 0 0;font-size:8px}.hamb{background:#111;color:#fff;border:0;border-radius:10px;width:42px;height:40px;font-size:20px}.wrap{margin:0;padding:20px 15px}.titlebar{align-items:flex-start}.titlebar h1{font-size:25px}.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.product{grid-template-columns:48px 1fr}.bannerrow{grid-template-columns:58px 1fr}.bannerrow>span{grid-column:2;justify-self:start}.product>div:last-child{grid-column:2}.status{display:inline-block}.edit{text-align:left}.drawer{display:block;position:fixed;right:-270px;top:0;bottom:0;width:260px;background:#111318;color:#fff;z-index:40;padding:25px 18px;transition:.25s}.drawer.open{right:0}.shade{position:fixed;inset:0;background:#0006;z-index:30}.shade.open{display:block}.drawer .menu{margin-top:25px}}
+</style></head><body>
+<aside class="sidebar"><div class="logo">CLUB <span>POP</span></div><div class="slogan">Benefícios exclusivos para alunos Pop</div><nav class="menu"><a>Dashboard</a><a>Alunos</a><a>Missões</a><a class="active">Loja</a><a>Benefícios</a><a>Configurações</a></nav></aside>
+<header class="mobiletop"><div><div class="logo">CLUB <span>POP</span></div><div class="slogan">Benefícios exclusivos para alunos Pop</div></div><button class="hamb" onclick="menu()">☰</button></header>
+<div class="shade" id="shade" onclick="menu()"></div><aside class="drawer" id="drawer"><div class="logo">CLUB <span>POP</span></div><nav class="menu"><a>Dashboard</a><a>Alunos</a><a>Missões</a><a class="active">Loja</a><a>Benefícios</a><a>Configurações</a></nav></aside>
+<main class="wrap">
+<div class="titlebar"><div><h1>Loja Pop</h1><p>Cadastre produtos, preços e descontos com Fitcoins.</p></div><button class="primary" onclick="newProduct()"><span>＋</span> Novo produto</button></div>
+<section class="stats"><div class="stat"><small>PRODUTOS ATIVOS</small><strong>8</strong><em>publicados na loja</em></div><div class="stat"><small>RESGATES PENDENTES</small><strong>3</strong><em>aguardando atendimento</em></div><div class="stat"><small>RESGATES NO MÊS</small><strong>17</strong><em>concluídos</em></div><div class="stat"><small>FITCOINS UTILIZADOS</small><strong>4.850</strong><em>no mês atual</em></div></section>
+
+<section class="block" id="products"><div class="blockhead" onclick="toggleBlock('products')"><div><h2>Produtos publicados</h2><p>Clique em um produto para editar.</p></div><span class="chev">⌃</span></div><div class="content">
+<div class="product" onclick="editProduct()"><div class="pic">👕</div><div><h3>Camisa Poliamida - Rosa neon</h3><p>Roupas • Preço R$ 69,90</p><div class="offer">Use <b>300 Fitcoins</b> • aluno paga R$ 49,90</div></div><div><span class="status">ATIVO</span><div class="edit">EDITAR</div></div></div>
+<div class="product"><div class="pic">💧</div><div><h3>Água mineral</h3><p>Hidratação • Preço R$ 5,00</p><div class="offer">Use <b>120 Fitcoins</b> • condição especial</div></div><div><span class="status">ATIVO</span><div class="edit">EDITAR</div></div></div>
+</div></section>
+
+<section class="block" id="editor" style="display:none"><div class="blockhead" onclick="toggleBlock('editor')"><div><h2 id="editorLabel">Editar produto</h2><p>Configure exatamente como o produto aparecerá para o aluno.</p></div><span class="chev">⌃</span></div><div class="content form show" id="form">
+<div class="formtitle"><h3 id="formName">Camisa Poliamida - Rosa neon</h3></div>
+<div class="grid">
+<div class="field"><label>NOME DO PRODUTO</label><input id="name" value="Camisa Poliamida - Rosa neon"></div>
+<div class="field"><label>CATEGORIA</label><select><option>Roupas</option><option>Hidratação</option><option>Acessórios</option><option>Nutrição</option></select></div>
+<div class="field"><label>PREÇO NORMAL</label><input value="R$ 69,90"></div>
+<div class="field"><label>FITCOINS NECESSÁRIOS</label><input value="300"></div>
+<div class="field"><label>PREÇO COM FITCOINS</label><input value="R$ 49,90"></div>
+<div class="field"><label>ESTOQUE DISPONÍVEL</label><input value="15"></div>
+<div class="field"><label>INÍCIO DA OFERTA</label><input type="date"></div>
+<div class="field"><label>FIM DA OFERTA</label><input type="date"></div>
+<div class="field"><label>STATUS</label><select><option>Ativo</option><option>Inativo</option><option>Esgotado</option></select></div>
+<div class="field"><label>DESTAQUE</label><select><option>Produto normal</option><option>Destacar na loja</option></select></div>
+<div class="field full"><label>LINK PÚBLICO DA IMAGEM • GOOGLE DRIVE</label><input type="url" placeholder="Cole aqui o link público da imagem no Google Drive"><div class="hint">As imagens não serão armazenadas no CLUB POP. Use um link público do Google Drive, seguindo o mesmo padrão adotado no Burn Pop.</div></div>
+<div class="field full"><label>DESCRIÇÃO</label><textarea>Camisa Bike Pop em poliamida, cor rosa neon.</textarea></div>
+</div>
+<div class="preview"><small>PRÉVIA DA OFERTA</small><h4>Camisa Poliamida - Rosa neon</h4><div class="prices">Preço: <b>R$ 69,90</b><br>Use <b>300 Fitcoins</b><br><strong>Pague apenas R$ 49,90</strong><br><span style="color:#747b86">A Loja calcula automaticamente quanto falta para o aluno atingir os Fitcoins necessários.</span></div></div>
+<div class="actions"><button class="save" id="save">Salvar alterações</button><button class="cancel" onclick="cancel()">Cancelar</button></div>
+</div></section>
+
+<section class="block" id="banners"><div class="blockhead" onclick="toggleBlock('banners')"><div><h2>Banners da Loja</h2><p>Gerencie os slides exibidos no topo da Loja Pop.</p></div><span class="chev">⌃</span></div><div class="content">
+<div class="bannerrow"><div class="bannerthumb">BANNER 01</div><div><h3>Coleção Bike Pop</h3><p>Slide 1 • Ativo • Ordem 1</p><div class="banneractions"><button class="mini">EDITAR</button><button class="mini">DESATIVAR</button><button class="mini">EXCLUIR</button></div></div><span class="status">ATIVO</span></div>
+<div class="bannerrow"><div class="bannerthumb">BANNER 02</div><div><h3>Novidades Loja Pop</h3><p>Slide 2 • Ativo • Ordem 2</p><div class="banneractions"><button class="mini">EDITAR</button><button class="mini">DESATIVAR</button><button class="mini">EXCLUIR</button></div></div><span class="status">ATIVO</span></div>
+<div class="bannerform">
+<div class="formtitle"><h3>+ Adicionar banner</h3></div>
+<div class="grid">
+<div class="field full"><label>LINK PÚBLICO DA IMAGEM • GOOGLE DRIVE</label><input type="url" placeholder="Cole aqui o link público do banner no Google Drive"><div class="hint">O banner será carregado diretamente pelo link público. Nenhuma imagem será armazenada no CLUB POP.</div></div>
+<div class="field"><label>TÍTULO INTERNO</label><input placeholder="Ex.: Coleção Bike Pop"></div>
+<div class="field"><label>ORDEM NO SLIDE</label><input type="number" value="1" min="1"></div>
+<div class="field"><label>INÍCIO DA EXIBIÇÃO</label><input type="date"></div>
+<div class="field"><label>FIM DA EXIBIÇÃO</label><input type="date"></div>
+<div class="field"><label>STATUS</label><select><option>Ativo</option><option>Inativo</option></select></div>
+<div class="field"><label>LINK AO CLICAR • OPCIONAL</label><input type="url" placeholder="Destino do banner"></div>
+</div>
+<button class="save">Adicionar banner ao slide</button>
+</div></div></section>
+<section class="block closed" id="redemptions"><div class="blockhead" onclick="toggleBlock('redemptions')"><div><h2>Solicitações de resgate</h2><p>Pedidos feitos pelos alunos na Loja Pop.</p></div><span class="chev">⌄</span></div><div class="content"><p style="font-size:11px;color:#747b86">Aqui ficarão os resgates pendentes, aprovados, entregues ou cancelados.</p></div></section>
+<section class="block closed" id="history"><div class="blockhead" onclick="toggleBlock('history')"><div><h2>Histórico da loja</h2><p>Cadastro e últimas alterações dos produtos.</p></div><span class="chev">⌄</span></div><div class="content history"><b>30/09/2026</b> • Camisa Poliamida atualizada — preço e regra de Fitcoins.<br><b>28/09/2026</b> • Produto cadastrado na Loja Pop.</div></section>
+</main>
+<script>
+function menu(){drawer.classList.toggle('open');shade.classList.toggle('open')}
+function toggleBlock(id){const e=document.getElementById(id);e.classList.toggle('closed');e.querySelector('.chev').textContent=e.classList.contains('closed')?'⌄':'⌃'}
+function editProduct(){editor.style.display='block';editor.classList.remove('closed');editorLabel.textContent='Editar produto';formName.textContent='Camisa Poliamida - Rosa neon';save.textContent='Salvar alterações';editor.scrollIntoView({behavior:'smooth'})}
+function newProduct(){editor.style.display='block';editor.classList.remove('closed');editorLabel.textContent='Novo produto';formName.textContent='Cadastrar novo produto';save.textContent='Cadastrar produto';document.querySelectorAll('#form input:not([type=file]),#form textarea').forEach(x=>x.value='');editor.scrollIntoView({behavior:'smooth'})}
+function cancel(){editor.style.display='none';editor.classList.add('closed');editor.querySelector('.chev').textContent='⌄';products.scrollIntoView({behavior:'smooth'})}
+
+const ADMIN_KEY_NAME="clubpop-admin-key";
+function adminKey(){let k=sessionStorage.getItem(ADMIN_KEY_NAME);if(!k){k=prompt("Chave administrativa do CLUB POP:")||"";if(k)sessionStorage.setItem(ADMIN_KEY_NAME,k)}return k}
+async function getContent(){const r=await fetch("/api/content",{cache:"no-store"});return r.json()}
+async function putContent(data){const r=await fetch("/api/content",{method:"PUT",headers:{"content-type":"application/json","x-admin-key":adminKey()},body:JSON.stringify(data)});const j=await r.json();if(!r.ok)throw new Error(j.error||"Falha ao salvar");return j}
+let storeData=null;
+(async()=>{try{storeData=await getContent()}catch(e){}})();
+document.getElementById("save").addEventListener("click",async()=>{
+ try{
+  storeData=storeData||await getContent();
+  const fields=[...document.querySelectorAll("#form input,#form select,#form textarea")];
+  const product={id:"prod-"+Date.now(),name:fields[0]?.value||"Produto",category:fields[1]?.value||"Outros",price:Number((fields[2]?.value||"0").replace(/[^0-9,]/g,"").replace(",",".")),fitcoins:Number(fields[3]?.value||0),discountPrice:Number((fields[4]?.value||"0").replace(/[^0-9,]/g,"").replace(",",".")),stock:Number(fields[5]?.value||0),start:fields[6]?.value||"",end:fields[7]?.value||"",status:fields[8]?.value||"Ativo",featured:fields[9]?.value==="Destacar na loja",imageUrl:fields[10]?.value||"",description:fields[11]?.value||""};
+  const ix=(storeData.products||[]).findIndex(p=>p.name===product.name); if(ix>=0){product.id=storeData.products[ix].id;storeData.products[ix]=product}else storeData.products.push(product);
+  await putContent(storeData); alert("Produto salvo e publicado para a Loja do aluno."); location.reload();
+ }catch(e){alert(e.message)}
+});
+document.querySelector(".bannerform .save").addEventListener("click",async()=>{
+ try{
+  storeData=storeData||await getContent();const f=[...document.querySelectorAll(".bannerform input,.bannerform select")];
+  storeData.banners=storeData.banners||[];storeData.banners.push({id:"banner-"+Date.now(),imageUrl:f[0]?.value||"",title:f[1]?.value||"Banner",order:Number(f[2]?.value||1),start:f[3]?.value||"",end:f[4]?.value||"",status:f[5]?.value||"Ativo",link:f[6]?.value||""});
+  await putContent(storeData);alert("Banner salvo e publicado no slide da Loja.");location.reload();
+ }catch(e){alert(e.message)}
+});
+</script></body></html>

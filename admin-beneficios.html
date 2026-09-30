@@ -1,0 +1,72 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CLUB POP Admin — Benefícios</title><style>
+:root{--ink:#0d0d0f;--bg:#f5f5f7;--line:#e6e6ea;--muted:#777980;--white:#fff}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif}
+.app{min-height:100vh;display:grid;grid-template-columns:245px 1fr}aside{background:#0d0d0f;color:#fff;padding:27px 18px;position:sticky;top:0;height:100vh}.logo{font-size:23px;font-weight:950;letter-spacing:-1px;padding:0 10px}.logo small{display:block;color:#888;font-size:10px;letter-spacing:2px;margin-top:4px}nav{display:grid;gap:6px;margin-top:30px}nav a{color:#aaa;text-decoration:none;padding:13px 14px;border-radius:12px;font-weight:750;font-size:13px}nav a.on{background:#fff;color:#111}
+main{padding:32px;max-width:1450px;width:100%;margin:auto}.top{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:25px}.ey{font-size:11px;color:#888;font-weight:850;letter-spacing:1.5px}.top h1{font-size:30px;margin:5px 0 0;letter-spacing:-1px}.primary{border:0;background:#111;color:#fff;border-radius:11px;padding:12px 16px;font-weight:850;font-size:12px;cursor:pointer}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.stat,.panel{background:#fff;border:1px solid var(--line);border-radius:18px}.stat{padding:18px}.stat span{font-size:11px;color:var(--muted);font-weight:700}.stat b{display:block;font-size:26px;margin-top:7px}
+.grid{display:grid;grid-template-columns:1.12fr .88fr;gap:17px}.panel{padding:20px;margin-bottom:17px}.ph{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:16px}
+.panel.collapsed .panel-body{display:none}.panel.collapsed .ph{margin-bottom:0}
+.ph-actions{display:flex;align-items:center;gap:7px}.collapse{width:31px;height:31px;border:1px solid #ddd;background:#fff;border-radius:9px;font-weight:900;cursor:pointer;font-size:16px;line-height:1}
+.panel.collapsed .collapse{transform:rotate(180deg)}.ph h2{font-size:16px;margin:0}.ghost{border:1px solid #ddd;background:#fff;border-radius:9px;padding:8px 10px;font-size:10px;font-weight:850}
+.toolbar{display:grid;grid-template-columns:1fr auto;gap:9px;margin-bottom:13px}.search{border:1px solid var(--line);border-radius:11px;padding:11px 12px;background:#fafafa;font-size:12px}.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}.chip{border:1px solid #ddd;background:#fff;border-radius:20px;padding:7px 10px;font-size:10px;font-weight:800}.chip.on{background:#111;color:#fff;border-color:#111}
+.benefit{cursor:pointer;display:grid;grid-template-columns:48px 1fr auto;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid #eee}.benefit:last-child{border:0}.benefit:hover{background:#fafafa}.log{margin-top:14px;border-top:1px solid #eee;padding-top:12px}.log h3{font-size:11px;margin:0 0 9px}.logitem{display:grid;grid-template-columns:86px 1fr;gap:8px;font-size:10px;padding:7px 0;border-bottom:1px solid #f0f0f0}.logitem time{color:#888}.logitem b{font-size:10px}.pic{width:48px;height:48px;border-radius:12px;background:#eee;display:grid;place-items:center;font-weight:900;font-size:11px}.benefit b{font-size:12px}.benefit p{font-size:10px;color:#777;margin:4px 0}.badge{font-size:9px;padding:5px 8px;border-radius:20px;background:#efeff1;font-weight:850}.actions{display:flex;gap:5px;margin-top:6px}.actions button{border:0;background:none;padding:0;font-size:9px;font-weight:850;color:#555}
+.form{display:grid;gap:12px}.field label{display:block;font-size:10px;font-weight:850;margin:0 0 6px}.field input,.field select,.field textarea{width:100%;border:1px solid #ddd;border-radius:10px;background:#fafafa;padding:11px;font:inherit;font-size:11px}.field textarea{height:72px;resize:none}.two{display:grid;grid-template-columns:1fr 1fr;gap:9px}.upload{border:1px dashed #bbb;border-radius:12px;padding:17px;text-align:center;font-size:10px;color:#777}.toggle{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #eee;padding-top:12px;font-size:11px;font-weight:750}.switch{width:38px;height:22px;border-radius:20px;background:#111;position:relative}.switch:after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;right:3px;top:3px}.preview{background:#f5f5f7;border-radius:15px;padding:14px}.preview small{font-size:9px;color:#888;font-weight:850}.student-card{background:#fff;border:1px solid #e3e3e6;border-radius:15px;padding:14px;margin-top:9px}.student-card .hero{height:90px;border-radius:11px;background:#111;color:#fff;display:flex;align-items:end;padding:12px;font-weight:900}.student-card h3{font-size:13px;margin:12px 0 4px}.student-card p{font-size:10px;color:#777;margin:0 0 8px}.student-card strong{font-size:11px}.save{width:100%;border:0;background:#111;color:#fff;border-radius:11px;padding:12px;font-size:11px;font-weight:900;margin-top:3px}
+.mobile-top,.mobile-menu{display:none}
+@media(max-width:850px){.app{display:block}aside{display:none}.mobile-top{display:flex;position:sticky;top:0;z-index:20;height:68px;background:#fff;border-bottom:1px solid var(--line);align-items:center;justify-content:space-between;padding:0 16px}.mobile-brand{font-size:18px;font-weight:950;letter-spacing:-.7px}.mobile-brand small{display:block;font-size:9px;color:#777;font-weight:650;margin-top:2px}.hamb{width:42px;height:42px;border:0;background:#111;border-radius:12px;display:grid;place-content:center;gap:4px}.hamb span{width:18px;height:2px;background:#fff}.mobile-menu{position:fixed;z-index:19;top:68px;right:0;width:min(290px,82vw);height:calc(100vh - 68px);background:#111;padding:16px}.mobile-menu.open{display:grid;align-content:start;gap:6px}.mobile-menu a{color:#bbb;padding:14px;border-radius:11px;font-size:13px;font-weight:800}.mobile-menu a.on{background:#fff;color:#111}main{padding:20px 14px}.top{align-items:center}.top h1{font-size:25px}.primary{padding:10px 12px}.cards{grid-template-columns:1fr 1fr;gap:9px}.grid{grid-template-columns:1fr}.benefit{grid-template-columns:48px 1fr}.benefit>.badge{grid-column:2}.two{grid-template-columns:1fr}}
+</style></head><body>
+<header class="mobile-top"><div class="mobile-brand">CLUB POP<small>Benefícios exclusivos para alunos Pop</small></div><button class="hamb" id="hamb"><span></span><span></span><span></span></button></header>
+<div class="mobile-menu" id="mobileMenu"><a>Dashboard</a><a>Alunos</a><a>Missões</a><a>Loja</a><a class="on">Benefícios</a><a>Configurações</a></div>
+<div class="app"><aside><div class="logo">CLUB POP<small>ADMINISTRATIVO</small></div><nav><a>Dashboard</a><a>Alunos</a><a>Missões</a><a>Loja</a><a class="on">Benefícios</a><a>Configurações</a></nav></aside>
+<main><header class="top"><div><div class="ey">CONTEÚDO DO ALUNO</div><h1>Benefícios</h1></div><button class="primary" id="newBenefit">+ Novo benefício</button></header>
+<section class="cards"><div class="stat"><span>Benefícios ativos</span><b>8</b></div><div class="stat"><span>Parceiros</span><b>6</b></div><div class="stat"><span>Em destaque</span><b>1</b></div><div class="stat"><span>Inativos</span><b>2</b></div></section>
+<div class="grid"><div>
+<section class="panel collapsible"><div class="ph"><h2>Benefícios publicados</h2><div class="ph-actions"><button class="ghost">Ordenar exibição</button><button class="collapse" title="Encolher/expandir">⌃</button></div></div>
+<div class="panel-body"><div class="toolbar"><input class="search" placeholder="Buscar benefício ou parceiro"><button class="ghost">Filtros</button></div>
+<div class="chips"><button class="chip on">Todos</button><button class="chip">Bike</button><button class="chip">Bem-estar</button><button class="chip">Alimentação</button><button class="chip">Serviços</button></div>
+<div class="benefit" data-name="P2 Bikes" data-created="12/09/2026"><div class="pic">P2</div><div><b>P2 Bikes</b><p>Desconto exclusivo para alunos CLUB POP</p><div class="actions"><button class="editBenefit">EDITAR</button><button>DUPLICAR</button><button>DESATIVAR</button></div></div><span class="badge">DESTAQUE</span></div>
+<div class="benefit" data-name="Recovery Pop" data-created="18/09/2026"><div class="pic">RP</div><div><b>Recovery Pop</b><p>Condição especial em sessão de recovery</p><div class="actions"><button class="editBenefit">EDITAR</button><button>DUPLICAR</button><button>DESATIVAR</button></div></div><span class="badge">ATIVO</span></div>
+<div class="benefit" data-name="Parceiro exemplo" data-created="22/09/2026"><div class="pic">+</div><div><b>Parceiro exemplo</b><p>Benefício demonstrativo na categoria Bem-estar</p><div class="actions"><button class="editBenefit">EDITAR</button><button>DUPLICAR</button><button>DESATIVAR</button></div></div><span class="badge">ATIVO</span></div>
+</div></section></div>
+<div><section class="panel collapsible" id="editorPanel"><div class="ph"><h2 id="editorTitle">Editar benefício</h2><div class="ph-actions"><span class="badge" id="editorBadge">CADASTRADO</span><button class="collapse" title="Encolher/expandir">⌃</button></div></div>
+<div class="panel-body"><div class="form"><div class="field"><label>NOME DO PARCEIRO</label><input value="P2 Bikes"></div>
+<div class="field"><label>TÍTULO DO BENEFÍCIO</label><input value="Desconto exclusivo P2 Bikes"></div>
+<div class="field"><label>DESCRIÇÃO CURTA</label><textarea>Condição especial para alunos CLUB POP em produtos e serviços selecionados.</textarea></div>
+<div class="two"><div class="field"><label>CATEGORIA</label><select><option>Bike</option><option>Bem-estar</option><option>Alimentação</option><option>Serviços</option></select></div><div class="field"><label>TIPO</label><select><option>Desconto</option><option>Voucher</option><option>Cortesia</option><option>Condição especial</option></select></div></div>
+<div class="field"><label>VALOR / CHAMADA</label><input value="10% OFF"></div>
+<div class="two"><div class="field"><label>INÍCIO DA CAMPANHA</label><input type="date" value="2026-10-01"></div><div class="field"><label>FIM DA CAMPANHA</label><input type="date" value="2026-12-31"></div></div>
+<div class="field"><label>COMO UTILIZAR</label><textarea>Apresente a tela do benefício no estabelecimento parceiro.</textarea></div>
+<div class="field"><label>LINK / CONTATO DO PARCEIRO</label><input placeholder="WhatsApp, Instagram ou site"></div>
+<div class="field"><label>IMAGEM / LOGO</label><div class="upload">Clique para selecionar a imagem do parceiro<br><b>PNG ou JPG</b></div></div>
+<div class="toggle"><span>Exibir como destaque na tela do aluno</span><div class="switch"></div></div>
+<div class="toggle"><span>Benefício ativo</span><div class="switch"></div></div>
+<div class="preview"><small>PRÉVIA NA TELA DO ALUNO</small><div class="student-card"><div class="hero">P2 BIKES</div><h3>Desconto exclusivo P2 Bikes</h3><p>Condição especial para alunos CLUB POP em produtos e serviços selecionados.</p><strong>10% OFF</strong></div></div>
+<div class="log" id="benefitLog"><h3>Histórico do benefício</h3>
+<div class="logitem"><time>12/09/2026</time><div><b>Benefício cadastrado</b><br>Cadastro inicial no CLUB POP.</div></div>
+<div class="logitem"><time>21/09/2026</time><div><b>Benefício editado</b><br>Descrição e condições atualizadas.</div></div>
+<div class="logitem"><time>28/09/2026</time><div><b>Benefício editado</b><br>Período da campanha atualizado.</div></div>
+</div>
+<button class="save" id="saveBenefit">Salvar alterações</button></div></div></section></div></div></main></div>
+<script>
+const h=document.getElementById("hamb"),m=document.getElementById("mobileMenu");
+h.onclick=()=>m.classList.toggle("open");
+document.addEventListener("click",e=>{if(!m.contains(e.target)&&!h.contains(e.target))m.classList.remove("open")});
+document.querySelectorAll(".collapse").forEach(b=>b.onclick=()=>b.closest(".panel").classList.toggle("collapsed"));
+
+const title=document.getElementById("editorTitle"), badge=document.getElementById("editorBadge"), save=document.getElementById("saveBenefit"), editor=document.getElementById("editorPanel");
+const fields=[...editor.querySelectorAll("input,textarea")];
+document.getElementById("newBenefit").onclick=()=>{
+  title.textContent="Novo benefício"; badge.textContent="NOVO"; save.textContent="Cadastrar benefício";
+  fields.forEach(el=>{if(el.type!=="date")el.value="";}); editor.classList.remove("collapsed"); editor.scrollIntoView({behavior:"smooth",block:"start"});
+};
+
+document.querySelectorAll(".benefit").forEach(card=>card.onclick=(e)=>{
+  if(e.target.closest("button") && !e.target.classList.contains("editBenefit")) return;
+  title.textContent="Editar benefício"; badge.textContent="CADASTRADO"; save.textContent="Salvar alterações";
+  const first=editor.querySelector('input'); if(first) first.value=card.dataset.name||"";
+  editor.classList.remove("collapsed"); editor.scrollIntoView({behavior:"smooth",block:"start"});
+});
+document.querySelectorAll(".editBenefit").forEach(b=>b.onclick=()=>{
+  title.textContent="Editar benefício"; badge.textContent="CADASTRADO"; save.textContent="Salvar alterações";
+  editor.classList.remove("collapsed"); editor.scrollIntoView({behavior:"smooth",block:"start"});
+});
+</script></body></html>
