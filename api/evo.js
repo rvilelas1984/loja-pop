@@ -5,7 +5,7 @@ export default async function handler(req,res){
  if(!value) return res.status(400).json({ok:false,error:"Informe CPF ou ID EVO"});
  const dns=process.env.EVO_DNS, token=process.env.EVO_TOKEN;
  if(!dns||!token) return res.status(503).json({ok:false,stage:"configuration",error:"Credenciais EVO ainda não configuradas no servidor"});
- if(value.length===11) return res.status(501).json({ok:false,stage:"member-lookup",cpfDetected:true,error:"CPF reconhecido. Primeiro validaremos a comunicação pelo ID EVO; depois habilitaremos a resolução por CPF."});
+ 
  const auth=Buffer.from(dns+":"+token).toString("base64");
  try{
    const url="https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(value);
