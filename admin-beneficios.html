@@ -69,4 +69,11 @@ document.querySelectorAll(".editBenefit").forEach(b=>b.onclick=()=>{
   title.textContent="Editar benefício"; badge.textContent="CADASTRADO"; save.textContent="Salvar alterações";
   editor.classList.remove("collapsed"); editor.scrollIntoView({behavior:"smooth",block:"start"});
 });
+
+const ADMIN_KEY_NAME="clubpop-admin-key";function adminKey(){let k=sessionStorage.getItem(ADMIN_KEY_NAME);if(!k){k=prompt("Chave administrativa do CLUB POP:")||"";if(k)sessionStorage.setItem(ADMIN_KEY_NAME,k)}return k}
+async function contentGet(){return (await fetch("/api/content",{cache:"no-store"})).json()}
+async function contentPut(d){const r=await fetch("/api/content",{method:"PUT",headers:{"content-type":"application/json","x-admin-key":adminKey()},body:JSON.stringify(d)}),j=await r.json();if(!r.ok)throw Error(j.error||"Falha ao salvar");return j}
+document.querySelectorAll(".save").forEach(btn=>btn.addEventListener("click",async()=>{
+ try{const d=await contentGet(),f=[...document.querySelectorAll("#editorPanel input,#editorPanel select,#editorPanel textarea")];const b={id:"benefit-"+Date.now(),partner:f[0]?.value||"",title:f[1]?.value||"",description:f[2]?.value||"",category:f[3]?.value||"",type:f[4]?.value||"",call:f[5]?.value||"",start:f.find(x=>x.type==="date")?.value||"",end:f.filter(x=>x.type==="date")[1]?.value||"",imageUrl:f.find(x=>x.type==="url")?.value||"",status:"Ativo",featured:true};d.benefits=d.benefits||[];const ix=d.benefits.findIndex(x=>x.partner===b.partner);if(ix>=0){b.id=d.benefits[ix].id;d.benefits[ix]=b}else d.benefits.push(b);await contentPut(d);alert("Benefício salvo e publicado para o aluno.")}catch(e){alert(e.message)}
+}));
 </script></body></html>

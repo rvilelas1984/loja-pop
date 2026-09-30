@@ -29,7 +29,36 @@
     }
   ],
   "banners": [],
-  "benefits": [],
+  "benefits": [
+    {
+      "id": "p2-bikes",
+      "partner": "P2 Bikes",
+      "title": "Desconto exclusivo P2 Bikes",
+      "description": "Condição especial para alunos CLUB POP em produtos e serviços selecionados.",
+      "category": "Bike",
+      "type": "Desconto",
+      "call": "Benefício exclusivo",
+      "start": "2026-09-01",
+      "end": "2026-12-31",
+      "imageUrl": "",
+      "status": "Ativo",
+      "featured": true
+    },
+    {
+      "id": "recovery-pop",
+      "partner": "Recovery Pop",
+      "title": "Recovery Pop",
+      "description": "Condição especial em sessão de recovery.",
+      "category": "Bem-estar",
+      "type": "Condição especial",
+      "call": "Condição especial",
+      "start": "2026-09-01",
+      "end": "2026-12-31",
+      "imageUrl": "",
+      "status": "Ativo",
+      "featured": false
+    }
+  ],
   "missions": {
     "presence": {
       "active": true,
