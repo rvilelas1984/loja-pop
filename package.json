@@ -1,1 +1,5 @@
-{"name":"loja-pop","version":"0.1.1","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"next":"latest","react":"latest","react-dom":"latest"}}
+{
+  "name": "loja-pop",
+  "version": "0.1.2",
+  "private": true
+}
