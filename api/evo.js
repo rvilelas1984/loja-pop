@@ -20,11 +20,44 @@ async function getMonthlyAttendance(idMember,headers){
     skip+=take;
   }
   const present=all.filter(x=>x?.presenca===true && x?.isFinalized===true);
+  const normalized=present.map(x=>({
+    date:x.date??x.dateStart??null,
+    startTime:x.startTime??null,
+    activity:x.activitieName??x.activityName??null
+  }));
+  const timeCounts={},activityCounts={},daySet=new Set(),weekdayCounts={};
+  for(const x of normalized){
+    if(x.startTime)timeCounts[x.startTime]=(timeCounts[x.startTime]||0)+1;
+    if(x.activity)activityCounts[x.activity]=(activityCounts[x.activity]||0)+1;
+    if(x.date){
+      const key=String(x.date).slice(0,10);
+      daySet.add(key);
+      const d=new Date(key+"T12:00:00");
+      const wd=d.toLocaleDateString("pt-BR",{weekday:"long",timeZone:"America/Sao_Paulo"});
+      weekdayCounts[wd]=(weekdayCounts[wd]||0)+1;
+    }
+  }
+  const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0])))[0]?.[0]||null;
+  const now=new Date();
+  const dow=(now.getDay()+6)%7;
+  const monday=new Date(now); monday.setHours(0,0,0,0); monday.setDate(now.getDate()-dow);
+  const sunday=new Date(monday); sunday.setDate(monday.getDate()+6); sunday.setHours(23,59,59,999);
+  const weekRows=normalized.filter(x=>{
+    if(!x.date)return false;
+    const d=new Date(String(x.date).slice(0,10)+"T12:00:00");
+    return d>=monday&&d<=sunday;
+  });
+  const weekDays=new Set(weekRows.map(x=>String(x.date).slice(0,10)));
   return {
     ok:true,
     period:{dateStart,dateEnd},
     totalSessionsReturned:all.length,
-    attendanceCount:present.length,\n    favoriteTime:top(timeCounts),\n    favoriteActivity:top(activityCounts),\n    distinctDays:daySet.size,\n    weekdayCounts,\n    currentWeek:{attendanceCount:weekRows.length,distinctDays:weekDays.size},
+    attendanceCount:present.length,
+    favoriteTime:top(timeCounts),
+    favoriteActivity:top(activityCounts),
+    distinctDays:daySet.size,
+    weekdayCounts,
+    currentWeek:{attendanceCount:weekRows.length,distinctDays:weekDays.size},
     // Presença válida segue a mesma lógica observada no relatório EVO: presença marcada e sessão finalizada.
     attendance:present.map(x=>({
       idActivitySession:x.idActivitySession??x.idActivitieSession??x.idAtividadeSessao??null,
