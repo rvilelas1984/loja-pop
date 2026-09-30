@@ -95,7 +95,7 @@ export default async function handler(req,res){
    const fitcoins=extractFitcoins(fd)??extractFitcoins(profile);
    const attendance=await getMonthlyAttendance(lookupMember.idMember,headers);
    return res.status(200).json({
-     ok:true,stage:"club-pop-september-test",
+     ok:true,stage:"club-pop-current-month",
      member:{idMember:lookupMember.idMember,firstName:profile?.firstName||lookupMember.firstName,lastName:profile?.lastName||lookupMember.lastName,branchName:profile?.branchName||lookupMember.branchName},
      fitcoins,
      attendance
