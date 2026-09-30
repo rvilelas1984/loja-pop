@@ -24,7 +24,7 @@ async function getMonthlyAttendance(idMember,headers){
     ok:true,
     period:{dateStart,dateEnd},
     totalSessionsReturned:all.length,
-    attendanceCount:present.length,
+    attendanceCount:present.length,\n    favoriteTime:top(timeCounts),\n    favoriteActivity:top(activityCounts),\n    distinctDays:daySet.size,\n    weekdayCounts,\n    currentWeek:{attendanceCount:weekRows.length,distinctDays:weekDays.size},
     // Presença válida segue a mesma lógica observada no relatório EVO: presença marcada e sessão finalizada.
     attendance:present.map(x=>({
       idActivitySession:x.idActivitySession??x.idActivitieSession??x.idAtividadeSessao??null,
