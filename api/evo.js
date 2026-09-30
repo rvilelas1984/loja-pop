@@ -8,7 +8,7 @@ export default async function handler(req,res){
  
  const auth=Buffer.from(dns+":"+token).toString("base64");
  try{
-   const url="https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(value);
+   const url=value.length===11?"https://evo-integracao.w12app.com.br/api/v1/members/basic?document="+encodeURIComponent(value):"https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(value);
    const rr=await fetch(url,{headers:{Authorization:"Basic "+auth,Accept:"application/json"}});
    const raw=await rr.text(); let data; try{data=JSON.parse(raw)}catch{data={raw:raw.slice(0,500)}}
    if(!rr.ok) return res.status(rr.status).json({ok:false,stage:"evo-member",status:rr.status,response:data});
