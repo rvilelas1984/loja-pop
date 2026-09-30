@@ -19,13 +19,13 @@ async function getMonthlyAttendance(idMember,headers){
     if(rows.length<take)break;
     skip+=take;
   }
-  const present=all.filter(x=>x?.presenca===true);
+  const present=all.filter(x=>x?.presenca===true && x?.isFinalized===true);
   return {
     ok:true,
     period:{dateStart,dateEnd},
     totalSessionsReturned:all.length,
     attendanceCount:present.length,
-    // Diagnóstico temporário: preserva o identificador da sessão para confrontar com a lista de chamada EVO.
+    // Presença válida segue a mesma lógica observada no relatório EVO: presença marcada e sessão finalizada.
     attendance:present.map(x=>({
       idActivitySession:x.idActivitySession??x.idActivitieSession??x.idAtividadeSessao??null,
       date:x.date??x.dateStart??null,
@@ -61,28 +61,6 @@ export default async function handler(req,res){
    const fr=await fetch(fitUrl,{headers,cache:"no-store"}),fraw=await fr.text(),fd=parseJson(fraw);
    const fitcoins=extractFitcoins(fd)??extractFitcoins(profile);
    const attendance=await getMonthlyAttendance(lookupMember.idMember,headers);
-   // Validação pela lista de chamada da própria atividade. Fazemos isso somente no modo diagnóstico
-   // e apenas para as sessões já marcadas como presença, evitando consultas desnecessárias.
-   if(attendance?.ok){
-     let listAttendanceCount=0;
-     const checked=[];
-     for(const session of attendance.attendance){
-       const sid=session.idActivitySession;
-       if(!sid){checked.push({...session,listCheck:{ok:false,reason:"missing-session-id"}});continue;}
-       const u="https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(sid);
-       const lr=await fetch(u,{headers,cache:"no-store"}),lraw=await lr.text(),ld=parseJson(lraw);
-       if(!lr.ok){checked.push({...session,listCheck:{ok:false,status:lr.status}});continue;}
-       const detail=Array.isArray(ld)?ld[0]:ld;
-       const enrollments=Array.isArray(detail?.enrollments)?detail.enrollments:[];
-       const enrollment=enrollments.find(e=>Number(e?.idMember)===Number(lookupMember.idMember));
-       const isPresent=enrollment?.status===0 && enrollment?.removed!==true;
-       if(isPresent)listAttendanceCount++;
-       checked.push({...session,listCheck:{ok:true,found:!!enrollment,status:enrollment?.status??null,justifiedAbsence:enrollment?.justifiedAbsence??null,replacement:enrollment?.replacement??null,suspended:enrollment?.suspended??null,removed:enrollment?.removed??null,isPresent}});
-     }
-     attendance.memberSessionsCount=attendance.attendanceCount;
-     attendance.listAttendanceCount=listAttendanceCount;
-     attendance.attendance=checked;
-   }
    return res.status(200).json({
      ok:true,stage:"club-pop-september-test",
      member:{idMember:lookupMember.idMember,firstName:profile?.firstName||lookupMember.firstName,lastName:profile?.lastName||lookupMember.lastName,branchName:profile?.branchName||lookupMember.branchName},
