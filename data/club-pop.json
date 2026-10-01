@@ -235,13 +235,13 @@
         {
           "unit": "bike",
           "activity": "*",
-          "quantity": 1
+          "quantity": 3
         }
       ],
       "goals": [
         {
           "id": "goal-1",
-          "value": 3,
+          "value": 4,
           "rewardType": "product",
           "rewardId": "prod-1790871460911",
           "rewardName": "Agua mineral ",
