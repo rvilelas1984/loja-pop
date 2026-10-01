@@ -103,7 +103,7 @@ export default async function handler(req,res){
      if(fitcoins==null)return res.status(fr.ok?502:fr.status).json({ok:false,stage:"evo-fitcoins",error:"Não foi possível obter o saldo de Fitcoins",detail:fd?.message||fd?.error||fd?.raw||("HTTP "+fr.status)});
      return res.status(200).json({ok:true,stage:gym?"gym-fitcoins-only":"bike-fitcoins-only",unit,member:{idMember:lookupMember.idMember,firstName:lookupMember.firstName,lastName:lookupMember.lastName,branchName:lookupMember.branchName},fitcoins,fitcoinsSource:endpointCoins!=null?"fitcoins-endpoint":"member-profile",attendance:{ok:false,skipped:true,reason:gym?"gym-request-budget":"fitcoins-only"}});
    }
-   const profileUrl="https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(lookupMember.idMember);
+   const profileUrl="https://evo-integracao-api.w12app.com.br/api/v2/members/"+encodeURIComponent(lookupMember.idMember)+"?showMemberships=true";
    const pr=await fetch(profileUrl,{headers,cache:"no-store"}),praw=await pr.text(),pd=parseJson(praw);
    const profile=pr.ok?(Array.isArray(pd)?pd[0]:pd):lookupMember;
    const fitUrl="https://evo-integracao-api.w12app.com.br/api/v1/members/fitcoins?idMember="+encodeURIComponent(lookupMember.idMember);
@@ -112,7 +112,7 @@ export default async function handler(req,res){
    const attendance=await getMonthlyAttendance(lookupMember.idMember,headers);
    return res.status(200).json({
      ok:true,stage:"club-pop-current-month",unit,
-     member:{idMember:lookupMember.idMember,firstName:profile?.firstName||lookupMember.firstName,lastName:profile?.lastName||lookupMember.lastName,branchName:profile?.branchName||lookupMember.branchName},
+     member:{idMember:lookupMember.idMember,firstName:profile?.firstName||lookupMember.firstName,lastName:profile?.lastName||lookupMember.lastName,branchName:profile?.branchName||lookupMember.branchName,membershipStatus:profile?.membershipStatus||null,membership:profile?.membership||null,memberships:profile?.memberships||[]},
      fitcoins,
      attendance
    });
