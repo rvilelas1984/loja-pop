@@ -6,12 +6,20 @@ function rows(d){if(Array.isArray(d))return d;if(Array.isArray(d?.items))return 
 async function evo(url,headers){const r=await fetch(url,{headers,cache:"no-store"}),d=await parse(r);return {ok:r.ok,status:r.status,data:d,items:rows(d),url}}
 export default async function handler(req,res){
  res.setHeader("cache-control","no-store");
- if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
+ if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"Método não permitido"});
  if(!valid(req))return res.status(401).json({ok:false,error:"Sessão administrativa inválida"});
  const unit=String(req.query.unit||"bike"),kind=String(req.query.kind||"activities");
  if(unit!=="bike")return res.status(400).json({ok:false,error:"Durante os testes, as requisições EVO estão liberadas somente para Bike Pop."});
  const dns=process.env.EVO_DNS,token=process.env.EVO_TOKEN;if(!dns||!token)return res.status(503).json({ok:false,error:"Credenciais EVO Bike Pop não configuradas"});
  const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
+ if(kind==="fitcoins"){
+   const id=Number(req.method==="POST"?(req.body?.idMember||0):(req.query.idMember||0));if(!id)return res.status(400).json({ok:false,error:"Informe o ID EVO do aluno."});
+   const profileUrl="https://evo-integracao-api.w12app.com.br/api/v1/members/"+id;
+   const before=await evo(profileUrl,headers);if(!before.ok)return res.status(before.status||502).json({ok:false,error:"Não foi possível consultar o aluno na EVO.",diagnostic:{method:"GET",endpoint:profileUrl,status:before.status,response:before.data}});
+   const profile=Array.isArray(before.data)?before.data[0]:before.data;const balance=Number(profile?.totalFitCoins??profile?.totalFitcoins??0);
+   if(req.method==="GET")return res.status(200).json({ok:true,unit,kind,idMember:id,balance,member:{id:profile?.idMember||profile?.id,name:profile?.name||profile?.firstName||profile?.registerName||""},diagnostic:{method:"GET",endpoint:profileUrl,status:before.status}});
+   return res.status(501).json({ok:false,error:"Escrita de Fitcoins ainda não liberada para teste.",detail:"A documentação pública oficial consultada confirma a leitura de totalFitCoins, mas não documenta um endpoint público específico para adicionar/remover Fitcoins. Nenhuma alteração foi enviada à EVO.",before:balance,diagnostic:{method:"GET",endpoint:profileUrl,status:before.status,writeAttempted:false}});
+ }
  if(kind==="attendance")return res.status(400).json({ok:false,error:"Presenças são consultadas por aluno/período e armazenadas no histórico D1."});
  if(kind==="contracts"){
    const diag=[];
