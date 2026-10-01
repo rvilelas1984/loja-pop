@@ -191,10 +191,107 @@
         "kind": "contracts",
         "at": "2026-10-01T18:22:24.852Z",
         "count": 0
+      },
+      {
+        "unit": "bike",
+        "kind": "contracts",
+        "at": "2026-10-01T18:44:32.296Z",
+        "count": 18
       }
     ],
     "contracts": {
-      "bike": [],
+      "bike": [
+        {
+          "id": 78686,
+          "name": "WELLHUB (GYMPASS)",
+          "inactive": false
+        },
+        {
+          "id": 78687,
+          "name": "TOTALPASS",
+          "inactive": false
+        },
+        {
+          "id": 78621,
+          "name": "Pacote 12 Aulas Gratis",
+          "inactive": false
+        },
+        {
+          "id": 78852,
+          "name": "Plano recorrente 12 aulas (Transição)",
+          "inactive": false
+        },
+        {
+          "id": 79249,
+          "name": "Pacote 12 Aulas Gratis recorrente",
+          "inactive": false
+        },
+        {
+          "id": 79248,
+          "name": "Pacote 8 Aulas Gratis recorrente",
+          "inactive": false
+        },
+        {
+          "id": 79246,
+          "name": "Pacote 4 Aulas  Gratis",
+          "inactive": false
+        },
+        {
+          "id": 79245,
+          "name": "Pacote 8 Aulas Gratis",
+          "inactive": false
+        },
+        {
+          "id": 79247,
+          "name": "Aula Avulsa Gratis",
+          "inactive": false
+        },
+        {
+          "id": 78701,
+          "name": "Aula Avulsa",
+          "inactive": false
+        },
+        {
+          "id": 78217,
+          "name": "Pacote 12 Aulas",
+          "inactive": false
+        },
+        {
+          "id": 79313,
+          "name": "Pacote 12 Aulas transferência ",
+          "inactive": false
+        },
+        {
+          "id": 78848,
+          "name": "Plano recorrente 8 aulas (Transição)",
+          "inactive": false
+        },
+        {
+          "id": 79362,
+          "name": "Plano recorrente Mensal (Transição)",
+          "inactive": false
+        },
+        {
+          "id": 79250,
+          "name": "Pacote 20 Aulas Gratis recorrente",
+          "inactive": false
+        },
+        {
+          "id": 79424,
+          "name": "Pacote 8 aulas Coletivas Transição",
+          "inactive": false
+        },
+        {
+          "id": 78308,
+          "name": "Plano recorrente 8 aulas",
+          "inactive": false
+        },
+        {
+          "id": 78268,
+          "name": "Pacote 4 Aulas ",
+          "inactive": false
+        }
+      ],
       "gym": []
     },
     "members": {
