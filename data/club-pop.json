@@ -2,22 +2,7 @@
   "version": 2,
   "products": [],
   "banners": [],
-  "benefits": [
-    {
-      "id": "recovery-pop",
-      "partner": "Recovery Pop",
-      "title": "Recovery Pop",
-      "description": "Condição especial em sessão de recovery.",
-      "category": "Bem-estar",
-      "type": "Condição especial",
-      "call": "Condição especial",
-      "start": "2026-09-01",
-      "end": "2026-12-31",
-      "imageUrl": "",
-      "status": "Ativo",
-      "featured": false
-    }
-  ],
+  "benefits": [],
   "missions": {},
   "promotions": [],
   "storeCategories": [
