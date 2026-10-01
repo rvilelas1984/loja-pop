@@ -169,6 +169,12 @@
         "kind": "contracts",
         "at": "2026-10-01T17:24:57.368Z",
         "count": 0
+      },
+      {
+        "unit": "bike",
+        "kind": "contracts",
+        "at": "2026-10-01T17:59:50.647Z",
+        "count": 0
       }
     ],
     "contracts": {
