@@ -92,8 +92,11 @@
         }
       ],
       "eligibility": {
-        "mode": "any",
-        "acceptedContracts": []
+        "mode": "active_contract",
+        "acceptedContracts": [
+          "78686",
+          "78687"
+        ]
       }
     }
   ],
