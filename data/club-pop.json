@@ -60,46 +60,5 @@
     }
   ],
   "missions": {},
-  "promotions": [
-    {
-      "id": "iphone-17-2026",
-      "name": "Concorra a um iPhone 17",
-      "status": "Ativo",
-      "start": "2026-09-01",
-      "end": "2026-10-31",
-      "bannerUrl": "",
-      "bannerTarget": "/promocoes.html",
-      "dashboardText": "Cada presença válida aumenta suas chances. Acompanhe seus números da sorte.",
-      "reset": "monthly",
-      "numbersPerAttendance": 1,
-      "milestones": [
-        {
-          "attendance": 8,
-          "bonus": 5
-        },
-        {
-          "attendance": 12,
-          "bonus": 10
-        }
-      ],
-      "sources": {
-        "bike": {
-          "type": "evo",
-          "label": "Bike Pop"
-        },
-        "gym": {
-          "type": "import",
-          "label": "Gym Pop"
-        }
-      },
-      "numberPolicy": {
-        "format": "XXXX-XXXX",
-        "automatic": true,
-        "onAttendanceRemoved": "cancel-linked",
-        "onGoalLost": "cancel-bonus",
-        "onGoalRecovered": "reactivate",
-        "deleteCodes": false
-      }
-    }
-  ]
+  "promotions": []
 }
