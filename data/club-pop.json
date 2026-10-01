@@ -113,6 +113,21 @@
       "imageUrl": "",
       "status": "Ativo",
       "featured": false
+    },
+    {
+      "id": "benefit-1790858562689",
+      "partner": "",
+      "title": "",
+      "description": "",
+      "category": "Bike",
+      "type": "Desconto",
+      "call": "",
+      "start": "",
+      "end": "",
+      "howToUse": "",
+      "contact": "",
+      "status": "Ativo",
+      "featured": false
     }
   ],
   "missions": {},
