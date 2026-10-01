@@ -63,11 +63,11 @@
       "end": "2026-10-31",
       "promotionType": "lucky_number",
       "numbersPerAttendance": 1,
-      "reset": "monthly",
+      "reset": "campaign",
       "luckyNumber": {
         "enabled": true,
         "numbersPerAttendance": 1,
-        "reset": "monthly",
+        "reset": "campaign",
         "maxNumbers": 27,
         "milestones": [
           {
@@ -86,10 +86,15 @@
       "requirements": [
         {
           "unit": "bike",
-          "activity": "*",
+          "activityId": "*",
+          "activity": "Qualquer atividade",
           "quantity": 1
         }
-      ]
+      ],
+      "eligibility": {
+        "mode": "any",
+        "acceptedContracts": []
+      }
     }
   ],
   "storeCategories": [
