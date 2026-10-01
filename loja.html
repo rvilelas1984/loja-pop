@@ -28,14 +28,13 @@ main{padding:0 18px}.head{display:flex;justify-content:space-between;align-items
 <div class="note"><strong>Como funciona o resgate?</strong><br>Escolha seu produto, confirme o uso dos Fitcoins e retire seu pedido no Studio Bike Pop após a confirmação.</div>
 </main>
 <div class="navwrap"><nav class="nav modern"><button onclick="location.href='/'"><svg viewBox='0 0 24 24'><path d='M3 10.5 12 3l9 7.5'/><path d='M5 9.5V21h14V9.5'/><path d='M9 21v-7h6v7'/></svg><span>Início</span></button><button onclick="location.href='/missoes.html'"><svg viewBox='0 0 24 24'><path d='m12 3 2.1 4.3 4.8.7-3.5 3.4.8 4.8L12 14l-4.2 2.2.8-4.8L5.1 8l4.8-.7L12 3Z'/><path d='M7 20h10'/></svg><span>Missões</span></button><button onclick="location.href='/beneficios.html'"><svg viewBox='0 0 24 24'><path d='M20 12v8H4v-8'/><path d='M2 7h20v5H2z'/><path d='M12 7v13'/><path d='M12 7H7.5A2.5 2.5 0 1 1 10 4.5L12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5L12 7Z'/></svg><span>Benefícios</span></button><button class="active" onclick="location.href='/loja.html'"><svg viewBox='0 0 24 24'><path d='M6 8h12l1 13H5L6 8Z'/><path d='M9 10V6a3 3 0 0 1 6 0v4'/></svg><span>Loja</span></button><button onclick="location.href='/perfil.html'"><svg viewBox='0 0 24 24'><circle cx='12' cy='8' r='4'/><path d='M4.5 21a7.5 7.5 0 0 1 15 0'/></svg><span>Perfil</span></button></nav></div>
-</div><div class="toast" id="toast"></div><script>
+</div><div class="toast" id="toast"></div><script>const AUTH_API="/api/auth?route=";
+async function authFetch(path,opts={}){const token=sessionStorage.getItem("clubpop_token");if(!token)throw new Error("SEM_SESSAO");const r=await fetch(AUTH_API+encodeURIComponent(path.replace(/^\/auth\//,"")),{...opts,headers:{"Content-Type":"application/json",Authorization:"Bearer "+token,...(opts.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw new Error(d.error||"SESSAO_INVALIDA");return d}
+async function getClubUser(){await authFetch("/auth/me");try{return JSON.parse(sessionStorage.getItem("clubpop")||"null")}catch{return null}}
+async function requireClubUser(){try{const u=await getClubUser();if(!u)location.replace("/");return u}catch{sessionStorage.removeItem("clubpop_token");sessionStorage.removeItem("clubpop");location.replace("/");return null}}
+
 function notify(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),1600)}
-const user=(()=>{try{return JSON.parse(sessionStorage.getItem("clubpop")||"null")}catch{return null}})();
-if(!user) location.href="/";
-else{
- document.querySelector(".avatar").textContent=((user.firstName?.[0]||"A")+(user.lastName?.[0]||"")).toUpperCase();
- document.querySelector(".wallet strong").textContent=(user.fitcoins??0)+" FC";
-}
+let user=null;
 function fitcoinMessages(){
  const balance=Number(user?.fitcoins||0);
  document.querySelectorAll(".fit-status[data-cost]").forEach(el=>{
@@ -57,6 +56,6 @@ async function loadStore(){
  }catch(e){}
  fitcoinMessages();
 }
-loadStore();
+(async()=>{user=await requireClubUser();if(!user)return;document.querySelector(".avatar").textContent=((user.firstName?.[0]||"A")+(user.lastName?.[0]||"")).toUpperCase();document.querySelector(".wallet strong").textContent=(user.fitcoins??0)+" FC";await loadStore()})();
 document.querySelectorAll('.chip').forEach(x=>x.onclick=()=>{document.querySelectorAll('.chip').forEach(y=>y.classList.remove('active'));x.classList.add('active')});
 </script></body></html>
