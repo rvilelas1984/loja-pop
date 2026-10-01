@@ -14,7 +14,7 @@ main{padding:32px;max-width:1450px;width:100%;margin:auto}.top{display:flex;just
 .mobile-top,.mobile-menu{display:none}
 @media(max-width:850px){.app{display:block}aside{display:none}.mobile-top{display:flex;position:sticky;top:0;z-index:20;height:68px;background:#fff;border-bottom:1px solid var(--line);align-items:center;justify-content:space-between;padding:0 16px}.mobile-brand{font-size:18px;font-weight:950;letter-spacing:-.7px}.mobile-brand small{display:block;font-size:9px;color:#777;font-weight:650;margin-top:2px}.hamb{width:42px;height:42px;border:0;background:#111;border-radius:12px;display:grid;place-content:center;gap:4px}.hamb span{width:18px;height:2px;background:#fff}.mobile-menu{position:fixed;z-index:19;top:68px;right:0;width:min(290px,82vw);height:calc(100vh - 68px);background:#111;padding:16px}.mobile-menu.open{display:grid;align-content:start;gap:6px}.mobile-menu a{color:#bbb;padding:14px;border-radius:11px;font-size:13px;font-weight:800}.mobile-menu a.on{background:#fff;color:#111}main{padding:20px 14px}.top{align-items:center}.top h1{font-size:25px}.primary{padding:10px 12px}.cards{grid-template-columns:1fr 1fr;gap:9px}.grid{grid-template-columns:1fr}.benefit{grid-template-columns:48px 1fr}.benefit>.badge{grid-column:2}.two{grid-template-columns:1fr}}
 .admin-mobile-nav-fix{display:none}@media(max-width:850px){.admin-mobile-nav-fix{display:flex;position:sticky;top:0;z-index:100;height:68px;background:#fff;border-bottom:1px solid #e4e5e8;align-items:center;justify-content:space-between;padding:0 16px}.admin-mobile-nav-fix b{font-size:18px}.admin-mobile-nav-fix small{display:block;font-size:9px;color:#777}.admin-mobile-nav-fix button{width:42px;height:42px;border:0;background:#111;color:#fff;border-radius:12px;font-size:22px}.admin-mobile-drawer{display:none;position:fixed;z-index:99;top:68px;right:0;width:min(290px,82vw);height:calc(100vh - 68px);background:#111;padding:16px}.admin-mobile-drawer.open{display:grid;align-content:start;gap:6px}.admin-mobile-drawer a{color:#bbb;text-decoration:none;padding:14px;border-radius:11px;font-size:13px;font-weight:800}.admin-mobile-drawer a.on{background:#fff;color:#111}}
-</style></head><script>(async()=>{try{const r=await fetch("/api/admin-auth?route=me",{cache:"no-store"});if(!r.ok)location.replace("/admin-login.html")}catch{location.replace("/admin-login.html")}})();</script><body><header class="admin-mobile-nav-fix"><div><b>CLUB POP</b><small>ADMINISTRATIVO</small></div><button id="adminNavBtn" aria-label="Abrir menu">☰</button></header><div class="admin-mobile-drawer" id="adminNavDrawer"><a href="/admin.html">Dashboard</a><a href="/admin-missoes.html">Missões</a><a href="/admin-loja.html">Loja</a><a class="on" href="/admin-beneficios.html">Benefícios</a><a href="/admin-promocoes.html">Promoções</a></div>
+</style><link rel="stylesheet" href="/admin-common.css"><style>.cp-admin-ready .grid{grid-template-columns:1fr!important}.cp-admin-ready #editorPanel{margin-top:14px}</style></head><script>(async()=>{try{const r=await fetch("/api/admin-auth?route=me",{cache:"no-store"});if(!r.ok)location.replace("/admin-login.html")}catch{location.replace("/admin-login.html")}})();</script><body><header class="admin-mobile-nav-fix"><div><b>CLUB POP</b><small>ADMINISTRATIVO</small></div><button id="adminNavBtn" aria-label="Abrir menu">☰</button></header><div class="admin-mobile-drawer" id="adminNavDrawer"><a href="/admin.html">Dashboard</a><a href="/admin-missoes.html">Missões</a><a href="/admin-loja.html">Loja</a><a class="on" href="/admin-beneficios.html">Benefícios</a><a href="/admin-promocoes.html">Promoções</a></div>
 <header class="mobile-top"><div class="mobile-brand">CLUB POP<small>Benefícios exclusivos para alunos Pop</small></div><button class="hamb" id="hamb"><span></span><span></span><span></span></button></header>
 <div class="mobile-menu" id="mobileMenu"><a>Dashboard</a><a>Missões</a><a>Loja</a><a class="on">Benefícios</a><a>Configurações</a></div>
 <div class="app"><aside><div class="logo">CLUB POP<small>ADMINISTRATIVO</small></div><nav><a>Dashboard</a><a>Missões</a><a>Loja</a><a class="on">Benefícios</a><a>Configurações</a></nav></aside>
@@ -47,34 +47,4 @@ main{padding:32px;max-width:1450px;width:100%;margin:auto}.top{display:flex;just
 <div class="logitem"><time>28/09/2026</time><div><b>Benefício editado</b><br>Período da campanha atualizado.</div></div>
 </div>
 <button class="save" id="saveBenefit">Salvar alterações</button></div></div></section></div></div></main></div>
-<script>
-const h=document.getElementById("hamb"),m=document.getElementById("mobileMenu");
-h.onclick=()=>m.classList.toggle("open");
-document.addEventListener("click",e=>{if(!m.contains(e.target)&&!h.contains(e.target))m.classList.remove("open")});
-document.querySelectorAll(".collapse").forEach(b=>b.onclick=()=>b.closest(".panel").classList.toggle("collapsed"));
-
-const title=document.getElementById("editorTitle"), badge=document.getElementById("editorBadge"), save=document.getElementById("saveBenefit"), editor=document.getElementById("editorPanel");
-const fields=[...editor.querySelectorAll("input,textarea")];
-document.getElementById("newBenefit").onclick=()=>{
-  title.textContent="Novo benefício"; badge.textContent="NOVO"; save.textContent="Cadastrar benefício";
-  fields.forEach(el=>{if(el.type!=="date")el.value="";}); editor.classList.remove("collapsed"); editor.scrollIntoView({behavior:"smooth",block:"start"});
-};
-
-document.querySelectorAll(".benefit").forEach(card=>card.onclick=(e)=>{
-  if(e.target.closest("button") && !e.target.classList.contains("editBenefit")) return;
-  title.textContent="Editar benefício"; badge.textContent="CADASTRADO"; save.textContent="Salvar alterações";
-  const first=editor.querySelector('input'); if(first) first.value=card.dataset.name||"";
-  editor.classList.remove("collapsed"); editor.scrollIntoView({behavior:"smooth",block:"start"});
-});
-document.querySelectorAll(".editBenefit").forEach(b=>b.onclick=()=>{
-  title.textContent="Editar benefício"; badge.textContent="CADASTRADO"; save.textContent="Salvar alterações";
-  editor.classList.remove("collapsed"); editor.scrollIntoView({behavior:"smooth",block:"start"});
-});
-
-const ADMIN_KEY_NAME="clubpop-admin-key";function adminKey(){let k=sessionStorage.getItem(ADMIN_KEY_NAME);if(!k){k=prompt("Chave administrativa do CLUB POP:")||"";if(k)sessionStorage.setItem(ADMIN_KEY_NAME,k)}return k}
-async function contentGet(){return (await fetch("/api/content",{cache:"no-store"})).json()}
-async function contentPut(d){const r=await fetch("/api/content",{method:"PUT",headers:{"content-type":"application/json","x-admin-key":adminKey()},body:JSON.stringify(d)}),j=await r.json();if(!r.ok)throw Error(j.error||"Falha ao salvar");return j}
-document.querySelectorAll(".save").forEach(btn=>btn.addEventListener("click",async()=>{
- try{const d=await contentGet(),f=[...document.querySelectorAll("#editorPanel input,#editorPanel select,#editorPanel textarea")];const b={id:"benefit-"+Date.now(),partner:f[0]?.value||"",title:f[1]?.value||"",description:f[2]?.value||"",category:f[3]?.value||"",type:f[4]?.value||"",call:f[5]?.value||"",start:f.find(x=>x.type==="date")?.value||"",end:f.filter(x=>x.type==="date")[1]?.value||"",imageUrl:f.find(x=>x.type==="url")?.value||"",status:"Ativo",featured:true};d.benefits=d.benefits||[];const ix=d.benefits.findIndex(x=>x.partner===b.partner);if(ix>=0){b.id=d.benefits[ix].id;d.benefits[ix]=b}else d.benefits.push(b);await contentPut(d);alert("Benefício salvo e publicado para o aluno.")}catch(e){alert(e.message)}
-}));
-</script><script>if("serviceWorker" in navigator)navigator.serviceWorker.register("/admin-sw.js").catch(()=>{});</script><script>document.getElementById("adminNavBtn")?.addEventListener("click",()=>document.getElementById("adminNavDrawer")?.classList.toggle("open"));document.addEventListener("click",e=>{const d=document.getElementById("adminNavDrawer"),b=document.getElementById("adminNavBtn");if(d&&b&&!d.contains(e.target)&&!b.contains(e.target))d.classList.remove("open")});</script></body></html>
+<script>if("serviceWorker" in navigator)navigator.serviceWorker.register("/admin-sw.js").catch(()=>{});</script><script>document.getElementById("adminNavBtn")?.addEventListener("click",()=>document.getElementById("adminNavDrawer")?.classList.toggle("open"));document.addEventListener("click",e=>{const d=document.getElementById("adminNavDrawer"),b=document.getElementById("adminNavBtn");if(d&&b&&!d.contains(e.target)&&!b.contains(e.target))d.classList.remove("open")});</script><script src="/admin-common.js"></script><script src="/admin-beneficios-v2.js"></script></body></html>

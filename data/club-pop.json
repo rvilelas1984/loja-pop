@@ -71,5 +71,35 @@
     }
   ],
   "missions": {},
-  "promotions": []
+  "promotions": [],
+  "storeCategories": [
+    {
+      "id": "cat-roupas",
+      "name": "Roupas",
+      "active": true
+    },
+    {
+      "id": "cat-hidratacao",
+      "name": "Hidratação",
+      "active": true
+    },
+    {
+      "id": "cat-acessorios",
+      "name": "Acessórios",
+      "active": true
+    },
+    {
+      "id": "cat-nutricao",
+      "name": "Nutrição",
+      "active": true
+    }
+  ],
+  "evoCache": {
+    "activities": {
+      "bike": [],
+      "gym": []
+    },
+    "syncLog": []
+  },
+  "missionList": []
 }
