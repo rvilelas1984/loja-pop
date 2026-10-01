@@ -450,10 +450,12 @@
       "balanceBefore": 90,
       "balanceAfter": 70,
       "paymentMethod": "FITCOINS",
-      "status": "AGUARDANDO_ENTREGA",
+      "status": "ESTORNADO",
       "createdAt": "2026-10-01T22:37:02.634Z",
       "reconciled": true,
-      "note": "Débito confirmado na EVO e reconciliado após falha de validação pós-operação."
+      "note": "Débito e estorno confirmados na EVO; operação reconciliada após falso negativo da validação pós-operação.",
+      "paymentStatus": "ESTORNADO",
+      "refundedAt": "2026-10-01T22:41:00.000Z"
     }
   ],
   "transactions": [
@@ -472,6 +474,23 @@
       "status": "COMPLETED",
       "redemptionId": "redeem-reconcile-965062-water-20261001",
       "createdAt": "2026-10-01T22:37:02.634Z",
+      "reconciled": true
+    },
+    {
+      "id": "tx-refund-reconcile-965062-water-20261001",
+      "reference": "CP-REC-965062-2010",
+      "memberId": "965062",
+      "memberName": "Renato de Jesus Vilelas",
+      "origin": "refund",
+      "description": "Agua mineral ",
+      "paymentMethod": "FITCOINS",
+      "direction": "credit",
+      "fitcoins": 20,
+      "balanceBefore": 70,
+      "balanceAfter": 90,
+      "status": "COMPLETED",
+      "redemptionId": "redeem-reconcile-965062-water-20261001",
+      "createdAt": "2026-10-01T22:41:00.000Z",
       "reconciled": true
     }
   ]
