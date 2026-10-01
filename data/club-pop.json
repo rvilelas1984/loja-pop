@@ -249,7 +249,7 @@
       "unit": "bike",
       "name": "Constante",
       "description": "",
-      "start": "2026-10-01",
+      "start": "2026-09-01",
       "end": "2026-10-31",
       "status": "Ativo",
       "period": "week",
@@ -263,15 +263,15 @@
       "goals": [
         {
           "id": "goal-1",
-          "value": 4,
-          "rewardType": "product",
-          "rewardId": "prod-1790871460911",
-          "rewardName": "Agua mineral ",
+          "value": 8,
+          "rewardType": "service",
+          "rewardId": "service-1790873255440",
+          "rewardName": "Aula avulsa Horário Livre",
           "rewardValue": null
         }
       ],
       "rewards": [
-        "Agua mineral "
+        "Aula avulsa Horário Livre"
       ]
     },
     {
