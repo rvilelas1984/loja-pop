@@ -92,6 +92,13 @@ export default async function handler(req,res){
    if(!rr.ok)return res.status(rr.status).json({ok:false,stage:"evo-member"});
    const lookupMember=Array.isArray(data)?data[0]:data;
    if(!lookupMember?.idMember)return res.status(404).json({ok:false,error:"Cadastro sem idMember"});
+   // Gym possui cota reduzida: nesta fase fazemos somente a consulta indispensável de Fitcoins.
+   if(gym){
+     const fitUrl="https://evo-integracao-api.w12app.com.br/api/v1/members/fitcoins?idMember="+encodeURIComponent(lookupMember.idMember);
+     const fr=await fetch(fitUrl,{headers,cache:"no-store"}),fraw=await fr.text(),fd=parseJson(fraw);
+     if(!fr.ok)return res.status(fr.status).json({ok:false,stage:"evo-fitcoins",error:"EVO recusou a consulta de Fitcoins do Gym Pop",detail:fd?.message||fd?.error||""});
+     return res.status(200).json({ok:true,stage:"gym-fitcoins-only",unit,member:{idMember:lookupMember.idMember,firstName:lookupMember.firstName,lastName:lookupMember.lastName,branchName:lookupMember.branchName},fitcoins:extractFitcoins(fd),attendance:{ok:false,skipped:true,reason:"gym-request-budget"}});
+   }
    const profileUrl="https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(lookupMember.idMember);
    const pr=await fetch(profileUrl,{headers,cache:"no-store"}),praw=await pr.text(),pd=parseJson(praw);
    const profile=pr.ok?(Array.isArray(pd)?pd[0]:pd):lookupMember;
