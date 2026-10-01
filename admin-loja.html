@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CLUB POP — Admin Loja</title>
+<title>CLUB POP — Admin Loja</title><meta name="theme-color" content="#111318"><link rel="manifest" href="/admin-manifest.webmanifest"><link rel="icon" href="/icon.svg">
 <style>
 :root{--bg:#f4f6f8;--card:#fff;--ink:#111318;--muted:#747b86;--blue:#00a9e8;--line:#e6e9ee;--green:#14804a}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Arial;background:var(--bg);color:var(--ink)}
@@ -92,4 +92,4 @@ document.querySelector(".bannerform .save").addEventListener("click",async()=>{
   await putContent(storeData);alert("Banner salvo e publicado no slide da Loja.");location.reload();
  }catch(e){alert(e.message)}
 });
-</script></body></html>
+</script><script>if("serviceWorker" in navigator)navigator.serviceWorker.register("/admin-sw.js").catch(()=>{});</script></body></html>
