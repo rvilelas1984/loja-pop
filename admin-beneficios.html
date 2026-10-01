@@ -20,15 +20,7 @@ main{padding:32px;max-width:1450px;width:100%;margin:auto}.top{display:flex;just
 <div class="app"><aside><div class="logo">CLUB POP<small>ADMINISTRATIVO</small></div><nav><a>Dashboard</a><a>Missões</a><a>Loja</a><a class="on">Benefícios</a><a>Configurações</a></nav></aside>
 <main><header class="top"><div><div class="ey">CONTEÚDO DO ALUNO</div><h1>Benefícios</h1></div><button class="primary" id="newBenefit">+ Novo benefício</button></header>
 <section class="cards"><div class="stat"><span>Benefícios ativos</span><b>8</b></div><div class="stat"><span>Parceiros</span><b>6</b></div><div class="stat"><span>Em destaque</span><b>1</b></div><div class="stat"><span>Inativos</span><b>2</b></div></section>
-<div class="grid"><div>
-<section class="panel collapsible"><div class="ph"><h2>Benefícios publicados</h2><div class="ph-actions"><button class="ghost">Ordenar exibição</button><button class="collapse" title="Encolher/expandir">⌃</button></div></div>
-<div class="panel-body"><div class="toolbar"><input class="search" placeholder="Buscar benefício ou parceiro"><button class="ghost">Filtros</button></div>
-<div class="chips"><button class="chip on">Todos</button><button class="chip">Bike</button><button class="chip">Bem-estar</button><button class="chip">Alimentação</button><button class="chip">Serviços</button></div>
-<div class="benefit" data-name="P2 Bikes" data-created="12/09/2026"><div class="pic">P2</div><div><b>P2 Bikes</b><p>Desconto exclusivo para alunos CLUB POP</p><div class="actions"><button class="editBenefit">EDITAR</button><button>DUPLICAR</button><button>DESATIVAR</button></div></div><span class="badge">DESTAQUE</span></div>
-<div class="benefit" data-name="Recovery Pop" data-created="18/09/2026"><div class="pic">RP</div><div><b>Recovery Pop</b><p>Condição especial em sessão de recovery</p><div class="actions"><button class="editBenefit">EDITAR</button><button>DUPLICAR</button><button>DESATIVAR</button></div></div><span class="badge">ATIVO</span></div>
-<div class="benefit" data-name="Parceiro exemplo" data-created="22/09/2026"><div class="pic">+</div><div><b>Parceiro exemplo</b><p>Benefício demonstrativo na categoria Bem-estar</p><div class="actions"><button class="editBenefit">EDITAR</button><button>DUPLICAR</button><button>DESATIVAR</button></div></div><span class="badge">ATIVO</span></div>
-</div></section></div>
-<div><section class="panel collapsible" id="editorPanel"><div class="ph"><h2 id="editorTitle">Editar benefício</h2><div class="ph-actions"><span class="badge" id="editorBadge">CADASTRADO</span><button class="collapse" title="Encolher/expandir">⌃</button></div></div>
+<div class="grid"><div><section class="panel collapsible"><div class="ph"><h2>Benefícios publicados</h2><div class="ph-actions"><button class="collapse" title="Encolher/expandir">⌃</button></div></div><div class="panel-body"><div id="benefitList"></div></div></section></div><div><section class="panel collapsible" id="editorPanel"><div class="ph"><h2 id="editorTitle">Editar benefício</h2><div class="ph-actions"><span class="badge" id="editorBadge">CADASTRADO</span><button class="collapse" title="Encolher/expandir">⌃</button></div></div>
 <div class="panel-body"><div class="form"><div class="field"><label>NOME DO PARCEIRO</label><input value="P2 Bikes"></div>
 <div class="field"><label>TÍTULO DO BENEFÍCIO</label><input value="Desconto exclusivo P2 Bikes"></div>
 <div class="field"><label>DESCRIÇÃO CURTA</label><textarea>Condição especial para alunos CLUB POP em produtos e serviços selecionados.</textarea></div>
@@ -37,14 +29,5 @@ main{padding:32px;max-width:1450px;width:100%;margin:auto}.top{display:flex;just
 <div class="two"><div class="field"><label>INÍCIO DA CAMPANHA</label><input type="date" value="2026-10-01"></div><div class="field"><label>FIM DA CAMPANHA</label><input type="date" value="2026-12-31"></div></div>
 <div class="field"><label>COMO UTILIZAR</label><textarea>Apresente a tela do benefício no estabelecimento parceiro.</textarea></div>
 <div class="field"><label>LINK / CONTATO DO PARCEIRO</label><input placeholder="WhatsApp, Instagram ou site"></div>
-<div class="field"><label>IMAGEM / LOGO</label><div class="upload">Clique para selecionar a imagem do parceiro<br><b>PNG ou JPG</b></div></div>
-<div class="toggle"><span>Exibir como destaque na tela do aluno</span><div class="switch"></div></div>
-<div class="toggle"><span>Benefício ativo</span><div class="switch"></div></div>
-<div class="preview"><small>PRÉVIA NA TELA DO ALUNO</small><div class="student-card"><div class="hero">P2 BIKES</div><h3>Desconto exclusivo P2 Bikes</h3><p>Condição especial para alunos CLUB POP em produtos e serviços selecionados.</p><strong>10% OFF</strong></div></div>
-<div class="log" id="benefitLog"><h3>Histórico do benefício</h3>
-<div class="logitem"><time>12/09/2026</time><div><b>Benefício cadastrado</b><br>Cadastro inicial no CLUB POP.</div></div>
-<div class="logitem"><time>21/09/2026</time><div><b>Benefício editado</b><br>Descrição e condições atualizadas.</div></div>
-<div class="logitem"><time>28/09/2026</time><div><b>Benefício editado</b><br>Período da campanha atualizado.</div></div>
-</div>
-<button class="save" id="saveBenefit">Salvar alterações</button></div></div></section></div></div></main></div>
+<div class="field"><label>IMAGEM / LOGO</label><input placeholder="Link público da imagem"></div><button class="save" id="saveBenefit">Salvar alterações</button></div></div></section></div></div></main></div>
 <script>if("serviceWorker" in navigator)navigator.serviceWorker.register("/admin-sw.js").catch(()=>{});</script><script>document.getElementById("adminNavBtn")?.addEventListener("click",()=>document.getElementById("adminNavDrawer")?.classList.toggle("open"));document.addEventListener("click",e=>{const d=document.getElementById("adminNavDrawer"),b=document.getElementById("adminNavBtn");if(d&&b&&!d.contains(e.target)&&!b.contains(e.target))d.classList.remove("open")});</script><script src="/admin-common.js"></script><script src="/admin-beneficios-v2.js"></script></body></html>
