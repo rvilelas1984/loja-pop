@@ -26,65 +26,9 @@
       "featured": false,
       "imageUrl": "",
       "description": "Água mineral."
-    },
-    {
-      "id": "prod-1790858425138",
-      "name": "",
-      "category": "",
-      "price": 0,
-      "fitcoins": 0,
-      "discountPrice": 0,
-      "stock": 0,
-      "start": "",
-      "end": "",
-      "status": "Ativo",
-      "featured": false,
-      "imageUrl": "",
-      "description": ""
-    },
-    {
-      "id": "prod-1790858446168",
-      "name": "",
-      "category": "",
-      "price": 0,
-      "fitcoins": 0,
-      "discountPrice": 0,
-      "stock": 0,
-      "start": "",
-      "end": "",
-      "status": "Ativo",
-      "featured": false,
-      "imageUrl": "",
-      "description": ""
-    },
-    {
-      "id": "prod-1790858553847",
-      "name": "",
-      "category": "",
-      "price": 0,
-      "fitcoins": 0,
-      "discountPrice": 0,
-      "stock": 0,
-      "start": "",
-      "end": "",
-      "status": "Ativo",
-      "featured": false,
-      "imageUrl": "",
-      "description": ""
     }
   ],
-  "banners": [
-    {
-      "id": "banner-1790856641891",
-      "imageUrl": "https://drive.google.com/file/d/1xEC52LC2dDb2g4HYgw0uOdj5otVC5WDz/view?usp=drive_link",
-      "title": "Camistea Bike Pop",
-      "order": 1,
-      "start": "2026-10-01",
-      "end": "2026-10-05",
-      "status": "Ativo",
-      "link": "https://loja-pop-green.vercel.app/admin-loja.html"
-    }
-  ],
+  "banners": [],
   "benefits": [
     {
       "id": "p2-bikes",
@@ -111,36 +55,6 @@
       "start": "2026-09-01",
       "end": "2026-12-31",
       "imageUrl": "",
-      "status": "Ativo",
-      "featured": false
-    },
-    {
-      "id": "benefit-1790858562689",
-      "partner": "",
-      "title": "",
-      "description": "",
-      "category": "Bike",
-      "type": "Desconto",
-      "call": "",
-      "start": "",
-      "end": "",
-      "howToUse": "",
-      "contact": "",
-      "status": "Ativo",
-      "featured": false
-    },
-    {
-      "id": "benefit-1790858575673",
-      "partner": "",
-      "title": "",
-      "description": "",
-      "category": "Bike",
-      "type": "Desconto",
-      "call": "",
-      "start": "",
-      "end": "",
-      "howToUse": "",
-      "contact": "",
       "status": "Ativo",
       "featured": false
     }
