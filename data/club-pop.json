@@ -180,27 +180,7 @@
       "gym": []
     }
   },
-  "missionList": [
-    {
-      "id": "mission-1790874463045",
-      "type": "presence",
-      "unit": "bike",
-      "name": "Outubro 2026",
-      "description": "",
-      "start": "2026-10-01",
-      "end": "2026-10-31",
-      "status": "Ativo",
-      "period": "campaign",
-      "requirements": [
-        {
-          "unit": "bike",
-          "activity": "*",
-          "quantity": 1
-        }
-      ],
-      "rewards": []
-    }
-  ],
+  "missionList": [],
   "services": [
     {
       "id": "service-1790873255440",
