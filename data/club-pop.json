@@ -472,13 +472,14 @@
       "balanceAfter": 70,
       "paymentMethod": "FITCOINS",
       "cashComplement": 0,
-      "paymentStatus": "PAGO",
+      "paymentStatus": "ESTORNADO",
       "origin": "store",
-      "status": "AGUARDANDO_ENTREGA",
+      "status": "ESTORNADO",
       "createdAt": "2026-10-01T22:57:44.214Z",
       "evoResult": {
         "result": "OK"
-      }
+      },
+      "refundedAt": "2026-10-01T22:59:35.087Z"
     }
   ],
   "transactions": [
@@ -533,6 +534,22 @@
       "status": "COMPLETED",
       "redemptionId": "redeem-1790895464214",
       "createdAt": "2026-10-01T22:57:44.214Z"
+    },
+    {
+      "id": "tx-refund-1790895575087",
+      "reference": "CP-MUQ4X446",
+      "memberId": "965062",
+      "memberName": "Renato de Jesus Vilelas",
+      "origin": "refund",
+      "description": "Agua mineral ",
+      "paymentMethod": "FITCOINS",
+      "direction": "credit",
+      "fitcoins": 20,
+      "balanceBefore": 70,
+      "balanceAfter": 90,
+      "status": "COMPLETED",
+      "redemptionId": "redeem-1790895464214",
+      "createdAt": "2026-10-01T22:59:35.087Z"
     }
   ]
 }
