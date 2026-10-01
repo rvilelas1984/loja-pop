@@ -309,6 +309,7 @@
       "type": "presence",
       "unit": "bike",
       "name": "Outubro 2026",
+      "cardTheme": "pink",
       "description": "",
       "start": "2026-10-01",
       "end": "2026-10-31",
