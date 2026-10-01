@@ -1,6 +1,22 @@
 {
   "version": 2,
-  "products": [],
+  "products": [
+    {
+      "id": "prod-1790871460911",
+      "name": "Agua mineral ",
+      "category": "Hidratação",
+      "price": 3.5,
+      "fitcoins": 20,
+      "discountPrice": 0,
+      "stock": 3,
+      "start": "2026-10-01",
+      "end": "2026-10-31",
+      "status": "Ativo",
+      "featured": true,
+      "imageUrl": "",
+      "description": ""
+    }
+  ],
   "banners": [],
   "benefits": [],
   "missions": {},
