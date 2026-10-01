@@ -2,19 +2,6 @@
   "version": 2,
   "products": [
     {
-      "id": "camisa-rosa-neon",
-      "name": "Camisa Poliamida - Rosa neon",
-      "category": "Roupas",
-      "price": 69.9,
-      "fitcoins": 300,
-      "discountPrice": 49.9,
-      "stock": 15,
-      "status": "Ativo",
-      "featured": true,
-      "imageUrl": "",
-      "description": "Camisa Bike Pop em poliamida, cor rosa neon."
-    },
-    {
       "id": "agua",
       "name": "Água mineral",
       "category": "Hidratação",
