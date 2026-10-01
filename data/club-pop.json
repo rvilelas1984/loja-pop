@@ -41,6 +41,21 @@
       "featured": false,
       "imageUrl": "",
       "description": ""
+    },
+    {
+      "id": "prod-1790858446168",
+      "name": "",
+      "category": "",
+      "price": 0,
+      "fitcoins": 0,
+      "discountPrice": 0,
+      "stock": 0,
+      "start": "",
+      "end": "",
+      "status": "Ativo",
+      "featured": false,
+      "imageUrl": "",
+      "description": ""
     }
   ],
   "banners": [
