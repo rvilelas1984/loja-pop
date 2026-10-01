@@ -25,7 +25,7 @@ main{padding:32px;max-width:1450px;width:100%;margin:auto}.top{display:flex;alig
 .mobile-menu.open{display:grid;align-content:start;gap:6px}.mobile-menu a{color:#bbb;text-decoration:none;padding:14px;border-radius:11px;font-size:13px;font-weight:800}.mobile-menu a.on{background:#fff;color:#111}
 }@media(max-width:850px){.app{display:block}aside{display:none}main{padding:20px 14px 85px}.cards{grid-template-columns:1fr 1fr;gap:9px}.grid{grid-template-columns:1fr}.who{display:none}.num{font-size:24px}.event{grid-template-columns:35px 1fr}.event time{display:none}}
 </style></head>
-<body>
+<script>(async()=>{try{const r=await fetch("/api/admin-auth?route=me",{cache:"no-store"});if(!r.ok)location.replace("/admin-login.html")}catch{location.replace("/admin-login.html")}})();</script><body>
 <header class="mobile-top">
   <div class="mobile-brand">CLUB POP<small>Benefícios exclusivos para alunos Pop</small></div>
   <button class="hamb" id="hamb" aria-label="Abrir menu"><span></span><span></span><span></span></button>
