@@ -81,7 +81,9 @@ export default async function handler(req,res){
  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
  const value=digits(String(req.query.member||"").trim());
  if(!value)return res.status(400).json({ok:false,error:"Informe o ID EVO"});
- const dns=process.env.EVO_DNS,token=process.env.EVO_TOKEN;
+ const unit=String(req.query.unit||"bike").toLowerCase();
+ const gym=unit==="gym";
+ const dns=gym?process.env.GYM_EVO_DNS:process.env.EVO_DNS,token=gym?process.env.GYM_EVO_TOKEN:process.env.EVO_TOKEN;
  if(!dns||!token)return res.status(503).json({ok:false,error:"Credenciais EVO não configuradas"});
  const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
  try{
@@ -98,7 +100,7 @@ export default async function handler(req,res){
    const fitcoins=extractFitcoins(fd)??extractFitcoins(profile);
    const attendance=await getMonthlyAttendance(lookupMember.idMember,headers);
    return res.status(200).json({
-     ok:true,stage:"club-pop-current-month",
+     ok:true,stage:"club-pop-current-month",unit,
      member:{idMember:lookupMember.idMember,firstName:profile?.firstName||lookupMember.firstName,lastName:profile?.lastName||lookupMember.lastName,branchName:profile?.branchName||lookupMember.branchName},
      fitcoins,
      attendance
