@@ -3,9 +3,12 @@ const parseJson=raw=>{try{return JSON.parse(raw)}catch{return {raw:raw.slice(0,5
 const extractFitcoins=data=>{const c=Array.isArray(data)?data[0]:data;const v=c?.totalFitcoins??c?.totalFitCoins;if(v==null||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null};
 
 async function getMonthlyAttendance(idMember,headers){
-  // Teste controlado solicitado: setembro/2026 completo.
-  const dateStart="2026-09-01T00:00:00";
-  const dateEnd="2026-09-30T23:59:59";
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit"}).formatToParts(new Date());
+  const year=Number(parts.find(p=>p.type==="year").value),month=Number(parts.find(p=>p.type==="month").value);
+  const lastDay=new Date(Date.UTC(year,month,0)).getUTCDate();
+  const mm=String(month).padStart(2,"0");
+  const dateStart=year+"-"+mm+"-01T00:00:00";
+  const dateEnd=year+"-"+mm+"-"+String(lastDay).padStart(2,"0")+"T23:59:59";
   const take=100;
   let skip=0,all=[];
   for(let page=0;page<20;page++){
@@ -77,12 +80,12 @@ async function getMonthlyAttendance(idMember,headers){
 export default async function handler(req,res){
  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
  const value=digits(String(req.query.member||"").trim());
- if(!value)return res.status(400).json({ok:false,error:"Informe CPF ou ID EVO"});
+ if(!value)return res.status(400).json({ok:false,error:"Informe o ID EVO"});
  const dns=process.env.EVO_DNS,token=process.env.EVO_TOKEN;
  if(!dns||!token)return res.status(503).json({ok:false,error:"Credenciais EVO não configuradas"});
  const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
  try{
-   const lookupUrl=value.length===11?"https://evo-integracao.w12app.com.br/api/v1/members/basic?document="+encodeURIComponent(value):"https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(value);
+   const lookupUrl="https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(value);
    const rr=await fetch(lookupUrl,{headers,cache:"no-store"}),raw=await rr.text(),data=parseJson(raw);
    if(!rr.ok)return res.status(rr.status).json({ok:false,stage:"evo-member"});
    const lookupMember=Array.isArray(data)?data[0]:data;
