@@ -45,6 +45,7 @@ function fitcoinMessages(){
 }
 function driveImage(url){if(!url)return"";const m=url.match(/\/d\/([^/]+)/)||url.match(/[?&]id=([^&]+)/);return m?`https://drive.google.com/thumbnail?id=${m[1]}&sz=w1000`:url}
 async function loadStore(){
+ if(window.clubStoreV2)return;
  try{
   const r=await fetch("/api/content",{cache:"no-store"}),d=await r.json();
   const active=(d.products||[]).filter(p=>p.status==="Ativo");
