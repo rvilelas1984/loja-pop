@@ -26,6 +26,21 @@
       "featured": false,
       "imageUrl": "",
       "description": "Água mineral."
+    },
+    {
+      "id": "prod-1790858425138",
+      "name": "",
+      "category": "",
+      "price": 0,
+      "fitcoins": 0,
+      "discountPrice": 0,
+      "stock": 0,
+      "start": "",
+      "end": "",
+      "status": "Ativo",
+      "featured": false,
+      "imageUrl": "",
+      "description": ""
     }
   ],
   "banners": [
