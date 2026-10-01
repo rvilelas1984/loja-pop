@@ -48,6 +48,43 @@
           "quantity": 1
         }
       ]
+    },
+    {
+      "id": "promo-1790872798501",
+      "unit": "bike",
+      "status": "Ativo",
+      "name": "Iphone sorteio",
+      "start": "2026-09-01",
+      "end": "2026-10-31",
+      "promotionType": "lucky_number",
+      "numbersPerAttendance": 1,
+      "reset": "monthly",
+      "luckyNumber": {
+        "enabled": true,
+        "numbersPerAttendance": 1,
+        "reset": "monthly",
+        "maxNumbers": 27,
+        "milestones": [
+          {
+            "attendance": 8,
+            "bonus": 5
+          },
+          {
+            "attendance": 12,
+            "bonus": 10
+          }
+        ]
+      },
+      "dashboardText": "",
+      "rules": "",
+      "bannerUrl": "https://drive.google.com/file/d/1oRjb8n2UfRhLEVKx4O2RjfN9FeYFmu5S/view?usp=sharing",
+      "requirements": [
+        {
+          "unit": "bike",
+          "activity": "*",
+          "quantity": 1
+        }
+      ]
     }
   ],
   "storeCategories": [
