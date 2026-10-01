@@ -40,14 +40,19 @@
       },
       "dashboardText": "Promoção",
       "rules": "Promoção",
-      "bannerUrl": "https://drive.google.com/file/d/1oRjb8n2UfRhLEVKx4O2RjfN9FeYFmu5S/view?usp=sharing",
+      "bannerUrl": "https://drive.google.com/file/d/1xEC52LC2dDb2g4HYgw0uOdj5otVC5WDz/view?usp=drive_link",
       "requirements": [
         {
           "unit": "bike",
-          "activity": "*",
+          "activityId": "*",
+          "activity": "Qualquer atividade",
           "quantity": 1
         }
-      ]
+      ],
+      "eligibility": {
+        "mode": "any",
+        "acceptedContracts": []
+      }
     },
     {
       "id": "promo-1790872798501",
