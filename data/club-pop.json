@@ -59,19 +59,7 @@
       "featured": false
     }
   ],
-  "missions": {
-    "consistency": {
-      "active": true,
-      "title": "3 dias por semana",
-      "start": "2026-09-01",
-      "end": "2026-09-30",
-      "daysPerWeek": 3,
-      "weeks": 4,
-      "rewards": [
-        "Prêmio da Missão Constância"
-      ]
-    }
-  },
+  "missions": {},
   "promotions": [
     {
       "id": "iphone-17-2026",
