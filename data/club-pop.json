@@ -117,6 +117,21 @@
     "syncLog": []
   },
   "missionList": [],
-  "services": [],
+  "services": [
+    {
+      "id": "service-1790873255440",
+      "name": "Aula avulsa Horário Livre",
+      "unit": "bike",
+      "description": "",
+      "category": "Aulas Avulsa",
+      "status": "Ativo",
+      "price": 35,
+      "fitcoins": 10,
+      "discountPrice": 0,
+      "validity": "30",
+      "control": "voucher",
+      "instructions": ""
+    }
+  ],
   "redemptions": []
 }
