@@ -60,22 +60,6 @@
     }
   ],
   "missions": {
-    "presence": {
-      "active": true,
-      "title": "Missão Frequência",
-      "start": "2026-09-01",
-      "end": "2026-09-30",
-      "firstMilestone": 8,
-      "maxGoal": 12,
-      "rewards8": [
-        "Massagem • 10 minutos",
-        "Bioimpedância"
-      ],
-      "rewards12": [
-        "Massagem • 15 minutos",
-        "1 Aula Avulsa"
-      ]
-    },
     "consistency": {
       "active": true,
       "title": "3 dias por semana",
