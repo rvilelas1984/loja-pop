@@ -97,8 +97,11 @@ export default async function handler(req,res){
    if(gym||fitcoinsOnly){
      const fitUrl="https://evo-integracao-api.w12app.com.br/api/v1/members/fitcoins?idMember="+encodeURIComponent(lookupMember.idMember);
      const fr=await fetch(fitUrl,{headers,cache:"no-store"}),fraw=await fr.text(),fd=parseJson(fraw);
-     if(!fr.ok)return res.status(fr.status).json({ok:false,stage:"evo-fitcoins",error:"EVO recusou a consulta de Fitcoins do Gym Pop",detail:fd?.message||fd?.error||""});
-     return res.status(200).json({ok:true,stage:gym?"gym-fitcoins-only":"bike-fitcoins-only",unit,member:{idMember:lookupMember.idMember,firstName:lookupMember.firstName,lastName:lookupMember.lastName,branchName:lookupMember.branchName},fitcoins:extractFitcoins(fd),attendance:{ok:false,skipped:true,reason:"gym-request-budget"}});
+     const endpointCoins=fr.ok?extractFitcoins(fd):null;
+     const profileCoins=extractFitcoins(lookupMember);
+     const fitcoins=endpointCoins??profileCoins;
+     if(fitcoins==null)return res.status(fr.ok?502:fr.status).json({ok:false,stage:"evo-fitcoins",error:"Não foi possível obter o saldo de Fitcoins",detail:fd?.message||fd?.error||fd?.raw||("HTTP "+fr.status)});
+     return res.status(200).json({ok:true,stage:gym?"gym-fitcoins-only":"bike-fitcoins-only",unit,member:{idMember:lookupMember.idMember,firstName:lookupMember.firstName,lastName:lookupMember.lastName,branchName:lookupMember.branchName},fitcoins,fitcoinsSource:endpointCoins!=null?"fitcoins-endpoint":"member-profile",attendance:{ok:false,skipped:true,reason:gym?"gym-request-budget":"fitcoins-only"}});
    }
    const profileUrl="https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(lookupMember.idMember);
    const pr=await fetch(profileUrl,{headers,cache:"no-store"}),praw=await pr.text(),pd=parseJson(praw);
