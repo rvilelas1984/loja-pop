@@ -17,26 +17,25 @@ button{font:inherit}.primary{border:0;background:#111;color:#fff;padding:12px 16
 <section class="stats"><div class="stat"><small>PRODUTOS ATIVOS</small><strong>8</strong><em>publicados na loja</em></div><div class="stat"><small>RESGATES PENDENTES</small><strong>3</strong><em>aguardando atendimento</em></div><div class="stat"><small>RESGATES NO MÊS</small><strong>17</strong><em>concluídos</em></div><div class="stat"><small>FITCOINS UTILIZADOS</small><strong>4.850</strong><em>no mês atual</em></div></section>
 
 <section class="block closed" id="products"><div class="blockhead" onclick="toggleBlock('products')"><div><h2>Produtos publicados</h2><p>Abra para gerenciar os produtos cadastrados.</p></div><span class="chev">⌄</span></div><div class="content"></div></section><section class="block" id="editor" style="display:none"><div class="blockhead" onclick="toggleBlock('editor')"><div><h2 id="editorLabel">Editar produto</h2><p>Configure exatamente como o produto aparecerá para o aluno.</p></div><span class="chev">⌃</span></div><div class="content form show" id="form">
-<div class="formtitle"><h3 id="formName">Camisa Poliamida - Rosa neon</h3></div>
+<div class="formtitle"><h3 id="formName">Cadastrar produto</h3></div>
 <div class="grid">
-<div class="field"><label>NOME DO PRODUTO</label><input id="name" value="Camisa Poliamida - Rosa neon"></div>
+<div class="field"><label>NOME DO PRODUTO</label><input id="name" ></div>
 <div class="field"><label>CATEGORIA</label><select><option>Roupas</option><option>Hidratação</option><option>Acessórios</option><option>Nutrição</option></select></div>
-<div class="field"><label>PREÇO NORMAL</label><input value="R$ 69,90"></div>
-<div class="field"><label>FITCOINS NECESSÁRIOS</label><input value="300"></div>
-<div class="field"><label>PREÇO COM FITCOINS</label><input value="R$ 49,90"></div>
-<div class="field"><label>ESTOQUE DISPONÍVEL</label><input value="15"></div>
+<div class="field"><label>PREÇO NORMAL</label><input ></div>
+<div class="field"><label>FITCOINS NECESSÁRIOS</label><input ></div>
+<div class="field"><label>PREÇO COM FITCOINS</label><input ></div>
+<div class="field"><label>ESTOQUE DISPONÍVEL</label><input value="0"></div>
 <div class="field"><label>INÍCIO DA OFERTA</label><input type="date"></div>
 <div class="field"><label>FIM DA OFERTA</label><input type="date"></div>
 <div class="field"><label>STATUS</label><select><option>Ativo</option><option>Inativo</option><option>Esgotado</option></select></div>
 <div class="field"><label>DESTAQUE</label><select><option>Produto normal</option><option>Destacar na loja</option></select></div>
 <div class="field full"><label>LINK PÚBLICO DA IMAGEM • GOOGLE DRIVE</label><input type="url" placeholder="Cole aqui o link público da imagem no Google Drive"><div class="hint">As imagens não serão armazenadas no CLUB POP. Use um link público do Google Drive, seguindo o mesmo padrão adotado no Burn Pop.</div></div>
-<div class="field full"><label>DESCRIÇÃO</label><textarea>Camisa Bike Pop em poliamida, cor rosa neon.</textarea></div>
+<div class="field full"><label>DESCRIÇÃO</label><textarea></textarea></div>
 </div>
-<div class="preview"><small>PRÉVIA DA OFERTA</small><h4>Camisa Poliamida - Rosa neon</h4><div class="prices">Preço: <b>R$ 69,90</b><br>Use <b>300 Fitcoins</b><br><strong>Pague apenas R$ 49,90</strong><br><span style="color:#747b86">A Loja calcula automaticamente quanto falta para o aluno atingir os Fitcoins necessários.</span></div></div>
 <div class="actions"><button class="save" id="save">Salvar alterações</button><button class="cancel" onclick="cancel()">Cancelar</button></div>
 </div></section>
 
 <section class="block closed" id="banners"><div class="blockhead" onclick="toggleBlock('banners')"><div><h2>Banners da Loja</h2><p>Gerencie os banners exibidos ao aluno.</p></div><span class="chev">⌄</span></div><div class="content"><div class="bannerform"><div class="formtitle"><h3>Banner</h3></div><div class="grid"><div class="field full"><label>LINK PÚBLICO DA IMAGEM</label><input type="url"></div><div class="field"><label>TÍTULO INTERNO</label><input></div><div class="field"><label>ORDEM</label><input type="number" value="1" min="1"></div><div class="field"><label>INÍCIO</label><input type="date"></div><div class="field"><label>FIM</label><input type="date"></div><div class="field"><label>STATUS</label><select><option>Ativo</option><option>Inativo</option></select></div><div class="field"><label>DESTINO</label><input></div></div><button class="save">Salvar banner</button></div></div></section><section class="block closed" id="redemptions"><div class="blockhead" onclick="toggleBlock('redemptions')"><div><h2>Solicitações de resgate</h2><p>Pedidos feitos pelos alunos na Loja Pop.</p></div><span class="chev">⌄</span></div><div class="content"><p style="font-size:11px;color:#747b86">Aqui ficarão os resgates pendentes, aprovados, entregues ou cancelados.</p></div></section>
-<section class="block closed" id="history"><div class="blockhead" onclick="toggleBlock('history')"><div><h2>Histórico da loja</h2><p>Cadastro e últimas alterações dos produtos.</p></div><span class="chev">⌄</span></div><div class="content history"><b>30/09/2026</b> • Camisa Poliamida atualizada — preço e regra de Fitcoins.<br><b>28/09/2026</b> • Produto cadastrado na Loja Pop.</div></section>
+<section class="block closed" id="history"><div class="blockhead" onclick="toggleBlock('history')"><div><h2>Histórico da loja</h2><p>As alterações reais da loja aparecerão aqui.</p></div><span class="chev">⌄</span></div><div class="content history"><span class="hint">Nenhum histórico disponível nesta tela.</span></div></section>
 </main>
 <script>if("serviceWorker" in navigator)navigator.serviceWorker.register("/admin-sw.js").catch(()=>{});</script><script src="/admin-common.js"></script><script src="/admin-loja-v2.js"></script></body></html>
