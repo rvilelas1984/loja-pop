@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CLUB POP Admin — Dashboard</title>
+<title>CLUB POP Admin — Dashboard</title><meta name="theme-color" content="#111318"><link rel="manifest" href="/admin-manifest.webmanifest"><link rel="icon" href="/icon.svg">
 <style>
 :root{--b:#0d0d0f;--g:#f5f5f7;--l:#e7e7ea;--m:#73737a;--w:#fff}
 *{box-sizing:border-box}body{margin:0;background:var(--g);color:var(--b);font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif}
@@ -70,4 +70,4 @@ main{padding:32px;max-width:1450px;width:100%;margin:auto}.top{display:flex;alig
 const hamb=document.getElementById("hamb"), menu=document.getElementById("mobileMenu");
 hamb.addEventListener("click",()=>menu.classList.toggle("open"));
 document.addEventListener("click",e=>{if(!menu.contains(e.target)&&!hamb.contains(e.target))menu.classList.remove("open")});
-</script></body></html>
+</script><script>if("serviceWorker" in navigator)navigator.serviceWorker.register("/admin-sw.js").catch(()=>{});</script></body></html>
