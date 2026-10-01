@@ -456,6 +456,29 @@
       "note": "Débito e estorno confirmados na EVO; operação reconciliada após falso negativo da validação pós-operação.",
       "paymentStatus": "ESTORNADO",
       "refundedAt": "2026-10-01T22:41:00.000Z"
+    },
+    {
+      "id": "redeem-1790895464214",
+      "idempotencyKey": "cp-1790895458372-uj2pr3t",
+      "receipt": "CP-MUQ4X446",
+      "sourceType": "product",
+      "sourceId": "prod-1790871460911",
+      "title": "Agua mineral ",
+      "memberId": "965062",
+      "memberName": "Renato de Jesus Vilelas",
+      "unit": "bike",
+      "fitcoins": 20,
+      "balanceBefore": 90,
+      "balanceAfter": 70,
+      "paymentMethod": "FITCOINS",
+      "cashComplement": 0,
+      "paymentStatus": "PAGO",
+      "origin": "store",
+      "status": "AGUARDANDO_ENTREGA",
+      "createdAt": "2026-10-01T22:57:44.214Z",
+      "evoResult": {
+        "result": "OK"
+      }
     }
   ],
   "transactions": [
@@ -492,6 +515,24 @@
       "redemptionId": "redeem-reconcile-965062-water-20261001",
       "createdAt": "2026-10-01T22:41:00.000Z",
       "reconciled": true
+    },
+    {
+      "id": "tx-1790895464215",
+      "reference": "CP-MUQ4X446",
+      "memberId": "965062",
+      "memberName": "Renato de Jesus Vilelas",
+      "origin": "store",
+      "description": "Agua mineral ",
+      "paymentMethod": "FITCOINS",
+      "direction": "debit",
+      "fitcoins": 20,
+      "cashAmount": 0,
+      "cashStatus": "NONE",
+      "balanceBefore": 90,
+      "balanceAfter": 70,
+      "status": "COMPLETED",
+      "redemptionId": "redeem-1790895464214",
+      "createdAt": "2026-10-01T22:57:44.214Z"
     }
   ]
 }
