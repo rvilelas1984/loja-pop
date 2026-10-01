@@ -28,7 +28,18 @@
       "description": "Água mineral."
     }
   ],
-  "banners": [],
+  "banners": [
+    {
+      "id": "banner-1790856641891",
+      "imageUrl": "https://drive.google.com/file/d/1xEC52LC2dDb2g4HYgw0uOdj5otVC5WDz/view?usp=drive_link",
+      "title": "Camistea Bike Pop",
+      "order": 1,
+      "start": "2026-10-01",
+      "end": "2026-10-05",
+      "status": "Ativo",
+      "link": "https://loja-pop-green.vercel.app/admin-loja.html"
+    }
+  ],
   "benefits": [
     {
       "id": "p2-bikes",
