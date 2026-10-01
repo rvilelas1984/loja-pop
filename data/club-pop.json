@@ -180,7 +180,48 @@
       "gym": []
     }
   },
-  "missionList": [],
+  "missionList": [
+    {
+      "id": "mission-1790876096963",
+      "type": "presence",
+      "unit": "bike",
+      "name": "Outubro 2026",
+      "description": "",
+      "start": "2026-10-01",
+      "end": "2026-10-31",
+      "status": "Ativo",
+      "period": "campaign",
+      "requirements": [
+        {
+          "unit": "bike",
+          "activity": "*",
+          "quantity": 1
+        }
+      ],
+      "goals": [
+        {
+          "id": "goal-1",
+          "value": 8,
+          "rewardType": "product",
+          "rewardId": "prod-1790871460911",
+          "rewardName": "Agua mineral ",
+          "rewardValue": null
+        },
+        {
+          "id": "goal-2",
+          "value": 12,
+          "rewardType": "service",
+          "rewardId": "service-1790873255440",
+          "rewardName": "Aula avulsa Horário Livre",
+          "rewardValue": null
+        }
+      ],
+      "rewards": [
+        "Agua mineral ",
+        "Aula avulsa Horário Livre"
+      ]
+    }
+  ],
   "services": [
     {
       "id": "service-1790873255440",
