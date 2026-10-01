@@ -111,10 +111,62 @@
   ],
   "evoCache": {
     "activities": {
+      "bike": [
+        {
+          "id": 17413,
+          "name": "Bike Pop"
+        },
+        {
+          "id": 18313,
+          "name": "Fitdance (Gratuito)"
+        },
+        {
+          "id": 22456,
+          "name": "Bike indoor"
+        },
+        {
+          "id": 25191,
+          "name": "Bike indoor (Final de semana)"
+        },
+        {
+          "id": 25192,
+          "name": "Bike Pop (Final de semana)"
+        },
+        {
+          "id": 26799,
+          "name": "Bike Pop (sob demanda)"
+        },
+        {
+          "id": 27598,
+          "name": "Bike Pop ( Aniversário)"
+        },
+        {
+          "id": 27600,
+          "name": "Ritbox  (Gratuito)"
+        },
+        {
+          "id": 28557,
+          "name": "Cadeira de Massagem"
+        }
+      ],
+      "gym": []
+    },
+    "syncLog": [
+      {
+        "unit": "bike",
+        "kind": "activities",
+        "at": "2026-10-01T17:05:41.637Z",
+        "count": 9
+      }
+    ],
+    "contracts": {
       "bike": [],
       "gym": []
     },
-    "syncLog": []
+    "members": {
+      "bike": [],
+      "gym": []
+    }
   },
   "missionList": [],
   "services": [
