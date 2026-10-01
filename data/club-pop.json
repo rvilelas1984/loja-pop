@@ -220,6 +220,37 @@
         "Agua mineral ",
         "Aula avulsa Horário Livre"
       ]
+    },
+    {
+      "id": "mission-1790876335177",
+      "type": "consistency",
+      "unit": "bike",
+      "name": "Constante",
+      "description": "",
+      "start": "2026-10-01",
+      "end": "2026-10-31",
+      "status": "Ativo",
+      "period": "week",
+      "requirements": [
+        {
+          "unit": "bike",
+          "activity": "*",
+          "quantity": 1
+        }
+      ],
+      "goals": [
+        {
+          "id": "goal-1",
+          "value": 3,
+          "rewardType": "product",
+          "rewardId": "prod-1790871460911",
+          "rewardName": "Agua mineral ",
+          "rewardValue": null
+        }
+      ],
+      "rewards": [
+        "Agua mineral "
+      ]
     }
   ],
   "services": [
