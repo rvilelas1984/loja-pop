@@ -63,11 +63,11 @@
       "end": "2026-10-31",
       "promotionType": "lucky_number",
       "numbersPerAttendance": 1,
-      "reset": "campaign",
+      "reset": "monthly",
       "luckyNumber": {
         "enabled": true,
         "numbersPerAttendance": 1,
-        "reset": "campaign",
+        "reset": "monthly",
         "maxNumbers": 27,
         "milestones": [
           {
