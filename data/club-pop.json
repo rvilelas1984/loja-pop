@@ -376,37 +376,6 @@
       ]
     },
     {
-      "id": "mission-1790877894061",
-      "type": "presence",
-      "unit": "bike",
-      "name": "Missão teste",
-      "description": "",
-      "start": "2026-10-01",
-      "end": "2026-10-31",
-      "status": "Ativo",
-      "period": "campaign",
-      "requirements": [
-        {
-          "unit": "bike",
-          "activity": "*",
-          "quantity": 1
-        }
-      ],
-      "goals": [
-        {
-          "id": "goal-1",
-          "value": 1,
-          "rewardType": "product",
-          "rewardId": "prod-1790871460911",
-          "rewardName": "Agua mineral ",
-          "rewardValue": null
-        }
-      ],
-      "rewards": [
-        "Agua mineral "
-      ]
-    },
-    {
       "id": "mission-1790878431403",
       "type": "presence",
       "unit": "bike",
