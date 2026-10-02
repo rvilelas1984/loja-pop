@@ -99,7 +99,7 @@
           "78852"
         ]
       },
-      "cardTheme": "green",
+      "cardTheme": "dark",
       "fitcoinAction": {
         "enabled": false,
         "direction": "credit",
@@ -961,7 +961,7 @@
       "type": "consistency",
       "unit": "bike",
       "name": "Constante",
-      "cardTheme": "purple",
+      "cardTheme": "green",
       "description": "",
       "start": "2026-09-01",
       "end": "2026-10-31",
@@ -1026,7 +1026,8 @@
       "rewards": [
         "Agua mineral ",
         "Aula avulsa Horário Livre"
-      ]
+      ],
+      "cardTheme": "pink"
     }
   ],
   "services": [
