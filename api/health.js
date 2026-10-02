@@ -1,1 +1,0 @@
-export default function handler(req,res){res.status(200).json({ok:true,app:"Loja Pop",evoConfigured:Boolean(process.env.EVO_DNS&&process.env.EVO_TOKEN),mode:"read-only"});}

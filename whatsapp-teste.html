@@ -10,7 +10,7 @@
 <div class="field"><label>Resultado</label><div class="status" id="status">Aguardando teste...</div></div></section></main>
 <script>
 const $=id=>document.getElementById(id); const status=$("status");
-async function call(payload){status.textContent="Consultando...";const r=await fetch("/api/whatsapp-test",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});let d;try{d=await r.json()}catch{d={error:await r.text()}}status.textContent=JSON.stringify(d,null,2);if(!r.ok)throw new Error(d.error||d.detail||"Falha");return d}
+async function call(payload){status.textContent="Consultando...";const r=await fetch("/api/promo-numbers?route=whatsapp",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});let d;try{d=await r.json()}catch{d={error:await r.text()}}status.textContent=JSON.stringify(d,null,2);if(!r.ok)throw new Error(d.error||d.detail||"Falha");return d}
 $("find").onclick=async()=>{try{const d=await call({action:"find",phone:$("phone").value});if(d.subscriber?.id!=null)$("subscriber").value=d.subscriber.id}catch(e){}};
 $("send").onclick=async()=>{try{await call({action:"send",phone:$("phone").value,subscriber_id:$("subscriber").value,flow:$("flow").value})}catch(e){}};
 </script></body></html>
