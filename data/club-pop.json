@@ -114,14 +114,16 @@
           "123849"
         ]
       },
-      "cardTheme": "green",
+      "cardTheme": "pink",
       "fitcoinAction": {
         "enabled": false,
         "direction": "credit",
         "amount": 0,
         "attendance": 0
       },
-      "dashboardPlacement": "featured"
+      "dashboardPlacement": "featured",
+      "cardEmphasis": "VOCÊ ESTÁ PARTICIPANDO 💪",
+      "cardButtonText": ""
     }
   ],
   "storeCategories": [
