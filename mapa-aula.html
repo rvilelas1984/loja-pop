@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bike Pop — Mapa da Aula</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#030b12;color:#fff;font-family:Inter,Arial,sans-serif;overflow:hidden}body{background:radial-gradient(circle at 50% 0,#142039 0,#07121d 32%,#02080d 75%)}.screen{height:100vh;padding:1.6vh 2vw 1.4vh;display:flex;flex-direction:column}.top{height:15vh;border:2px solid #12d9e9;border-radius:24px;box-shadow:0 0 18px #00dbe866,inset 0 0 28px #08172b;display:grid;grid-template-columns:1fr 2fr 1fr;align-items:center;padding:0 2vw}.brand{text-align:center}.brand .stage{font-size:1.3vw;letter-spacing:.55em;font-weight:900;color:#dce6ed}.brand h1{margin:.35vh 0 0;font-size:3.5vw;line-height:1;font-style:italic}.brand h1 b{color:#a85cff}.brand h1 span{color:#18d5e5}.classinfo{font-size:1.35vw;font-weight:900}.classinfo.right{text-align:right}.classinfo strong{display:block;font-size:2.3vw;color:#23dbe9}.hint{text-align:center;font-size:1vw;color:#91a4b3;margin:.8vh 0}.map{flex:1;display:grid;grid-template-rows:repeat(4,1fr);gap:1.2vh;min-height:0}.row{display:grid;gap:1vw;justify-content:center}.r8{grid-template-columns:repeat(8,8.4vw)}.r9{grid-template-columns:repeat(9,8.4vw)}.bike{min-height:0;border:1px solid #334452;border-radius:14px;background:linear-gradient(180deg,#0d1821,#071017);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:inset 0 0 18px #0008}.bike .num{font-size:2vw;font-weight:950;line-height:1}.bike .name{font-size:.9vw;font-weight:900;margin-top:.6vh;text-transform:uppercase;white-space:nowrap;max-width:95%;overflow:hidden;text-overflow:ellipsis;color:#aebbc5}.bike.occupied{border-color:#20dce8;box-shadow:0 0 13px #0ddbea55,inset 0 0 20px #05303a}.bike.occupied .num{color:#35e4ef}.bike.occupied .name{color:#fff}.bike.demo{border-color:#ad5cff;box-shadow:0 0 13px #a64cff66,inset 0 0 20px #28143c}.bike.demo .num{color:#c982ff}.bottom{height:6vh;display:flex;align-items:flex-end;justify-content:space-between;font-size:.9vw;color:#748897}.door{border:1px solid #17d8e5;border-radius:8px;padding:.55vh 1vw;color:#1ddbe7;font-weight:900}.controls{position:fixed;right:18px;bottom:16px;display:flex;gap:8px;opacity:.25;transition:.2s}.controls:hover{opacity:1}.controls button{border:1px solid #3e5968;background:#08141d;color:#fff;border-radius:10px;padding:9px 12px;font-weight:900;cursor:pointer}.fullscreen .controls{opacity:.06}@media(max-width:900px){.bike .name{font-size:1.15vw}.r8{grid-template-columns:repeat(8,10vw)}.r9{grid-template-columns:repeat(9,9vw)}} 
+</style>
+</head><body>
+<main class="screen">
+<header class="top">
+<div class="classinfo"><span>PRÓXIMA AULA</span><strong>18:15</strong><span>BIKE POP</span></div>
+<div class="brand"><div class="stage">PALCO</div><h1><b>BIKE</b> <span>POP</span></h1></div>
+<div class="classinfo right"><span>PROFESSOR</span><strong id="teacher">—</strong><span id="date"></span></div>
+</header>
+<div class="hint">ENCONTRE SEU NOME E SIGA PARA SUA BIKE</div>
+<section class="map" id="map"></section>
+<footer class="bottom"><span>SAÍDA</span><span>Mapa da aula • atualização automática</span><span class="door">ENTRADA</span></footer>
+</main>
+<div class="controls"><button id="fs">⛶ TELA CHEIA</button></div>
+<script>
+const rows=[[1,8],[9,16],[17,25],[26,34]];
+const demo={4:"SIMONE",5:"ELISABETE",18:"ANA CAROLINA"};
+const map=document.getElementById("map");
+for(const [a,b] of rows){const row=document.createElement("div");row.className="row "+(b-a+1===8?"r8":"r9");for(let n=a;n<=b;n++){const el=document.createElement("div");el.className="bike"+(demo[n]?" demo":"");el.innerHTML='<div class="num">B'+n+'</div><div class="name">'+(demo[n]||"LIVRE")+'</div>';row.appendChild(el)}map.appendChild(row)}
+document.getElementById("date").textContent=new Date().toLocaleDateString("pt-BR");
+document.getElementById("fs").onclick=async()=>{try{if(!document.fullscreenElement){await document.documentElement.requestFullscreen();document.body.classList.add("fullscreen")}else{await document.exitFullscreen();document.body.classList.remove("fullscreen")}}catch(e){}};
+document.addEventListener("fullscreenchange",()=>{if(!document.fullscreenElement)document.body.classList.remove("fullscreen")});
+</script></body></html>
