@@ -214,6 +214,12 @@
         "kind": "contracts",
         "at": "2026-10-02T12:12:45.254Z",
         "count": 40
+      },
+      {
+        "unit": "bike",
+        "kind": "contract_categories",
+        "at": "2026-10-02T14:42:14.677Z",
+        "count": 11
       }
     ],
     "contracts": {
@@ -463,6 +469,55 @@
     },
     "members": {
       "bike": [],
+      "gym": []
+    },
+    "contractCategories": {
+      "bike": [
+        {
+          "id": 1,
+          "name": "VIP"
+        },
+        {
+          "id": 2,
+          "name": "Colaborador"
+        },
+        {
+          "id": 3,
+          "name": "Personal"
+        },
+        {
+          "id": 4,
+          "name": "Wellhub"
+        },
+        {
+          "id": 5,
+          "name": "Totalpass"
+        },
+        {
+          "id": 6,
+          "name": "Classpass"
+        },
+        {
+          "id": 7,
+          "name": "Plano BIOS (Nutrição)"
+        },
+        {
+          "id": 10,
+          "name": "Freepass"
+        },
+        {
+          "id": 14,
+          "name": "Locação"
+        },
+        {
+          "id": 15,
+          "name": "Gogood"
+        },
+        {
+          "id": 16,
+          "name": "GuruPass"
+        }
+      ],
       "gym": []
     }
   },
