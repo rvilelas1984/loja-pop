@@ -22,41 +22,6 @@
   "missions": {},
   "promotions": [
     {
-      "id": "promo-1790872745118",
-      "unit": "bike",
-      "status": "Ativo",
-      "name": "Camisas Pop",
-      "start": "2026-09-01",
-      "end": "2026-10-31",
-      "promotionType": "standard",
-      "numbersPerAttendance": 1,
-      "reset": "monthly",
-      "luckyNumber": {
-        "enabled": false,
-        "numbersPerAttendance": 1,
-        "reset": "monthly",
-        "maxNumbers": 0,
-        "milestones": []
-      },
-      "dashboardText": "Promoção",
-      "rules": "Promoção",
-      "bannerUrl": "https://drive.google.com/file/d/1xEC52LC2dDb2g4HYgw0uOdj5otVC5WDz/view?usp=drive_link",
-      "requirements": [
-        {
-          "unit": "bike",
-          "activityId": "*",
-          "activity": "Qualquer atividade",
-          "quantity": 1
-        }
-      ],
-      "eligibility": {
-        "mode": "any",
-        "acceptedContracts": []
-      },
-      "cardTheme": "purple",
-      "dashboardPlacement": "normal"
-    },
-    {
       "id": "promo-1790872798501",
       "unit": "bike",
       "status": "Ativo",
