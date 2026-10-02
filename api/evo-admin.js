@@ -12,6 +12,7 @@ export default async function handler(req,res){
  if(unit!=="bike")return res.status(400).json({ok:false,error:"Durante os testes, as requisições EVO estão liberadas somente para Bike Pop."});
  const dns=process.env.EVO_DNS,token=process.env.EVO_TOKEN;if(!dns||!token)return res.status(503).json({ok:false,error:"Credenciais EVO Bike Pop não configuradas"});
  const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
+ if(kind==="contract_lab"){const test=String(req.query.test||"membership"),urls={membership:"https://evo-integracao-api.w12app.com.br/api/v3/membership?take=200&skip=0",categories:"https://evo-integracao-api.w12app.com.br/api/v1/membership/category",membermembership:"https://evo-integracao-api.w12app.com.br/api/v1/membermembership?take=25&skip=0&showAggregators=true&showVips=true"};if(!urls[test])return res.status(400).json({ok:false,error:"Teste inválido"});const q=await evo(urls[test],headers),sample=q.items.slice(0,10);return res.status(q.ok?200:(q.status||502)).json({ok:q.ok,test,status:q.status,count:q.items.length,endpoint:urls[test],topLevelKeys:q.data&&typeof q.data==="object"?Object.keys(q.data):[],itemKeys:sample[0]?Object.keys(sample[0]):[],sample});}
  if(kind==="fitcoins"){
    const id=Number(req.method==="POST"?(req.body?.idMember||0):(req.query.idMember||0));if(!id)return res.status(400).json({ok:false,error:"Informe o ID EVO do aluno."});
    const profileUrl="https://evo-integracao-api.w12app.com.br/api/v1/members/"+id;
