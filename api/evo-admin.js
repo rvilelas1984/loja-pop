@@ -30,17 +30,11 @@ export default async function handler(req,res){
  }
  if(kind==="attendance")return res.status(400).json({ok:false,error:"Presenças são consultadas por aluno/período e armazenadas no histórico D1."});
  if(kind==="contracts"){
-   const diag=[];
-   for(const url of ["https://evo-integracao-api.w12app.com.br/api/v3/membership?take=200&skip=0","https://evo-integracao-api.w12app.com.br/api/v3/membership?active=true&take=200&skip=0"]){
-     try{const q=await evo(url,headers);diag.push({source:"membership",status:q.status,count:q.items.length,url});if(q.ok&&q.items.length)return res.status(200).json({ok:true,unit,kind,count:q.items.length,items:q.items,source:"membership",diagnostic:diag})}catch(e){diag.push({source:"membership",error:e.message,url})}
-   }
-   const found=new Map();
-   for(let skip=0;skip<500;skip+=25){
-     const url="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?statusMemberMembership=1&showAggregators=true&take=25&skip="+skip;
-     try{const q=await evo(url,headers);diag.push({source:"membermembership",status:q.status,count:q.items.length,skip,showAggregators:true});if(!q.ok)break;for(const x of q.items){const id=x.idMembership;if(id!=null&&!found.has(String(id)))found.set(String(id),{idMembership:id,nameMembership:x.nameMembership||x.membershipName||x.name||("Contrato "+id),inactive:false})}if(q.items.length<25)break}catch(e){diag.push({source:"membermembership",error:e.message,skip});break}
-   }
-   const items=[...found.values()];
-   if(items.length)return res.status(200).json({ok:true,unit,kind,count:items.length,items,source:"membermembership-fallback",diagnostic:diag});
+   const diag=[],found=new Map(),put=x=>{const id=x.idMembership??x.idMembershipPlan??x.id;if(id==null)return;const k=String(id),prev=found.get(k)||{};const cat=x.categoryName??x.nameCategory??x.membershipCategoryName??x.category?.name??x.category??x.idMembershipCategoryName??prev.category??"";found.set(k,{...prev,...x,idMembership:id,nameMembership:x.nameMembership||x.displayName||x.membershipName||x.name||prev.nameMembership||("Contrato "+id),categoryName:typeof cat==="object"?(cat.name||""):String(cat||""),inactive:x.inactive===true||x.active===false})};
+   for(const active of [true,false]){for(let skip=0;skip<5000;skip+=200){const url="https://evo-integracao-api.w12app.com.br/api/v3/membership?"+(active?"active=true&":"")+"take=200&skip="+skip;try{const q=await evo(url,headers);diag.push({source:active?"membership-active":"membership",status:q.status,count:q.items.length,skip});if(!q.ok)break;q.items.forEach(put);if(q.items.length<200)break}catch(e){diag.push({source:"membership",error:e.message,skip});break}}if(found.size)break}
+   for(let skip=0;skip<5000;skip+=100){const url="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?statusMemberMembership=1&showAggregators=true&take=100&skip="+skip;try{const q=await evo(url,headers);diag.push({source:"membermembership",status:q.status,count:q.items.length,skip,showAggregators:true});if(!q.ok)break;q.items.forEach(put);if(q.items.length<100)break}catch(e){diag.push({source:"membermembership",error:e.message,skip});break}}
+   const items=[...found.values()].sort((a,b)=>String(a.categoryName||"").localeCompare(String(b.categoryName||""),"pt-BR")||String(a.nameMembership||"").localeCompare(String(b.nameMembership||""),"pt-BR"));
+   if(items.length)return res.status(200).json({ok:true,unit,kind,count:items.length,items,source:"membership-complete",categories:[...new Set(items.map(x=>x.categoryName).filter(Boolean))].sort(),diagnostic:diag});
    return res.status(502).json({ok:false,error:"A EVO respondeu, mas nenhum contrato foi encontrado.",detail:"O cache não foi alterado. Consulte o diagnóstico para identificar a fonte que retornou zero.",diagnostic:diag});
  }
  const candidates={activities:["https://evo-integracao.w12app.com.br/api/v1/activities","https://evo-integracao-api.w12app.com.br/api/v1/activities"],members:["https://evo-integracao.w12app.com.br/api/v2/members?take=100&skip=0","https://evo-integracao-api.w12app.com.br/api/v2/members?take=100&skip=0"]};
