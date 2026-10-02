@@ -14,7 +14,7 @@ export default async function handler(req,res){
  const headers={"Content-Type":"application/json"};
  if(isAdmin)headers["x-clubpop-admin-cookie"]=String(req.headers.cookie||"");else if(req.headers.authorization)headers.Authorization=req.headers.authorization;
  const qs=new URLSearchParams();const promotion=String(req.query.promotion||req.body?.promotionId||"");if(promotion)qs.set("promotion",promotion);if(req.query.period)qs.set("period",String(req.query.period));if(req.query.number)qs.set("code",String(req.query.number));if(isAdmin&&!promotion)return res.status(400).json({ok:false,error:"Informe a promoção"});
- const workerRoute=isAdmin?"/promotion-numbers/admin/"+route.slice(6):"/promotion-numbers/"+route;
+ const workerRoute=isAdmin?"/promotion-numbers/admin/"+route.slice(6):(route==="sync"?"/promotion-numbers/sync-v2":"/promotion-numbers/"+route);
  try{const r=await fetch(WORKER+workerRoute+(qs.size?"?"+qs:""),{method:req.method,headers,body:req.method==="POST"?JSON.stringify(req.body||{}):undefined});const text=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type",r.headers.get("content-type")||"application/json; charset=utf-8");return res.send(text)}
  catch(e){return res.status(502).json({ok:false,error:"Falha de comunicação com números da sorte",detail:String(e.message||e)})}
 const BASE="https://conectawebhook.com.br";
