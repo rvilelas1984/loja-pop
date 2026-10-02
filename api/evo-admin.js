@@ -2,7 +2,7 @@ import crypto from "crypto";
 const COOKIE="clubpop_admin";
 const parse=async r=>{const t=await r.text();try{return JSON.parse(t)}catch{return {raw:t.slice(0,500)}}};
 function valid(req){const key=process.env.ADMIN_KEY;if(!key)return false;const c=Object.fromEntries(String(req.headers.cookie||"").split(";").map(x=>x.trim().split("=")).filter(x=>x.length===2))[COOKIE];if(!c)return false;const [exp,s]=c.split(".");if(!exp||!s||Number(exp)<Date.now())return false;try{return crypto.timingSafeEqual(Buffer.from(s),Buffer.from(crypto.createHmac("sha256",key).update(exp).digest("hex")))}catch{return false}}
-function rows(d){if(Array.isArray(d))return d;if(Array.isArray(d?.items))return d.items;if(Array.isArray(d?.data))return d.data;return []}
+function rows(d){if(Array.isArray(d))return d;if(Array.isArray(d?.items))return d.items;if(Array.isArray(d?.data))return d.data;if(Array.isArray(d?.lista))return d.lista;if(Array.isArray(d?.list))return d.list;return []}
 async function evo(url,headers){const r=await fetch(url,{headers,cache:"no-store"}),d=await parse(r);return {ok:r.ok,status:r.status,data:d,items:rows(d),url}}
 export default async function handler(req,res){
  res.setHeader("cache-control","no-store");
@@ -37,11 +37,14 @@ export default async function handler(req,res){
    return res.status(200).json({ok:true,unit,kind,count:items.length,items,source:"membership-category",diagnostic:[{source:"membership-category",status:q.status,count:items.length}]});
  }
  if(kind==="contracts"){
-   const diag=[],found=new Map(),put=x=>{const id=x.idMembership??x.idMembershipPlan??x.id;if(id==null)return;found.set(String(id),{...x,idMembership:id,nameMembership:x.nameMembership||x.displayName||x.membershipName||x.name||("Contrato "+id),inactive:x.inactive===true||x.active===false||x.isActive===false})};
-   for(const active of [true,false]){const url="https://evo-integracao-api.w12app.com.br/api/v3/membership?active="+active+"&take=200&skip=0";try{const q=await evo(url,headers);diag.push({source:active?"membership-active":"membership-inactive",status:q.status,count:q.items.length});if(!q.ok)return res.status(q.status||502).json({ok:false,error:"Não foi possível consultar contratos "+(active?"ativos":"inativos")+" na EVO.",diagnostic:diag});q.items.forEach(x=>put({...x,inactive:active?false:true}))}catch(e){return res.status(502).json({ok:false,error:"Falha ao consultar contratos na EVO.",detail:e.message,diagnostic:diag})}}
-   const items=[...found.values()].sort((x,y)=>Number(x.inactive)-Number(y.inactive)||String(x.nameMembership||"").localeCompare(String(y.nameMembership||""),"pt-BR"));
-   if(items.length)return res.status(200).json({ok:true,unit,kind,count:items.length,activeCount:items.filter(x=>!x.inactive).length,inactiveCount:items.filter(x=>x.inactive).length,items,source:"membership",diagnostic:diag});
-   return res.status(502).json({ok:false,error:"Nenhum contrato foi encontrado na EVO.",detail:"O cache não foi alterado.",diagnostic:diag});
+   const mq=await evo("https://evo-integracao-api.w12app.com.br/api/v3/membership?take=200&skip=0",headers);
+   if(!mq.ok)return res.status(mq.status||502).json({ok:false,error:"Não foi possível consultar os contratos na EVO.",diagnostic:[{source:"membership",status:mq.status,count:mq.items.length}]});
+   const cq=await evo("https://evo-integracao-api.w12app.com.br/api/v1/membership/category",headers);
+   const catMap=new Map(cq.items.map(c=>[String(c.idCategoryMembership??c.idMembershipCategory??c.idCategory??c.id),c.name??c.description??c.categoryName??""]));
+   const vq=await evo("https://evo-integracao-api.w12app.com.br/api/v1/membermembership?take=25&skip=0&showAggregators=true&showVips=true",headers);
+   const membershipCat=new Map();vq.items.forEach(v=>{const mid=v.idMembership??v.idMembershipPlan;if(mid!=null&&v.idMembershipCategory!=null&&!membershipCat.has(String(mid)))membershipCat.set(String(mid),v.idMembershipCategory)});
+   const items=mq.items.map(x=>{const id=x.idMembership??x.idMembershipPlan??x.id;const categoryId=x.idCategoryMembership??x.idMembershipCategory??x.idCategory??membershipCat.get(String(id))??null;return {...x,idMembership:id,nameMembership:x.nameMembership||x.displayName||x.membershipName||x.name||("Contrato "+id),categoryId,category:categoryId!=null?(catMap.get(String(categoryId))||""):"",inactive:x.inactive===true||x.active===false||x.isActive===false}}).filter(x=>x.idMembership!=null);
+   return res.status(200).json({ok:true,unit,kind,count:items.length,activeCount:items.filter(x=>!x.inactive).length,inactiveCount:items.filter(x=>x.inactive).length,items,source:"membership",diagnostic:[{source:"membership",status:mq.status,count:mq.items.length},{source:"membership-category",status:cq.status,count:cq.items.length},{source:"membermembership-sample",status:vq.status,count:vq.items.length}]});
  }
  const candidates={activities:["https://evo-integracao.w12app.com.br/api/v1/activities","https://evo-integracao-api.w12app.com.br/api/v1/activities"],members:["https://evo-integracao.w12app.com.br/api/v2/members?take=100&skip=0","https://evo-integracao-api.w12app.com.br/api/v2/members?take=100&skip=0"]};
  if(!candidates[kind])return res.status(400).json({ok:false,error:"Tipo de requisição inválido"});
