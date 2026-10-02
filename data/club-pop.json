@@ -903,8 +903,10 @@
       "type": "presence",
       "unit": "bike",
       "name": "Outubro 2026",
-      "cardTheme": "pink",
+      "cardTheme": "dark",
       "description": "",
+      "cardEmphasis": "VOCE ESTÁ INDO MUITO BEM 👏👏",
+      "cardButtonText": "",
       "start": "2026-10-01",
       "end": "2026-10-31",
       "status": "Ativo",
@@ -923,7 +925,8 @@
           "rewardType": "product",
           "rewardId": "prod-1790871460911",
           "rewardName": "Agua mineral ",
-          "rewardValue": null
+          "rewardValue": null,
+          "fitcoinAction": null
         },
         {
           "id": "goal-2",
@@ -931,7 +934,8 @@
           "rewardType": "service",
           "rewardId": "service-1790873255440",
           "rewardName": "Aula avulsa Horário Livre",
-          "rewardValue": null
+          "rewardValue": null,
+          "fitcoinAction": null
         }
       ],
       "rewards": [
