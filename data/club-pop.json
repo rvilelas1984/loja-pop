@@ -220,249 +220,624 @@
         "kind": "contract_categories",
         "at": "2026-10-02T14:42:14.677Z",
         "count": 11
+      },
+      {
+        "unit": "bike",
+        "kind": "contracts",
+        "at": "2026-10-02T14:59:31.474Z",
+        "count": 87
       }
     ],
     "contracts": {
       "bike": [
         {
-          "id": "78701",
-          "name": "Aula Avulsa",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "89041",
-          "name": "Aula Avulsa (Jump) ",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "86170",
-          "name": "Aula Avulsa (Período manhã)",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "89042",
-          "name": "Aula Avulsa (Planos Recorrente) ",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "86122",
-          "name": "Aula Avulsa (Wellhub/Totalpass)",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "80694",
-          "name": "Aula Avulsa Funcional",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "79247",
-          "name": "Aula Avulsa Gratis",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "87863",
-          "name": "Aula Avulsa Totalpass",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "83563",
-          "name": "Evento Especial 24 horas",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "78217",
+          "id": 78217,
           "name": "Pacote 12 Aulas",
-          "category": "Sem categoria",
+          "categoryId": null,
+          "category": "",
           "inactive": false
         },
         {
-          "id": "83827",
-          "name": "Pacote 12 Aulas (Mensal) ",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "78621",
-          "name": "Pacote 12 Aulas Gratis",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "79249",
-          "name": "Pacote 12 Aulas Gratis recorrente",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "79313",
-          "name": "Pacote 12 Aulas transferência ",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "84780",
-          "name": "Pacote 12 Aulas transferência  (Mensal) ",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "79250",
-          "name": "Pacote 20 Aulas Gratis recorrente",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "78268",
-          "name": "Pacote 4 Aulas ",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "79246",
-          "name": "Pacote 4 Aulas  Gratis",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "88721",
-          "name": "Pacote 4 Aulas  transferência",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "78267",
+          "id": 78267,
           "name": "Pacote 8 Aulas",
-          "category": "Sem categoria",
+          "categoryId": null,
+          "category": "",
           "inactive": false
         },
         {
-          "id": "83843",
-          "name": "Pacote 8 Aulas (Mensal) ",
-          "category": "Sem categoria",
+          "id": 78268,
+          "name": "Pacote 4 Aulas ",
+          "categoryId": null,
+          "category": "",
           "inactive": false
         },
         {
-          "id": "78466",
-          "name": "Pacote 8 aulas Coletivas",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "79424",
-          "name": "Pacote 8 aulas Coletivas Transição",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "79245",
-          "name": "Pacote 8 Aulas Gratis",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "79248",
-          "name": "Pacote 8 Aulas Gratis recorrente",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "79892",
-          "name": "Pacote 8 Aulas transferência",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "80417",
-          "name": "Pacote Turma 8 Aulas (Cartão Recorrente) ",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "81265",
-          "name": "Pacote Turma 8 Aulas (Cartão Recorrente)  (Promocional) ",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "78287",
+          "id": 78287,
           "name": "Plano recorrente 12 aulas",
-          "category": "Sem categoria",
+          "categoryId": null,
+          "category": "",
           "inactive": false
         },
         {
-          "id": "80223",
-          "name": "Plano recorrente 12 aulas (PIX) ",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "81251",
-          "name": "Plano recorrente 12 aulas (Promocional) ",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "78852",
-          "name": "Plano recorrente 12 aulas (Transição)",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "78309",
-          "name": "Plano recorrente 20 aulas",
-          "category": "Sem categoria",
-          "inactive": false
-        },
-        {
-          "id": "78308",
+          "id": 78308,
           "name": "Plano recorrente 8 aulas",
-          "category": "Sem categoria",
+          "categoryId": null,
+          "category": "",
           "inactive": false
         },
         {
-          "id": "80320",
-          "name": "Plano recorrente 8 aulas (sem fidelidade)",
-          "category": "Sem categoria",
+          "id": 78309,
+          "name": "Plano recorrente 20 aulas",
+          "categoryId": null,
+          "category": "",
           "inactive": false
         },
         {
-          "id": "78848",
-          "name": "Plano recorrente 8 aulas (Transição)",
-          "category": "Sem categoria",
+          "id": 78310,
+          "name": "Plano recorrente Pop Pass",
+          "categoryId": null,
+          "category": "",
           "inactive": false
         },
         {
-          "id": "79362",
-          "name": "Plano recorrente Mensal (Transição)",
-          "category": "Sem categoria",
-          "inactive": false
+          "id": 78466,
+          "name": "Pacote 8 aulas Coletivas",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
         },
         {
-          "id": "78687",
-          "name": "TOTALPASS",
-          "category": "Sem categoria",
-          "inactive": false
+          "id": 78467,
+          "name": "Pacote 4 aulas Coletivas",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
         },
         {
-          "id": "80727",
-          "name": "WELLHUB (Especial)",
-          "category": "Sem categoria",
-          "inactive": false
+          "id": 78621,
+          "name": "Pacote 12 Aulas Gratis",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
         },
         {
-          "id": "78686",
+          "id": 78686,
           "name": "WELLHUB (GYMPASS)",
-          "category": "Sem categoria",
+          "categoryId": null,
+          "category": "Wellhub",
           "inactive": false
+        },
+        {
+          "id": 78687,
+          "name": "TOTALPASS",
+          "categoryId": null,
+          "category": "Totalpass",
+          "inactive": false
+        },
+        {
+          "id": 78701,
+          "name": "Aula Avulsa",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 78702,
+          "name": "Crédito Promocional ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 78752,
+          "name": "Consultoria Fitness 1 mês",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 78753,
+          "name": "Consultoria Fitness 3 mêses",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 78754,
+          "name": "Consultoria Fitness 6 mêses ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 78848,
+          "name": "Plano recorrente 8 aulas (Transição)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 78852,
+          "name": "Plano recorrente 12 aulas (Transição)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 78854,
+          "name": "Plano recorrente 20 aulas (Transição)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 79245,
+          "name": "Pacote 8 Aulas Gratis",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 79246,
+          "name": "Pacote 4 Aulas  Gratis",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 79247,
+          "name": "Aula Avulsa Gratis",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 79248,
+          "name": "Pacote 8 Aulas Gratis recorrente",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 79249,
+          "name": "Pacote 12 Aulas Gratis recorrente",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 79250,
+          "name": "Pacote 20 Aulas Gratis recorrente",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 79313,
+          "name": "Pacote 12 Aulas transferência ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 79362,
+          "name": "Plano recorrente Mensal (Transição)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 79424,
+          "name": "Pacote 8 aulas Coletivas Transição",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 79474,
+          "name": "Pacote 8 Aulas (Parceria)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 79892,
+          "name": "Pacote 8 Aulas transferência",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 80212,
+          "name": "Plano recorrente 8 aulas (PIX) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 80223,
+          "name": "Plano recorrente 12 aulas (PIX) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 80320,
+          "name": "Plano recorrente 8 aulas (Promocional)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 80386,
+          "name": "Consultoria Fitness 6 mêses",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 80416,
+          "name": "Pacote Turma 8 Aulas (PIX Recorrente) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 80417,
+          "name": "Pacote Turma 8 Aulas (Cartão Recorrente) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 80418,
+          "name": "Pacote Turma 12 Aulas (PIX Recorrente) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 80419,
+          "name": "Pacote Turma 12 Aulas (Cartão Recorrente)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 80423,
+          "name": "Pacote Turma 8 Aulas gratis",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 80694,
+          "name": "Aula Avulsa Funcional",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 80727,
+          "name": "WELLHUB (Especial)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 81251,
+          "name": "Plano recorrente 12 aulas (Promocional) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 81265,
+          "name": "Pacote Turma 8 Aulas (Cartão Recorrente)  (Promocional) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 83138,
+          "name": "Plano recorrente 12 aulas (PIX - Automático)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 83139,
+          "name": "Plano recorrente 8 aulas (PIX - Automático)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 83563,
+          "name": "Evento Especial 24 horas",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 83827,
+          "name": "Pacote 12 Aulas (Mensal) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 83843,
+          "name": "Pacote 8 Aulas (Mensal) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 84780,
+          "name": "Pacote 12 Aulas transferência  (Mensal) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 86085,
+          "name": "Aula Avulsa (Dança) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 86122,
+          "name": "Check-in Adicional Wellhub (Gympass)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 86170,
+          "name": "Aula Avulsa ( Período matutino)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 87863,
+          "name": "Check-in Adicional Totalpass",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 88721,
+          "name": "Pacote 4 Aulas  transferência",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 89041,
+          "name": "Aula Avulsa (Jump) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 89042,
+          "name": "Aula Avulsa (Planos Recorrente) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 89043,
+          "name": "Plano recorrente 16 aulas ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 90059,
+          "name": "Aula Avulsa  transferência",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 90485,
+          "name": "TOTALPASS (Teste limite mensal) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 96384,
+          "name": "Pacote 12 Aulas (Multiunidade) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 98672,
+          "name": "Aula Avulsa Wellhub multiunidades",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 98673,
+          "name": "Aula Avulsa multiunidades ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 99452,
+          "name": "Pacote Carnaval (2026)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 99481,
+          "name": "Experimental Manhã",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 100705,
+          "name": "Plano recorrente 12 aulas (Cópia) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 101384,
+          "name": "Aula Avulsa Totalpass (Carnaval)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 101385,
+          "name": "Aula Avulsa Gympass (Carnaval)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 104024,
+          "name": "Aula Avulsa ( Fitcoins Convidado - Livre)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 104514,
+          "name": "Aula Avulsa (Fitcoins Manhã) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 104515,
+          "name": "Aula Avulsa (Fitcoins Manhã - Convidado)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 104534,
+          "name": "Pacote 12 Aulas (Matutino) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 105020,
+          "name": "Experimental Pacote",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 106999,
+          "name": "Plano Anual ( Recorrente)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 107006,
+          "name": "Plano Anual ",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 110397,
+          "name": "Aula Avulsa (Relâmpago)",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
+        },
+        {
+          "id": 112435,
+          "name": "Pacote 8 Aulas (Parceiro)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 113024,
+          "name": "Recorrente 16 Aulas (Matutino)  ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 114151,
+          "name": "Recorrente 12 Aulas (Matutino)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 115511,
+          "name": "Aula Avulsa (Fitcoins Gym Pop) ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 121085,
+          "name": "Pacote Massagem 4 sessões (10 minutos)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 121087,
+          "name": "Pacote Massagem 4 sessões (15 minutos)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 121088,
+          "name": "Pacote Massagem 4 sessões (20 minutos)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 122357,
+          "name": "Contrato adicional Massagem ",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 123848,
+          "name": "Contrato especial Agregadores (Totalpass)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 123849,
+          "name": "Contrato especial Agregadores (Gympass)",
+          "categoryId": null,
+          "category": "",
+          "inactive": false
+        },
+        {
+          "id": 127344,
+          "name": "Check-in Adicional Wellhub (Gympass) 1",
+          "categoryId": null,
+          "category": "",
+          "inactive": true
         }
       ],
       "gym": []
