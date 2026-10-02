@@ -96,9 +96,15 @@
         "mode": "active_contract",
         "acceptedContracts": [
           "78686",
-          "78687",
           "78852"
         ]
+      },
+      "cardTheme": "green",
+      "fitcoinAction": {
+        "enabled": false,
+        "direction": "credit",
+        "amount": 0,
+        "attendance": 0
       }
     }
   ],
