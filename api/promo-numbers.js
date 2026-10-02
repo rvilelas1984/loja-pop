@@ -12,12 +12,12 @@ export default async function handler(req,res){
  if(route==="sync"&&req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});
  if((route==="mine"||isAdmin)&&req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});
  const headers={"Content-Type":"application/json"};
- if(isAdmin)headers["x-admin-key"]=process.env.ADMIN_KEY||"";else if(req.headers.authorization)headers.Authorization=req.headers.authorization;
+ if(isAdmin)headers["x-clubpop-admin-cookie"]=String(req.headers.cookie||"");else if(req.headers.authorization)headers.Authorization=req.headers.authorization;
  const qs=new URLSearchParams();
  const promotion=String(req.query.promotion||req.body?.promotionId||"");
  if(promotion)qs.set("promotion",promotion);
  if(req.query.period)qs.set("period",String(req.query.period));
- if(req.query.number)qs.set("number",String(req.query.number));
+ if(req.query.number)qs.set("code",String(req.query.number));
  if(isAdmin&&!promotion)return res.status(400).json({ok:false,error:"Informe a promoção"});
  const workerRoute=isAdmin?"/promotion-numbers/admin/"+route.slice(6):"/promotion-numbers/"+route;
  try{const r=await fetch(WORKER+workerRoute+(qs.size?"?"+qs:""),{method:req.method,headers,body:req.method==="POST"?JSON.stringify(req.body||{}):undefined});const text=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type",r.headers.get("content-type")||"application/json; charset=utf-8");return res.send(text)}
