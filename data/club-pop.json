@@ -96,10 +96,11 @@
         "mode": "active_contract",
         "acceptedContracts": [
           "78686",
-          "78852"
+          "78852",
+          "78687"
         ]
       },
-      "cardTheme": "dark",
+      "cardTheme": "purple",
       "fitcoinAction": {
         "enabled": false,
         "direction": "credit",
