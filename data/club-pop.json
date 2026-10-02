@@ -1050,7 +1050,14 @@
       "discountPrice": 16,
       "validity": "30",
       "control": "voucher",
-      "instructions": ""
+      "instructions": "",
+      "imageUrl": "",
+      "eligibility": {
+        "mode": "active_contract",
+        "acceptedContracts": [
+          "112435"
+        ]
+      }
     }
   ],
   "redemptions": [
