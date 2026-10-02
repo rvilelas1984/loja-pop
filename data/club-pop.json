@@ -433,6 +433,20 @@
       "validity": "30",
       "control": "voucher",
       "instructions": ""
+    },
+    {
+      "id": "service-1790942257445",
+      "name": "Check-in Adicional Totalpass",
+      "unit": "bike",
+      "description": "",
+      "category": "Totalpass",
+      "status": "Ativo",
+      "price": 18,
+      "fitcoins": 50,
+      "discountPrice": 16,
+      "validity": "30",
+      "control": "voucher",
+      "instructions": ""
     }
   ],
   "redemptions": [
