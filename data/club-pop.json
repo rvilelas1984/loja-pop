@@ -948,8 +948,10 @@
       "type": "consistency",
       "unit": "bike",
       "name": "Constante",
-      "cardTheme": "green",
+      "cardTheme": "purple",
       "description": "",
+      "cardEmphasis": "",
+      "cardButtonText": "",
       "start": "2026-09-01",
       "end": "2026-10-31",
       "status": "Ativo",
@@ -968,7 +970,8 @@
           "rewardType": "service",
           "rewardId": "service-1790873255440",
           "rewardName": "Aula avulsa Horário Livre",
-          "rewardValue": null
+          "rewardValue": null,
+          "fitcoinAction": null
         }
       ],
       "rewards": [
