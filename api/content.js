@@ -5,13 +5,20 @@ function send(res,status,obj){res.status(status).setHeader("content-type","appli
 async function gh(path,opt={}){const token=process.env.GITHUB_TOKEN;const h={"accept":"application/vnd.github+json","user-agent":"club-pop",...(opt.headers||{})};if(token)h.authorization="Bearer "+token;return fetch("https://api.github.com"+path,{...opt,headers:h})}
 export default async function handler(req,res){
  if(req.method==="GET"){try{const r=await gh(`/repos/${OWNER}/${REPO}/contents/${PATH}?ref=${BRANCH}`);if(!r.ok)throw new Error("read");const j=await r.json();return send(res,200,JSON.parse(Buffer.from(j.content,"base64").toString("utf8")))}catch{return send(res,200,JSON.parse(seed))}}
- if(req.method!=="PUT")return send(res,405,{error:"Método não permitido"});
+ if(!["PUT","PATCH"].includes(req.method))return send(res,405,{error:"Método não permitido"});
  if(!adminCookieValid(req)&&(!process.env.ADMIN_KEY||req.headers["x-admin-key"]!==process.env.ADMIN_KEY))return send(res,401,{error:"Sessão administrativa inválida."});
  if(!process.env.GITHUB_TOKEN)return send(res,503,{error:"GITHUB_TOKEN ainda não configurado no Vercel."});
  try{
   const current=await gh(`/repos/${OWNER}/${REPO}/contents/${PATH}?ref=${BRANCH}`);const cj=await current.json();
   const body=typeof req.body==="string"?JSON.parse(req.body):req.body;
-  const payload={message:"Atualiza conteúdo do CLUB POP pelo Admin",content:Buffer.from(JSON.stringify(body,null,2)).toString("base64"),sha:cj.sha,branch:BRANCH};
+  let next=body;
+  if(req.method==="PATCH"){
+   const allowed=new Set(["missionList","promotions"]);
+   if(!body||!allowed.has(body.section)||!Array.isArray(body.value))return send(res,400,{error:"Seção inválida para atualização."});
+   const currentData=JSON.parse(Buffer.from(cj.content,"base64").toString("utf8"));
+   next={...currentData,[body.section]:body.value};
+  }
+  const payload={message:"Atualiza conteúdo do CLUB POP pelo Admin",content:Buffer.from(JSON.stringify(next,null,2)).toString("base64"),sha:cj.sha,branch:BRANCH};
   const wr=await gh(`/repos/${OWNER}/${REPO}/contents/${PATH}`,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
   if(!wr.ok){const e=await wr.text();throw new Error(e)}
   return send(res,200,{ok:true});
