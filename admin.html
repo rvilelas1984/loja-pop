@@ -8,7 +8,7 @@
 </main></div><script>
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const unit=u=>u==="gym"?"GYM POP":u==="club"?"CLUB POP":"BIKE POP";
-let dashboardData=null,currentScope=(window.cpAdminScope?.get?.()||new URLSearchParams(location.search).get("scope")||"club");
+let dashboardData=null,currentScope=(window.cpAdminScope?.get?.()||new URLSearchParams(location.search).get("scope")||sessionStorage.getItem("cpAdminScope")||"club");
 const scopeMatch=(x,scope)=>scope==="club"||String(x?.unit||"bike").toLowerCase()===scope||String(x?.unit||"").toLowerCase()==="club";
 function render(scope="club"){
  if(!dashboardData)return;
