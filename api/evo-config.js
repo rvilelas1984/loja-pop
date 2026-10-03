@@ -9,7 +9,43 @@ export default async function handler(req,res){
   return res.status(valid?200:401).json({ok:valid,serviceVerified:valid});
  }
  if(req.query.route==="students"){if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike";try{const r=await fetch(WORKER+"/admin/evo-students?unit="+unit,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao consultar alunos EVO"})}}
- if(req.query.route==="sync-students"){if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});const unit=String(req.query.unit||req.body?.unit||"bike").toLowerCase()==="gym"?"gym":"bike";if(unit!=="bike")return res.status(423).json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"});try{const evo=getEvoTransport(unit),rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/management/activeclients"),raw=await rr.text();if(!rr.ok)throw new Error("EVO_HTTP_"+rr.status);const un=x=>String(x||"").replace(/^<!\\[CDATA\\[/,"").replace(/\\]\\]>$/,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim();const rows=[];for(const block of raw.match(/<ClientesAtivosViewModel[\\s\\S]*?<\\/ClientesAtivosViewModel>/gi)||raw.match(/<ClientesAtivosRetornoViewModel[\\s\\S]*?<\\/ClientesAtivosRetornoViewModel>/gi)||[]){const get=n=>un((block.match(new RegExp("<"+n+">([\\\\s\\\\S]*?)<\\\\/"+n+">","i"))||[])[1]);const id=Number(get("idCliente"));if(id)rows.push({idMember:id,firstName:get("nomeCompleto"),lastName:"",status:"Active",membershipStatus:get("contratoAtivo"),contractName:get("contratoAtivo"),contractStart:get("dtInicioContratoAtivo"),contractEnd:get("dtFimContratoAtivo")})}if(!rows.length){const ids=[...raw.matchAll(/<idCliente>(\\d+)<\\/idCliente>/gi)];for(const x of ids)rows.push({idMember:Number(x[1]),status:"Active"})}const ing=await fetch(WORKER+"/admin/evo-students-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({unit,members:rows,requests:1,source:"activeclients"})}),d=await ing.json().catch(()=>({}));if(!ing.ok||!d.ok)return res.status(ing.status||502).json({ok:false,error:d.error||"FALHA_SYNC_ALUNOS",requests:1});return res.json({...d,requests:1,members:rows.length,source:"activeclients"})}catch(e){return res.status(502).json({ok:false,error:String(e?.message||"FALHA_SYNC_ALUNOS")})}}
+ if(req.query.route==="sync-students"){
+  if(req.method!=="POST") return res.status(405).json({ok:false,error:"Método não permitido"});
+  const unit=String(req.query.unit||req.body?.unit||"bike").toLowerCase()==="gym"?"gym":"bike";
+  if(unit!=="bike") return res.status(423).json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"});
+  try{
+   const evo=getEvoTransport(unit);
+   const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/management/activeclients");
+   const raw=await rr.text();
+   if(!rr.ok) throw new Error("EVO_HTTP_"+rr.status);
+   const decode=x=>String(x||"").replace("&amp;","&").replace("&lt;","<").replace("&gt;",">").trim();
+   const tag=(xml,name)=>{
+    const open="<"+name+">",close="</"+name+">";
+    const i=xml.indexOf(open); if(i<0)return "";
+    const j=xml.indexOf(close,i+open.length); if(j<0)return "";
+    let v=xml.slice(i+open.length,j);
+    if(v.startsWith("<![CDATA[")&&v.endsWith("]]>"))v=v.slice(9,-3);
+    return decode(v);
+   };
+   const rows=[];
+   let pos=0;
+   while(true){
+    const i=raw.indexOf("<ClientesAtivosViewModel",pos);
+    if(i<0)break;
+    const start=raw.indexOf(">",i); if(start<0)break;
+    const close="</ClientesAtivosViewModel>",j=raw.indexOf(close,start);
+    if(j<0)break;
+    const xml=raw.slice(start+1,j),id=Number(tag(xml,"idCliente"));
+    if(id)rows.push({idMember:id,firstName:tag(xml,"nomeCompleto"),lastName:"",status:"Active",membershipStatus:tag(xml,"contratoAtivo"),contractName:tag(xml,"contratoAtivo"),contractStart:tag(xml,"dtInicioContratoAtivo"),contractEnd:tag(xml,"dtFimContratoAtivo")});
+    pos=j+close.length;
+   }
+   if(!rows.length) return res.status(502).json({ok:false,error:"EVO_ACTIVECLIENTS_SEM_REGISTROS",requests:1});
+   const ing=await fetch(WORKER+"/admin/evo-students-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({unit,members:rows,requests:1,source:"activeclients"})});
+   const d=await ing.json().catch(()=>({}));
+   if(!ing.ok||!d.ok)return res.status(ing.status||502).json({ok:false,error:d.error||"FALHA_SYNC_ALUNOS",requests:1});
+   return res.json({...d,requests:1,members:rows.length,source:"activeclients"});
+  }catch(e){return res.status(502).json({ok:false,error:String(e?.message||"FALHA_SYNC_ALUNOS")})}
+ }
  if(req.query.route==="sync-now"){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
   const unit=String(req.query.unit||req.body?.unit||"bike").toLowerCase()==="gym"?"gym":"bike";
