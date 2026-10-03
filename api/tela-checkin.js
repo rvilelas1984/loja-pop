@@ -1,3 +1,4 @@
+import { getEvoTransport } from "../lib/evo-transport.js";
 const parse=async r=>{const t=await r.text();try{return JSON.parse(t)}catch{return {raw:t.slice(0,300)}}};
 const rows=d=>Array.isArray(d)?d:(d?.items||d?.data||d?.lista||d?.list||[]);
 const sao=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date());
@@ -5,14 +6,15 @@ const mins=s=>{const [h,m]=String(s||"0:0").split(":").map(Number);return h*60+m
 const displayName=n=>{const p=String(n||"").trim().split(/\s+/).filter(Boolean);if(!p.length)return "ALUNO";if(p.length===1)return p[0];if(p.length===2)return p.join(" ");return p[0]+" "+p[1]+" "+p.slice(2).map(x=>x[0]+".").join(" ")};
 export default async function handler(req,res){
  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});res.setHeader("cache-control","no-store");
- const dns=process.env.EVO_DNS,token=process.env.EVO_TOKEN;if(!dns||!token)return res.status(503).json({ok:false,error:"EVO não configurada"});
- const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
+ const cfg=getEvoTransport("bike"),evoFetch=cfg.fetch;
+ const headers=cfg.headers;
  try{const stamp=sao(),date=stamp.slice(0,10),now=mins(stamp.slice(11,16));const q=new URLSearchParams({date,showFullWeek:"false",take:"100"});
- const sr=await fetch("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?"+q,{headers,cache:"no-store"}),sd=await parse(sr);if(!sr.ok)return res.status(sr.status).json({ok:false,error:"EVO recusou a grade",detail:sd?.message||sd?.raw||""});
+ const sr=await evoFetch("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?"+q,{headers,cache:"no-store"}),sd=await parse(sr);if(!sr.ok)return res.status(sr.status).json({ok:false,error:"EVO recusou a grade",detail:sd?.message||sd?.raw||""});
  const schedule=rows(sd).filter(x=>/bike/i.test(String(x.name||x.activityName||x.title||""))).sort((a,b)=>mins(a.startTime)-mins(b.startTime));let current=schedule.find(x=>now<mins(x.startTime)+30);if(!current)current=schedule[schedule.length-1];if(!current)return res.status(200).json({ok:true,current:null,next:null,message:"Nenhuma aula Bike Pop encontrada hoje"});
  const id=current.idActivitySession??current.idAtividadeSessao??current.idActivitieSession;if(!id)return res.status(502).json({ok:false,error:"A grade EVO não retornou idActivitySession"});
- const dr=await fetch("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(id),{headers,cache:"no-store"}),dd=await parse(dr);if(!dr.ok)return res.status(dr.status).json({ok:false,error:"Não foi possível obter os lugares da aula",detail:dd?.message||dd?.raw||""});
+ const dr=await evoFetch("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(id),{headers,cache:"no-store"}),dd=await parse(dr);if(!dr.ok)return res.status(dr.status).json({ok:false,error:"Não foi possível obter os lugares da aula",detail:dd?.message||dd?.raw||""});
  const detail=Array.isArray(dd)?dd[0]:dd,participantRows=rows(detail?.participantes||detail?.participants||detail?.enrollments||detail?.reservas||[]),enrollments=participantRows.map(e=>{const idMember=e.idMember??e.idCliente??null,status=e.status??null,checkedIn=e.flCheckin===true;return {idMember,slotNumber:Number(e.slotNumber||e.numeroVaga||0),name:e.name||e.nome||"",displayName:displayName(e.name||e.nome),removed:Boolean(e.removed||e.flRemovido),status,checkedIn,checkinAt:e.dataCheckin||null,checkinSource:e.descricaoCheckinAgregadorRealizado||null}}).filter(e=>e.idMember!=null||e.name);
  const idx=schedule.findIndex(x=>String(x.idActivitySession??x.idAtividadeSessao??x.idActivitieSession)===String(id)),next=idx>=0?schedule[idx+1]:null;
  return res.status(200).json({ok:true,source:"EVO",rule:"current-until-start-plus-30m",current:{idActivitySession:id,name:detail?.name||current.name||"Bike Pop",startTime:detail?.startTime||current.startTime,endTime:detail?.endTime||current.endTime,instructor:detail?.instructor||current.instructor||"",date,dateLabel:new Date(date+"T12:00:00").toLocaleDateString("pt-BR"),enrollments},next:next?{idActivitySession:next.idActivitySession??next.idAtividadeSessao??next.idActivitieSession,name:next.name||"Bike Pop",startTime:next.startTime}:null});
- }catch(e){return res.status(502).json({ok:false,error:"Falha de comunicação com a EVO",detail:String(e.message||e).slice(0,160)})}}
+ }catch(e){return res.status(e.status||502).json({ok:false,error:e.code||"Falha de comunicação com a EVO",detail:e.code||String(e.message||e).slice(0,160)})}}
+

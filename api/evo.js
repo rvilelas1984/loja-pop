@@ -1,14 +1,12 @@
+import { getEvoTransport as evoConfig } from "../lib/evo-transport.js";
 const digits=v=>String(v||"").replace(/\D/g,"");
 const memberId=v=>{const s=String(v??"").trim();return /^\d+\.0+$/.test(s)?s.slice(0,s.indexOf(".")):digits(s)};
 const parseJson=raw=>{try{return JSON.parse(raw)}catch{return {raw:raw.slice(0,500)}}};
 const extractFitcoins=data=>{const c=Array.isArray(data)?data[0]:data;const v=c?.totalFitcoins??c?.totalFitCoins;if(v==null||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null};
 const unitKey=v=>String(v||"bike").trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
-function evoConfig(unit){
- const key=unitKey(unit),prefix=key==="bike"?"EVO":key==="gym"?"GYM_EVO":key.toUpperCase()+"_EVO";
- return {key,prefix,dns:process.env[prefix+"_DNS"],token:process.env[prefix+"_TOKEN"]};
-}
 
-async function getMonthlyAttendance(idMember,headers){
+
+async function getMonthlyAttendance(idMember,headers,evoFetch){
   const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit"}).formatToParts(new Date());
   const year=Number(parts.find(p=>p.type==="year").value),month=Number(parts.find(p=>p.type==="month").value);
   const lastDay=new Date(Date.UTC(year,month,0)).getUTCDate();
@@ -20,7 +18,7 @@ async function getMonthlyAttendance(idMember,headers){
   for(let page=0;page<20;page++){
     const qs=new URLSearchParams({idMember:String(idMember),dateStart,dateEnd,skip:String(skip),take:String(take)});
     const url="https://evo-integracao-api.w12app.com.br/api/v2/activities/member/sessions?"+qs.toString();
-    const r=await fetch(url,{headers,cache:"no-store"});
+    const r=await evoFetch(url,{headers,cache:"no-store"});
     const raw=await r.text(),data=parseJson(raw);
     if(!r.ok)return {ok:false,status:r.status,response:data};
     const rows=Array.isArray(data)?data:(Array.isArray(data?.items)?data.items:Array.isArray(data?.data)?data.data:[]);
@@ -87,12 +85,12 @@ export default async function handler(req,res){
  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
  const value=memberId(req.query.member);
  if(!value)return res.status(400).json({ok:false,error:"Informe o ID EVO"});
- const cfg=evoConfig(req.query.unit||"bike"),unit=cfg.key,gym=unit==="gym",dns=cfg.dns,token=cfg.token;
- if(!dns||!token)return res.status(503).json({ok:false,stage:"evo-config",unit,error:"Credenciais EVO da unidade não configuradas neste ambiente",missing:{dns:!dns,token:!token},expected:{dns:cfg.prefix+"_DNS",token:cfg.prefix+"_TOKEN"}});
- const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
+ const cfg=evoConfig(req.query.unit||"bike"),unit=cfg.key,gym=unit==="gym",evoFetch=cfg.fetch;
+ if(!cfg.configured)return res.status(503).json({ok:false,stage:"evo-config",unit,error:"Credenciais EVO da unidade não configuradas neste ambiente",expected:{dns:cfg.prefix+"_DNS",token:cfg.prefix+"_TOKEN"}});
+ const headers=cfg.headers;
  try{
    const lookupUrl="https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(value);
-   const rr=await fetch(lookupUrl,{headers,cache:"no-store"}),raw=await rr.text(),data=parseJson(raw);
+   const rr=await evoFetch(lookupUrl,{headers,cache:"no-store"}),raw=await rr.text(),data=parseJson(raw);
    if(!rr.ok)return res.status(rr.status).json({ok:false,stage:"evo-member",unit,error:"A EVO da unidade "+unit+" recusou a consulta do cadastro",evoStatus:rr.status,detail:data?.message||data?.error||data?.raw||""});
    const lookupMember=Array.isArray(data)?data[0]:data;
    if(!lookupMember?.idMember)return res.status(404).json({ok:false,error:"Cadastro sem idMember"});
@@ -100,7 +98,7 @@ export default async function handler(req,res){
    const fitcoinsOnly=String(req.query.fitcoinsOnly||"")==="1";
    if(fitcoinsOnly){
      const fitUrl="https://evo-integracao-api.w12app.com.br/api/v1/members/fitcoins?idMember="+encodeURIComponent(lookupMember.idMember);
-     const fr=await fetch(fitUrl,{headers,cache:"no-store"}),fraw=await fr.text(),fd=parseJson(fraw);
+     const fr=await evoFetch(fitUrl,{headers,cache:"no-store"}),fraw=await fr.text(),fd=parseJson(fraw);
      const endpointCoins=fr.ok?extractFitcoins(fd):null;
      const profileCoins=extractFitcoins(lookupMember);
      const fitcoins=endpointCoins??profileCoins;
@@ -108,17 +106,17 @@ export default async function handler(req,res){
      return res.status(200).json({ok:true,stage:"fitcoins-only",unit,member:{idMember:lookupMember.idMember,firstName:lookupMember.firstName,lastName:lookupMember.lastName,branchName:lookupMember.branchName},fitcoins,fitcoinsSource:endpointCoins!=null?"fitcoins-endpoint":"member-profile",attendance:{ok:false,skipped:true,reason:"fitcoins-only"}});
    }
    const profileUrl="https://evo-integracao-api.w12app.com.br/api/v2/members/"+encodeURIComponent(lookupMember.idMember)+"?showMemberships=true";
-   const pr=await fetch(profileUrl,{headers,cache:"no-store"}),praw=await pr.text(),pd=parseJson(praw);
+   const pr=await evoFetch(profileUrl,{headers,cache:"no-store"}),praw=await pr.text(),pd=parseJson(praw);
    const profile=pr.ok?(Array.isArray(pd)?pd[0]:pd):lookupMember;
    const fitUrl="https://evo-integracao-api.w12app.com.br/api/v1/members/fitcoins?idMember="+encodeURIComponent(lookupMember.idMember);
-   const fr=await fetch(fitUrl,{headers,cache:"no-store"}),fraw=await fr.text(),fd=parseJson(fraw);
+   const fr=await evoFetch(fitUrl,{headers,cache:"no-store"}),fraw=await fr.text(),fd=parseJson(fraw);
    const fitcoins=extractFitcoins(fd)??extractFitcoins(profile);
-   const attendance=await getMonthlyAttendance(lookupMember.idMember,headers);
+   const attendance=await getMonthlyAttendance(lookupMember.idMember,headers,evoFetch);
    return res.status(200).json({
      ok:true,stage:"club-pop-current-month",unit,
      member:{idMember:lookupMember.idMember,firstName:profile?.firstName||lookupMember.firstName,lastName:profile?.lastName||lookupMember.lastName,branchName:profile?.branchName||lookupMember.branchName,membershipStatus:profile?.membershipStatus||null,membership:profile?.membership||null,memberships:profile?.memberships||[]},
      fitcoins,
      attendance
    });
- }catch(e){return res.status(502).json({ok:false,stage:"network",error:"Falha de comunicação com a EVO"})}
+ }catch(e){return res.status(e.status||502).json({ok:false,stage:e.code?"evo-config":"network",error:e.code||"Falha de comunicação com a EVO"})}
 }

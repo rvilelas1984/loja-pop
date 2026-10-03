@@ -1,5 +1,8 @@
 {
   "name": "loja-pop",
   "version": "0.1.2",
-  "private": true
+  "private": true,
+  "scripts": {
+    "test:evo-phase0": "node phase0-evo.test.mjs"
+  }
 }

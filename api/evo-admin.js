@@ -1,20 +1,20 @@
+import { getEvoTransport as evoConfig } from "../lib/evo-transport.js";
 import crypto from "crypto";
 const COOKIE="clubpop_admin";
 const parse=async r=>{const t=await r.text();try{return JSON.parse(t)}catch{return {raw:t.slice(0,500)}}};
 function valid(req){const key=process.env.ADMIN_KEY;if(!key)return false;const c=Object.fromEntries(String(req.headers.cookie||"").split(";").map(x=>x.trim().split("=")).filter(x=>x.length===2))[COOKIE];if(!c)return false;const p=c.split(".");let payload,s;if(p.length===2){payload=p[0];s=p[1]}else if(p.length===3){payload=p[0]+"."+p[1];s=p[2]}else return false;const exp=Number(p.length===2?p[0]:p[1]);if(!exp||exp<Date.now())return false;try{return crypto.timingSafeEqual(Buffer.from(s),Buffer.from(crypto.createHmac("sha256",key).update(payload).digest("hex")))}catch{return false}}
 const unitKey=v=>String(v||"bike").trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
-function evoConfig(unit){const key=unitKey(unit),prefix=key==="bike"?"EVO":key==="gym"?"GYM_EVO":key.toUpperCase()+"_EVO";return {key,prefix,dns:process.env[prefix+"_DNS"],token:process.env[prefix+"_TOKEN"]}}
 function rows(d){if(Array.isArray(d))return d;for(const k of ["items","data","lista","list"])if(Array.isArray(d?.[k])&&d[k].length)return d[k];for(const k of ["items","data","lista","list"])if(Array.isArray(d?.[k]))return d[k];return []}
-async function evo(url,headers){const r=await fetch(url,{headers,cache:"no-store"}),d=await parse(r);return {ok:r.ok,status:r.status,data:d,items:rows(d),url}}
-export default async function handler(req,res){
+async function evoRequest(evoFetch,url,headers){const r=await evoFetch(url,{headers,cache:"no-store"}),d=await parse(r);return {ok:r.ok,status:r.status,data:d,items:rows(d),url}}
+async function handler(req,res){
  res.setHeader("cache-control","no-store");
  if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"Método não permitido"});
  if(!valid(req))return res.status(401).json({ok:false,error:"Sessão administrativa inválida"});
  const cfg=evoConfig(req.query.unit||"bike"),unit=cfg.key,kind=String(req.query.kind||"activities"),gym=unit==="gym";
  if(gym&&!["gym_schedule","gym_session","fitcoins"].includes(kind))return res.status(400).json({ok:false,error:"Operação não habilitada para Gym Pop."});
- const dns=cfg.dns,token=cfg.token;
- if(!dns||!token)return res.status(503).json({ok:false,error:"Credenciais EVO da unidade não configuradas",unit,expected:{dns:cfg.prefix+"_DNS",token:cfg.prefix+"_TOKEN"}});
- const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
+ const evoFetch=cfg.fetch,evo=(url,headers)=>evoRequest(evoFetch,url,headers);
+ if(!cfg.configured)return res.status(503).json({ok:false,error:"Credenciais EVO da unidade não configuradas",unit,expected:{dns:cfg.prefix+"_DNS",token:cfg.prefix+"_TOKEN"}});
+ const headers=cfg.headers;
  if(kind==="gym_schedule"){
    if(!gym)return res.status(400).json({ok:false,error:"Este diagnóstico é exclusivo do Gym Pop."});
    const date=String(req.query.date||new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()));
@@ -41,7 +41,7 @@ export default async function handler(req,res){
    if(![1,2].includes(type)||!Number.isInteger(amount)||amount<1||amount>10)return res.status(400).json({ok:false,error:"Use adicionar/remover e quantidade entre 1 e 10."});
    const params=new URLSearchParams({idMember:String(id),type:String(type),fitcoin:String(amount),reason});
    const writeUrl="https://evo-integracao-api.w12app.com.br/api/v1/members/fitcoins?"+params.toString();
-   const wr=await fetch(writeUrl,{method:"PUT",headers,cache:"no-store"}),wd=await parse(wr);
+   const wr=await evoFetch(writeUrl,{method:"PUT",headers,cache:"no-store"}),wd=await parse(wr);
    if(!wr.ok)return res.status(wr.status||502).json({ok:false,error:"A EVO recusou a alteração de Fitcoins.",before:balance,diagnostic:{method:"PUT",endpoint:"/api/v1/members/fitcoins",status:wr.status,response:wd}});
    const check=await evo(profileUrl,headers),afterProfile=Array.isArray(check.data)?check.data[0]:check.data,after=Number(afterProfile?.totalFitCoins??afterProfile?.totalFitcoins);
    return res.status(200).json({ok:true,unit,kind,idMember:id,type,fitcoin:amount,before,after:Number.isFinite(after)?after:null,diagnostic:{method:"PUT",endpoint:"/api/v1/members/fitcoins",status:wr.status,verified:check.ok}});
@@ -66,6 +66,8 @@ export default async function handler(req,res){
  }
  const candidates={activities:["https://evo-integracao.w12app.com.br/api/v1/activities","https://evo-integracao-api.w12app.com.br/api/v1/activities"],members:["https://evo-integracao.w12app.com.br/api/v2/members?take=100&skip=0","https://evo-integracao-api.w12app.com.br/api/v2/members?take=100&skip=0"]};
  if(!candidates[kind])return res.status(400).json({ok:false,error:"Tipo de requisição inválido"});
- let last=null;for(const url of candidates[kind]){try{const q=await evo(url,headers);last=q;if(q.ok)return res.status(200).json({ok:true,unit,kind,count:q.items.length,items:q.items,source:url.includes("integracao-api")?"api":"integracao"})}catch(e){last={error:e.message}}}
+ let last=null;for(const url of candidates[kind]){try{const q=await evo(url,headers);last=q;if(q.ok)return res.status(200).json({ok:true,unit,kind,count:q.items.length,items:q.items,source:url.includes("integracao-api")?"api":"integracao"})}catch(e){if(e.code)throw e;last={error:e.message}}}
  return res.status(last?.status||502).json({ok:false,error:"EVO recusou a consulta "+kind,detail:last?.data?.message||last?.data?.error||last?.data?.raw||last?.error||""});
 }
+
+export default async function guardedHandler(req,res){try{return await handler(req,res)}catch(e){return res.status(e.status||502).json({ok:false,error:e.code||"Falha de comunicação com a EVO",stage:e.code?"evo-config":"network"})}}

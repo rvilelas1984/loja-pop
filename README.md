@@ -1,16 +1,19 @@
-# Loja Pop
+# Club Pop / Loja Pop
 
-Prova de integração da Loja Pop com a EVO API.
+## Integração EVO — Fase 0
 
-## Fase atual
-- consulta somente leitura;
-- frontend simples para CPF ou ID EVO;
-- credenciais EVO apenas no ambiente do servidor;
-- nenhuma operação de débito de Fitcoins nesta fase.
+O Bike Pop usa exclusivamente `evo_unit_config` no D1 `club-pop-db`, administrada em Configurações → Integração EVO — Bike Pop. DNS, token, validade e habilitação são verificados pelo `getEvoConfig` do Worker a cada operação. Não existe fallback para credenciais Bike de ambiente.
 
-## Variáveis
-Configure no ambiente de deploy:
-- EVO_DNS
-- EVO_TOKEN
+O Gym Pop mantém `GYM_EVO_DNS` e `GYM_EVO_TOKEN` nos ambientes atuais.
 
-Nunca publique o token no GitHub.
+As funções Vercel usam `lib/evo-transport.js` para as chamadas Bike. O Worker mantém as credenciais e executa apenas endpoints EVO permitidos; as mensagens entre servidores são assinadas com o `ADMIN_KEY` já existente, com escopo próprio e validade de 30 segundos. A chave e as credenciais não são enviadas ao navegador. A validação ocorre pela rota interna do `api/evo-config.js`, sem adicionar função Vercel.
+
+`club-pop-worker.mjs` é a fonte versionada do Worker. O deploy desse arquivo no Cloudflare é separado do deploy Vercel via GitHub. Preservar todos os bindings durante o upload, inclusive os secrets legados até a homologação final.
+
+## Testes
+
+```sh
+npm run test:evo-phase0
+```
+
+Veja `PHASE0-EVO.md` para inventário, restauração e validação operacional pendente. Não avançar para a Fase 1.
