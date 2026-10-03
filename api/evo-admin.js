@@ -8,10 +8,27 @@ export default async function handler(req,res){
  res.setHeader("cache-control","no-store");
  if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"Método não permitido"});
  if(!valid(req))return res.status(401).json({ok:false,error:"Sessão administrativa inválida"});
- const unit=String(req.query.unit||"bike"),kind=String(req.query.kind||"activities");
- if(unit!=="bike")return res.status(400).json({ok:false,error:"Durante os testes, as requisições EVO estão liberadas somente para Bike Pop."});
- const dns=process.env.EVO_DNS,token=process.env.EVO_TOKEN;if(!dns||!token)return res.status(503).json({ok:false,error:"Credenciais EVO Bike Pop não configuradas"});
+ const unit=String(req.query.unit||"bike").toLowerCase(),kind=String(req.query.kind||"activities");
+ if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"Unidade inválida"});
+ const gym=unit==="gym";
+ const dns=gym?process.env.GYM_EVO_DNS:process.env.EVO_DNS,token=gym?process.env.GYM_EVO_TOKEN:process.env.EVO_TOKEN;
+ if(!dns||!token)return res.status(503).json({ok:false,error:"Credenciais EVO "+(gym?"Gym Pop":"Bike Pop")+" não configuradas"});
  const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
+ if(kind==="gym_schedule"){
+   if(!gym)return res.status(400).json({ok:false,error:"Este diagnóstico é exclusivo do Gym Pop."});
+   const date=String(req.query.date||new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()));
+   const q=new URLSearchParams({date,showFullWeek:"false",take:"100"});
+   const x=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?"+q,headers);
+   const items=x.items.map(a=>({idActivitySession:a.idActivitySession??a.idAtividadeSessao??a.idActivitieSession??null,name:a.name??a.activityName??a.title??"",startTime:a.startTime??null,endTime:a.endTime??null,instructor:a.instructor??"",area:a.area??""}));
+   return res.status(x.ok?200:(x.status||502)).json({ok:x.ok,unit,kind,date,requestCount:1,count:items.length,items,status:x.status});
+ }
+ if(kind==="gym_session"){
+   if(!gym)return res.status(400).json({ok:false,error:"Este diagnóstico é exclusivo do Gym Pop."});
+   const id=String(req.query.idActivitySession||"").trim();if(!id)return res.status(400).json({ok:false,error:"Informe idActivitySession"});
+   const x=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(id),headers);
+   const d=Array.isArray(x.data)?x.data[0]:x.data,enrollments=rows(d?.enrollments||[]).map(e=>({idMember:e.idMember??null,name:e.name??"",slotNumber:Number(e.slotNumber||0),removed:Boolean(e.removed),status:e.status??null}));
+   return res.status(x.ok?200:(x.status||502)).json({ok:x.ok,unit,kind,requestCount:1,status:x.status,session:{idActivitySession:id,name:d?.name??"",startTime:d?.startTime??null,endTime:d?.endTime??null,instructor:d?.instructor??"",enrollments}});
+ }
  if(kind==="contract_lab"){const test=String(req.query.test||"membership"),urls={membership:"https://evo-integracao-api.w12app.com.br/api/v3/membership?take=200&skip=0",categories:"https://evo-integracao-api.w12app.com.br/api/v1/membership/category",membermembership:"https://evo-integracao-api.w12app.com.br/api/v3/membermembership?take=25&skip=0&showAggregators=true&showVips=true"};if(!urls[test])return res.status(400).json({ok:false,error:"Teste inválido"});const q=await evo(urls[test],headers),sample=q.items.slice(0,10);return res.status(q.ok?200:(q.status||502)).json({ok:q.ok,test,status:q.status,count:q.items.length,endpoint:urls[test],topLevelKeys:q.data&&typeof q.data==="object"?Object.keys(q.data):[],itemKeys:sample[0]?Object.keys(sample[0]):[],sample});}
  if(kind==="fitcoins"){
    const id=Number(req.method==="POST"?(req.body?.idMember||0):(req.query.idMember||0));if(!id)return res.status(400).json({ok:false,error:"Informe o ID EVO do aluno."});
