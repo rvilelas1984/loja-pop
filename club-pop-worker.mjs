@@ -36,7 +36,7 @@ export default {
         });
 
       // Authenticated server-to-server transport: credentials remain inside this Worker.
-      if (url.pathname === "/internal/evo-bike" && request.method === "POST") {
+      if ((url.pathname === "/internal/evo-bike" || url.pathname === "/internal/evo-unit") && request.method === "POST") {
         const body = await request.text();
         if (body.length > 8192) return json({ok:false,error:"REQUISICAO_INVALIDA"},400);
         const timestamp = request.headers.get("x-evo-timestamp") || "";
@@ -45,7 +45,8 @@ export default {
         let operation; try { operation=JSON.parse(body); } catch { return json({ok:false,error:"REQUISICAO_INVALIDA"},400); }
         const target=allowedEvoTarget(operation.url,operation.method);
         if (!target) return json({ok:false,error:"OPERACAO_EVO_NAO_PERMITIDA"},400);
-        const cfg=await getEvoConfig(env,"bike");
+        const requestedUnit=url.pathname==="/internal/evo-bike"?"bike":String(operation.unit||"bike").toLowerCase();
+        const cfg=await getEvoConfig(env,requestedUnit);
         const upstream=await fetch(target.href,{method:operation.method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});
         return new Response(await upstream.text(),{status:upstream.status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});
       }
