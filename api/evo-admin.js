@@ -2,18 +2,18 @@ import crypto from "crypto";
 const COOKIE="clubpop_admin";
 const parse=async r=>{const t=await r.text();try{return JSON.parse(t)}catch{return {raw:t.slice(0,500)}}};
 function valid(req){const key=process.env.ADMIN_KEY;if(!key)return false;const c=Object.fromEntries(String(req.headers.cookie||"").split(";").map(x=>x.trim().split("=")).filter(x=>x.length===2))[COOKIE];if(!c)return false;const p=c.split(".");let payload,s;if(p.length===2){payload=p[0];s=p[1]}else if(p.length===3){payload=p[0]+"."+p[1];s=p[2]}else return false;const exp=Number(p.length===2?p[0]:p[1]);if(!exp||exp<Date.now())return false;try{return crypto.timingSafeEqual(Buffer.from(s),Buffer.from(crypto.createHmac("sha256",key).update(payload).digest("hex")))}catch{return false}}
+const unitKey=v=>String(v||"bike").trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
+function evoConfig(unit){const key=unitKey(unit),prefix=key==="bike"?"EVO":key==="gym"?"GYM_EVO":key.toUpperCase()+"_EVO";return {key,prefix,dns:process.env[prefix+"_DNS"],token:process.env[prefix+"_TOKEN"]}}
 function rows(d){if(Array.isArray(d))return d;for(const k of ["items","data","lista","list"])if(Array.isArray(d?.[k])&&d[k].length)return d[k];for(const k of ["items","data","lista","list"])if(Array.isArray(d?.[k]))return d[k];return []}
 async function evo(url,headers){const r=await fetch(url,{headers,cache:"no-store"}),d=await parse(r);return {ok:r.ok,status:r.status,data:d,items:rows(d),url}}
 export default async function handler(req,res){
  res.setHeader("cache-control","no-store");
  if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"Método não permitido"});
  if(!valid(req))return res.status(401).json({ok:false,error:"Sessão administrativa inválida"});
- const unit=String(req.query.unit||"bike").toLowerCase(),kind=String(req.query.kind||"activities");
- if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"Unidade inválida"});
- const gym=unit==="gym";
+ const cfg=evoConfig(req.query.unit||"bike"),unit=cfg.key,kind=String(req.query.kind||"activities"),gym=unit==="gym";
  if(gym&&!["gym_schedule","gym_session","fitcoins"].includes(kind))return res.status(400).json({ok:false,error:"Operação não habilitada para Gym Pop."});
- const dns=gym?process.env.GYM_EVO_DNS:process.env.EVO_DNS,token=gym?process.env.GYM_EVO_TOKEN:process.env.EVO_TOKEN;
- if(!dns||!token)return res.status(503).json({ok:false,error:"Credenciais EVO "+(gym?"Gym Pop":"Bike Pop")+" não configuradas"});
+ const dns=cfg.dns,token=cfg.token;
+ if(!dns||!token)return res.status(503).json({ok:false,error:"Credenciais EVO da unidade não configuradas",unit,expected:{dns:cfg.prefix+"_DNS",token:cfg.prefix+"_TOKEN"}});
  const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
  if(kind==="gym_schedule"){
    if(!gym)return res.status(400).json({ok:false,error:"Este diagnóstico é exclusivo do Gym Pop."});
