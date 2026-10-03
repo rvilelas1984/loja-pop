@@ -8,11 +8,11 @@
 </main></div><script>
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const unit=u=>u==="gym"?"GYM POP":u==="club"?"CLUB POP":"BIKE POP";
-let dashboardData=null,currentScope="club";
+let dashboardData=null,currentScope=(window.cpAdminScope?.get?.()||new URLSearchParams(location.search).get("scope")||"club");
 const scopeMatch=(x,scope)=>scope==="club"||String(x?.unit||"bike").toLowerCase()===scope||String(x?.unit||"").toLowerCase()==="club";
 function render(scope="club"){
  if(!dashboardData)return;
- currentScope=scope;document.querySelectorAll(".chip[data-scope]").forEach(b=>b.classList.toggle("active",b.dataset.scope===scope));
+ currentScope=scope;window.cpAdminScope?.set?.(scope);document.querySelectorAll(".chip[data-scope]").forEach(b=>b.classList.toggle("active",b.dataset.scope===scope));
  const d=dashboardData,m=(d.missionList||[]).filter(x=>scopeMatch(x,scope)),ps=(d.promotions||[]).filter(x=>scopeMatch(x,scope)),products=(d.products||[]).filter(x=>scopeMatch(x,scope)),benefits=(d.benefits||[]).filter(x=>scopeMatch(x,scope));
  const activeM=m.filter(x=>x?.status==="Ativo"),activeP=ps.filter(x=>x.status==="Ativo"),activeProducts=products.filter(x=>x.status==="Ativo"),activeBenefits=benefits.filter(x=>x.status==="Ativo");
  missionsN.textContent=activeM.length;promosN.textContent=activeP.length;productsN.textContent=activeProducts.length;benefitsN.textContent=activeBenefits.length;
@@ -20,6 +20,6 @@ function render(scope="club"){
  const warnings=[];ps.filter(x=>x.status==="Ativo"&&!String(x.rules||"").trim()).forEach(x=>warnings.push(`<div class="attention"><b>${esc(x.name)}</b><br>Promoção ativa sem regras completas cadastradas.</div>`));if(!activeM.length)warnings.push(`<div class="attention">Nenhuma missão ativa em ${unit(scope)}.</div>`);if(!activeP.length)warnings.push(`<div class="attention">Nenhuma promoção ativa em ${unit(scope)}.</div>`);alerts.innerHTML=warnings.join("")||'<div class="item"><div><b>Configurações principais em ordem</b><small>Nenhum alerta de conteúdo identificado.</small></div><span class="status">OK</span></div>';
 }
 async function load(){try{const r=await fetch("/api/content",{cache:"no-store"});if(!r.ok)throw Error("Falha ao carregar");dashboardData=await r.json();render(currentScope)}catch(e){["missionsN","promosN","productsN","benefitsN"].forEach(id=>document.getElementById(id).textContent="—");running.innerHTML='<div class="empty">Não foi possível carregar os dados agora.</div>';alerts.innerHTML='<div class="attention">Não foi possível verificar as configurações.</div>'}}
-document.querySelectorAll(".chip[data-scope]").forEach(b=>b.addEventListener("click",()=>render(b.dataset.scope)));
+document.querySelectorAll(".chip[data-scope]").forEach(b=>b.addEventListener("click",()=>{render(b.dataset.scope);history.replaceState(null,"","?scope="+b.dataset.scope)}));
 load();const h=document.getElementById("hamb"),menu=document.getElementById("mobileMenu");h?.addEventListener("click",()=>menu.classList.toggle("open"));document.addEventListener("click",e=>{if(menu&&h&&!menu.contains(e.target)&&!h.contains(e.target))menu.classList.remove("open")});if("serviceWorker"in navigator)navigator.serviceWorker.register("/admin-sw.js").catch(()=>{});
 </script><script src="/admin-common.js"></script></body></html>
