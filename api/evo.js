@@ -1,6 +1,11 @@
 const digits=v=>String(v||"").replace(/\D/g,"");
 const parseJson=raw=>{try{return JSON.parse(raw)}catch{return {raw:raw.slice(0,500)}}};
 const extractFitcoins=data=>{const c=Array.isArray(data)?data[0]:data;const v=c?.totalFitcoins??c?.totalFitCoins;if(v==null||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null};
+const unitKey=v=>String(v||"bike").trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
+function evoConfig(unit){
+ const key=unitKey(unit),prefix=key==="bike"?"EVO":key==="gym"?"GYM_EVO":key.toUpperCase()+"_EVO";
+ return {key,prefix,dns:process.env[prefix+"_DNS"],token:process.env[prefix+"_TOKEN"]};
+}
 
 async function getMonthlyAttendance(idMember,headers){
   const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit"}).formatToParts(new Date());
@@ -81,15 +86,13 @@ export default async function handler(req,res){
  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
  const value=digits(String(req.query.member||"").trim());
  if(!value)return res.status(400).json({ok:false,error:"Informe o ID EVO"});
- const unit=String(req.query.unit||"bike").toLowerCase();
- const gym=unit==="gym";
- const dns=gym?process.env.GYM_EVO_DNS:process.env.EVO_DNS,token=gym?process.env.GYM_EVO_TOKEN:process.env.EVO_TOKEN;
- if(!dns||!token)return res.status(503).json({ok:false,stage:"evo-config",unit,error:"Credenciais EVO "+(gym?"Gym Pop":"Bike Pop")+" não configuradas neste ambiente",missing:{dns:!dns,token:!token}});
+ const cfg=evoConfig(req.query.unit||"bike"),unit=cfg.key,gym=unit==="gym",dns=cfg.dns,token=cfg.token;
+ if(!dns||!token)return res.status(503).json({ok:false,stage:"evo-config",unit,error:"Credenciais EVO da unidade não configuradas neste ambiente",missing:{dns:!dns,token:!token},expected:{dns:cfg.prefix+"_DNS",token:cfg.prefix+"_TOKEN"}});
  const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
  try{
    const lookupUrl="https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(value);
    const rr=await fetch(lookupUrl,{headers,cache:"no-store"}),raw=await rr.text(),data=parseJson(raw);
-   if(!rr.ok)return res.status(rr.status).json({ok:false,stage:"evo-member",unit,error:"A EVO "+(gym?"Gym Pop":"Bike Pop")+" recusou a consulta do cadastro",evoStatus:rr.status,detail:data?.message||data?.error||data?.raw||""});
+   if(!rr.ok)return res.status(rr.status).json({ok:false,stage:"evo-member",unit,error:"A EVO da unidade "+unit+" recusou a consulta do cadastro",evoStatus:rr.status,detail:data?.message||data?.error||data?.raw||""});
    const lookupMember=Array.isArray(data)?data[0]:data;
    if(!lookupMember?.idMember)return res.status(404).json({ok:false,error:"Cadastro sem idMember"});
    // Loja e Gym podem solicitar somente o saldo, evitando consultas extras.
