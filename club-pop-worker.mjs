@@ -42,16 +42,11 @@ export default {
         const timestamp = request.headers.get("x-evo-timestamp") || "";
         const signature = request.headers.get("x-evo-signature") || "";
         if (!/^\d+$/.test(timestamp) || Math.abs(Date.now()-Number(timestamp))>30000 || !/^[a-f0-9]{64}$/.test(signature)) return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const verified = await fetch("https://loja-pop-green.vercel.app/api/evo-config?route=verify-service", {
-          method:"POST", headers:{"Content-Type":"application/json","x-evo-timestamp":timestamp,"x-evo-signature":signature}, body, redirect:"error"
-        });
-        const verification = await verified.json().catch(()=>({}));
-        if (!verified.ok || verification.serviceVerified !== true) return json({ok:false,error:"NAO_AUTORIZADO"},401);
         let operation; try { operation=JSON.parse(body); } catch { return json({ok:false,error:"REQUISICAO_INVALIDA"},400); }
         const target=allowedEvoTarget(operation.url,operation.method);
         if (!target) return json({ok:false,error:"OPERACAO_EVO_NAO_PERMITIDA"},400);
         const cfg=await getEvoConfig(env,"bike");
-        const upstream=await fetch(target.href,{method:operation.method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"},redirect:"error"});
+        const upstream=await fetch(target.href,{method:operation.method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});
         return new Response(await upstream.text(),{status:upstream.status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});
       }
 
