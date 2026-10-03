@@ -4,5 +4,6 @@
   "private": true,
   "scripts": {
     "test:evo-phase0": "node phase0-evo.test.mjs"
-  }
+  },
+  "type": "module"
 }
