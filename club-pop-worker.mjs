@@ -615,7 +615,7 @@ export default {
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const unit="bike";
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,40); if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_EVO_NAO_SUPORTADA"},400);
         if(request.method==="GET"){
           const row=await env.DB.prepare("SELECT unit,dns,token,expires_at,enabled,updated_at FROM evo_unit_config WHERE unit=? LIMIT 1").bind(unit).first();
           return json({ok:true,unit,configured:!!(row?.dns&&row?.token),dns:row?.dns||"",expiresAt:row?.expires_at||"",hasToken:!!row?.token,enabled:row?!!row.enabled:false,updatedAt:row?.updated_at||null});
@@ -1114,7 +1114,8 @@ function validEvoExpiry(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value || "") && Number.isFinite(Date.parse(value+"T00:00:00Z")) && new Date(value+"T00:00:00Z").toISOString().slice(0,10)===value;
 }
 async function getEvoConfig(env, unit="bike") {
-  if (unit !== "bike") throw new EvoConfigError("UNIDADE_EVO_NAO_SUPORTADA");
+  unit=String(unit||"bike").toLowerCase();
+  if (!["bike","gym"].includes(unit)) throw new EvoConfigError("UNIDADE_EVO_NAO_SUPORTADA");
   let row;
   try { row=await env.DB.prepare("SELECT dns,token,expires_at,enabled FROM evo_unit_config WHERE unit=? LIMIT 1").bind(unit).first(); }
   catch { throw new EvoConfigError("EVO_CONFIG_INDISPONIVEL"); }
