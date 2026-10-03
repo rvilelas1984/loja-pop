@@ -14,7 +14,7 @@ export default {
         "Access-Control-Allow-Origin": ALLOWED_ORIGINS.has(origin)
           ? origin
           : "https://loja-pop-green.vercel.app",
-        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
         "Access-Control-Max-Age": "86400",
         "Vary": "Origin",
@@ -48,6 +48,25 @@ export default {
         const cfg=await getEvoConfig(env,"bike");
         const upstream=await fetch(target.href,{method:operation.method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});
         return new Response(await upstream.text(),{status:upstream.status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});
+      }
+
+      // Configuração genérica da Tela de Check-in por unidade + atividade.
+      if (url.pathname === "/admin/checkin-layouts" && ["GET","PUT"].includes(request.method)) {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,40);
+        if(request.method==="GET"){const r=await env.DB.prepare("SELECT unit,activity_id AS activityId,activity_name AS activityName,capacity,rows_json AS rowsJson,updated_at AS updatedAt FROM checkin_layouts WHERE unit=? ORDER BY activity_name").bind(unit).all();return json({ok:true,unit,items:(r.results||[]).map(x=>({...x,rows:JSON.parse(x.rowsJson||"[]")}))});}
+        const b=await readJson(request),activityId=String(b.activityId||"").trim().slice(0,120),activityName=String(b.activityName||"").trim().slice(0,160),capacity=Number(b.capacity),rows=Array.isArray(b.rows)?b.rows.map(Number):[];
+        if(!activityId||!activityName||!Number.isInteger(capacity)||capacity<1||capacity>200||!rows.length||rows.some(x=>!Number.isInteger(x)||x<1||x>50)||rows.reduce((a,b)=>a+b,0)!==capacity)return json({ok:false,error:"LAYOUT_INVALIDO"},400);
+        await env.DB.prepare("INSERT INTO checkin_layouts(unit,activity_id,activity_name,capacity,rows_json,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,activity_id) DO UPDATE SET activity_name=excluded.activity_name,capacity=excluded.capacity,rows_json=excluded.rows_json,updated_at=CURRENT_TIMESTAMP").bind(unit,activityId,activityName,capacity,JSON.stringify(rows)).run();
+        return json({ok:true,unit,activityId,activityName,capacity,rows});
+      }
+      if (url.pathname === "/checkin-layout" && request.method === "GET") {
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,40),activityId=String(url.searchParams.get("activityId")||""),activityName=String(url.searchParams.get("activityName")||"");
+        let x=null;if(activityId)x=await env.DB.prepare("SELECT activity_id AS activityId,activity_name AS activityName,capacity,rows_json AS rowsJson FROM checkin_layouts WHERE unit=? AND activity_id=? LIMIT 1").bind(unit,activityId).first();
+        if(!x&&activityName)x=await env.DB.prepare("SELECT activity_id AS activityId,activity_name AS activityName,capacity,rows_json AS rowsJson FROM checkin_layouts WHERE unit=? AND lower(activity_name)=lower(?) LIMIT 1").bind(unit,activityName).first();
+        return json({ok:true,unit,layout:x?{activityId:x.activityId,activityName:x.activityName,capacity:Number(x.capacity),rows:JSON.parse(x.rowsJson||"[]")}:null});
       }
 
       // =====================================================
