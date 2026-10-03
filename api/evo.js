@@ -84,12 +84,12 @@ export default async function handler(req,res){
  const unit=String(req.query.unit||"bike").toLowerCase();
  const gym=unit==="gym";
  const dns=gym?process.env.GYM_EVO_DNS:process.env.EVO_DNS,token=gym?process.env.GYM_EVO_TOKEN:process.env.EVO_TOKEN;
- if(!dns||!token)return res.status(503).json({ok:false,error:"Credenciais EVO não configuradas"});
+ if(!dns||!token)return res.status(503).json({ok:false,stage:"evo-config",unit,error:"Credenciais EVO "+(gym?"Gym Pop":"Bike Pop")+" não configuradas neste ambiente",missing:{dns:!dns,token:!token}});
  const headers={Authorization:"Basic "+Buffer.from(dns+":"+token).toString("base64"),Accept:"application/json"};
  try{
    const lookupUrl="https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(value);
    const rr=await fetch(lookupUrl,{headers,cache:"no-store"}),raw=await rr.text(),data=parseJson(raw);
-   if(!rr.ok)return res.status(rr.status).json({ok:false,stage:"evo-member"});
+   if(!rr.ok)return res.status(rr.status).json({ok:false,stage:"evo-member",unit,error:"A EVO "+(gym?"Gym Pop":"Bike Pop")+" recusou a consulta do cadastro",evoStatus:rr.status,detail:data?.message||data?.error||data?.raw||""});
    const lookupMember=Array.isArray(data)?data[0]:data;
    if(!lookupMember?.idMember)return res.status(404).json({ok:false,error:"Cadastro sem idMember"});
    // Loja e Gym podem solicitar somente o saldo, evitando consultas extras.
