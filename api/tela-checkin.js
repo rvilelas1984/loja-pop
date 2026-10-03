@@ -14,17 +14,7 @@ export default async function handler(req,res){
  const dr=await fetch("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(id),{headers,cache:"no-store"}),dd=await parse(dr);if(!dr.ok)return res.status(dr.status).json({ok:false,error:"Não foi possível obter os lugares da aula",detail:dd?.message||dd?.raw||""});
  const detail=Array.isArray(dd)?dd[0]:dd,participantRows=rows(detail?.participantes||detail?.participants||detail?.enrollments||detail?.reservas||[]),enrollments=participantRows.map(e=>{const idMember=e.idMember??e.idCliente??null,status=e.status??null,checkedIn=e.flCheckin===true;return {idMember,slotNumber:Number(e.slotNumber||e.numeroVaga||0),name:e.name||e.nome||"",displayName:displayName(e.name||e.nome),removed:Boolean(e.removed||e.flRemovido),status,checkedIn,checkinAt:e.dataCheckin||null,checkinSource:e.descricaoCheckinAgregadorRealizado||null}}).filter(e=>e.idMember!=null||e.name);
  const diag=String(req.query.diag||"")==="1";let presenceDiagnostic=null;
- if(diag){
-  const from=date+"T00:00:00",to=date+"T23:59:59";
-  const candidates=[
-   "https://evo-integracao-api.w12app.com.br/api/v1/aggregators/checkins?dateStart="+encodeURIComponent(from)+"&dateEnd="+encodeURIComponent(to),
-   "https://evo-integracao-api.w12app.com.br/api/v1/aggregator/checkins?dateStart="+encodeURIComponent(from)+"&dateEnd="+encodeURIComponent(to),
-   "https://evo-integracao-api.w12app.com.br/api/v1/reports/aggregator-checkins?dateStart="+encodeURIComponent(from)+"&dateEnd="+encodeURIComponent(to)
-  ];
-  const attempts=[];
-  for(const url of candidates){try{const r=await fetch(url,{headers,cache:"no-store"}),d=await parse(r);attempts.push({path:new URL(url).pathname,status:r.status,ok:r.ok,keys:d&&typeof d==="object"?Object.keys(d):[],count:rows(d).length,sampleKeys:rows(d)[0]?Object.keys(rows(d)[0]):[]});if(r.ok){presenceDiagnostic={source:new URL(url).pathname,items:rows(d).map(x=>({idMember:x.idMember??x.idCliente??null,idActivitySession:x.idActivitySession??x.idActivitieSession??x.idAtividadeSessao??null,date:x.date??x.data??null,aggregator:x.aggregator??x.nomeAgregador??x.description??null})).filter(x=>String(x.idActivitySession??"")===String(id)||enrollments.some(e=>String(e.idMember)===String(x.idMember))),attempts};break}}catch(e){attempts.push({path:new URL(url).pathname,error:String(e.message||e)})}}
-  if(!presenceDiagnostic)presenceDiagnostic={attempts};
- }
+ if(diag){\n  const q2=new URLSearchParams({DtStart:date+"T00:00:00",DtEnd:date+"T23:59:59",Take:"50",Skip:"0"});\n  const r=await fetch("https://evo-integracao-api.w12app.com.br/api/v1/management/aggregators/checkins/search?"+q2,{headers,cache:"no-store"}),d=await parse(r);\n  presenceDiagnostic={status:r.status,ok:r.ok,total:d?.total??null,list:Array.isArray(d?.list)?d.list:[]};\n }
  const idx=schedule.findIndex(x=>String(x.idActivitySession??x.idAtividadeSessao??x.idActivitieSession)===String(id)),next=idx>=0?schedule[idx+1]:null;
  return res.status(200).json({ok:true,source:"EVO",rule:"current-until-start-plus-30m",presenceDiagnostic,current:{idActivitySession:id,name:detail?.name||current.name||"Bike Pop",startTime:detail?.startTime||current.startTime,endTime:detail?.endTime||current.endTime,instructor:detail?.instructor||current.instructor||"",date,dateLabel:new Date(date+"T12:00:00").toLocaleDateString("pt-BR"),enrollments},next:next?{idActivitySession:next.idActivitySession??next.idAtividadeSessao??next.idActivitieSession,name:next.name||"Bike Pop",startTime:next.startTime}:null});
  }catch(e){return res.status(502).json({ok:false,error:"Falha de comunicação com a EVO",detail:String(e.message||e).slice(0,160)})}}
