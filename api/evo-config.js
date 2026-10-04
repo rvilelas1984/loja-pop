@@ -9,6 +9,20 @@ export default async function handler(req,res){
   return res.status(valid?200:401).json({ok:valid,serviceVerified:valid});
  }
  if(req.query.route==="students"){if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike";try{const r=await fetch(WORKER+"/admin/evo-students?unit="+unit,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao consultar alunos EVO"})}}
+ if(req.query.route==="active-count"){
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
+  const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike";
+  try{
+   const evo=getEvoTransport(unit);if(!evo.configured)return res.status(409).json({ok:false,error:"EVO_NAO_CONFIGURADA"});
+   const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/members/active-members");
+   const raw=await rr.text();
+   if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
+   const ids=[...raw.matchAll(/<idMember[^>]*>\s*(\d+)\s*<\/idMember>/gi)].map(m=>Number(m[1])).filter(Boolean);
+   const branches=[...raw.matchAll(/<idBranch[^>]*>\s*(\d+)\s*<\/idBranch>/gi)].map(m=>Number(m[1])).filter(Boolean);
+   const unique=[...new Set(ids)];
+   return res.json({ok:true,unit,activeMembers:unique.length,records:ids.length,requests:1,branchIds:[...new Set(branches)],source:"active-members",checkedAt:new Date().toISOString()});
+  }catch(e){return res.status(502).json({ok:false,error:String(e?.message||"FALHA_ACTIVE_COUNT"),requests:1})}
+ }
  if(req.query.route==="sync-students"){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
   const unit=String(req.query.unit||req.body?.unit||"bike").toLowerCase()==="gym"?"gym":"bike";
