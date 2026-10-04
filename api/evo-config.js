@@ -61,7 +61,8 @@ export default async function handler(req,res){
    const vipRows=rows.filter(x=>Number(x.idCategoryMembership??x.idMembershipCategory)===1);
    const vipMembers=[...new Set(vipRows.map(x=>Number(x.idMember)).filter(Number.isInteger))];
    const status={};for(const x of vipRows){const k=String(x.statusMemberMembership??"null");status[k]=(status[k]||0)+1}
-   return res.json({ok:true,paused:false,done:rows.length<25,nextSkip:skip+rows.length,requests:1,batchContracts:rows.length,vipContracts:vipRows.length,vipMemberIds:vipMembers,status});
+   const vipDetails=vipRows.map(x=>({idMember:x.idMember,status:x.statusMemberMembership??null,start:x.startDate??x.startDateMembership??x.dateStart??null,end:x.endDate??x.endDateMembership??x.dateEnd??null,cancel:x.cancelDate??x.cancellationDate??null,fields:Object.keys(x).sort()}));
+   return res.json({ok:true,paused:false,done:rows.length<25,nextSkip:skip+rows.length,requests:1,batchContracts:rows.length,vipContracts:vipRows.length,vipMemberIds:vipMembers,status,vipDetails});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_CONTAGEM_VIP"});}
  }
  if(req.query.route==="vip-diagnostic"){
