@@ -60,6 +60,18 @@ export default {
           });
         }
         const upstreamBody = await upstream.text();
+        // Diagnóstico temporário e isolado: preserva o payload bruto já recebido na sincronização
+        // para o cliente-controle 983786, sem nova chamada à EVO e sem alterar a resposta.
+        if (requestedUnit === "bike" && target.pathname.toLowerCase() === "/api/v2/members" && target.searchParams.get("status") === "1" && upstream.ok) {
+          try {
+            const members = JSON.parse(upstreamBody);
+            const sample = Array.isArray(members) ? members.find(m => String(m?.idMember) === "983786") : null;
+            if (sample) {
+              await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_payload_diagnostic (unit TEXT NOT NULL, evo_member_id TEXT NOT NULL, payload_json TEXT NOT NULL, captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(unit,evo_member_id))").run();
+              await env.DB.prepare("INSERT INTO evo_sync_payload_diagnostic(unit,evo_member_id,payload_json,captured_at) VALUES('bike','983786',?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_member_id) DO UPDATE SET payload_json=excluded.payload_json,captured_at=CURRENT_TIMESTAMP").bind(JSON.stringify(sample)).run();
+            }
+          } catch {}
+        }
         return new Response(upstreamBody, {status: upstream.status, headers: {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}});
       }
 
