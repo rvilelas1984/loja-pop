@@ -122,6 +122,11 @@ export default async function handler(req,res){
    return res.json({...d,requests,batchMembers:students.length,batchLinks:students.length,source:'members-current-filtered'});
   }catch(e){if(runId){try{await job({action:'fail',runId,requests,error:e.message})}catch{}}return res.status(e.httpStatus||502).json({ok:false,error:e.message||'FALHA_SYNC_ALUNOS',requests});}
  }
+ if(req.query.route==="test-client"){
+  res.setHeader("Cache-Control","no-store");if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
+  const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike",id=String(req.query.id||"").trim();
+  try{const r=await fetch(WORKER+"/admin/evo-test-client?unit="+encodeURIComponent(unit)+"&id="+encodeURIComponent(id),{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});const t=await r.text();res.status(r.status);res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao consultar cliente de teste"})}
+ }
  if(req.query.route==="dashboard-diagnostic"){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});

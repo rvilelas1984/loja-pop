@@ -121,6 +121,21 @@ export default {
         return json({ok:true,unit,period:{start,end:today},population:{current:total,linked:linkedMembers},attendance:{coveredMembers,missingMembers:missing,rows:Number(attendanceRows?.n||0),estimatedRequests:missing,endpoint:"/api/v2/activities/member/sessions"},alreadyAvailable:{profile:true,contracts:true,contractDates:true,categories:true,fitcoins:true,lastAccess:true,aggregators:true},calculatedLocally:{attendanceCount:true,distinctDays:true,favoriteTime:true,favoriteActivity:true},evoRequestsMade:0,note:"Diagnóstico somente D1. Nenhuma requisição EVO foi executada."});
       }
 
+      // Visualização administrativa de um cliente já salvo no D1. Zero chamadas EVO.
+      if (url.pathname === "/admin/evo-test-client" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike",id=String(url.searchParams.get("id")||"").trim();
+        if(unit!=="bike")return json({ok:false,error:"TESTE_GYM_BLOQUEADO"},423);
+        if(!/^\\d+$/.test(id))return json({ok:false,error:"ID_CLIENTE_INVALIDO"},400);
+        const m=await env.DB.prepare("SELECT evo_member_id,is_current,personal_json,contacts_json,address_json,access_json,financial_json,integrations_json,memberships_json,metadata_json,raw_json,source_run_id,evo_updated_at,synced_at FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,id).first();
+        if(!m)return json({ok:false,error:"CLIENTE_AINDA_NAO_SALVO_NA_NOVA_BASE",hint:"Execute SINCRONIZAR DADOS EVO uma vez para preencher a tabela completa."},404);
+        const contracts=await env.DB.prepare("SELECT contract_key,id_membership,id_member_membership,category_id,membership_name,membership_status,start_date,end_date,cancel_date,sale_date,is_additional,raw_json,synced_at FROM evo_member_contracts WHERE unit=? AND evo_member_id=? ORDER BY COALESCE(start_date,'') DESC,contract_key DESC").bind(unit,id).all();
+        const parse=v=>{try{return JSON.parse(v)}catch{return v}};
+        return json({ok:true,unit,evoRequestsMade:0,memberId:id,isCurrent:Boolean(m.is_current),syncedAt:m.synced_at,evoUpdatedAt:m.evo_updated_at,sourceRunId:m.source_run_id,categories:{personal:parse(m.personal_json),contacts:parse(m.contacts_json),address:parse(m.address_json),access:parse(m.access_json),financial:parse(m.financial_json),integrations:parse(m.integrations_json),memberships:parse(m.memberships_json),metadata:parse(m.metadata_json)},contracts:(contracts.results||[]).map(x=>({...x,raw:parse(x.raw_json),raw_json:undefined})),raw:parse(m.raw_json)});
+      }
+
       // Configuração da sincronização econômica por unidade. Não executa EVO ao consultar/salvar.
       if (url.pathname === "/admin/evo-sync-config" && ["GET","PUT"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
