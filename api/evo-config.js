@@ -15,35 +15,17 @@ export default async function handler(req,res){
   if(unit!=="bike") return res.status(423).json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"});
   try{
    const evo=getEvoTransport(unit);
-   const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/management/activeclients");
+   const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/members/active-members");
    const raw=await rr.text();
    if(!rr.ok) throw new Error("EVO_HTTP_"+rr.status);
-   const decode=x=>String(x||"").replace("&amp;","&").replace("&lt;","<").replace("&gt;",">").trim();
-   const tag=(xml,name)=>{
-    const open="<"+name+">",close="</"+name+">";
-    const i=xml.indexOf(open); if(i<0)return "";
-    const j=xml.indexOf(close,i+open.length); if(j<0)return "";
-    let v=xml.slice(i+open.length,j);
-    if(v.startsWith("<![CDATA[")&&v.endsWith("]]>"))v=v.slice(9,-3);
-    return decode(v);
-   };
-   const rows=[];
-   let pos=0;
-   while(true){
-    const i=raw.indexOf("<ClientesAtivosViewModel",pos);
-    if(i<0)break;
-    const start=raw.indexOf(">",i); if(start<0)break;
-    const close="</ClientesAtivosViewModel>",j=raw.indexOf(close,start);
-    if(j<0)break;
-    const xml=raw.slice(start+1,j),id=Number(tag(xml,"idCliente"));
-    if(id)rows.push({idMember:id,firstName:tag(xml,"nomeCompleto"),lastName:"",status:"Active",membershipStatus:tag(xml,"contratoAtivo"),contractName:tag(xml,"contratoAtivo"),contractStart:tag(xml,"dtInicioContratoAtivo"),contractEnd:tag(xml,"dtFimContratoAtivo")});
-    pos=j+close.length;
-   }
-   if(!rows.length) return res.status(502).json({ok:false,error:"EVO_ACTIVECLIENTS_SEM_REGISTROS",requests:1});
-   const ing=await fetch(WORKER+"/admin/evo-students-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({unit,members:rows,requests:1,source:"activeclients"})});
+   let parsed; try{parsed=JSON.parse(raw)}catch{return res.status(502).json({ok:false,error:"EVO_ACTIVE_MEMBERS_FORMATO_INVALIDO",requests:1})}
+   const source=Array.isArray(parsed)?parsed:Array.isArray(parsed?.data)?parsed.data:Array.isArray(parsed?.items)?parsed.items:Array.isArray(parsed?.members)?parsed.members:[];
+   const rows=source.map(x=>{const contract=x.contract||x.membership||{};const id=Number(x.idMember??x.id??x.memberId??x.idClient);const first=String(x.firstName??x.name??x.memberName??"");const last=String(x.lastName??"");const contractName=String(x.contractDescription??x.membershipDescription??contract.description??contract.name??"");return id?{...x,idMember:id,firstName:first,lastName:last,status:x.status??"Active",membershipStatus:x.membershipStatus??x.contractStatus??contract.status??"",contractName,contractType:x.contractType??contract.type??"",idContractType:x.idContractType??contract.idContractType??contract.typeId??null,contractStart:x.contractStart??x.startDate??contract.startDate??"",contractEnd:x.contractEnd??x.endDate??contract.endDate??""}:null}).filter(Boolean);
+   if(!rows.length) return res.status(502).json({ok:false,error:"EVO_ACTIVE_MEMBERS_SEM_REGISTROS",requests:1});
+   const ing=await fetch(WORKER+"/admin/evo-students-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({unit,members:rows,requests:1,source:"active-members"})});
    const d=await ing.json().catch(()=>({}));
    if(!ing.ok||!d.ok)return res.status(ing.status||502).json({ok:false,error:d.error||"FALHA_SYNC_ALUNOS",requests:1});
-   return res.json({...d,requests:1,members:rows.length,source:"activeclients"});
+   return res.json({...d,requests:1,members:rows.length,source:"active-members"});
   }catch(e){return res.status(502).json({ok:false,error:String(e?.message||"FALHA_SYNC_ALUNOS")})}
  }
  if(req.query.route==="sync-now"){
