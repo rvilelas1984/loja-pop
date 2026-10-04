@@ -15,13 +15,27 @@ export default async function handler(req,res){
   if(unit!=="bike")return res.status(423).json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"});
   try{
    const evo=getEvoTransport(unit);if(!evo.configured)return res.status(409).json({ok:false,error:"EVO_NAO_CONFIGURADA"});
-   let all=[],requests=0;
+   let all=[],requests=0,lastFingerprint="",rateRetries=0;
+   const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
    for(let skip=0;skip<2000;skip+=25){
     const url="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?take=25&skip="+skip+"&statusMemberMembership=1&showAggregators=true&showVips=true";
-    const rr=await evo.fetch(url);requests++;const j=await rr.json().catch(()=>null);
+    let rr,j;
+    for(;;){
+     rr=await evo.fetch(url);requests++;j=await rr.json().catch(()=>null);
+     if(rr.status!==429)break;
+     if(rateRetries>=4)throw new Error("EVO_HTTP_429_APOS_RETRY");
+     rateRetries++;
+     const retryAfter=Math.max(2500,Math.min(10000,Number(rr.headers?.get?.("retry-after")||0)*1000||2500*rateRetries));
+     await wait(retryAfter);
+    }
+    rateRetries=0;
     if(!rr.ok)throw new Error("EVO_HTTP_"+rr.status);
     const rows=Array.isArray(j)?j:Array.isArray(j?.data)?j.data:Array.isArray(j?.items)?j.items:Array.isArray(j?.list)?j.list:[];
+    const fingerprint=rows.map(x=>String(x.idMemberMembership??x.idMember??"")+"-"+String(x.idMembership??x.idMembershipPlan??"")).join("|");
+    if(rows.length&&fingerprint===lastFingerprint)throw new Error("EVO_PAGINACAO_REPETIDA");
+    lastFingerprint=fingerprint;
     all.push(...rows);if(rows.length<25)break;
+    await wait(750);
    }
    if(!all.length)return res.status(502).json({ok:false,error:"EVO_MEMBERMEMBERSHIP_SEM_REGISTROS",requests});
    const members=new Map();
