@@ -122,6 +122,21 @@ export default async function handler(req,res){
    return res.json({...d,requests,batchMembers:students.length,batchLinks:students.length,source:'members-current-filtered'});
   }catch(e){if(runId){try{await job({action:'fail',runId,requests,error:e.message})}catch{}}return res.status(e.httpStatus||502).json({ok:false,error:e.message||'FALHA_SYNC_ALUNOS',requests});}
  }
+ if(req.query.route==="attendance-history-estimate"){
+  res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
+  const cookie=String(req.headers.cookie||""),start=String(req.query.start||""),end=String(req.query.end||"");
+  if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return res.status(400).json({ok:false,error:"PERIODO_INVALIDO"});
+  try{
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+   const [sy,sm]=start.split("-").map(Number),[ey,em]=end.split("-").map(Number),from=new Date(Date.UTC(sy,sm-1,1)),to=new Date(Date.UTC(ey,em,0)),evo=getEvoTransport("bike"),all=new Map();let requests=0,weeks=0;
+   for(let d=new Date(from);d<=to;d.setUTCDate(d.getUTCDate()+7)){const date=d.toISOString().slice(0,10);requests++;weeks++;const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+date+"&showFullWeek=true&onlyAvailables=false&take=100");if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_GRADE_HTTP_"+rr.status,requests,weeks});
+    const raw=await rr.json(),list=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:[]);for(const s of list){const day=String(s?.activityDate||s?.date||"").slice(0,10),id=s?.idAtividadeSessao??s?.idActivitySession??s?.idActivitieSession;if(day<from.toISOString().slice(0,10)||day>to.toISOString().slice(0,10)||Number(s?.status)!==6||!Number.isSafeInteger(Number(id))||Number(id)<=0)continue;all.set(String(id),{id:String(id),date:day});}}
+   const ids=[...all.keys()];let processed=[];
+   for(let i=0;i<ids.length;i+=100){const pr=await fetch(WORKER+"/admin/evo-attendance-sessions",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit:"bike",sessionIds:ids.slice(i,i+100)}),cache:"no-store"}),pd=await pr.json().catch(()=>({}));if(!pr.ok||!pd.ok)return res.status(pr.status||502).json({ok:false,error:pd.error||"FALHA_CONTROLE_SESSOES",requests,weeks});processed.push(...(pd.processed||[]));}
+   const done=new Set(processed.map(String)),pending=ids.filter(id=>!done.has(id));
+   return res.json({ok:true,period:start+" a "+end,weeks,requests,classesFound:ids.length,alreadyProcessed:ids.length-pending.length,pendingClasses:pending.length,estimatedTotalRequests:requests+pending.length});
+  }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_ESTIMATIVA_HISTORICA"});}
+ }
  if(req.query.route==="attendance-day-test"){
   res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
   const cookie=String(req.headers.cookie||""),date=String(req.query.date||"");if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return res.status(400).json({ok:false,error:"DATA_INVALIDA"});
