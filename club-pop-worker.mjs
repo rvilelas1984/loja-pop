@@ -121,6 +121,28 @@ export default {
         return json({ok:true,unit,period:{start,end:today},population:{current:total,linked:linkedMembers},attendance:{coveredMembers,missingMembers:missing,rows:Number(attendanceRows?.n||0),estimatedRequests:missing,endpoint:"/api/v2/activities/member/sessions"},alreadyAvailable:{profile:true,contracts:true,contractDates:true,categories:true,fitcoins:true,lastAccess:true,aggregators:true},calculatedLocally:{attendanceCount:true,distinctDays:true,favoriteTime:true,favoriteActivity:true},evoRequestsMade:0,note:"Diagnóstico somente D1. Nenhuma requisição EVO foi executada."});
       }
 
+      // Incremental Bike attendance: D1 session ledger + idempotent class attendance ingest.
+      if (url.pathname === "/admin/evo-attendance-sessions" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({}));if(String(b.unit||"bike")!=="bike")return json({ok:false,error:"SYNC_GYM_BLOQUEADO"},423);
+        const ids=Array.isArray(b.sessionIds)?b.sessionIds.map(String).filter(x=>/^\d+$/.test(x)).slice(0,100):[];
+        if(!ids.length)return json({ok:true,processed:[]});
+        const q=await env.DB.prepare("SELECT id_activity_session FROM evo_attendance_sessions WHERE unit='bike' AND status='done' AND id_activity_session IN ("+ids.map(()=>"?").join(",")+")").bind(...ids).all();
+        return json({ok:true,processed:(q.results||[]).map(x=>String(x.id_activity_session))});
+      }
+      if (url.pathname === "/admin/evo-attendance-ingest-class" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({}));if(String(b.unit||"bike")!=="bike")return json({ok:false,error:"SYNC_GYM_BLOQUEADO"},423);
+        const sid=String(b.sessionId||""),date=String(b.date||"").slice(0,10),rows=Array.isArray(b.rows)?b.rows:[];if(!/^\d+$/.test(sid)||!/^\d{4}-\d{2}-\d{2}$/.test(date)||rows.length>100)return json({ok:false,error:"LOTE_PRESENCAS_INVALIDO"},400);
+        const prior=await env.DB.prepare("SELECT status FROM evo_attendance_sessions WHERE unit='bike' AND id_activity_session=?").bind(sid).first();if(prior?.status==="done")return json({ok:true,alreadyProcessed:true,saved:0});
+        const stm=[];for(const x of rows){const id=String(x.id||"");if(!/^\d+$/.test(id)||String(x.idActivitySession)!==sid||String(x.date).slice(0,10)!==date)continue;stm.push(env.DB.prepare("INSERT OR REPLACE INTO evo_member_attendance(unit,evo_member_id,attendance_key,attendance_date,start_time,activity_name,id_activity_session,raw_json,synced_at) VALUES('bike',?,?,?,?,?,?,?,CURRENT_TIMESTAMP)").bind(id,sid,date,x.startTime||null,x.activity||null,sid,JSON.stringify(x)))}
+        if(stm.length)for(let i=0;i<stm.length;i+=40)await env.DB.batch(stm.slice(i,i+40));
+        await env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,synced_at) VALUES('bike',?,?,?,?, 'done',?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,status='done',attendance_count=excluded.attendance_count,synced_at=CURRENT_TIMESTAMP").bind(sid,date,b.startTime||null,b.activity||null,stm.length).run();
+        return json({ok:true,alreadyProcessed:false,saved:stm.length});
+      }
+
       if (url.pathname === "/admin/evo-test-presence" && request.method === "POST") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
