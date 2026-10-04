@@ -18,3 +18,10 @@ Swagger oficial https://evo-integracao.w12app.com.br/swagger/v1/swagger.json con
 Teste pequeno 14 pendente: sessions sem idMember, período 1–4 outubro, take25. Apenas 1 chamada, Bike, resultado sanitizado em evo_sync_probe. Worker temporário club-pop-bike-sync-probe possui fetch404 e cron; não altera históricos. Após retorno, analisar antes de testar detalhe da sessão19065967.
 Código de diagnóstico e teste unitário acompanham este checkpoint. Teste passou (uma chamada, Bike, sem valores de PII/credenciais na resposta).
 Remover cron temporário ao concluir. Nenhuma mudança no Worker principal ou funcionalidades.
+
+## Documentação confirmada
+https://api.abcevo.com/get-activities-schedule-details-32242623e0 documenta enrollments.status: 0=Presente, 1=Falta, 2=Falta Justificada. Status da aula 6=Finalizada; outros tipos encerrados existem e precisam de validação. Não inferir presença a partir de simples inscrição/check-in.
+O endpoint schedule tem showFullWeek e take, sem skip: respostas no limite não podem ser consideradas completas automaticamente.
+
+## Resultado real 14
+Sessions sem idMember retornou HTTP400, custo1 requisição registrada. Não fornece caminho coletivo nesse teste. Teste15 enfileirado isoladamente: detalhe da sessão19065967.
