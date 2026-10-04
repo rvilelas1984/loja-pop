@@ -35,6 +35,7 @@ export default {
           },
         });
 
+
       // Authenticated server-to-server transport: credentials remain inside this Worker.
       if ((url.pathname === "/internal/evo-bike" || url.pathname === "/internal/evo-unit") && request.method === "POST") {
         const body = await request.text();
@@ -48,7 +49,72 @@ export default {
         const requestedUnit=url.pathname==="/internal/evo-bike"?"bike":String(operation.unit||"bike").toLowerCase();
         const cfg=await getEvoConfig(env,requestedUnit);
         const upstream=await fetch(target.href,{method:operation.method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});
-        return new Response(await upstream.text(),{status:upstream.status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});
+        try { const p=target.pathname.toLowerCase(), purpose=p.includes("/activities/schedule/detail")?"checkin_detail":p.includes("/activities/schedule")?"schedule":p.includes("/fitcoins")?"fitcoins":p.includes("/member/sessions")?"attendance":p.includes("/members/")?"member_profile":"other"; await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,?,?)").bind(requestedUnit,purpose,String(operation.method||"GET").toUpperCase(),target.pathname,upstream.status,upstream.ok?1:0).run(); } catch {}
+        if (target.pathname === "/api/v2/management/activeclients") {
+          return new Response(upstream.body, {
+            status: upstream.status,
+            headers: {
+              "Content-Type": upstream.headers.get("Content-Type") || "application/octet-stream",
+              "Cache-Control": "no-store",
+            },
+          });
+        }
+        const upstreamBody = await upstream.text();
+        return new Response(upstreamBody, {status: upstream.status, headers: {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}});
+      }
+
+      // Cache de leitura do Dashboard: nunca chama a EVO.
+      if (url.pathname === "/member/evo-cache" && request.method === "GET") {
+        const auth=request.headers.get("Authorization")||""; if(!auth.startsWith("Bearer "))return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const tokenHash=await sha256(auth.slice(7)); const session=await env.DB.prepare("SELECT m.id,m.evo_member_id,g.gym_client_id FROM auth_sessions s JOIN members m ON m.id=s.member_id LEFT JOIN gym_member_links g ON g.member_id=m.id AND g.status='ACTIVE' WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP LIMIT 1").bind(tokenHash).first();
+        if(!session)return json({ok:false,error:"SESSAO_INVALIDA"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike", evoId=unit==="gym"?session.gym_client_id:session.evo_member_id; if(!evoId)return json({ok:false,error:"UNIDADE_NAO_VINCULADA"},404);
+        const row=await env.DB.prepare("SELECT payload_json,updated_at FROM evo_member_cache WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,String(evoId)).first(); const sync=await env.DB.prepare("SELECT sync_time,last_sync_at FROM evo_sync_config WHERE unit=? LIMIT 1").bind(unit).first(); const syncMeta={syncTime:sync?.sync_time||null,lastSyncAt:sync?.last_sync_at||null};
+        if(!row){ const base=await env.DB.prepare("SELECT first_name,last_name FROM members WHERE id=? LIMIT 1").bind(session.id).first(); const month=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit"}).format(new Date()).slice(0,7); const ar=await env.DB.prepare("SELECT attendance_date,activity_name,raw_json FROM attendance_history WHERE member_id=? AND unit=? AND substr(attendance_date,1,7)=? ORDER BY attendance_date").bind(session.id,unit,month).all(); const rows=ar.results||[], times={},acts={},days=new Set(); for(const a of rows){days.add(String(a.attendance_date).slice(0,10)); if(a.activity_name)acts[a.activity_name]=(acts[a.activity_name]||0)+1; try{const j=JSON.parse(a.raw_json||"{}"),t=j.startTime;if(t)times[t]=(times[t]||0)+1}catch{}} const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1])[0]?.[0]||null; return json({ok:true,unit,cached:true,source:"d1-base",updatedAt:null,sync:syncMeta,data:{member:{idMember:evoId,firstName:base?.first_name||"Aluno",lastName:base?.last_name||"",branchName:unit==="gym"?"Studio Gym Pop":"Studio Bike Pop",memberships:[]},fitcoins:null,attendance:{ok:true,attendanceCount:rows.length,distinctDays:days.size,favoriteTime:top(times),favoriteActivity:top(acts),currentWeek:{attendanceCount:0,distinctDays:0},attendance:rows}}}); } let data=null;try{data=JSON.parse(row.payload_json)}catch{} return json({ok:true,unit,cached:true,updatedAt:row.updated_at,sync:syncMeta,data});
+      }
+
+      // Recebe um lote coletivo já obtido da EVO pelo transporte central e materializa snapshots no D1.
+      if (url.pathname === "/admin/evo-sync-ingest" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||"bike").toLowerCase()==="gym"?"gym":"bike",members=Array.isArray(b.members)?b.members:[];
+        if(!members.length)return json({ok:false,error:"LOTE_VAZIO"},400);
+        const month=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit"}).format(new Date()).slice(0,7);
+        const ar=await env.DB.prepare("SELECT evo_member_id,attendance_date,activity_name,raw_json FROM attendance_history WHERE unit=? AND substr(attendance_date,1,7)=?").bind(unit,month).all(),by={};
+        for(const a of ar.results||[]){const k=String(a.evo_member_id);(by[k]||(by[k]=[])).push(a)}
+        const statements=[];
+        for(const x of members){const id=x.idMember??x.id??null;if(id==null)continue;const rows=by[String(id)]||[],times={},acts={},days=new Set();for(const a of rows){days.add(String(a.attendance_date).slice(0,10));if(a.activity_name)acts[a.activity_name]=(acts[a.activity_name]||0)+1;try{const j=JSON.parse(a.raw_json||"{}"),t=j.startTime||j.startDate;if(t)times[String(t).slice(11,16)]=(times[String(t).slice(11,16)]||0)+1}catch{}}const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1])[0]?.[0]||null;
+          const payload={member:x,fitcoins:Number(x.totalFitCoins??x.totalFitcoins??0),attendance:{ok:true,attendanceCount:rows.length,distinctDays:days.size,favoriteTime:top(times),favoriteActivity:top(acts),attendance:rows}};
+          statements.push(env.DB.prepare("INSERT INTO evo_member_cache(unit,evo_member_id,payload_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_member_id) DO UPDATE SET payload_json=excluded.payload_json,updated_at=CURRENT_TIMESTAMP").bind(unit,String(id),JSON.stringify(payload)));
+        }
+        for(let i=0;i<statements.length;i+=50)await env.DB.batch(statements.slice(i,i+50));
+        await env.DB.prepare("UPDATE evo_sync_config SET last_sync_at=CURRENT_TIMESTAMP,last_sync_status='ok',last_sync_requests=?,updated_at=CURRENT_TIMESTAMP WHERE unit=?").bind(Number(b.requests||0),unit).run();
+        return json({ok:true,unit,saved:statements.length});
+      }
+
+      // Configuração da sincronização econômica por unidade. Não executa EVO ao consultar/salvar.
+      if (url.pathname === "/admin/evo-sync-config" && ["GET","PUT"].includes(request.method)) {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
+        if(request.method==="PUT"){const b=await request.json().catch(()=>({})),tm=/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(b.syncTime||""))?String(b.syncTime):null;if(!tm)return json({ok:false,error:"HORARIO_INVALIDO"},400);await env.DB.prepare("INSERT INTO evo_sync_config(unit,sync_time,enabled,updated_at) VALUES(?,?,1,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET sync_time=excluded.sync_time,updated_at=CURRENT_TIMESTAMP").bind(unit,tm).run();}
+        const c=await env.DB.prepare("SELECT unit,sync_time,enabled,last_sync_at,last_sync_status,last_sync_requests FROM evo_sync_config WHERE unit=?").bind(unit).first();
+        return json({ok:true,config:c||{unit,sync_time:unit==="gym"?"04:30":"04:00",enabled:1,last_sync_at:null,last_sync_status:null,last_sync_requests:0}});
+      }
+
+      // Consulta administrativa do consumo real de requisições EVO.
+      if (url.pathname === "/admin/evo-requests" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
+        const days=Math.max(1,Math.min(60,Number(url.searchParams.get("days")||14)));
+        const daily=await env.DB.prepare("SELECT date(datetime(created_at, '-3 hours')) AS day, COUNT(*) AS total, SUM(CASE WHEN ok=1 THEN 1 ELSE 0 END) AS success, SUM(CASE WHEN ok=0 THEN 1 ELSE 0 END) AS errors FROM evo_request_log WHERE unit=? AND datetime(created_at) >= datetime('now', ?) GROUP BY day ORDER BY day DESC").bind(unit,"-"+days+" days").all();
+        const purposes=await env.DB.prepare("SELECT purpose,COUNT(*) AS total FROM evo_request_log WHERE unit=? AND date(datetime(created_at, '-3 hours'))=date(datetime('now', '-3 hours')) GROUP BY purpose ORDER BY total DESC").bind(unit).all();
+        const recent=await env.DB.prepare("SELECT id,purpose,method,endpoint,status,ok,datetime(created_at, '-3 hours') AS createdAt FROM evo_request_log WHERE unit=? ORDER BY id DESC LIMIT 100").bind(unit).all();
+        return json({ok:true,unit,limit:100,daily:daily.results||[],purposes:purposes.results||[],recent:recent.results||[]});
       }
 
       // Configuração genérica da Tela de Check-in por unidade + atividade.
@@ -70,7 +136,42 @@ export default {
         return json({ok:true,unit,layout:x?{activityId:x.activityId,activityName:x.activityName,capacity:Number(x.capacity),rows:JSON.parse(x.rowsJson||"[]")}:null});
       }
 
-      // =====================================================
+      
+      // Espelho administrativo de alunos EVO: leitura exclusiva do D1, sem chamada à EVO.
+      if (url.pathname === "/admin/evo-students" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
+        const q=await env.DB.prepare(`SELECT
+          SUM(CASE WHEN json_extract(payload_json,'$.member.status')='Active' AND json_extract(payload_json,'$.member.gympassId') IS NULL AND json_extract(payload_json,'$.member.codeTotalpass') IS NULL THEN 1 ELSE 0 END) active,
+          SUM(CASE WHEN json_extract(payload_json,'$.member.status')='Active' AND (json_extract(payload_json,'$.member.gympassId') IS NOT NULL OR json_extract(payload_json,'$.member.codeTotalpass') IS NOT NULL) THEN 1 ELSE 0 END) aggregators,
+          SUM(CASE WHEN json_extract(payload_json,'$.member.status')='Active' AND json_extract(payload_json,'$.member.gympassId') IS NOT NULL THEN 1 ELSE 0 END) gympass,
+          SUM(CASE WHEN json_extract(payload_json,'$.member.status')='Active' AND json_extract(payload_json,'$.member.codeTotalpass') IS NOT NULL THEN 1 ELSE 0 END) totalpass,
+          SUM(CASE WHEN lower(COALESCE(json_extract(payload_json,'$.member.status'),'')) LIKE '%suspend%' THEN 1 ELSE 0 END) suspended,
+          SUM(CASE WHEN lower(COALESCE(json_extract(payload_json,'$.member.membershipStatus'),'')) LIKE '%vip%' THEN 1 ELSE 0 END) vip,
+          COUNT(*) total, MAX(updated_at) updatedAt FROM evo_member_cache WHERE unit=?`).bind(unit).first();
+        const cfg=await env.DB.prepare("SELECT last_sync_at,last_sync_requests FROM evo_sync_config WHERE unit=?").bind(unit).first();
+        const lg=await env.DB.prepare("SELECT added,changed,removed,requests,details,datetime(created_at,'-3 hours') createdAt FROM evo_student_sync_log WHERE unit=? ORDER BY id DESC LIMIT 20").bind(unit).all();
+        return json({ok:true,unit,counts:{active:Number(q?.active||0),aggregators:Number(q?.aggregators||0),gympass:Number(q?.gympass||0),totalpass:Number(q?.totalpass||0),suspended:Number(q?.suspended||0),vip:Number(q?.vip||0),total:Number(q?.total||0)},lastSyncAt:cfg?.last_sync_at||q?.updatedAt||null,lastRequests:Number(cfg?.last_sync_requests||0),logs:lg.results||[],source:"d1"});
+      }
+
+
+      if (url.pathname === "/admin/evo-students-ingest" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({})); if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const x=await request.json().catch(()=>({})),unit=String(x.unit||"bike").toLowerCase()==="gym"?"gym":"bike"; if(unit!=="bike")return json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"},423);
+        const members=Array.isArray(x.members)?x.members:[],reqs=Number(x.requests||0),reset=x.reset===true,done=x.done===true,nextSkip=Number(x.nextSkip||0);
+        if(reset){await env.DB.prepare("DELETE FROM evo_student_sync_stage WHERE unit=?").bind(unit).run();await env.DB.prepare("DELETE FROM evo_student_sync_state WHERE unit=?").bind(unit).run();}
+        const statements=[];for(const m of members){const id=String(m.idMember||m.id||"");if(!id)continue;const minimal={member:{idMember:Number(id),firstName:m.firstName||m.registerName||"",lastName:m.lastName||m.registerLastName||"",status:m.status||null,accessBlocked:m.accessBlocked??null,membershipStatus:m.membershipStatus||null,gympassId:m.gympassId||null,codeTotalpass:m.codeTotalpass||null,contractName:m.contractName||"",contractType:m.contractType||"",idContractType:m.idContractType??null,idMembership:m.idMembership??null,idMembershipCategory:m.idMembershipCategory??null,membershipCategoryName:m.membershipCategoryName||"",contractStart:m.contractStart||"",contractEnd:m.contractEnd||""},fitcoins:m.totalFitCoins??null};statements.push(env.DB.prepare("INSERT INTO evo_student_sync_stage(unit,evo_member_id,payload_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_member_id) DO UPDATE SET payload_json=excluded.payload_json,updated_at=CURRENT_TIMESTAMP").bind(unit,id,JSON.stringify(minimal)));}for(let i=0;i<statements.length;i+=50)await env.DB.batch(statements.slice(i,i+50));
+        const os=await env.DB.prepare("SELECT links_processed,requests FROM evo_student_sync_state WHERE unit=?").bind(unit).first(),linksProcessed=(reset?0:Number(os?.links_processed||0))+Number(x.batchLinks??members.length),totalRequests=(reset?0:Number(os?.requests||0))+reqs;await env.DB.prepare("INSERT INTO evo_student_sync_state(unit,next_skip,links_processed,requests,started_at,updated_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET next_skip=excluded.next_skip,links_processed=excluded.links_processed,requests=excluded.requests,updated_at=CURRENT_TIMESTAMP").bind(unit,nextSkip,linksProcessed,totalRequests).run();
+        const staged=await env.DB.prepare("SELECT COUNT(*) n FROM evo_student_sync_stage WHERE unit=?").bind(unit).first();if(!done)return json({ok:true,unit,staged:Number(staged?.n||0),linksProcessed,requests:totalRequests,nextSkip,done:false});
+        const before=await env.DB.prepare("SELECT evo_member_id,payload_json FROM evo_member_cache WHERE unit=?").bind(unit).all(),stage=await env.DB.prepare("SELECT evo_member_id,payload_json FROM evo_student_sync_stage WHERE unit=?").bind(unit).all(),prev=new Map((before.results||[]).map(r=>[String(r.evo_member_id),r.payload_json])),fresh=new Map((stage.results||[]).map(r=>[String(r.evo_member_id),r.payload_json]));let added=0,changed=0,removed=0;for(const [id,p] of fresh){if(!prev.has(id))added++;else if(prev.get(id)!==p)changed++;}for(const id of prev.keys())if(!fresh.has(id))removed++;
+        await env.DB.prepare("DELETE FROM evo_member_cache WHERE unit=?").bind(unit).run();const promote=[];for(const [id,p] of fresh)promote.push(env.DB.prepare("INSERT INTO evo_member_cache(unit,evo_member_id,payload_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP)").bind(unit,id,p));for(let i=0;i<promote.length;i+=50)await env.DB.batch(promote.slice(i,i+50));
+        await env.DB.prepare("INSERT INTO evo_student_sync_log(unit,added,changed,removed,requests,details) VALUES(?,?,?,?,?,?)").bind(unit,added,changed,removed,totalRequests,JSON.stringify({received:fresh.size,linksProcessed})).run();await env.DB.prepare("INSERT INTO evo_sync_config(unit,last_sync_at,last_sync_status,last_sync_requests) VALUES(?,CURRENT_TIMESTAMP,'ok',?) ON CONFLICT(unit) DO UPDATE SET last_sync_at=CURRENT_TIMESTAMP,last_sync_status='ok',last_sync_requests=excluded.last_sync_requests").bind(unit,totalRequests).run();await env.DB.prepare("DELETE FROM evo_student_sync_stage WHERE unit=?").bind(unit).run();await env.DB.prepare("DELETE FROM evo_student_sync_state WHERE unit=?").bind(unit).run();return json({ok:true,unit,saved:fresh.size,added,changed,removed,requests:totalRequests,linksProcessed,done:true});
+      }
+
+// =====================================================
       // HEALTH CHECK
       // =====================================================
 
@@ -1136,5 +1237,6 @@ function allowedEvoTarget(value, method) {
   const path=url.pathname;
   if (method==="PUT") return path==="/api/v1/members/fitcoins" ? url : null;
   if (method!=="GET") return null;
+  if (path==="/api/v2/management/activeclients" || path==="/api/v2/members/active-members") return url;
   return /^\/api\/v[123]\/(?:members(?:\/\d+|\/basic|\/fitcoins)?|activities(?:\/schedule(?:\/detail)?|\/member\/sessions)?|membership(?:\/category)?|membermembership)$/.test(path) ? url : null;
 }
