@@ -37,7 +37,7 @@ const response=await worker.fetch(req,env);
 assert.equal(response.status,200);
 assert.deepEqual(Buffer.from(await response.arrayBuffer()),fixture);
 assert.equal(response.headers.get('content-type'),'application/vnd.ms-excel');
-assert.equal(purposes.at(-1),'other');
+assert.equal(purposes.at(-1),'student_sync');
 const apiSource=readFileSync(new URL('./api/evo-config.js',import.meta.url),'utf8')
   .replace('../lib/evo-active-report.js',new URL('./lib/evo-active-report.js',import.meta.url).href)
   .replace('../lib/evo-transport.js',new URL('./lib/evo-transport.js',import.meta.url).href);

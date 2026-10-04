@@ -113,7 +113,7 @@ export default {
         const days=Math.max(1,Math.min(60,Number(url.searchParams.get("days")||14)));
         const daily=await env.DB.prepare("SELECT date(datetime(created_at, '-3 hours')) AS day, COUNT(*) AS total, SUM(CASE WHEN ok=1 THEN 1 ELSE 0 END) AS success, SUM(CASE WHEN ok=0 THEN 1 ELSE 0 END) AS errors FROM evo_request_log WHERE unit=? AND datetime(created_at) >= datetime('now', ?) GROUP BY day ORDER BY day DESC").bind(unit,"-"+days+" days").all();
         const purposes=await env.DB.prepare("SELECT purpose,COUNT(*) AS total FROM evo_request_log WHERE unit=? AND date(datetime(created_at, '-3 hours'))=date(datetime('now', '-3 hours')) GROUP BY purpose ORDER BY total DESC").bind(unit).all();
-        const recent=await env.DB.prepare("SELECT id,purpose,method,endpoint,status,ok,datetime(created_at, '-3 hours') AS createdAt FROM evo_request_log WHERE unit=? ORDER BY id DESC LIMIT 100").bind(unit).all();
+        const recent=await env.DB.prepare("SELECT id,purpose,method,endpoint,status,ok,CASE WHEN unit='bike' THEN created_at ELSE datetime(created_at, '-3 hours') END AS createdAt FROM evo_request_log WHERE unit=? ORDER BY id DESC LIMIT 100").bind(unit).all();
         return json({ok:true,unit,limit:100,daily:daily.results||[],purposes:purposes.results||[],recent:recent.results||[]});
       }
 
@@ -1303,6 +1303,7 @@ async function currentStudentJob(env, body) {
     db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT 'bike',evo_member_id,'aggregator','totalpass','member_registration' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.totalpass')=1").bind(run.id),
     db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT 'bike',evo_member_id,'suspended','','membershipStatus' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.status')='Suspended'").bind(run.id),
     db.prepare("UPDATE evo_current_runs SET state='done',added=?,changed=?,removed=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(added,changed,removed,run.id),
+    db.prepare("UPDATE evo_sync_config SET last_sync_at=CURRENT_TIMESTAMP,last_sync_status='ok',last_sync_requests=?,updated_at=CURRENT_TIMESTAMP WHERE unit='bike'").bind(requests),
     db.prepare('DELETE FROM evo_current_stage WHERE run_id=?').bind(run.id),
   ]);
   return {ok:true,runId:run.id,nextSkip:next,done:true,total:next,added,changed,removed};

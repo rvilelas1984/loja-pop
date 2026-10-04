@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 const source=readFileSync(new URL('./club-pop-worker.mjs',import.meta.url),'utf8')+'\nexport {currentStudentJob,currentStudentsView};';
 const {currentStudentJob:job,currentStudentsView:view}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON; CREATE TABLE members(evo_member_id INTEGER); INSERT INTO members VALUES(1),(3); CREATE TABLE evo_member_cache(payload TEXT); INSERT INTO evo_member_cache VALUES(\'historical\');');db.exec(readFileSync(new URL('./evo-current-schema.sql',import.meta.url),'utf8'));
+db.exec("CREATE TABLE evo_sync_config(unit TEXT,last_sync_at TEXT,last_sync_status TEXT,last_sync_requests INTEGER,updated_at TEXT); INSERT INTO evo_sync_config(unit) VALUES('bike');");
 const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return db.prepare(sql).get(...args)},async all(){return {results:db.prepare(sql).all(...args)}},async run(){return db.prepare(sql).run(...args)}});
 const env={DB:{prepare:wrap,async batch(ss){db.exec('BEGIN');try{const r=[];for(const s of ss)r.push(await s.run());db.exec('COMMIT');return r}catch(e){db.exec('ROLLBACK');throw e}}}};
 const s=(id,extra={})=>({id:String(id),name:'Fixture '+id,status:'Active',gympass:false,totalpass:false,fitcoins:90,...extra});
