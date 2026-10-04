@@ -15,43 +15,18 @@ export default async function handler(req,res){
   if(unit!=="bike")return res.status(423).json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"});
   try{
    const evo=getEvoTransport(unit);if(!evo.configured)return res.status(409).json({ok:false,error:"EVO_NAO_CONFIGURADA"});
-   let all=[],requests=0,lastFingerprint="",rateRetries=0;
-   const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-   for(let skip=0;skip<2000;skip+=25){
-    const url="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?take=25&skip="+skip+"&statusMemberMembership=1&showAggregators=true&showVips=true";
-    let rr,j;
-    for(;;){
-     rr=await evo.fetch(url);requests++;j=await rr.json().catch(()=>null);
-     if(rr.status!==429)break;
-     if(rateRetries>=4)throw new Error("EVO_HTTP_429_APOS_RETRY");
-     rateRetries++;
-     const retryAfter=Math.max(2500,Math.min(10000,Number(rr.headers?.get?.("retry-after")||0)*1000||2500*rateRetries));
-     await wait(retryAfter);
-    }
-    rateRetries=0;
-    if(!rr.ok)throw new Error("EVO_HTTP_"+rr.status);
-    const rows=Array.isArray(j)?j:Array.isArray(j?.data)?j.data:Array.isArray(j?.items)?j.items:Array.isArray(j?.list)?j.list:[];
-    const fingerprint=rows.map(x=>String(x.idMemberMembership??x.idMember??"")+"-"+String(x.idMembership??x.idMembershipPlan??"")).join("|");
-    if(rows.length&&fingerprint===lastFingerprint)throw new Error("EVO_PAGINACAO_REPETIDA");
-    lastFingerprint=fingerprint;
-    all.push(...rows);if(rows.length<25)break;
-    await wait(750);
-   }
-   if(!all.length)return res.status(502).json({ok:false,error:"EVO_MEMBERMEMBERSHIP_SEM_REGISTROS",requests});
-   const members=new Map();
-   for(const x of all){
-    const id=Number(x.idMember??x.memberId??x.idClient);if(!id)continue;
-    const contractName=String(x.nameMembership??x.membershipName??x.contractDescription??x.name??"");
-    const categoryId=x.idMembershipCategory??x.idCategoryMembership??x.categoryId??null;
-    const categoryName=String(x.membershipCategoryName??x.categoryName??x.nameMembershipCategory??"");
-    const row={...x,idMember:id,firstName:String(x.memberName??x.nameMember??x.firstName??x.name??""),lastName:String(x.lastName??""),status:"Active",membershipStatus:x.statusMemberMembership??x.status??"Active",contractName,contractType:String(x.contractType??""),idContractType:x.idContractType??null,idMembership:x.idMembership??x.idMembershipPlan??null,idMembershipCategory:categoryId,membershipCategoryName:categoryName,contractStart:x.startDate??x.contractStart??x.dtStart??"",contractEnd:x.endDate??x.contractEnd??x.dtEnd??""};
-    const prev=members.get(id);if(!prev||(!prev.idMembershipCategory&&row.idMembershipCategory))members.set(id,row);
-   }
-   const rows=[...members.values()];
-   if(!rows.length)return res.status(502).json({ok:false,error:"EVO_MEMBERMEMBERSHIP_SEM_ALUNOS",requests});
-   const ing=await fetch(WORKER+"/admin/evo-students-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({unit,members:rows,requests,source:"membermembership-active"})});
-   const d=await ing.json().catch(()=>({}));if(!ing.ok||!d.ok)return res.status(ing.status||502).json({ok:false,error:d.error||"FALHA_SYNC_ALUNOS",requests});
-   return res.json({...d,requests,members:rows.length,links:all.length,source:"membermembership-active"});
+   const skip=Math.max(0,Number(req.body?.skip||0)),take=25;
+   const url="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?take="+take+"&skip="+skip+"&statusMemberMembership=1&showAggregators=true&showVips=true";
+   const rr=await evo.fetch(url);const j=await rr.json().catch(()=>null);
+   if(rr.status===429)return res.status(200).json({ok:true,paused:true,skip,requests:1,message:"EVO solicitou uma pausa. O progresso foi preservado."});
+   if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,skip,requests:1});
+   const links=Array.isArray(j)?j:Array.isArray(j?.data)?j.data:Array.isArray(j?.items)?j.items:Array.isArray(j?.list)?j.list:[];
+   const map=new Map();
+   for(const x of links){const id=Number(x.idMember??x.memberId??x.idClient);if(!id)continue;const categoryId=x.idMembershipCategory??x.idCategoryMembership??x.categoryId??null;map.set(id,{...x,idMember:id,firstName:String(x.memberName??x.nameMember??x.firstName??x.name??""),lastName:String(x.lastName??""),status:"Active",membershipStatus:x.statusMemberMembership??x.status??"Active",contractName:String(x.nameMembership??x.membershipName??x.contractDescription??x.name??""),contractType:String(x.contractType??""),idContractType:x.idContractType??null,idMembership:x.idMembership??x.idMembershipPlan??null,idMembershipCategory:categoryId,membershipCategoryName:String(x.membershipCategoryName??x.categoryName??x.nameMembershipCategory??""),contractStart:x.startDate??x.contractStart??x.dtStart??"",contractEnd:x.endDate??x.contractEnd??x.dtEnd??""})}
+   const members=[...map.values()],done=links.length<take,nextSkip=skip+links.length;
+   const ing=await fetch(WORKER+"/admin/evo-students-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({unit,members,requests:1,source:"membermembership-active-batch",incremental:!done,skip,nextSkip,done})});
+   const d=await ing.json().catch(()=>({}));if(!ing.ok||!d.ok)return res.status(ing.status||502).json({ok:false,error:d.error||"FALHA_SYNC_ALUNOS",skip,requests:1});
+   return res.json({...d,requests:1,batchMembers:members.length,batchLinks:links.length,skip,nextSkip,done,source:"membermembership-active-batch"});
   }catch(e){return res.status(502).json({ok:false,error:String(e?.message||"FALHA_SYNC_ALUNOS")})}
  }
  if(req.query.route==="sync-now"){
