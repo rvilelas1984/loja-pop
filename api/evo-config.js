@@ -17,10 +17,20 @@ export default async function handler(req,res){
    const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/members/active-members");
    const raw=await rr.text();
    if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
-   const ids=[...raw.matchAll(/<idMember[^>]*>\s*(\d+)\s*<\/idMember>/gi)].map(m=>Number(m[1])).filter(Boolean);
-   const branches=[...raw.matchAll(/<idBranch[^>]*>\s*(\d+)\s*<\/idBranch>/gi)].map(m=>Number(m[1])).filter(Boolean);
+   const contentType=String(rr.headers.get("content-type")||"").toLowerCase();
+   let ids=[],branches=[],format="unknown";
+   if(contentType.includes("json")||/^\s*[\[{]/.test(raw)){
+    const parsed=JSON.parse(raw);const rows=Array.isArray(parsed)?parsed:Array.isArray(parsed?.data)?parsed.data:Array.isArray(parsed?.items)?parsed.items:[];
+    ids=rows.map(x=>Number(x.idMember??x.IdMember??x.idCliente??x.IdCliente)).filter(Boolean);
+    branches=rows.map(x=>Number(x.idBranch??x.IdBranch??x.idFilial??x.IdFilial)).filter(Boolean);format="json";
+   }else{
+    const values=(names)=>{for(const n of names){const re=new RegExp("<(?:\\w+:)?"+n+"(?:\\s[^>]*)?>\\s*(\\d+)\\s*<\\/(?:\\w+:)?"+n+">","gi"),v=[...raw.matchAll(re)].map(m=>Number(m[1])).filter(Boolean);if(v.length)return v}return[]};
+    ids=values(["idMember","IdMember","idCliente","IdCliente"]);
+    branches=values(["idBranch","IdBranch","idFilial","IdFilial"]);format="xml";
+   }
    const unique=[...new Set(ids)];
-   return res.json({ok:true,unit,activeMembers:unique.length,records:ids.length,requests:1,branchIds:[...new Set(branches)],source:"active-members",checkedAt:new Date().toISOString()});
+   const safeTags=[...new Set([...raw.matchAll(/<(?:\\w+:)?([A-Za-z][A-Za-z0-9_]*)/g)].map(m=>m[1]))].filter(x=>/^(idMember|IdMember|idCliente|IdCliente|idBranch|IdBranch|idFilial|IdFilial|ActiveMembersReturnViewModel|ClientesAtivosRetornoViewModel|ClientesAtivosViewModel|ArrayOf)/i.test(x)).slice(0,20);
+   return res.json({ok:true,unit,activeMembers:unique.length,records:ids.length,requests:1,branchIds:[...new Set(branches)],source:"active-members",format,contentType,safeTags,bodyBytes:Buffer.byteLength(raw),checkedAt:new Date().toISOString()});
   }catch(e){return res.status(502).json({ok:false,error:String(e?.message||"FALHA_ACTIVE_COUNT"),requests:1})}
  }
  if(req.query.route==="sync-students"){
