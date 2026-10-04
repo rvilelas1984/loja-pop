@@ -1266,7 +1266,7 @@ async function currentStudentJob(env, body) {
   const run=await db.prepare("SELECT * FROM evo_current_runs WHERE id=? AND unit='bike'").bind(String(body.runId||'')).first();
   if(!run||run.state!=='running')return {status:409,ok:false,error:'SINCRONIZACAO_INATIVA'};
   if(body.action==='fail') {
-    await db.prepare("UPDATE evo_current_runs SET state='failed',error=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(String(body.error||'EVO_FALHOU').slice(0,80),run.id).run();
+    await db.prepare("UPDATE evo_current_runs SET state='failed',error=?,requests=requests+?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(String(body.error||'EVO_FALHOU').slice(0,80),Number(body.requests||0),run.id).run();
     return {ok:true};
   }
   if(body.action==='check')return {ok:true,runId:run.id,nextSkip:run.next_skip};

@@ -20,3 +20,25 @@ await job(env,{unit:'bike',action:'fail',runId:second,error:'EVO_HTTP_500'});ass
 r=await job(env,{unit:'bike',action:'begin'});await job(env,{unit:'bike',action:'ingest',runId:r.runId,skip:0,reportIds:['1'],students:[s(1)]});v=await view(env);assert.equal(v.counts.total,1);assert.equal(db.prepare('SELECT COUNT(*) n FROM evo_students').get().n,26);assert.equal(db.prepare('SELECT payload FROM evo_member_cache').get().payload,'historical');assert.equal(v.comparison.onlyClub,1);
 assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);
 console.log('PASS: Gym blocked, one run, partial/failure preserves mirror, duplicates rejected, categories overlap, comparison IDs, removal keeps history, caches untouched, FK integrity.');
+const {default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const api=readFileSync(new URL('./api/evo-config.js',import.meta.url),'utf8').replace('../lib/evo-active-report.js',new URL('./lib/evo-active-report.js',import.meta.url).href).replace('../lib/evo-transport.js',new URL('./lib/evo-transport.js',import.meta.url).href);
+const {default:handler}=await import('data:text/javascript;base64,'+Buffer.from(api).toString('base64'));
+const response=()=>({code:200,setHeader(){},status(n){this.code=n;return this},json(b){this.body=b;return this},send(b){this.body=b;return this}});
+process.env.ADMIN_KEY='local-fixture';let evoCalls=0;
+globalThis.fetch=async(url,options)=>{
+ if(String(url).includes('/api/admin-auth'))return Response.json({role:options.headers.Cookie==='fixture'?'admin':'student'});
+ if(String(url).includes('/admin/evo-current-job'))return worker.fetch(new Request(url,options),env);
+ if(String(url).includes('/internal/evo-unit')){
+  evoCalls++;const op=JSON.parse(options.body);
+  if(op.url.includes('activeclients'))return Response.json([{IdCliente:1,IdFilial:8347}]);
+  assert.match(op.url,/status=1&showMemberships=true&take=25&skip=/);
+  const skip=Number(new URL(op.url).searchParams.get('skip'));return Response.json(Array.from({length:skip===0?25:1},(_,i)=>({idMember:skip+i+1,firstName:'Fixture',lastName:String(i),status:'Active',membershipStatus:'Active',totalFitCoins:90,email:'must-not-be-stored',gympassId:skip?12:null})));
+ }
+ throw Error('Unexpected fetch');
+};
+let out=response();await handler({query:{route:'sync-students',unit:'gym'},method:'POST',body:{},headers:{cookie:'fixture'}},out);assert.equal(out.code,423);assert.equal(evoCalls,0);
+out=response();await handler({query:{route:'sync-students',unit:'bike'},method:'POST',body:{},headers:{cookie:'wrong'}},out);assert.equal(out.code,401);assert.equal(evoCalls,0);
+out=response();await handler({query:{route:'sync-students',unit:'bike'},method:'POST',body:{},headers:{cookie:'fixture'}},out);assert.equal(out.code,200);assert.equal(out.body.done,false);const runId=out.body.runId;assert.equal(evoCalls,2);
+out=response();await handler({query:{route:'sync-students',unit:'bike'},method:'POST',body:{runId},headers:{cookie:'fixture'}},out);assert.equal(out.code,200);assert.equal(out.body.done,true);assert.equal(evoCalls,3);assert.equal((await view(env)).counts.total,26);
+assert.equal(db.prepare("SELECT count(*) n FROM evo_current_stage WHERE payload LIKE '%must-not-be-stored%'").get().n,0);
+console.log('PASS: API→Worker→D1 complete filtered sync; unauthorized/Gym zero EVO, minimal data, report plus paginated current members.');

@@ -29,37 +29,30 @@ export default async function handler(req,res){
   }catch(e){return res.status(502).json({ok:false,error:e.code||"EVO_RELATORIO_INVALIDO",message:"Não foi possível validar o relatório de alunos ativos. Nenhum total foi estimado."})}
  }
  if(req.query.route==="sync-students"){
+  res.setHeader("Cache-Control","no-store");
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
-  const unit=String(req.query.unit||req.body?.unit||"bike").toLowerCase()==="gym"?"gym":"bike";
+  const body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};
+  const unit=String(req.query.unit||body.unit||"bike").toLowerCase();
   if(unit!=="bike")return res.status(423).json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"});
+  const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+  const job=async data=>{const r=await fetch(WORKER+"/admin/evo-current-job",{method:'POST',headers:{'Content-Type':'application/json','x-clubpop-admin-cookie':cookie},body:JSON.stringify({unit,...data})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok){const e=new Error(d.error||'FALHA_ESPELHO');e.httpStatus=r.status;throw e}return d};
+  let runId=String(body.runId||""),requests=0;
   try{
-   const evo=getEvoTransport(unit);if(!evo.configured)return res.status(409).json({ok:false,error:"EVO_NAO_CONFIGURADA"});
-   const skip=Math.max(0,Number(req.body?.skip||0)),take=25;
-   const url="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?take="+take+"&skip="+skip+"&statusMemberMembership=1&showAggregators=true&showVips=true";
-   const rr=await evo.fetch(url);const j=await rr.json().catch(()=>null);
-   if(rr.status===429)return res.status(200).json({ok:true,paused:true,skip,requests:1,message:"EVO solicitou uma pausa. O progresso foi preservado."});
-   if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,skip,requests:1});
-   const links=Array.isArray(j)?j:Array.isArray(j?.data)?j.data:Array.isArray(j?.items)?j.items:Array.isArray(j?.list)?j.list:[];
-   const map=new Map();
-   for(const x of links){const id=Number(x.idMember??x.memberId??x.idClient);if(!id)continue;const categoryId=x.idMembershipCategory??x.idCategoryMembership??x.categoryId??null;map.set(id,{...x,idMember:id,firstName:String(x.memberName??x.nameMember??x.firstName??x.name??""),lastName:String(x.lastName??""),status:"Active",membershipStatus:x.statusMemberMembership??x.status??"Active",contractName:String(x.nameMembership??x.membershipName??x.contractDescription??x.name??""),contractType:String(x.contractType??""),idContractType:x.idContractType??null,idMembership:x.idMembership??x.idMembershipPlan??null,idMembershipCategory:categoryId,membershipCategoryName:String(x.membershipCategoryName??x.categoryName??x.nameMembershipCategory??""),contractStart:x.startDate??x.contractStart??x.dtStart??"",contractEnd:x.endDate??x.contractEnd??x.dtEnd??""})}
-   const members=[...map.values()],done=links.length<take,nextSkip=skip+links.length;
-   const ing=await fetch(WORKER+"/admin/evo-students-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({unit,members,requests:1,source:"membermembership-active-batch",incremental:true,reset:skip===0,skip,nextSkip,done})});
-   const d=await ing.json().catch(()=>({}));if(!ing.ok||!d.ok)return res.status(ing.status||502).json({ok:false,error:d.error||"FALHA_SYNC_ALUNOS",skip,requests:1});
-   return res.json({...d,requests:1,batchMembers:members.length,batchLinks:links.length,skip,nextSkip,done,source:"membermembership-active-batch"});
-  }catch(e){return res.status(502).json({ok:false,error:String(e?.message||"FALHA_SYNC_ALUNOS")})}
+   const state=await job({action:runId?'check':'begin',runId});runId=state.runId;
+   const skip=Number(state.nextSkip),evo=getEvoTransport(unit);let reportIds;
+   if(skip===0){requests++;const rr=await evo.fetch('https://evo-integracao-api.w12app.com.br/api/v2/management/activeclients');if(!rr.ok)throw new Error('EVO_HTTP_'+rr.status);reportIds=parseActiveReport(Buffer.from(await rr.arrayBuffer())).ids;}
+   requests++;
+   const rr=await evo.fetch('https://evo-integracao-api.w12app.com.br/api/v2/members?status=1&showMemberships=true&take=25&skip='+skip);
+   if(!rr.ok)throw new Error('EVO_HTTP_'+rr.status);
+   const rows=await rr.json();
+   if(!Array.isArray(rows)||rows.length>25||rows.some(m=>m.status!=='Active'||!Number.isInteger(m.idMember)||m.idMember<=0||!['Active','Suspended'].includes(m.membershipStatus)))throw new Error('EVO_POPULACAO_INVALIDA');
+   const students=rows.map(m=>({id:String(m.idMember),name:[m.firstName,m.lastName].filter(Boolean).join(' ').slice(0,200),status:m.membershipStatus,gympass:Boolean(m.gympassId),totalpass:Boolean(m.codeTotalpass),fitcoins:typeof m.totalFitCoins==='number'?m.totalFitCoins:null}));
+   const d=await job({action:'ingest',runId,skip,reportIds,students});
+   return res.json({...d,requests,batchMembers:students.length,batchLinks:students.length,source:'members-current-filtered'});
+  }catch(e){if(runId){try{await job({action:'fail',runId,requests,error:e.message})}catch{}}return res.status(e.httpStatus||502).json({ok:false,error:e.message||'FALHA_SYNC_ALUNOS',requests});}
  }
  if(req.query.route==="sync-now"){
-  if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
-  const unit=String(req.query.unit||req.body?.unit||"bike").toLowerCase()==="gym"?"gym":"bike";
-  if(unit!=="bike")return res.status(423).json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"});
-  try{
-   const evo=getEvoTransport(unit); if(!evo.configured)return res.status(409).json({ok:false,error:"EVO_NAO_CONFIGURADA"});
-   let all=[],skip=0,requests=0;
-   for(let page=0;page<20;page++){const u="https://evo-integracao-api.w12app.com.br/api/v2/members?take=50&skip="+skip;const rr=await evo.fetch(u);requests++;const j=await rr.json().catch(()=>null);if(!rr.ok)throw new Error("EVO_HTTP_"+rr.status);const rows=Array.isArray(j)?j:Array.isArray(j?.data)?j.data:Array.isArray(j?.items)?j.items:[];all.push(...rows);if(rows.length<50)break;skip+=50}
-   if(!all.length)return res.status(502).json({ok:false,error:"EVO_SEM_MEMBROS",requests});
-   const ing=await fetch(WORKER+"/admin/evo-sync-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({unit,members:all,requests})});const d=await ing.json().catch(()=>({}));if(!ing.ok||!d.ok)return res.status(ing.status||502).json({ok:false,error:d.error||"FALHA_CACHE",requests});
-   return res.json({ok:true,unit,requests,members:all.length,saved:d.saved});
-  }catch(e){return res.status(502).json({ok:false,error:String(e?.message||"FALHA_SYNC")})}
+  return res.status(409).json({ok:false,error:"Use Alunos EVO → Sincronizar alunos. A varredura histórica foi desativada."});
  }
  if(req.query.route==="sync-config"){if(!["GET","PUT"].includes(req.method))return res.status(405).json({ok:false,error:"Método não permitido"});const unit=String(req.query.unit||req.body?.unit||"bike").toLowerCase()==="gym"?"gym":"bike";try{const r=await fetch(WORKER+"/admin/evo-sync-config?unit="+unit,{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="PUT"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao acessar configuração de sincronização"})}}
  if(req.query.route==="evo-requests"){
