@@ -1,3 +1,4 @@
+import { inflateRawSync } from "node:zlib";
 import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 export default async function handler(req,res){
@@ -16,9 +17,21 @@ export default async function handler(req,res){
    const evo=getEvoTransport(unit);if(!evo.configured)return res.status(409).json({ok:false,error:"EVO_NAO_CONFIGURADA"});
    const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/members/active-members");
    const bytes=Buffer.from(await rr.arrayBuffer());
-   let raw=bytes.toString("utf8");
-   let compressed=false;
-   if(bytes.length>=4&&bytes[0]===0x50&&bytes[1]===0x4b){compressed=true;throw new Error("ZIP_CONTAINER_DETECTED")};
+   let raw=bytes.toString("utf8"),zipEntries=[];
+   if(bytes.length>=4&&bytes[0]===0x50&&bytes[1]===0x4b){
+    const end=bytes.lastIndexOf(Buffer.from([0x50,0x4b,0x05,0x06]));if(end<0)throw new Error("ZIP_EOCD_NOT_FOUND");
+    const count=bytes.readUInt16LE(end+10),central=bytes.readUInt32LE(end+16);let pos=central,files=[];
+    for(let n=0;n<count;n++){
+     if(bytes.readUInt32LE(pos)!==0x02014b50)throw new Error("ZIP_CENTRAL_INVALID");
+     const method=bytes.readUInt16LE(pos+10),csize=bytes.readUInt32LE(pos+20),usize=bytes.readUInt32LE(pos+24),nlen=bytes.readUInt16LE(pos+28),xlen=bytes.readUInt16LE(pos+30),clen=bytes.readUInt16LE(pos+32),local=bytes.readUInt32LE(pos+42);
+     const name=bytes.subarray(pos+46,pos+46+nlen).toString("utf8"),lnlen=bytes.readUInt16LE(local+26),lxlen=bytes.readUInt16LE(local+28),start=local+30+lnlen+lxlen,payload=bytes.subarray(start,start+csize);
+     if(method!==0&&method!==8)throw new Error("ZIP_METHOD_"+method);
+     const data=method===0?payload:inflateRawSync(payload);if(data.length!==usize)throw new Error("ZIP_SIZE_MISMATCH");
+     zipEntries.push({name,bytes:data.length,method});files.push({name,data});pos+=46+nlen+xlen+clen;
+    }
+    const chosen=files.find(x=>/\.(json|xml|csv|txt)$/i.test(x.name)&&!/^(__MACOSX|_rels|docProps)\//i.test(x.name))||files.find(x=>!x.name.endsWith("/"));
+    if(!chosen)throw new Error("ZIP_EMPTY");raw=chosen.data.toString("utf8");
+   }
    if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
    const contentType=String(rr.headers.get("content-type")||"").toLowerCase();
    let ids=[],branches=[],format="unknown";
@@ -33,7 +46,7 @@ export default async function handler(req,res){
    }
    const unique=[...new Set(ids)];
    const safeTags=[...new Set([...raw.matchAll(/<(?:\\w+:)?([A-Za-z][A-Za-z0-9_]*)/g)].map(m=>m[1]))].filter(x=>/^(idMember|IdMember|idCliente|IdCliente|idBranch|IdBranch|idFilial|IdFilial|ActiveMembersReturnViewModel|ClientesAtivosRetornoViewModel|ClientesAtivosViewModel|ArrayOf)/i.test(x)).slice(0,20);
-   return res.json({ok:true,unit,activeMembers:unique.length,records:ids.length,requests:1,branchIds:[...new Set(branches)],source:"active-members",format,contentType,safeTags,bodyBytes:Buffer.byteLength(raw),checkedAt:new Date().toISOString()});
+   return res.json({ok:true,unit,activeMembers:unique.length,records:ids.length,requests:1,branchIds:[...new Set(branches)],source:"active-members",format,contentType,zipEntries,safeTags,bodyBytes:Buffer.byteLength(raw),checkedAt:new Date().toISOString()});
   }catch(e){return res.status(502).json({ok:false,error:String(e?.message||"FALHA_ACTIVE_COUNT"),requests:1})}
  }
  if(req.query.route==="sync-students"){
