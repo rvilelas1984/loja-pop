@@ -45,6 +45,11 @@ export default async function handler(req,res){
    return res.json({ok:true,unit:"bike",requests:1,totalCategories:safe.length,vip,categories:safe});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_CATEGORIA_VIP"});}
  }
+ if(req.query.route==="vip-checkpoint"){
+  res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
+  const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+  try{const body=typeof req.body==="string"?JSON.parse(req.body):req.body||{};const r=await fetch(WORKER+"/admin/evo-vip-checkpoint",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit:"bike",...body})}),d=await r.json().catch(()=>({}));return res.status(r.status).json(d)}catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_CHECKPOINT_VIP"})}
+ }
  if(req.query.route==="vip-count-diagnostic"){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
