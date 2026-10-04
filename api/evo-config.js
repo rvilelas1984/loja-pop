@@ -15,7 +15,10 @@ export default async function handler(req,res){
   try{
    const evo=getEvoTransport(unit);if(!evo.configured)return res.status(409).json({ok:false,error:"EVO_NAO_CONFIGURADA"});
    const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/members/active-members");
-   const bytes=Buffer.from(await rr.arrayBuffer());\n   let raw=bytes.toString("utf8");\n   let compressed=false;\n   if(bytes.length>=4&&bytes[0]===0x50&&bytes[1]===0x4b){compressed=true;throw new Error("ZIP_CONTAINER_DETECTED")};
+   const bytes=Buffer.from(await rr.arrayBuffer());
+   let raw=bytes.toString("utf8");
+   let compressed=false;
+   if(bytes.length>=4&&bytes[0]===0x50&&bytes[1]===0x4b){compressed=true;throw new Error("ZIP_CONTAINER_DETECTED")};
    if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
    const contentType=String(rr.headers.get("content-type")||"").toLowerCase();
    let ids=[],branches=[],format="unknown";
