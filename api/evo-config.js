@@ -1,4 +1,4 @@
-import { inflateRawSync } from "node:zlib";
+import { parseActiveReport } from "../lib/evo-active-report.js";
 import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 export default async function handler(req,res){
@@ -11,43 +11,22 @@ export default async function handler(req,res){
  }
  if(req.query.route==="students"){if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike";try{const r=await fetch(WORKER+"/admin/evo-students?unit="+unit,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao consultar alunos EVO"})}}
  if(req.query.route==="active-count"){
+  res.setHeader("Cache-Control","no-store");
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
-  const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike";
+  const unit=String(req.query.unit||"bike").toLowerCase();
+  if(unit!=="bike")return res.status(423).json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"});
+  const cookie=String(req.headers.cookie||"");
+  if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
   try{
-   const evo=getEvoTransport(unit);if(!evo.configured)return res.status(409).json({ok:false,error:"EVO_NAO_CONFIGURADA"});
-   const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/members/active-members");
-   const bytes=Buffer.from(await rr.arrayBuffer());
-   let raw=bytes.toString("utf8"),zipEntries=[];
-   if(bytes.length>=4&&bytes[0]===0x50&&bytes[1]===0x4b){
-    const end=bytes.lastIndexOf(Buffer.from([0x50,0x4b,0x05,0x06]));if(end<0)throw new Error("ZIP_EOCD_NOT_FOUND");
-    const count=bytes.readUInt16LE(end+10),central=bytes.readUInt32LE(end+16);let pos=central,files=[];
-    for(let n=0;n<count;n++){
-     if(bytes.readUInt32LE(pos)!==0x02014b50)throw new Error("ZIP_CENTRAL_INVALID");
-     const method=bytes.readUInt16LE(pos+10),csize=bytes.readUInt32LE(pos+20),usize=bytes.readUInt32LE(pos+24),nlen=bytes.readUInt16LE(pos+28),xlen=bytes.readUInt16LE(pos+30),clen=bytes.readUInt16LE(pos+32),local=bytes.readUInt32LE(pos+42);
-     const name=bytes.subarray(pos+46,pos+46+nlen).toString("utf8"),lnlen=bytes.readUInt16LE(local+26),lxlen=bytes.readUInt16LE(local+28),start=local+30+lnlen+lxlen,payload=bytes.subarray(start,start+csize);
-     if(method!==0&&method!==8)throw new Error("ZIP_METHOD_"+method);
-     const data=method===0?payload:inflateRawSync(payload);if(data.length!==usize)throw new Error("ZIP_SIZE_MISMATCH");
-     zipEntries.push({name,bytes:data.length,method});files.push({name,data});pos+=46+nlen+xlen+clen;
-    }
-    const chosen=files.find(x=>/\.(json|xml|csv|txt)$/i.test(x.name)&&!/^(__MACOSX|_rels|docProps)\//i.test(x.name))||files.find(x=>!x.name.endsWith("/"));
-    if(!chosen)throw new Error("ZIP_EMPTY");raw=chosen.data.toString("utf8");
-   }
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"});
+   const session=await auth.json().catch(()=>({}));
+   if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+   const evo=getEvoTransport(unit);
+   const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/management/activeclients");
    if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
-   const contentType=String(rr.headers.get("content-type")||"").toLowerCase();
-   let ids=[],branches=[],format="unknown";
-   if(contentType.includes("json")||/^\s*[\[{]/.test(raw)){
-    const parsed=JSON.parse(raw);const rows=Array.isArray(parsed)?parsed:Array.isArray(parsed?.data)?parsed.data:Array.isArray(parsed?.items)?parsed.items:[];
-    ids=rows.map(x=>Number(x.idMember??x.IdMember??x.idCliente??x.IdCliente)).filter(Boolean);
-    branches=rows.map(x=>Number(x.idBranch??x.IdBranch??x.idFilial??x.IdFilial)).filter(Boolean);format="json";
-   }else{
-    const values=(names)=>{for(const n of names){const re=new RegExp("<(?:\\w+:)?"+n+"(?:\\s[^>]*)?>\\s*(\\d+)\\s*<\\/(?:\\w+:)?"+n+">","gi"),v=[...raw.matchAll(re)].map(m=>Number(m[1])).filter(Boolean);if(v.length)return v}return[]};
-    ids=values(["idMember","IdMember","idCliente","IdCliente"]);
-    branches=values(["idBranch","IdBranch","idFilial","IdFilial"]);format="xml";
-   }
-   const unique=[...new Set(ids)];
-   const safeTags=[...new Set([...raw.matchAll(/<(?:\\w+:)?([A-Za-z][A-Za-z0-9_]*)/g)].map(m=>m[1]))].filter(x=>/^(idMember|IdMember|idCliente|IdCliente|idBranch|IdBranch|idFilial|IdFilial|ActiveMembersReturnViewModel|ClientesAtivosRetornoViewModel|ClientesAtivosViewModel|ArrayOf)/i.test(x)).slice(0,20);
-   return res.json({ok:true,unit,activeMembers:unique.length,records:ids.length,requests:1,branchIds:[...new Set(branches)],source:"active-members",format,contentType,zipEntries,safeTags,bodyBytes:Buffer.byteLength(raw),checkedAt:new Date().toISOString()});
-  }catch(e){return res.status(502).json({ok:false,error:String(e?.message||"FALHA_ACTIVE_COUNT"),requests:1})}
+   const {ids,...report}=parseActiveReport(Buffer.from(await rr.arrayBuffer()));
+   return res.json({ok:true,unit,...report,requests:1,source:"activeclients",scope:"clientes com contratos ativos; não representa toda a população de agregadores, suspensos e VIPs",checkedAt:new Date().toISOString()});
+  }catch(e){return res.status(502).json({ok:false,error:e.code||"EVO_RELATORIO_INVALIDO",message:"Não foi possível validar o relatório de alunos ativos. Nenhum total foi estimado."})}
  }
  if(req.query.route==="sync-students"){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
