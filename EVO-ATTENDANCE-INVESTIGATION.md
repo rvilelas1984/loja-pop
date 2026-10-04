@@ -25,3 +25,12 @@ O endpoint schedule tem showFullWeek e take, sem skip: respostas no limite não 
 
 ## Resultado real 14
 Sessions sem idMember retornou HTTP400, custo1 requisição registrada. Não fornece caminho coletivo nesse teste. Teste15 enfileirado isoladamente: detalhe da sessão19065967.
+
+## Testes reais concluídos
+15: sessão19065967 HTTP200, 32 participantes,30 presenças, cliente983786 presente.
+16: sessão19225314 HTTP200,35 participantes,32 presenças, cliente983786 presente.
+17: sessão19225246 HTTP200,35 participantes,26 presenças, cliente983786 presente.
+Cada detalhe custou1 chamada. As3 presenças de referência coincidiram. Total88 registros de presença, não88 pessoas distintas.
+18: grade03/10 HTTP200,3 aulas finalizadas, sem enrollments. Campos reais idAtividadeSessao e activityDate diferem do schema esperado; o sanitizador descartou os valores, mas registrou os nomes. Portanto grade lista aulas; detalhe fornece presenças. Custo teórico de um dia=1+N aulas, ainda não sincronizado integralmente.
+Total desta investigação5 chamadas EVO Bike. Nenhuma gravação operacional de presenças, sem Gym/VIP. Cron temporário desativado após os testes.
+Parser conservador preparado: apenas status6 finalizado, participante status0 presente, removidos ignorados; normalização AM/PM paraHH:mm. Testesunitários passaram. Integração ainda pendente.

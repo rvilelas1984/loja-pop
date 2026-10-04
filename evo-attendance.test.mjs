@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {attendanceTime, parseClassAttendance} from './evo-attendance.mjs';
+const sample={idActivitySession:12,status:6,date:'2026-10-03T00:00:00',startTime:'6:15 PM',name:'Aula',enrollments:[{idMember:1,status:0,removed:false},{idMember:2,status:1},{idMember:3,status:2},{idMember:4,status:0,removed:true},{idMember:0,status:0}]};
+assert.equal(attendanceTime('12:00 AM'),'00:00');
+assert.equal(attendanceTime('12:00 PM'),'12:00');
+assert.equal(attendanceTime('9:45 AM'),'09:45');
+assert.equal(attendanceTime('18:15:00'),'18:15');
+assert.throws(()=>attendanceTime('25:00'));
+assert.deepEqual(parseClassAttendance(sample,12),{sessionId:'12',date:'2026-10-03',participants:3,rows:[{id:'1',date:'2026-10-03',startTime:'18:15',activity:'Aula',idActivitySession:'12',presenca:true,isFinalized:true}]});
+assert.throws(()=>parseClassAttendance(sample,13),/DIVERGENTE/);
+assert.throws(()=>parseClassAttendance({...sample,status:1},12),/NAO_FINALIZADA/);
+assert.throws(()=>parseClassAttendance({...sample,enrollments:null},12),/AUSENTES/);
+assert.throws(()=>parseClassAttendance({...sample,enrollments:[{idMember:1,status:9}]},12),/DESCONHECIDO/);
+assert.throws(()=>parseClassAttendance({...sample,enrollments:[{idMember:1,status:0},{idMember:1,status:1}]},12),/DUPLICADO/);
+console.log('PASS: attendance semantics, finalized gate, time normalization, duplicate/error guards.');

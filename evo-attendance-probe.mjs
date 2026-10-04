@@ -3,7 +3,7 @@ export default {
  async scheduled(event,env){
   const job=await env.DB.prepare("UPDATE evo_sync_probe SET state='running' WHERE id=(SELECT id FROM evo_sync_probe WHERE id>=14 AND id<=18 AND state='pending' ORDER BY id LIMIT 1) AND state='pending' RETURNING id,endpoint").first();if(!job)return;
   try{
-   const allowed=new Set(['/api/v2/activities/member/sessions?dateStart=2026-10-01T00%3A00%3A00&dateEnd=2026-10-04T23%3A59%3A59&skip=0&take=25','/api/v1/activities/schedule/detail?idActivitySession=19065967','/api/v1/activities/schedule/detail?idActivitySession=19225314','/api/v1/activities/schedule/detail?idActivitySession=19225246']);
+   const allowed=new Set(['/api/v2/activities/member/sessions?dateStart=2026-10-01T00%3A00%3A00&dateEnd=2026-10-04T23%3A59%3A59&skip=0&take=25','/api/v1/activities/schedule/detail?idActivitySession=19065967','/api/v1/activities/schedule/detail?idActivitySession=19225314','/api/v1/activities/schedule/detail?idActivitySession=19225246','/api/v1/activities/schedule?date=2026-10-03&showFullWeek=false&onlyAvailables=false&take=100']);
    if(!allowed.has(job.endpoint))throw Error('ENDPOINT_NOT_ALLOWED');
    const cfg=await env.DB.prepare("SELECT dns,token,enabled,expires_at FROM evo_unit_config WHERE unit='bike'").first();const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());if(!cfg||cfg.enabled!==1||cfg.expires_at<today)throw Error('CONFIG_INVALIDA');
    const path=new URL(job.endpoint,'https://evo-integracao-api.w12app.com.br');
