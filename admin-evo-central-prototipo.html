@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CLUB POP — Protótipo Central EVO</title>
+<link rel="stylesheet" href="/admin-common.css">
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;color:#111318;background:#f4f6f8}
+.proto{max-width:1180px;margin:auto;padding:28px 22px 60px}.ey{font-size:10px;color:#777;font-weight:900;letter-spacing:1.4px}
+h1{font-size:36px;margin:5px 0 6px}.sub{margin:0;color:#68717c;font-size:13px}.hero{display:flex;justify-content:space-between;gap:24px;align-items:center}
+.sync{border:0;border-radius:14px;background:#c62828;color:#fff;padding:16px 22px;font-weight:950;cursor:pointer;box-shadow:0 8px 20px #c6282822}
+.status{margin:22px 0;background:#fff8e8;border:1px solid #f4e4b9;border-radius:14px;padding:13px 16px;font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{background:#fff;border:1px solid #e2e6ea;border-radius:20px;padding:19px;min-height:185px}
+.card.wide{grid-column:span 2}.head{display:flex;justify-content:space-between;gap:8px;align-items:center}.head h2{font-size:15px;margin:0}.tag{font-size:9px;font-weight:900;padding:6px 8px;border-radius:99px;background:#edf8ef;color:#237a38}
+.tag.pending{background:#fff3dc;color:#996100}.big{font-size:36px;font-weight:950;margin:14px 0 2px}.muted{font-size:10px;color:#7a828b}.items{display:grid;gap:8px;margin-top:14px}.row{display:flex;justify-content:space-between;gap:10px;border-top:1px solid #edf0f2;padding-top:8px;font-size:11px}.row b{text-align:right}
+.coverage{margin-top:14px;background:#111318;color:#fff;border-radius:20px;padding:20px}.coverage h2{margin:0 0 5px;font-size:16px}.coverage p{margin:0 0 14px;color:#aeb4bc;font-size:11px}.bar{height:10px;background:#2a2e34;border-radius:99px;overflow:hidden}.bar i{display:block;width:88%;height:100%;background:#fff;border-radius:99px}.legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:10px;color:#cbd0d6}
+.note{margin-top:14px;font-size:10px;color:#737b85;text-align:center}
+@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}.card.wide{grid-column:span 2}.hero{align-items:flex-start;flex-direction:column}.sync{width:100%}}
+@media(max-width:520px){.proto{padding:22px 14px 50px}h1{font-size:31px}.grid{grid-template-columns:1fr}.card.wide{grid-column:span 1}.status{display:block}.status span{display:block;margin:3px 0}}
+</style>
+</head>
+<body><main class="proto">
+<section class="hero"><div><div class="ey">CLUB POP • CENTRAL DE DADOS</div><h1>Sincronização EVO</h1><p class="sub">Uma única sincronização para atualizar a base operacional do Club Pop.</p></div><button class="sync" onclick="demo()">SINCRONIZAR DADOS EVO</button></section>
+<div class="status" id="status"><span>✓ Última sincronização: 04/10/2026 11:19</span><span><b>504</b> alunos processados</span><span><b>22</b> requisições EVO</span></div>
+<section class="grid">
+<article class="card"><div class="head"><h2>Alunos</h2><span class="tag">RECEBENDO</span></div><div class="big">504</div><div class="muted">população atual analisada</div><div class="items"><div class="row"><span>Contratos ativos</span><b>59</b></div><div class="row"><span>Suspensos identificados</span><b>3</b></div><div class="row"><span>Status cadastral</span><b>✓</b></div></div></article>
+<article class="card"><div class="head"><h2>Agregadores</h2><span class="tag">RECEBENDO</span></div><div class="big">443</div><div class="muted">alunos identificados</div><div class="items"><div class="row"><span>Wellhub / Gympass</span><b>253</b></div><div class="row"><span>TotalPass</span><b>225</b></div><div class="row"><span>Sobreposição</span><b>detectável</b></div></div></article>
+<article class="card"><div class="head"><h2>Fitcoins</h2><span class="tag">RECEBENDO</span></div><div class="big">✓</div><div class="muted">saldo individual vem no mesmo payload</div><div class="items"><div class="row"><span>Campo EVO</span><b>totalFitCoins</b></div><div class="row"><span>Exemplo validado</span><b>877</b></div></div></article>
+<article class="card wide"><div class="head"><h2>Contratos e categorias</h2><span class="tag">RECEBENDO</span></div><div class="items"><div class="row"><span>Contratos / memberships</span><b>✓ lista completa</b></div><div class="row"><span>Início e término</span><b>startDate / endDate</b></div><div class="row"><span>Cancelamento</span><b>cancelDate</b></div><div class="row"><span>Categoria do contrato</span><b>idCategoryMembership</b></div><div class="row"><span>Contrato adicional</span><b>flAdditionalMembership</b></div><div class="row"><span>VIP</span><b>dados disponíveis • regra em validação</b></div></div></article>
+<article class="card"><div class="head"><h2>Cadastro</h2><span class="tag">RECEBENDO</span></div><div class="items"><div class="row"><span>Nome / nascimento / sexo</span><b>✓</b></div><div class="row"><span>Documento</span><b>✓</b></div><div class="row"><span>Contatos</span><b>✓</b></div><div class="row"><span>Endereço</span><b>✓</b></div><div class="row"><span>Foto</span><b>✓</b></div><div class="row"><span>Bloqueio de acesso</span><b>✓</b></div></div></article>
+<article class="card"><div class="head"><h2>Acessos</h2><span class="tag">RECEBENDO</span></div><div class="big">✓</div><div class="muted">último acesso disponível</div><div class="items"><div class="row"><span>Último acesso</span><b>lastAccessDate</b></div><div class="row"><span>Data atualização EVO</span><b>✓</b></div></div></article>
+<article class="card wide"><div class="head"><h2>Presenças e comportamento</h2><span class="tag pending">A INVESTIGAR</span></div><div class="items"><div class="row"><span>Histórico de presenças</span><b>não veio neste payload</b></div><div class="row"><span>Presenças no mês</span><b>depende do histórico</b></div><div class="row"><span>Horário mais frequente</span><b>calcularemos no D1</b></div><div class="row"><span>Modalidade favorita</span><b>calcularemos no D1</b></div><div class="row"><span>Constância / missões</span><b>calcularemos no D1</b></div></div></article>
+</section>
+<section class="coverage"><h2>Cobertura da sincronização</h2><p>As 22 requisições atuais já cobrem cadastro, situação, agregadores, contratos, categorias, vigências, Fitcoins e último acesso.</p><div class="bar"><i></i></div><div class="legend"><span>● Já disponível na sincronização atual</span><span>○ Falta mapear histórico de presenças</span></div></section>
+<p class="note">PROTÓTIPO VISUAL • nenhuma função operacional desta página consulta a EVO.</p>
+</main>
+<script>function demo(){const s=document.getElementById('status');s.innerHTML='<span>⏳ Protótipo: aqui será executada a sincronização completa em uma única ação.</span><span><b>22</b> requisições atuais</span>';setTimeout(()=>s.innerHTML='<span>✓ Demonstração concluída</span><span><b>504</b> alunos</span><span><b>22</b> requisições EVO</span>',900)}</script>
+</body></html>
