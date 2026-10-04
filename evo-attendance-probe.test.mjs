@@ -1,0 +1,5 @@
+import assert from 'node:assert/strict';import probe from './evo-attendance-probe.mjs';
+let calls=0,saved;
+const env={DB:{prepare(sql){let args=[];return {bind(...a){args=a;return this},async first(){if(sql.startsWith('UPDATE evo_sync_probe'))return {id:14,endpoint:'/api/v2/activities/member/sessions?dateStart=2026-10-01T00%3A00%3A00&dateEnd=2026-10-04T23%3A59%3A59&skip=0&take=25'};if(sql.includes('evo_unit_config')){assert(sql.includes("unit='bike'"));return {dns:'fixture',token:'fixture',enabled:1,expires_at:'2099-12-31'}}return {id:1}},async run(){if(sql.includes("state='done'"))saved=JSON.parse(args[0]);return {}}}}}};
+globalThis.fetch=async()=>{calls++;return Response.json([{idMember:983786,presenca:true,isFinalized:true,name:'private',email:'private',document:'private',token:'private'}])};
+await probe.scheduled({},env);assert.equal(calls,1);assert.deepEqual(saved.data,[{idMember:983786,presenca:true,isFinalized:true}]);assert.equal(saved.status,200);assert.equal((await probe.fetch()).status,404);console.log('PASS: one authorized Bike-only read, logged response, PII/credentials excluded, no public trigger.');
