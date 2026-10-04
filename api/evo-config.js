@@ -41,7 +41,7 @@ export default async function handler(req,res){
    if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
    const raw=await rr.json(),rows=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:[]);
    const safe=rows.map(x=>({id:x.idMembershipCategory??x.id??null,name:x.name??x.description??x.nameMembershipCategory??null})); 
-   const vip=safe.filter(x=>/vip/i.test(String(x.name||"")));
+   const vip=safe.filter(x=>/vip/i.test(String(x.name||""))).map(v=>{const source=rows.find(x=>(x.name??x.description??x.nameMembershipCategory)===v.name)||{};return {...v,categoryCode:source.idCategory??source.idMembershipCategory??source.id??source.code??source.categoryId??null,fields:Object.keys(source).sort()}});
    return res.json({ok:true,unit:"bike",requests:1,totalCategories:safe.length,vip,categories:safe});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_CATEGORIA_VIP"});}
  }
