@@ -129,7 +129,9 @@ export default async function handler(req,res){
  const now=new Date(),parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(now),ym=parts.slice(0,7),dateStart=ym+"-01T00:00:00",dateEnd=parts+"T23:59:59";
  const qs=new URLSearchParams({idMember:id,dateStart,dateEnd,skip:"0",take:"100"}),evo=getEvoTransport("bike"),rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/activities/member/sessions?"+qs.toString());if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
  const raw=await rr.json(),rows=Array.isArray(raw)?raw:(Array.isArray(raw?.items)?raw.items:(Array.isArray(raw?.data)?raw.data:[])),present=rows.filter(x=>x?.presenca===true&&x?.isFinalized===true);
- return res.json({ok:true,id,requests:1,count:present.length,totalSessionsReturned:rows.length,period:{dateStart,dateEnd},rows:present.map(x=>({idActivitySession:x.idActivitySession??x.idActivitieSession??null,date:x.date??x.dateStart??null,startTime:x.startTime??null,activity:x.activitieName??x.activityName??null,presenca:x.presenca,isFinalized:x.isFinalized}))});
+ const attendance=present.map(x=>({idActivitySession:x.idActivitySession??x.idActivitieSession??null,date:x.date??x.dateStart??null,startTime:x.startTime??null,activity:x.activitieName??x.activityName??null,presenca:x.presenca,isFinalized:x.isFinalized}));
+ const save=await fetch(WORKER+"/admin/evo-test-presence",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit:"bike",id,period:{dateStart,dateEnd},rows:attendance}),cache:"no-store"}),saved=await save.json().catch(()=>({}));if(!save.ok||!saved.ok)return res.status(save.status||502).json({ok:false,error:saved.error||"FALHA_AO_SALVAR_PRESENCAS",requests:1});
+ return res.json({ok:true,id,requests:1,count:present.length,totalSessionsReturned:rows.length,period:{dateStart,dateEnd},rows:attendance,summary:saved.summary,saved:saved.saved});
  }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_TESTE_PRESENCAS"});}
  }
  if(req.query.route==="test-client"){
