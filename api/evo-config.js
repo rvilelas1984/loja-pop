@@ -122,6 +122,14 @@ export default async function handler(req,res){
    return res.json({...d,requests,batchMembers:students.length,batchLinks:students.length,source:'members-current-filtered'});
   }catch(e){if(runId){try{await job({action:'fail',runId,requests,error:e.message})}catch{}}return res.status(e.httpStatus||502).json({ok:false,error:e.message||'FALHA_SYNC_ALUNOS',requests});}
  }
+ if(req.query.route==="test-presence"){
+ res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
+ const id=String(req.query.id||"").trim(),cookie=String(req.headers.cookie||"");if(!/^[0-9]+$/.test(id))return res.status(400).json({ok:false,error:"ID_CLIENTE_INVALIDO"});
+ try{const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+ const evo=getEvoTransport("bike"),rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v2/activities/member/sessions?idMember="+id+"&startDate=2026-10-01&endDate=2026-10-31");if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
+ const raw=await rr.json(),rows=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:[]);return res.json({ok:true,id,requests:1,count:rows.length,rows});
+ }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_TESTE_PRESENCAS"});}
+ }
  if(req.query.route==="test-client"){
   res.setHeader("Cache-Control","no-store");if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
   const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike",id=String(req.query.id||"").trim();
