@@ -1315,7 +1315,7 @@ async function currentStudentJob(env, body) {
   if(body.action!=='ingest'||!Array.isArray(rows)||rows.length>25||body.skip!==run.next_skip)return {status:409,ok:false,error:'LOTE_FORA_DE_ORDEM'};
   const ids=new Set();
   for(const s of rows){
-    if(!/^\d+$/.test(s.id)||ids.has(s.id)||typeof s.name!=='string'||s.name.length>200||!['Active','Suspended'].includes(s.status)||typeof s.gympass!=='boolean'||typeof s.totalpass!=='boolean'||(s.fitcoins!==null&&!Number.isFinite(s.fitcoins))||typeof s.vip!=='boolean'||!Array.isArray(s.vipMemberships))return {status:422,ok:false,error:'LOTE_INVALIDO'};
+    if(!/^\d+$/.test(s.id)||ids.has(s.id)||typeof s.name!=='string'||s.name.length>200||!['Active','Suspended'].includes(s.status)||typeof s.gympass!=='boolean'||typeof s.totalpass!=='boolean'||(s.fitcoins!==null&&!Number.isFinite(s.fitcoins))||typeof s.vip!=='boolean'||!Array.isArray(s.vipMemberships)||!s.raw||typeof s.raw!=='object'||String(s.raw.idMember)!==s.id)return {status:422,ok:false,error:'LOTE_INVALIDO'};
     ids.add(s.id);
   }
   const old=(await db.prepare('SELECT evo_member_id FROM evo_current_stage WHERE run_id=?').bind(run.id).all()).results||[];
@@ -1327,6 +1327,22 @@ async function currentStudentJob(env, body) {
     db.prepare("INSERT INTO evo_current_stage(run_id,evo_member_id,payload) SELECT ?,json_extract(value,'$.id'),value FROM json_each(?)").bind(run.id,JSON.stringify(rows)),
     db.prepare("UPDATE evo_current_runs SET next_skip=?,requests=?,report_ids=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(next,requests,JSON.stringify(report),run.id),
   ]);
+  // Lossless EVO snapshot + categorized projections. No extra EVO requests.
+  const masterStatements=[],contractStatements=[];
+  for(const s of rows){
+    const m=s.raw||{}, memberships=Array.isArray(m.memberships)?m.memberships:Array.isArray(m.memberMemberships)?m.memberMemberships:Array.isArray(m.membership)?m.membership:[];
+    const personal={idMember:m.idMember,firstName:m.firstName,lastName:m.lastName,registerName:m.registerName,registerLastName:m.registerLastName,usePreferredName:m.usePreferredName,registerDate:m.registerDate,document:m.document,documentId:m.documentId,maritalStatus:m.maritalStatus,gender:m.gender,birthDate:m.birthDate};
+    const address={address:m.address,state:m.state,city:m.city,zipCode:m.zipCode,complement:m.complement,neighborhood:m.neighborhood,number:m.number};
+    const access={membershipStatus:m.membershipStatus,status:m.status,accessBlocked:m.accessBlocked,blockedReason:m.blockedReason,accessCardNumber:m.accessCardNumber,penalized:m.penalized,lastAccessDate:m.lastAccessDate};
+    const financial={totalFitCoins:m.totalFitCoins,totalFitcoins:m.totalFitcoins};
+    const integrations={gympassId:m.gympassId,codeTotalpass:m.codeTotalpass,idBranch:m.idBranch,branchName:m.branchName};
+    const metadata={updateDate:m.updateDate,sourceEndpoint:'/api/v2/members?status=1&showMemberships=true'};
+    masterStatements.push(db.prepare("INSERT INTO evo_member_master(unit,evo_member_id,is_current,personal_json,contacts_json,address_json,access_json,financial_json,integrations_json,memberships_json,metadata_json,raw_json,source_run_id,evo_updated_at,synced_at) VALUES('bike',?,1,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_member_id) DO UPDATE SET is_current=1,personal_json=excluded.personal_json,contacts_json=excluded.contacts_json,address_json=excluded.address_json,access_json=excluded.access_json,financial_json=excluded.financial_json,integrations_json=excluded.integrations_json,memberships_json=excluded.memberships_json,metadata_json=excluded.metadata_json,raw_json=excluded.raw_json,source_run_id=excluded.source_run_id,evo_updated_at=excluded.evo_updated_at,synced_at=CURRENT_TIMESTAMP").bind(s.id,JSON.stringify(personal),JSON.stringify(Array.isArray(m.contacts)?m.contacts:[]),JSON.stringify(address),JSON.stringify(access),JSON.stringify(financial),JSON.stringify(integrations),JSON.stringify(memberships),JSON.stringify(metadata),JSON.stringify(m),run.id,m.updateDate||null));
+    contractStatements.push(db.prepare("DELETE FROM evo_member_contracts WHERE unit='bike' AND evo_member_id=?").bind(s.id));
+    memberships.forEach((x,i)=>{const mm=x?.idMemberMembership??x?.idMembershipMember??null,mid=x?.idMembership??null,key=String(mm??mid??('idx-'+i));contractStatements.push(db.prepare("INSERT INTO evo_member_contracts(unit,evo_member_id,contract_key,id_membership,id_member_membership,category_id,membership_name,membership_status,start_date,end_date,cancel_date,sale_date,is_additional,raw_json,source_run_id,synced_at) VALUES('bike',?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)").bind(s.id,key,mid==null?null:String(mid),mm==null?null:String(mm),x?.idCategoryMembership==null?null:String(x.idCategoryMembership),x?.name??null,x?.membershipStatus??x?.statusMemberMembership??x?.status??null,x?.startDate??null,x?.endDate??null,x?.cancelDate??null,x?.saleDate??null,x?.flAdditionalMembership?1:0,JSON.stringify(x),run.id));});
+  }
+  for(let i=0;i<masterStatements.length;i+=40)await db.batch(masterStatements.slice(i,i+40));
+  for(let i=0;i<contractStatements.length;i+=40)await db.batch(contractStatements.slice(i,i+40));
   if(!done)return {ok:true,runId:run.id,nextSkip:next,done:false};
   const fresh=(await db.prepare('SELECT payload FROM evo_current_stage WHERE run_id=?').bind(run.id).all()).results.map(x=>JSON.parse(x.payload));
   if(!fresh.length)return {status:422,ok:false,error:'POPULACAO_VAZIA_NAO_PUBLICADA'};
@@ -1339,6 +1355,7 @@ async function currentStudentJob(env, body) {
   await db.batch([
     statement,
     db.prepare("UPDATE evo_students SET is_current=0,updated_at=CURRENT_TIMESTAMP WHERE unit='bike' AND last_run<>? AND is_current=1").bind(run.id),
+    db.prepare("UPDATE evo_member_master SET is_current=0 WHERE unit='bike' AND source_run_id<>? AND is_current=1").bind(run.id),
     db.prepare("DELETE FROM evo_student_categories WHERE unit='bike'"),
     db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT 'bike',evo_member_id,'aggregator','gympass','member_registration' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.gympass')=1").bind(run.id),
     db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT 'bike',evo_member_id,'aggregator','totalpass','member_registration' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.totalpass')=1").bind(run.id),
