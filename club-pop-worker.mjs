@@ -128,7 +128,7 @@ export default {
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike",id=String(url.searchParams.get("id")||"").trim();
         if(unit!=="bike")return json({ok:false,error:"TESTE_GYM_BLOQUEADO"},423);
-        if(!/^\\d+$/.test(id))return json({ok:false,error:"ID_CLIENTE_INVALIDO"},400);
+        if(!/^[0-9]+$/.test(id))return json({ok:false,error:"ID_CLIENTE_INVALIDO"},400);
         const m=await env.DB.prepare("SELECT evo_member_id,is_current,personal_json,contacts_json,address_json,access_json,financial_json,integrations_json,memberships_json,metadata_json,raw_json,source_run_id,evo_updated_at,synced_at FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,id).first();
         if(!m)return json({ok:false,error:"CLIENTE_AINDA_NAO_SALVO_NA_NOVA_BASE",hint:"Execute SINCRONIZAR DADOS EVO uma vez para preencher a tabela completa."},404);
         const contracts=await env.DB.prepare("SELECT contract_key,id_membership,id_member_membership,category_id,membership_name,membership_status,start_date,end_date,cancel_date,sale_date,is_additional,raw_json,synced_at FROM evo_member_contracts WHERE unit=? AND evo_member_id=? ORDER BY COALESCE(start_date,'') DESC,contract_key DESC").bind(unit,id).all();
