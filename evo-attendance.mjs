@@ -26,3 +26,8 @@ export function parseClassAttendance(payload, expectedSession) {
   }
   return {sessionId: String(expectedSession), date, participants: seen.size, rows};
 }
+
+export function attendanceKey(row) {
+  if (!/^\d+$/.test(String(row?.idActivitySession||'')) || !/^\d+$/.test(String(row?.id||''))) throw new Error('PRESENCA_INVALIDA');
+  return String(row.idActivitySession);
+}
