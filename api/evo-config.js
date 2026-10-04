@@ -122,6 +122,27 @@ export default async function handler(req,res){
    return res.json({...d,requests,batchMembers:students.length,batchLinks:students.length,source:'members-current-filtered'});
   }catch(e){if(runId){try{await job({action:'fail',runId,requests,error:e.message})}catch{}}return res.status(e.httpStatus||502).json({ok:false,error:e.message||'FALHA_SYNC_ALUNOS',requests});}
  }
+ if(req.query.route==="attendance-day-test"){
+  res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
+  const cookie=String(req.headers.cookie||""),date=String(req.query.date||"");if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return res.status(400).json({ok:false,error:"DATA_INVALIDA"});
+  try{
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+   const evo=getEvoTransport("bike");let requests=1;
+   const sr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+encodeURIComponent(date)+"&showFullWeek=false&onlyAvailables=false&take=100");if(!sr.ok)return res.status(502).json({ok:false,error:"EVO_GRADE_HTTP_"+sr.status,requests});
+   const raw=await sr.json(),list=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:[]),sessions=[];
+   for(const s of list){const d=String(s?.activityDate||s?.date||"").slice(0,10);if(d!==date||Number(s?.status)!==6)continue;const id=s?.idAtividadeSessao??s?.idActivitySession??s?.idActivitieSession;if(!Number.isSafeInteger(Number(id))||Number(id)<=0)continue;sessions.push({id:String(id),date:d});}
+   const unique=[...new Map(sessions.map(x=>[x.id,x])).values()];
+   const pr=await fetch(WORKER+"/admin/evo-attendance-sessions",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit:"bike",sessionIds:unique.map(x=>x.id)}),cache:"no-store"}),pd=await pr.json().catch(()=>({}));if(!pr.ok||!pd.ok)return res.status(pr.status||502).json({ok:false,error:pd.error||"FALHA_CONTROLE_SESSOES",requests});
+   const done=new Set((pd.processed||[]).map(String)),pending=unique.filter(x=>!done.has(x.id));let saved=0,participants=0;
+   for(const s of pending){requests++;const dr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(s.id));if(!dr.ok)return res.status(502).json({ok:false,error:"EVO_DETALHE_HTTP_"+dr.status,requests,sessionId:s.id});
+    const payload=await dr.json(),d=Array.isArray(payload)&&payload.length===1?payload[0]:payload;if(!d||String(d.idActivitySession)!==s.id||Number(d.status)!==6||!Array.isArray(d.enrollments))return res.status(502).json({ok:false,error:"DETALHE_AULA_INVALIDO",requests,sessionId:s.id});
+    const tm=String(d.startTime||"").trim(),m=tm.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);if(!m)return res.status(502).json({ok:false,error:"HORARIO_AULA_INVALIDO",requests,sessionId:s.id});let h=Number(m[1]);if(m[3])h=h%12+(m[3].toUpperCase()==="PM"?12:0);const startTime=String(h).padStart(2,"0")+":"+m[2],rows=[],seen=new Set();
+    for(const e of d.enrollments){if(![0,1,2].includes(e.status))return res.status(502).json({ok:false,error:"STATUS_PRESENCA_DESCONHECIDO",requests,sessionId:s.id});if(e.removed===true||!Number.isSafeInteger(e.idMember)||e.idMember<=0)continue;const id=String(e.idMember);if(seen.has(id))return res.status(502).json({ok:false,error:"PARTICIPANTE_DUPLICADO",requests,sessionId:s.id});seen.add(id);if(e.status===0)rows.push({id,date,startTime,activity:String(d.name||"").slice(0,200),idActivitySession:s.id,presenca:true,isFinalized:true});}
+    participants+=seen.size;const ir=await fetch(WORKER+"/admin/evo-attendance-ingest-class",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit:"bike",sessionId:s.id,date,startTime,activity:String(d.name||"").slice(0,200),rows}),cache:"no-store"}),id=await ir.json().catch(()=>({}));if(!ir.ok||!id.ok)return res.status(ir.status||502).json({ok:false,error:id.error||"FALHA_GRAVACAO_AULA",requests,sessionId:s.id});saved+=Number(id.saved||0);
+   }
+   return res.json({ok:true,date,requests,classesFound:unique.length,alreadyProcessed:unique.length-pending.length,newClasses:pending.length,participants,saved});
+  }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_SYNC_PRESENCAS_DIA"});}
+ }
  if(req.query.route==="test-presence"){
  res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
  const id=String(req.query.id||"").trim(),cookie=String(req.headers.cookie||"");if(!/^[0-9]+$/.test(id))return res.status(400).json({ok:false,error:"ID_CLIENTE_INVALIDO"});
