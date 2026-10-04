@@ -105,6 +105,22 @@ export default {
         return json({ok:true,unit,saved:statements.length});
       }
 
+      // Diagnóstico econômico do Dashboard: lê somente o D1 e calcula quantas chamadas de sessões ainda faltariam.
+      if (url.pathname === "/admin/evo-dashboard-diagnostic" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
+        if(unit!=="bike")return json({ok:false,error:"DIAGNOSTICO_GYM_BLOQUEADO"},423);
+        const now=new Date(),month=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit"}).format(now).slice(0,7),start=month+"-01",today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo"}).format(now);
+        const current=await env.DB.prepare("SELECT COUNT(*) n FROM evo_students WHERE unit=? AND is_current=1").bind(unit).first();
+        const linked=await env.DB.prepare("SELECT COUNT(DISTINCT es.evo_member_id) n FROM evo_students es JOIN members m ON CAST(m.evo_member_id AS TEXT)=es.evo_member_id WHERE es.unit=? AND es.is_current=1").bind(unit).first();
+        const covered=await env.DB.prepare("SELECT COUNT(DISTINCT es.evo_member_id) n FROM evo_students es JOIN members m ON CAST(m.evo_member_id AS TEXT)=es.evo_member_id JOIN attendance_sync_ranges r ON r.member_id=m.id AND r.unit=? WHERE es.unit=? AND es.is_current=1 AND r.start_date<=? AND r.end_date>=?").bind(unit,unit,start,today).first();
+        const attendanceRows=await env.DB.prepare("SELECT COUNT(*) n FROM attendance_history WHERE unit=? AND attendance_date BETWEEN ? AND ?").bind(unit,start,today).first();
+        const total=Number(current?.n||0),linkedMembers=Number(linked?.n||0),coveredMembers=Number(covered?.n||0),missing=Math.max(0,linkedMembers-coveredMembers);
+        return json({ok:true,unit,period:{start,end:today},population:{current:total,linked:linkedMembers},attendance:{coveredMembers,missingMembers:missing,rows:Number(attendanceRows?.n||0),estimatedRequests:missing,endpoint:"/api/v2/activities/member/sessions"},alreadyAvailable:{profile:true,contracts:true,contractDates:true,categories:true,fitcoins:true,lastAccess:true,aggregators:true},calculatedLocally:{attendanceCount:true,distinctDays:true,favoriteTime:true,favoriteActivity:true},evoRequestsMade:0,note:"Diagnóstico somente D1. Nenhuma requisição EVO foi executada."});
+      }
+
       // Configuração da sincronização econômica por unidade. Não executa EVO ao consultar/salvar.
       if (url.pathname === "/admin/evo-sync-config" && ["GET","PUT"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
