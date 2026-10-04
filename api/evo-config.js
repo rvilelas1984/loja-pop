@@ -45,6 +45,27 @@ export default async function handler(req,res){
    return res.json({ok:true,unit:"bike",requests:1,totalCategories:safe.length,vip,categories:safe});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_CATEGORIA_VIP"});}
  }
+ if(req.query.route==="vip-count-diagnostic"){
+  res.setHeader("Cache-Control","no-store");
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
+  if(String(req.query.unit||"bike").toLowerCase()!=="bike")return res.status(423).json({ok:false,error:"DIAGNOSTICO_GYM_BLOQUEADO"});
+  const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+  try{
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));
+   if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+   const evo=getEvoTransport("bike"),rows=[];let skip=0,requests=0;
+   for(;;){
+    const url="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?statusMemberMembership=1&showVips=true&showAggregators=true&take=25&skip="+skip;
+    const rr=await evo.fetch(url);requests++;if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests});
+    const batch=await rr.json();if(!Array.isArray(batch)||batch.length>25)return res.status(502).json({ok:false,error:"EVO_RESPOSTA_INVALIDA",requests});
+    rows.push(...batch);if(batch.length<25)break;skip+=25;if(requests>=80)throw new Error("LIMITE_DIAGNOSTICO");
+   }
+   const vipRows=rows.filter(x=>Number(x.idCategoryMembership??x.idMembershipCategory)===1);
+   const ids=a=>[...new Set(a.map(x=>Number(x.idMember)).filter(Number.isInteger))];
+   const status={};for(const x of vipRows){const k=String(x.statusMemberMembership??"null");status[k]=(status[k]||0)+1}
+   return res.json({ok:true,unit:"bike",requests,totalContracts:rows.length,vipContracts:vipRows.length,vipMembers:ids(vipRows).length,status,vipMembershipNames:[...new Set(vipRows.map(x=>x.nameMembership).filter(Boolean))]});
+  }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_CONTAGEM_VIP"});}
+ }
  if(req.query.route==="vip-diagnostic"){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
