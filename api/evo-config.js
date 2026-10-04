@@ -53,17 +53,15 @@ export default async function handler(req,res){
   try{
    const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));
    if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
-   const evo=getEvoTransport("bike"),rows=[];let skip=0,requests=0;
-   for(;;){
-    const url="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?statusMemberMembership=1&showVips=true&showAggregators=true&take=25&skip="+skip;
-    const rr=await evo.fetch(url);requests++;if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests});
-    const batch=await rr.json();if(!Array.isArray(batch)||batch.length>25)return res.status(502).json({ok:false,error:"EVO_RESPOSTA_INVALIDA",requests});
-    rows.push(...batch);if(batch.length<25)break;skip+=25;if(requests>=80)throw new Error("LIMITE_DIAGNOSTICO");
-   }
+   const skip=Math.max(0,Number(req.query.skip)||0),evo=getEvoTransport("bike");
+   const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v3/membermembership?statusMemberMembership=1&showVips=true&showAggregators=true&take=25&skip="+skip);
+   if(rr.status===429)return res.status(200).json({ok:true,paused:true,nextSkip:skip,requests:1});
+   if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1,nextSkip:skip});
+   const rows=await rr.json();if(!Array.isArray(rows)||rows.length>25)return res.status(502).json({ok:false,error:"EVO_RESPOSTA_INVALIDA",requests:1,nextSkip:skip});
    const vipRows=rows.filter(x=>Number(x.idCategoryMembership??x.idMembershipCategory)===1);
-   const ids=a=>[...new Set(a.map(x=>Number(x.idMember)).filter(Number.isInteger))];
+   const vipMembers=[...new Set(vipRows.map(x=>Number(x.idMember)).filter(Number.isInteger))];
    const status={};for(const x of vipRows){const k=String(x.statusMemberMembership??"null");status[k]=(status[k]||0)+1}
-   return res.json({ok:true,unit:"bike",requests,totalContracts:rows.length,vipContracts:vipRows.length,vipMembers:ids(vipRows).length,status,vipMembershipNames:[...new Set(vipRows.map(x=>x.nameMembership).filter(Boolean))]});
+   return res.json({ok:true,paused:false,done:rows.length<25,nextSkip:skip+rows.length,requests:1,batchContracts:rows.length,vipContracts:vipRows.length,vipMemberIds:vipMembers,status});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_CONTAGEM_VIP"});}
  }
  if(req.query.route==="vip-diagnostic"){
