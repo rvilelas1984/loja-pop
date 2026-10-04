@@ -28,6 +28,23 @@ export default async function handler(req,res){
    return res.json({ok:true,unit,...report,requests:1,source:"activeclients",scope:"clientes com contratos ativos; não representa toda a população de agregadores, suspensos e VIPs",checkedAt:new Date().toISOString()});
   }catch(e){return res.status(502).json({ok:false,error:e.code||"EVO_RELATORIO_INVALIDO",message:"Não foi possível validar o relatório de alunos ativos. Nenhum total foi estimado."})}
  }
+ if(req.query.route==="vip-category-diagnostic"){
+  res.setHeader("Cache-Control","no-store");
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
+  if(String(req.query.unit||"bike").toLowerCase()!=="bike")return res.status(423).json({ok:false,error:"DIAGNOSTICO_GYM_BLOQUEADO"});
+  const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+  try{
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));
+   if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+   const evo=getEvoTransport("bike");
+   const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v1/membership/category");
+   if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
+   const raw=await rr.json(),rows=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:[]);
+   const safe=rows.map(x=>({id:x.idMembershipCategory??x.id??null,name:x.name??x.description??x.nameMembershipCategory??null})); 
+   const vip=safe.filter(x=>/vip/i.test(String(x.name||"")));
+   return res.json({ok:true,unit:"bike",requests:1,totalCategories:safe.length,vip,categories:safe});
+  }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_CATEGORIA_VIP"});}
+ }
  if(req.query.route==="vip-diagnostic"){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
