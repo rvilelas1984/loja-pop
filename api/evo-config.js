@@ -28,6 +28,33 @@ export default async function handler(req,res){
    return res.json({ok:true,unit,...report,requests:1,source:"activeclients",scope:"clientes com contratos ativos; não representa toda a população de agregadores, suspensos e VIPs",checkedAt:new Date().toISOString()});
   }catch(e){return res.status(502).json({ok:false,error:e.code||"EVO_RELATORIO_INVALIDO",message:"Não foi possível validar o relatório de alunos ativos. Nenhum total foi estimado."})}
  }
+ if(req.query.route==="vip-diagnostic"){
+  res.setHeader("Cache-Control","no-store");
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
+  const unit=String(req.query.unit||"bike").toLowerCase();
+  if(unit!=="bike")return res.status(423).json({ok:false,error:"DIAGNOSTICO_GYM_BLOQUEADO"});
+  const cookie=String(req.headers.cookie||"");
+  if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+  try{
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"});
+   const session=await auth.json().catch(()=>({}));
+   if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+   const evo=getEvoTransport("bike"), rows=[]; let skip=0,requests=0;
+   while(requests<20){
+    const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v3/membermembership?statusMemberMembership=1&showVips=true&showAggregators=false&take=25&skip="+skip);
+    requests++;
+    if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests});
+    const batch=await rr.json();
+    if(!Array.isArray(batch)||batch.length>25)return res.status(502).json({ok:false,error:"EVO_VIP_RESPOSTA_INVALIDA",requests});
+    rows.push(...batch);
+    if(batch.length<25)break;
+    skip+=25;
+   }
+   const uniqueMembers=[...new Set(rows.map(x=>Number(x.idMember)).filter(Number.isInteger))];
+   const categories={}; for(const x of rows){const k=String(x.idMembershipCategory??"null");categories[k]=(categories[k]||0)+1}
+   return res.json({ok:true,unit:"bike",contracts:rows.length,uniqueMembers:uniqueMembers.length,requests,categories,sample:rows.slice(0,3).map(x=>({idMember:x.idMember,idMembership:x.idMembership,nameMembership:x.nameMembership,idMembershipCategory:x.idMembershipCategory,statusMemberMembership:x.statusMemberMembership}))});
+  }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_DIAGNOSTICO_VIP"});}
+ }
  if(req.query.route==="sync-students"){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
