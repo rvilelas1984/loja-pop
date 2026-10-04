@@ -49,7 +49,7 @@ export default {
         const requestedUnit=url.pathname==="/internal/evo-bike"?"bike":String(operation.unit||"bike").toLowerCase();
         const cfg=await getEvoConfig(env,requestedUnit);
         const upstream=await fetch(target.href,{method:operation.method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});
-        try { const p=target.pathname.toLowerCase(), purpose=p.includes("/activities/schedule/detail")?"checkin_detail":p.includes("/activities/schedule")?"schedule":p.includes("/fitcoins")?"fitcoins":p.includes("/member/sessions")?"attendance":p.includes("/members/")?"member_profile":"other"; await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,?,?)").bind(requestedUnit,purpose,String(operation.method||"GET").toUpperCase(),target.pathname,upstream.status,upstream.ok?1:0).run(); } catch {}
+        try { const p=target.pathname.toLowerCase(), purpose=requestedUnit==="bike"&&(p==="/api/v2/management/activeclients"||(p==="/api/v2/members"&&target.searchParams.get("status")==="1"))?"student_sync":p.includes("/activities/schedule/detail")?"checkin_detail":p.includes("/activities/schedule")?"schedule":p.includes("/fitcoins")?"fitcoins":p.includes("/member/sessions")?"attendance":p.includes("/members/")?"member_profile":"other"; await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,?,?)").bind(requestedUnit,purpose,String(operation.method||"GET").toUpperCase(),target.pathname,upstream.status,upstream.ok?1:0).run(); } catch {}
         if (target.pathname === "/api/v2/management/activeclients") {
           return new Response(upstream.body, {
             status: upstream.status,
@@ -137,12 +137,21 @@ export default {
       }
 
       
+      if (url.pathname === "/admin/evo-current-job" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const result=await currentStudentJob(env,await request.json());return json(result,result.status||200);
+      }
+
       // Espelho administrativo de alunos EVO: leitura exclusiva do D1, sem chamada à EVO.
       if (url.pathname === "/admin/evo-students" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
+        if(unit==='bike')return json(await currentStudentsView(env));
         const q=await env.DB.prepare(`SELECT
           SUM(CASE WHEN json_extract(payload_json,'$.member.status')='Active' AND json_extract(payload_json,'$.member.gympassId') IS NULL AND json_extract(payload_json,'$.member.codeTotalpass') IS NULL THEN 1 ELSE 0 END) active,
           SUM(CASE WHEN json_extract(payload_json,'$.member.status')='Active' AND (json_extract(payload_json,'$.member.gympassId') IS NOT NULL OR json_extract(payload_json,'$.member.codeTotalpass') IS NOT NULL) THEN 1 ELSE 0 END) aggregators,
@@ -1239,4 +1248,70 @@ function allowedEvoTarget(value, method) {
   if (method!=="GET") return null;
   if (path==="/api/v2/management/activeclients" || path==="/api/v2/members/active-members") return url;
   return /^\/api\/v[123]\/(?:members(?:\/\d+|\/basic|\/fitcoins)?|activities(?:\/schedule(?:\/detail)?|\/member\/sessions)?|membership(?:\/category)?|membermembership)$/.test(path) ? url : null;
+}
+
+
+// Current Bike students: staging is isolated from operational and historical caches.
+async function currentStudentJob(env, body) {
+  if(body.unit!=='bike')return {status:423,ok:false,error:'SYNC_GYM_BLOQUEADO_EM_VALIDACAO'};
+  const db=env.DB;
+  if(body.action==='begin') {
+    await db.prepare("UPDATE evo_current_runs SET state='failed',error='SINCRONIZACAO_EXPIRADA' WHERE state='running' AND updated_at<datetime('now','-10 minutes')").run();
+    const running=await db.prepare("SELECT id FROM evo_current_runs WHERE unit='bike' AND state='running'").first();
+    if(running)return {status:409,ok:false,error:'SINCRONIZACAO_JA_EM_ANDAMENTO'};
+    const id=crypto.randomUUID();
+    await db.prepare("INSERT INTO evo_current_runs(id,unit,state) VALUES(?,'bike','running')").bind(id).run();
+    return {ok:true,runId:id,nextSkip:0};
+  }
+  const run=await db.prepare("SELECT * FROM evo_current_runs WHERE id=? AND unit='bike'").bind(String(body.runId||'')).first();
+  if(!run||run.state!=='running')return {status:409,ok:false,error:'SINCRONIZACAO_INATIVA'};
+  if(body.action==='fail') {
+    await db.prepare("UPDATE evo_current_runs SET state='failed',error=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(String(body.error||'EVO_FALHOU').slice(0,80),run.id).run();
+    return {ok:true};
+  }
+  if(body.action==='check')return {ok:true,runId:run.id,nextSkip:run.next_skip};
+  const rows=body.students;
+  if(body.action!=='ingest'||!Array.isArray(rows)||rows.length>25||body.skip!==run.next_skip)return {status:409,ok:false,error:'LOTE_FORA_DE_ORDEM'};
+  const ids=new Set();
+  for(const s of rows){
+    if(!/^\d+$/.test(s.id)||ids.has(s.id)||typeof s.name!=='string'||s.name.length>200||!['Active','Suspended'].includes(s.status)||typeof s.gympass!=='boolean'||typeof s.totalpass!=='boolean'||(s.fitcoins!==null&&!Number.isFinite(s.fitcoins)))return {status:422,ok:false,error:'LOTE_INVALIDO'};
+    ids.add(s.id);
+  }
+  const old=(await db.prepare('SELECT evo_member_id FROM evo_current_stage WHERE run_id=?').bind(run.id).all()).results||[];
+  if(old.some(s=>ids.has(s.evo_member_id)))return {status:409,ok:false,error:'PAGINACAO_DUPLICADA'};
+  const report=body.skip===0?body.reportIds:JSON.parse(run.report_ids||'null');
+  if(!Array.isArray(report)||report.some(id=>!/^\d+$/.test(String(id))))return {status:422,ok:false,error:'RELATORIO_ATIVOS_INVALIDO'};
+  const next=run.next_skip+rows.length,requests=run.requests+Number(body.skip===0?2:1),done=rows.length<25;
+  await db.batch([
+    db.prepare("INSERT INTO evo_current_stage(run_id,evo_member_id,payload) SELECT ?,json_extract(value,'$.id'),value FROM json_each(?)").bind(run.id,JSON.stringify(rows)),
+    db.prepare("UPDATE evo_current_runs SET next_skip=?,requests=?,report_ids=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(next,requests,JSON.stringify(report),run.id),
+  ]);
+  if(!done)return {ok:true,runId:run.id,nextSkip:next,done:false};
+  const fresh=(await db.prepare('SELECT payload FROM evo_current_stage WHERE run_id=?').bind(run.id).all()).results.map(x=>JSON.parse(x.payload));
+  if(!fresh.length)return {status:422,ok:false,error:'POPULACAO_VAZIA_NAO_PUBLICADA'};
+  const previous=(await db.prepare("SELECT s.*,group_concat(c.category||':'||c.subtype) categories FROM evo_students s LEFT JOIN evo_student_categories c USING(unit,evo_member_id) WHERE s.unit='bike' AND s.is_current=1 GROUP BY s.evo_member_id").all()).results;
+  const before=new Map(previous.map(x=>[x.evo_member_id,x])),after=new Set(fresh.map(x=>x.id));
+  let added=0,changed=0;
+  for(const s of fresh){const p=before.get(s.id);if(!p)added++;else if(p.display_name!==s.name||p.membership_status!==s.status||p.fitcoins!==s.fitcoins||Boolean((p.categories||'').includes('aggregator:gympass'))!==s.gympass||Boolean((p.categories||'').includes('aggregator:totalpass'))!==s.totalpass)changed++;}
+  const removed=previous.filter(x=>!after.has(x.evo_member_id)).length;
+  const statement=db.prepare("INSERT INTO evo_students(unit,evo_member_id,display_name,membership_status,fitcoins,is_current,last_run) SELECT 'bike',evo_member_id,json_extract(payload,'$.name'),json_extract(payload,'$.status'),json_extract(payload,'$.fitcoins'),1,run_id FROM evo_current_stage WHERE run_id=? ON CONFLICT(unit,evo_member_id) DO UPDATE SET display_name=excluded.display_name,membership_status=excluded.membership_status,fitcoins=COALESCE(excluded.fitcoins,evo_students.fitcoins),is_current=1,last_run=excluded.last_run,updated_at=CURRENT_TIMESTAMP").bind(run.id);
+  await db.batch([
+    statement,
+    db.prepare("UPDATE evo_students SET is_current=0,updated_at=CURRENT_TIMESTAMP WHERE unit='bike' AND last_run<>? AND is_current=1").bind(run.id),
+    db.prepare("DELETE FROM evo_student_categories WHERE unit='bike'"),
+    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT 'bike',evo_member_id,'aggregator','gympass','member_registration' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.gympass')=1").bind(run.id),
+    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT 'bike',evo_member_id,'aggregator','totalpass','member_registration' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.totalpass')=1").bind(run.id),
+    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT 'bike',evo_member_id,'suspended','','membershipStatus' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.status')='Suspended'").bind(run.id),
+    db.prepare("UPDATE evo_current_runs SET state='done',added=?,changed=?,removed=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(added,changed,removed,run.id),
+    db.prepare('DELETE FROM evo_current_stage WHERE run_id=?').bind(run.id),
+  ]);
+  return {ok:true,runId:run.id,nextSkip:next,done:true,total:next,added,changed,removed};
+}
+async function currentStudentsView(env) {
+  const db=env.DB,run=await db.prepare("SELECT * FROM evo_current_runs WHERE unit='bike' AND state='done' ORDER BY updated_at DESC,rowid DESC LIMIT 1").first();
+  const total=await db.prepare("SELECT COUNT(*) total,SUM(membership_status='Active') statusActive,SUM(membership_status='Suspended') suspended FROM evo_students WHERE unit='bike' AND is_current=1").first();
+  const agg=await db.prepare("SELECT COUNT(DISTINCT evo_member_id) aggregators,SUM(subtype='gympass') gympass,SUM(subtype='totalpass') totalpass FROM evo_student_categories WHERE unit='bike' AND category='aggregator'").first();
+  const comparison=await db.prepare("WITH e AS(SELECT evo_member_id id FROM evo_students WHERE unit='bike' AND is_current=1),c AS(SELECT DISTINCT CAST(evo_member_id AS TEXT) id FROM members WHERE evo_member_id IS NOT NULL) SELECT (SELECT COUNT(*) FROM c) linked,(SELECT COUNT(*) FROM e JOIN c USING(id)) both,(SELECT COUNT(*) FROM e WHERE id NOT IN(SELECT id FROM c)) onlyEvo,(SELECT COUNT(*) FROM c WHERE id NOT IN(SELECT id FROM e)) onlyClub").first();
+  const logs=(await db.prepare("SELECT added,changed,removed,requests,updated_at createdAt,'População atual filtrada; histórico preservado.' details FROM evo_current_runs WHERE state='done' AND unit='bike' ORDER BY updated_at DESC LIMIT 20").all()).results;
+  return {ok:true,unit:'bike',source:'d1-current',counts:{active:run?new Set(JSON.parse(run.report_ids)).size:null,total:total.total,statusActive:total.statusActive||0,suspended:total.suspended||0,aggregators:agg.aggregators||0,gympass:agg.gympass||0,totalpass:agg.totalpass||0,vip:null},comparison,lastSyncAt:run?.updated_at||null,lastRequests:run?.requests||0,logs,note:'Ativos: relatório de contratos. Agregadores: identificadores no cadastro atual; podem se sobrepor. VIP: classificação ainda não confirmada. Sem apagar históricos.'};
 }
