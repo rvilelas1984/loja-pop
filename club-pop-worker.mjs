@@ -137,6 +137,19 @@ export default {
       }
 
       
+      if (url.pathname === "/admin/evo-vip-checkpoint" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const x=await request.json().catch(()=>({}));if(String(x.unit||"bike")!=="bike")return json({ok:false,error:"DIAGNOSTICO_GYM_BLOQUEADO"},423);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_vip_diagnostic_checkpoint (unit TEXT PRIMARY KEY, next_skip INTEGER NOT NULL DEFAULT 0, contracts INTEGER NOT NULL DEFAULT 0, requests INTEGER NOT NULL DEFAULT 0, vip_json TEXT NOT NULL DEFAULT '[]', details_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        if(x.action==="load"){const q=await env.DB.prepare("SELECT next_skip,contracts,requests,vip_json,details_json,updated_at FROM evo_vip_diagnostic_checkpoint WHERE unit='bike'").first();return json({ok:true,checkpoint:q||null});}
+        if(x.action==="reset"){await env.DB.prepare("DELETE FROM evo_vip_diagnostic_checkpoint WHERE unit='bike'").run();return json({ok:true,reset:true});}
+        if(x.action!=="save")return json({ok:false,error:"ACAO_INVALIDA"},400);
+        const ids=[...new Set((Array.isArray(x.vipIds)?x.vipIds:[]).map(Number).filter(Number.isInteger))],details=Array.isArray(x.details)?x.details.slice(-200):[];
+        await env.DB.prepare("INSERT INTO evo_vip_diagnostic_checkpoint(unit,next_skip,contracts,requests,vip_json,details_json,updated_at) VALUES('bike',?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET next_skip=excluded.next_skip,contracts=excluded.contracts,requests=excluded.requests,vip_json=excluded.vip_json,details_json=excluded.details_json,updated_at=CURRENT_TIMESTAMP").bind(Number(x.nextSkip||0),Number(x.contracts||0),Number(x.requests||0),JSON.stringify(ids),JSON.stringify(details)).run();
+        return json({ok:true,saved:true,nextSkip:Number(x.nextSkip||0),contracts:Number(x.contracts||0),vipCount:ids.length});
+      }
+
       if (url.pathname === "/admin/evo-current-job" && request.method === "POST") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
