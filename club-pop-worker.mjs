@@ -134,6 +134,15 @@ export default {
         return json({ok:true,unit,idMember,start,end,total:(q.results||[]).length,rows:q.results||[]});
       }
 
+      if(url.pathname==="/admin/evo-attendance-import-queue" && request.method==="POST"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({}));if(b.unit!=="bike")return json({ok:false,error:"SYNC_GYM_BLOQUEADO"},423);
+        if(!Array.isArray(b.sessions)||b.sessions.length>100||b.sessions.some(s=>!s||!/^\d+$/.test(String(s.id))||!/^\d{4}-\d{2}-\d{2}$/.test(String(s.date))))return json({ok:false,error:"SESSOES_INVALIDAS"},400);
+        const stm=b.sessions.map(s=>env.DB.prepare("INSERT INTO evo_attendance_import_queue(unit,id_activity_session,activity_date,status) VALUES('bike',?,?,'pending') ON CONFLICT(unit,id_activity_session) DO NOTHING").bind(String(s.id),s.date));
+        if(stm.length)await env.DB.batch(stm);return json({ok:true,received:b.sessions.length});
+      }
+
       // Incremental Bike attendance: D1 session ledger + idempotent class attendance ingest.
       if (url.pathname === "/admin/evo-attendance-import-queue" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);

@@ -1,3 +1,4 @@
+import { attendanceWeekStarts } from "../lib/evo-attendance-weeks.js";
 import { parseActiveReport } from "../lib/evo-active-report.js";
 import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
@@ -144,8 +145,10 @@ export default async function handler(req,res){
   try{
    const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
    const [sy,sm]=start.split("-").map(Number),[ey,em]=end.split("-").map(Number),from=new Date(Date.UTC(sy,sm-1,1)),to=new Date(Date.UTC(ey,em,0)),evo=getEvoTransport("bike"),all=new Map();let requests=0,weeks=0;
-   for(let d=new Date(from);d<=to;d.setUTCDate(d.getUTCDate()+7)){const date=d.toISOString().slice(0,10);requests++;weeks++;const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+date+"&showFullWeek=true&onlyAvailables=false&take=100");if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_GRADE_HTTP_"+rr.status,requests,weeks});
+   for(const date of attendanceWeekStarts(start,end)){requests++;weeks++;const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+date+"&showFullWeek=true&onlyAvailables=false&take=100");if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_GRADE_HTTP_"+rr.status,requests,weeks});
     const raw=await rr.json(),list=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:[]);for(const s of list){const day=String(s?.activityDate||s?.date||"").slice(0,10),id=s?.idAtividadeSessao??s?.idActivitySession??s?.idActivitieSession;if(day<from.toISOString().slice(0,10)||day>to.toISOString().slice(0,10)||Number(s?.status)!==6||!Number.isSafeInteger(Number(id))||Number(id)<=0)continue;all.set(String(id),{id:String(id),date:day});}}
+   const discovered=[...all.values()];
+   for(let i=0;i<discovered.length;i+=100){const qr=await fetch(WORKER+"/admin/evo-attendance-import-queue",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit:"bike",sessions:discovered.slice(i,i+100)})}),qd=await qr.json().catch(()=>({}));if(!qr.ok||!qd.ok)throw Error(qd.error||"FALHA_PERSISTIR_FILA");}
    const ids=[...all.keys()];let processed=[];
    for(let i=0;i<ids.length;i+=100){const pr=await fetch(WORKER+"/admin/evo-attendance-sessions",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit:"bike",sessionIds:ids.slice(i,i+100)}),cache:"no-store"}),pd=await pr.json().catch(()=>({}));if(!pr.ok||!pd.ok)return res.status(pr.status||502).json({ok:false,error:pd.error||"FALHA_CONTROLE_SESSOES",requests,weeks});processed.push(...(pd.processed||[]));}
    const done=new Set(processed.map(String)),pending=ids.filter(id=>!done.has(id));
