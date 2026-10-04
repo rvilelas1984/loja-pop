@@ -122,6 +122,15 @@ export default {
       }
 
       // Incremental Bike attendance: D1 session ledger + idempotent class attendance ingest.
+      if (url.pathname === "/admin/evo-attendance-import-queue" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase(),start=String(url.searchParams.get("start")||""),end=String(url.searchParams.get("end")||"");
+        if(unit!=="bike")return json({ok:false,error:"SYNC_GYM_BLOQUEADO"},423);if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return json({ok:false,error:"PERIODO_INVALIDO"},400);
+        const from=start+"-01",[y,m]=end.split("-").map(Number),to=new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);
+        const q=await env.DB.prepare("SELECT id_activity_session id,activity_date date,status FROM evo_attendance_import_queue WHERE unit='bike' AND activity_date BETWEEN ? AND ? ORDER BY activity_date,id_activity_session").bind(from,to).all();
+        return json({ok:true,sessions:(q.results||[]).map(x=>({id:String(x.id),date:x.date,status:x.status}))});
+      }
       if (url.pathname === "/admin/evo-attendance-sessions" && request.method === "POST") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
