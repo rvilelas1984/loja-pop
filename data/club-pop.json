@@ -1232,7 +1232,7 @@
           "text": "Transforme sua frequência em motivação: participe de missões, promoções e experiências que deixam cada treino ainda mais valioso.",
           "imageUrl": "https://drive.google.com/thumbnail?id=1Rcaa1dh9LS5ArsUI3x3U2C72kj3W8ITY&sz=w1200",
           "buttonText": "QUERO FAZER PARTE →",
-          "buttonUrl": "https://loja-pop-green.vercel.app/",
+          "buttonUrl": "https://loja-pop-green.vercel.app/?utm_source=chatgpt.com",
           "buttonVisible": true,
           "buttonNewTab": false
         },
