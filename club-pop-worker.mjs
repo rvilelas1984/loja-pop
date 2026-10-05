@@ -219,6 +219,34 @@ export default {
         return json({ok:true,unit,evoRequestsMade:0,memberId:id,isCurrent:Boolean(m.is_current),syncedAt:m.synced_at,evoUpdatedAt:m.evo_updated_at,sourceRunId:m.source_run_id,attendanceMonth:month,attendanceRows:ar,categories:{personal:parse(m.personal_json),contacts:parse(m.contacts_json),address:parse(m.address_json),access:parse(m.access_json),financial:parse(m.financial_json),integrations:parse(m.integrations_json),memberships:parse(m.memberships_json),metadata:parse(m.metadata_json)},contracts:(contracts.results||[]).map(x=>({...x,raw:parse(x.raw_json),raw_json:undefined})),attendanceSummary,raw:parse(m.raw_json)});
       }
 
+      // Usuários internos do Club Pop: e-mail + PIN + permissões. D1 é a fonte persistente.
+      if (url.pathname === "/staff/login" && request.method === "POST") {
+        const b=await request.json().catch(()=>({})),email=String(b.email||"").trim().toLowerCase(),pin=String(b.pin||"").trim();
+        if(!email||!/^\\d{4,8}$/.test(pin))return json({ok:false,error:"CREDENCIAIS_INVALIDAS"},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS staff_users (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,email TEXT NOT NULL UNIQUE,pin_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'reception',units_json TEXT NOT NULL DEFAULT '[\"bike\"]',permissions_json TEXT NOT NULL DEFAULT '[]',enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const u=await env.DB.prepare("SELECT id,name,email,pin_hash,role,units_json,permissions_json,enabled FROM staff_users WHERE lower(email)=? LIMIT 1").bind(email).first();
+        if(!u||!u.enabled)return json({ok:false,error:"ACESSO_NEGADO"},401);
+        const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(pin)))).map(x=>x.toString(16).padStart(2,"0")).join("");
+        if(digest!==u.pin_hash)return json({ok:false,error:"PIN_INVALIDO"},401);
+        const parse=v=>{try{return JSON.parse(v||"[]")}catch{return []}};
+        return json({ok:true,user:{id:u.id,name:u.name,email:u.email,role:u.role,units:parse(u.units_json),permissions:parse(u.permissions_json)}});
+      }
+      if (url.pathname === "/admin/staff-users" && ["GET","POST","PUT"].includes(request.method)) {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS staff_users (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,email TEXT NOT NULL UNIQUE,pin_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'reception',units_json TEXT NOT NULL DEFAULT '[\"bike\"]',permissions_json TEXT NOT NULL DEFAULT '[]',enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const parse=v=>{try{return JSON.parse(v||"[]")}catch{return []}},safe=u=>({id:u.id,name:u.name,email:u.email,role:u.role,units:parse(u.units_json),permissions:parse(u.permissions_json),enabled:Boolean(u.enabled),createdAt:u.created_at,updatedAt:u.updated_at});
+        if(request.method==="GET"){const q=await env.DB.prepare("SELECT id,name,email,role,units_json,permissions_json,enabled,created_at,updated_at FROM staff_users ORDER BY enabled DESC,name").all();return json({ok:true,users:(q.results||[]).map(safe)});}
+        const b=await request.json().catch(()=>({})),name=String(b.name||"").trim(),email=String(b.email||"").trim().toLowerCase(),pin=String(b.pin||"").trim(),role=b.role==="admin"?"admin":"reception",units=Array.isArray(b.units)?b.units.filter(x=>["bike","gym","club"].includes(x)):["bike"],permissions=Array.isArray(b.permissions)?b.permissions.map(String):[];
+        if(!name||!/^\\S+@\\S+\\.\\S+$/.test(email))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        let hash=null;if(pin){if(!/^\\d{4,8}$/.test(pin))return json({ok:false,error:"PIN_DEVE_TER_4_A_8_DIGITOS"},400);hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(pin)))).map(x=>x.toString(16).padStart(2,"0")).join("");}
+        if(request.method==="POST"){if(!hash)return json({ok:false,error:"PIN_OBRIGATORIO"},400);try{const q=await env.DB.prepare("INSERT INTO staff_users(name,email,pin_hash,role,units_json,permissions_json,enabled) VALUES(?,?,?,?,?,?,1) RETURNING id").bind(name,email,hash,role,JSON.stringify(units),JSON.stringify(permissions)).first();return json({ok:true,id:q?.id});}catch(e){return json({ok:false,error:String(e.message||e).includes("UNIQUE")?"EMAIL_JA_CADASTRADO":"FALHA_AO_SALVAR"},409)}}
+        const id=Number(b.id);if(!Number.isInteger(id)||id<1)return json({ok:false,error:"USUARIO_INVALIDO"},400);const enabled=b.enabled===false?0:1;
+        if(hash)await env.DB.prepare("UPDATE staff_users SET name=?,email=?,pin_hash=?,role=?,units_json=?,permissions_json=?,enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,email,hash,role,JSON.stringify(units),JSON.stringify(permissions),enabled,id).run();
+        else await env.DB.prepare("UPDATE staff_users SET name=?,email=?,role=?,units_json=?,permissions_json=?,enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,email,role,JSON.stringify(units),JSON.stringify(permissions),enabled,id).run();
+        return json({ok:true,id});
+      }
+
       // Configuração da sincronização econômica por unidade. Não executa EVO ao consultar/salvar.
       if (url.pathname === "/admin/evo-sync-config" && ["GET","PUT"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
