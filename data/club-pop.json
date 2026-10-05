@@ -1216,5 +1216,137 @@
       "redemptionId": "redeem-1790895464214",
       "createdAt": "2026-10-01T22:59:35.087Z"
     }
-  ]
+  ],
+  "landingPage": {
+    "seoTitle": "Club Pop Fit — Sua rotina vale mais",
+    "blocks": [
+      {
+        "id": "hero",
+        "type": "hero",
+        "name": "1. Abertura / Hero",
+        "hint": "Primeiro quadro da página — “Você treina pelos seus objetivos...”",
+        "active": true,
+        "fields": {
+          "eyebrow": "SEU TREINO. SUA CONSTÂNCIA. SUAS CONQUISTAS.",
+          "title": "Você treina pelos seus objetivos. O Club Pop recompensa o caminho.",
+          "text": "Transforme sua frequência em motivação: participe de missões, promoções e experiências que deixam cada treino ainda mais valioso.",
+          "imageUrl": "https://drive.google.com/thumbnail?id=1Rcaa1dh9LS5ArsUI3x3U2C72kj3W8ITY&sz=w1200",
+          "buttonText": "QUERO FAZER PARTE →",
+          "buttonUrl": "https://loja-pop-green.vercel.app/",
+          "buttonVisible": true,
+          "buttonNewTab": false
+        },
+        "order": 0
+      },
+      {
+        "id": "features",
+        "type": "features",
+        "name": "2. Resumo — Missões, Promoções, Fitcoins e Benefícios",
+        "hint": "As quatro caixas brancas logo abaixo da abertura.",
+        "active": true,
+        "fields": {
+          "missionText": "Desafios que aproximam você dos seus objetivos.",
+          "promotionText": "Você já treina. Agora seu treino pode valer muito mais.",
+          "fitcoinsText": "Seu esforço vale. E agora também rende.",
+          "benefitsText": "Vantagens que acompanham a sua rotina."
+        },
+        "order": 1
+      },
+      {
+        "id": "how",
+        "type": "how",
+        "name": "3. Como funciona",
+        "hint": "Seção “Sua frequência vira benefícios.”",
+        "active": true,
+        "fields": {
+          "eyebrow": "COMO FUNCIONA",
+          "title": "Sua frequência vira benefícios.",
+          "text": "Quanto mais você se compromete com você mesmo, mais o Club Pop acompanha e reconhece sua jornada.",
+          "step1Title": "Faça suas aulas",
+          "step1Text": "Registre suas presenças e mantenha o ritmo.",
+          "step2Title": "Complete missões",
+          "step2Text": "Constância que te faz ir mais longe — com objetivos claros e recompensas.",
+          "step3Title": "Conquiste vantagens",
+          "step3Text": "Fitcoins, prêmios, descontos, experiências e promoções exclusivas."
+        },
+        "order": 2
+      },
+      {
+        "id": "promotion",
+        "type": "promotion",
+        "name": "4. Promoção destaque",
+        "hint": "Quadro escuro “Seu próximo check-in pode valer muito mais.”",
+        "active": true,
+        "fields": {
+          "eyebrow": "PROMOÇÕES QUE DÃO VONTADE DE PARTICIPAR",
+          "title": "Seu próximo check-in pode valer muito mais.",
+          "text": "Campanhas especiais transformam presença em chances, experiências e grandes prêmios. Continue treinando e acompanhe as promoções ativas no Club Pop.",
+          "buttonText": "VER MINHAS OPORTUNIDADES →",
+          "buttonUrl": "/login.html",
+          "buttonVisible": true,
+          "buttonNewTab": false
+        },
+        "order": 3
+      },
+      {
+        "id": "missions",
+        "type": "missions",
+        "name": "5. Missões",
+        "hint": "Seção “Desafios que deixam você mais perto dos seus objetivos.”",
+        "active": true,
+        "fields": {
+          "eyebrow": "MISSÕES",
+          "title": "Desafios que deixam você mais perto dos seus objetivos.",
+          "card1Title": "Constância semanal",
+          "card1Text": "Não é sobre treinar um dia. É sobre construir o hábito que muda seus resultados.",
+          "card2Title": "Metas de presença",
+          "card2Text": "Cada presença é mais um passo. Complete metas e desbloqueie novas recompensas.",
+          "card3Title": "Conquistas que motivam",
+          "card3Text": "Seu progresso merece ser visto, celebrado e recompensado."
+        },
+        "order": 4
+      },
+      {
+        "id": "partners",
+        "type": "partners",
+        "name": "6. Academias parceiras",
+        "hint": "Seção “Onde sua jornada acontece.”",
+        "active": true,
+        "fields": {
+          "eyebrow": "ACADEMIAS PARCEIRAS",
+          "title": "Onde sua jornada acontece.",
+          "text": "O Club Pop Fit conecta alunos e academias em uma experiência que valoriza frequência e relacionamento.",
+          "partners": "BIKE POP\nGYM POP"
+        },
+        "order": 5
+      },
+      {
+        "id": "header",
+        "type": "header",
+        "name": "7. Botão do topo — Acessar Club Pop",
+        "hint": "Botão verde no cabeçalho da Landing Page.",
+        "active": true,
+        "fields": {
+          "buttonText": "Acessar Club Pop →",
+          "buttonUrl": "/login.html",
+          "buttonVisible": true,
+          "buttonNewTab": false
+        },
+        "order": 6
+      },
+      {
+        "id": "footer",
+        "type": "footer",
+        "name": "8. Rodapé",
+        "hint": "Informações exibidas no final da página.",
+        "active": true,
+        "fields": {
+          "brand": "CLUB POP FIT",
+          "tagline": "Treine. Conquiste. Evolua.",
+          "text": "Academias parceiras: Bike Pop • Gym Pop"
+        },
+        "order": 7
+      }
+    ]
+  }
 }
