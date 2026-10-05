@@ -4,5 +4,17 @@
     "api/*.js": {
       "runtime": "@vercel/node@5.5.11"
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "clubpopfit.com.br"
+        }
+      ],
+      "destination": "/landing.html"
+    }
+  ]
 }
