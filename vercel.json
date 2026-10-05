@@ -1,29 +1,244 @@
 {
   "version": 2,
-  "functions": { "api/*.js": { "runtime": "@vercel/node@5.5.11" } },
+  "functions": {
+    "api/*.js": {
+      "runtime": "@vercel/node@5.5.11"
+    }
+  },
   "rewrites": [
-    { "source": "/", "has": [{ "type": "host", "value": "clubpopfit.com.br" }], "destination": "/landing.html" },
-    { "source": "/", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-login.html" },
-    { "source": "/desafios", "has": [{ "type": "host", "value": "app.clubpopfit.com.br" }], "destination": "/missoes.html" },
-    { "source": "/beneficios", "has": [{ "type": "host", "value": "app.clubpopfit.com.br" }], "destination": "/beneficios.html" },
-    { "source": "/loja", "has": [{ "type": "host", "value": "app.clubpopfit.com.br" }], "destination": "/loja.html" },
-    { "source": "/perfil", "has": [{ "type": "host", "value": "app.clubpopfit.com.br" }], "destination": "/perfil.html" },
-    { "source": "/promocao", "has": [{ "type": "host", "value": "app.clubpopfit.com.br" }], "destination": "/promocao.html" },
-    { "source": "/promocoes", "has": [{ "type": "host", "value": "app.clubpopfit.com.br" }], "destination": "/promocoes.html" },
-    { "source": "/meus-numeros", "has": [{ "type": "host", "value": "app.clubpopfit.com.br" }], "destination": "/meus-numeros.html" },
-    { "source": "/dashboard", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin.html" },
-    { "source": "/missoes", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-missoes.html" },
-    { "source": "/loja", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-loja.html" },
-    { "source": "/beneficios", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-beneficios.html" },
-    { "source": "/promocoes", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-promocoes.html" },
-    { "source": "/resgates", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-resgates.html" },
-    { "source": "/check-in", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/tela-checkin.html" },
-    { "source": "/alunos", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-alunos-evo.html" },
-    { "source": "/requisicoes", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-requisicoes.html" },
-    { "source": "/sincronizacoes", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-sync.html" },
-    { "source": "/configuracoes", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-configuracoes.html" },
-    { "source": "/sorteios", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-sorteios.html" },
-    { "source": "/numeros-da-sorte", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-numeros-sorte.html" },
-    { "source": "/testes", "has": [{ "type": "host", "value": "admin.clubpopfit.com.br" }], "destination": "/admin-testes-gerais.html" }
+    {
+      "source": "/desafios",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/missoes.html"
+    },
+    {
+      "source": "/beneficios",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/beneficios.html"
+    },
+    {
+      "source": "/loja",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/loja.html"
+    },
+    {
+      "source": "/perfil",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/perfil.html"
+    },
+    {
+      "source": "/promocao",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/promocao.html"
+    },
+    {
+      "source": "/promocoes",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/promocoes.html"
+    },
+    {
+      "source": "/meus-numeros",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/meus-numeros.html"
+    },
+    {
+      "source": "/dashboard",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin.html"
+    },
+    {
+      "source": "/missoes",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-missoes.html"
+    },
+    {
+      "source": "/loja",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-loja.html"
+    },
+    {
+      "source": "/beneficios",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-beneficios.html"
+    },
+    {
+      "source": "/promocoes",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-promocoes.html"
+    },
+    {
+      "source": "/resgates",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-resgates.html"
+    },
+    {
+      "source": "/check-in",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/tela-checkin.html"
+    },
+    {
+      "source": "/alunos",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-alunos-evo.html"
+    },
+    {
+      "source": "/requisicoes",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-requisicoes.html"
+    },
+    {
+      "source": "/sincronizacoes",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-sync.html"
+    },
+    {
+      "source": "/configuracoes",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-configuracoes.html"
+    },
+    {
+      "source": "/sorteios",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-sorteios.html"
+    },
+    {
+      "source": "/numeros-da-sorte",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-numeros-sorte.html"
+    },
+    {
+      "source": "/testes",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-testes-gerais.html"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "clubpopfit.com.br"
+        }
+      ],
+      "destination": "/landing.html",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-login.html",
+      "permanent": false
+    }
   ]
 }
