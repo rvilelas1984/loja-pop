@@ -15,7 +15,7 @@ export default async function handler(req,res){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
   const unit=String(req.query.unit||"bike").toLowerCase();
-  if(unit!=="bike")return res.status(423).json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"});
+  if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
   const cookie=String(req.headers.cookie||"");
   if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
   try{
