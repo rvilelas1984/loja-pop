@@ -1,8 +1,9 @@
 {
   "name": "CLUB POP Administrativo",
-  "short_name": "CLUB POP Admin",
-  "start_url": "/admin.html",
-  "scope": "/",
+  "short_name": "CLUB POP ADM",
+  "id": "https://admin.clubpopfit.com.br/",
+  "start_url": "https://admin.clubpopfit.com.br/",
+  "scope": "https://admin.clubpopfit.com.br/",
   "display": "standalone",
   "background_color": "#f5f5f7",
   "theme_color": "#111318",

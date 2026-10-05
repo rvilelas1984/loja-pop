@@ -1,8 +1,9 @@
 {
   "name": "CLUB POP",
   "short_name": "CLUB POP",
-  "start_url": "/",
-  "scope": "/",
+  "id": "https://app.clubpopfit.com.br/",
+  "start_url": "https://app.clubpopfit.com.br/",
+  "scope": "https://app.clubpopfit.com.br/",
   "display": "standalone",
   "background_color": "#f4f6f8",
   "theme_color": "#111318",
