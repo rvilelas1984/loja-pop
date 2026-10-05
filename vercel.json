@@ -15,6 +15,16 @@
         }
       ],
       "destination": "/landing.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/admin-login.html"
     }
   ]
 }
