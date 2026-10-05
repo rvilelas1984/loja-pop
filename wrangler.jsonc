@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "club-pop-api",
+  "main": "club-pop-worker.mjs",
+  "compatibility_date": "2026-10-05",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "club-pop-db",
+      "database_id": "0447f24a-0efb-43bf-a121-a83273ddb46e"
+    }
+  ]
+}
