@@ -276,7 +276,7 @@ export default {
         const days=Math.max(1,Math.min(60,Number(url.searchParams.get("days")||14)));
         const daily=await env.DB.prepare("SELECT date(datetime(created_at, '-3 hours')) AS day, COUNT(*) AS total, SUM(CASE WHEN ok=1 THEN 1 ELSE 0 END) AS success, SUM(CASE WHEN ok=0 THEN 1 ELSE 0 END) AS errors FROM evo_request_log WHERE unit=? AND datetime(created_at) >= datetime('now', ?) GROUP BY day ORDER BY day DESC").bind(unit,"-"+days+" days").all();
         const purposes=await env.DB.prepare("SELECT purpose,COUNT(*) AS total FROM evo_request_log WHERE unit=? AND date(datetime(created_at, '-3 hours'))=date(datetime('now', '-3 hours')) GROUP BY purpose ORDER BY total DESC").bind(unit).all();
-        const recent=await env.DB.prepare("SELECT id,purpose,method,endpoint,status,ok,CASE WHEN unit='bike' THEN created_at ELSE datetime(created_at, '-3 hours') END AS createdAt FROM evo_request_log WHERE unit=? ORDER BY id DESC LIMIT 100").bind(unit).all();
+        const recent=await env.DB.prepare("SELECT id,purpose,method,endpoint,status,ok,created_at AS createdAt FROM evo_request_log WHERE unit=? ORDER BY id DESC LIMIT 100").bind(unit).all();
         return json({ok:true,unit,limit:100,daily:daily.results||[],purposes:purposes.results||[],recent:recent.results||[]});
       }
 
