@@ -13,8 +13,8 @@ export default async function handler(req,res){
   const body=typeof req.body==="string"?JSON.parse(req.body):req.body;
   let next=body;
   if(req.method==="PATCH"){
-   const allowed=new Set(["missionList","promotions"]);
-   if(!body||!allowed.has(body.section)||!Array.isArray(body.value))return send(res,400,{error:"Seção inválida para atualização."});
+   const allowed=new Set(["missionList","promotions","landingPage"]);
+   if(!body||!allowed.has(body.section)||(body.section!=="landingPage"&&!Array.isArray(body.value)))return send(res,400,{error:"Seção inválida para atualização."});
    const currentData=JSON.parse(Buffer.from(cj.content,"base64").toString("utf8"));
    next={...currentData,[body.section]:body.value};
   }
