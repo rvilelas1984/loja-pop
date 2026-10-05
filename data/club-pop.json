@@ -1328,7 +1328,7 @@
         "active": true,
         "fields": {
           "buttonText": "Acessar Club Pop →",
-          "buttonUrl": "/login.html",
+          "buttonUrl": "https://loja-pop-green.vercel.app",
           "buttonVisible": true,
           "buttonNewTab": false
         },
