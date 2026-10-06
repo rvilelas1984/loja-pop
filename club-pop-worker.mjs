@@ -32,7 +32,7 @@ async function runScheduledAttendanceSync(env) {
       const evo=async (url,purpose)=>{requests++;const u=new URL(url),r=await fetch(u.href,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,'GET',?,?,?)").bind(unit,purpose,u.pathname,r.status,r.ok?1:0).run()}catch{}return r};
       const sr=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+encodeURIComponent(date)+"&showFullWeek=false&onlyAvailables=false&take=100","schedule");if(!sr.ok)throw new Error("EVO_GRADE_HTTP_"+sr.status);
       const raw=await sr.json(),list=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:[]),sessions=[],diagnostic={returned:list.length,dateMatch:0,status6:0,validId:0,sample:[]};
-      for(const s of list){const d=String(s?.activityDate||s?.date||"").slice(0,10),id=s?.idAtividadeSessao??s?.idActivitySession??s?.idActivitieSession,dm=d===date,st6=Number(s?.status)===6,vi=Number.isSafeInteger(Number(id))&&Number(id)>0;if(dm)diagnostic.dateMatch++;if(st6)diagnostic.status6++;if(vi)diagnostic.validId++;if(diagnostic.sample.length<5)diagnostic.sample.push({date:d,status:s?.status??null,id:id??null});if(dm&&st6&&vi)sessions.push({id:String(id),date:d})}
+      for(const s of list){const d=String(s?.activityDate||s?.date||"").slice(0,10),id=s?.idAtividadeSessao??s?.idActivitySession??s?.idActivitieSession,dm=d===date,st6=[4,6].includes(Number(s?.status)),vi=Number.isSafeInteger(Number(id))&&Number(id)>0;if(dm)diagnostic.dateMatch++;if(st6)diagnostic.status6++;if(vi)diagnostic.validId++;if(diagnostic.sample.length<5)diagnostic.sample.push({date:d,status:s?.status??null,id:id??null});if(dm&&st6&&vi)sessions.push({id:String(id),date:d})}
       const unique=[...new Map(sessions.map(x=>[x.id,x])).values()];classesFound=unique.length;
       let done=new Set();if(unique.length){const ids=unique.map(x=>x.id),q=await env.DB.prepare("SELECT id_activity_session FROM evo_attendance_sessions WHERE unit=? AND status='done' AND id_activity_session IN ("+ids.map(()=>"?").join(",")+")").bind(unit,...ids).all();done=new Set((q.results||[]).map(x=>String(x.id_activity_session)))}
       const pending=unique.filter(x=>!done.has(x.id));newClasses=pending.length;
@@ -290,6 +290,17 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(hash)await env.DB.prepare("UPDATE staff_users SET name=?,email=?,pin_hash=?,role=?,units_json=?,permissions_json=?,enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,email,hash,role,JSON.stringify(units),JSON.stringify(permissions),enabled,id).run();
         else await env.DB.prepare("UPDATE staff_users SET name=?,email=?,role=?,units_json=?,permissions_json=?,enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,email,role,JSON.stringify(units),JSON.stringify(permissions),enabled,id).run();
         return json({ok:true,id});
+      }
+
+      // Histórico das execuções automáticas. Somente D1; não consome EVO.
+      if (url.pathname === "/admin/evo-automation-runs" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
+        const rr=await env.DB.prepare("SELECT unit,kind,scheduled_minute,status,detail,updated_at FROM evo_sync_schedule_runs WHERE unit=? ORDER BY scheduled_minute DESC LIMIT 40").bind(unit).all();
+        return json({ok:true,runs:rr.results||[]});
       }
 
       // Horários operacionais persistidos no D1. Consultar/salvar não chama a EVO.
