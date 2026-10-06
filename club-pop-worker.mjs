@@ -328,6 +328,11 @@ export default {
         return json({ok:true,saved:true,nextSkip:Number(x.nextSkip||0),contracts:Number(x.contracts||0),vipCount:ids.length});
       }
 
+      if (url.pathname === "/internal/evo-current-job" && request.method === "POST") {
+        const secret=request.headers.get("x-auto-sync-secret")||"";if(!secret||secret!==String(env.AUTO_SYNC_SECRET||""))return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const result=await currentStudentJob(env,await request.json());return json(result,result.status||200);
+      }
+
       if (url.pathname === "/admin/evo-current-job" && request.method === "POST") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
