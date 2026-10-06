@@ -1221,6 +1221,18 @@
     "seoTitle": "Club Pop Fit — Sua rotina vale mais",
     "blocks": [
       {
+        "id": "identity",
+        "type": "identity",
+        "name": "Identidade Visual",
+        "hint": "Logo e favicon usados na Landing Page. Informe a URL do arquivo publicado (PNG, SVG, JPG ou ICO).",
+        "active": true,
+        "fields": {
+          "logoUrl": "",
+          "faviconUrl": ""
+        },
+        "order": 0
+      },
+      {
         "id": "hero",
         "type": "hero",
         "name": "1. Abertura / Hero",
@@ -1230,7 +1242,7 @@
           "eyebrow": "SEU TREINO. SUA CONSTÂNCIA. SUAS CONQUISTAS.",
           "title": "Você treina pelos seus objetivos. O Club Pop recompensa o caminho.",
           "text": "Transforme sua frequência em motivação: participe de missões, promoções e experiências que deixam cada treino ainda mais valioso.",
-          "imageUrl": "https://drive.google.com/thumbnail?id=1Rcaa1dh9LS5ArsUI3x3U2C72kj3W8ITY&sz=w1200",
+          "imageUrl": "https://drive.google.com/file/d/1ymI1lX8_G_SaNQ2CmEJTFB5ODe0RhnVw/view?usp=drivesdk",
           "buttonText": "QUERO FAZER PARTE →",
           "buttonUrl": "https://loja-pop-green.vercel.app/?utm_source=chatgpt.com",
           "buttonVisible": true,
