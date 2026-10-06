@@ -4,7 +4,22 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
 ]);
 
+
+
+async function runScheduledStudentSync(env) {
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
+  const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
+  const hm=get("hour")+":"+get("minute"), minuteKey=get("year")+"-"+get("month")+"-"+get("day")+"T"+hm;
+  const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='student'").all()).results||[];
+  for(const row of rows){let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}if(!times.includes(hm))continue;const unit=row.unit==="gym"?"gym":"bike";
+    const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'student',?,'pending')").bind(unit,minuteKey).run();if(!ins.meta?.changes)continue;
+    try{const r=await fetch("https://loja-pop-green.vercel.app/api/evo-auto-sync?unit="+unit,{method:"POST",headers:{"x-auto-sync-secret":String(env.AUTO_SYNC_SECRET||""),"Content-Type":"application/json"}}),d=await r.json().catch(()=>({}));await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status=?,detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(r.ok&&d.ok?"done":"failed",JSON.stringify({http:r.status,error:d.error||null,total:d.total||null,requests:d.requests||null}).slice(0,1000),unit,minuteKey).run();}
+    catch(e){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(String(e.message||e).slice(0,500),unit,minuteKey).run();}
+  }
+}
+
 export default {
+  async scheduled(event, env, ctx) { ctx.waitUntil(runScheduledStudentSync(env)); },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
