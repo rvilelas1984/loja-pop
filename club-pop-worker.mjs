@@ -292,6 +292,16 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({ok:true,id});
       }
 
+      // Registra disparos manuais no mesmo histórico operacional; não chama a EVO.
+      if (url.pathname === "/admin/evo-automation-run-log" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||"bike").toLowerCase()==="gym"?"gym":"bike",kind=["student","attendance"].includes(String(b.kind))?String(b.kind):"";if(!kind)return json({ok:false,error:"TIPO_INVALIDO"},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
+        const now=new Date(),p=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(now),g=t=>p.find(x=>x.type===t)?.value||"",key=g("year")+"-"+g("month")+"-"+g("day")+"T"+g("hour")+":"+g("minute")+":"+g("second")+"-manual-"+crypto.randomUUID().slice(0,6),status=["done","failed","pending"].includes(String(b.status))?String(b.status):"done";
+        await env.DB.prepare("INSERT INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status,detail,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)").bind(unit,kind,key,status,JSON.stringify(b.detail||{}).slice(0,1000)).run();return json({ok:true});
+      }
+
       // Histórico das execuções automáticas. Somente D1; não consome EVO.
       if (url.pathname === "/admin/evo-automation-runs" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
