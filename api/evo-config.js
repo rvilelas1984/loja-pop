@@ -98,6 +98,23 @@ export default async function handler(req,res){
    return res.json({ok:true,unit:"bike",contracts:rows.length,uniqueMembers:uniqueMembers.length,requests,categories,sample:rows.slice(0,3).map(x=>({idMember:x.idMember,idMembership:x.idMembership,nameMembership:x.nameMembership,idMembershipCategory:x.idMembershipCategory,statusMemberMembership:x.statusMemberMembership}))});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_DIAGNOSTICO_VIP"});}
  }
+ if(req.query.route==="sync-contracts"){
+  res.setHeader("Cache-Control","no-store"); if(req.method!=="POST")return res.status(405).json({ok:false});
+  const body=typeof req.body==="string"?JSON.parse(req.body):req.body||{},unit=String(req.query.unit||body.unit||"bike").toLowerCase();
+  if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
+  const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+  try{
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));
+   if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+   const skip=Math.max(0,Number(body.skip)||0),evo=getEvoTransport(unit),rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v3/membermembership?statusMemberMembership=1&showVips=true&showAggregators=true&take=25&skip="+skip);
+   if(rr.status===429)return res.json({ok:true,paused:true,skip,requests:1});
+   if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
+   const rows=await rr.json();if(!Array.isArray(rows)||rows.length>25)return res.status(502).json({ok:false,error:"EVO_RESPOSTA_INVALIDA",requests:1});
+   const wr=await fetch(WORKER+"/admin/evo-contracts-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit,skip,rows,done:rows.length<25})}),wd=await wr.json().catch(()=>({}));
+   if(!wr.ok||!wd.ok)return res.status(wr.status||502).json({ok:false,error:wd.error||"FALHA_GRAVAR_CONTRATOS",requests:1});
+   return res.json({...wd,requests:1,batch:rows.length,nextSkip:skip+rows.length,done:rows.length<25});
+  }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_SYNC_CONTRATOS"})}
+ }
  if(req.query.route==="sync-students"){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
