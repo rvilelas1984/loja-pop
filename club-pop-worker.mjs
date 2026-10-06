@@ -1631,3 +1631,5 @@ async function currentStudentsView(env, unit='bike') {
   let active=total?.statusActive||0; try{if(run?.report_ids)active=new Set(JSON.parse(run.report_ids)).size}catch{}
   return {ok:true,unit,source:'d1-current',counts:{active,total:total?.total||0,statusActive:total?.statusActive||0,suspended:total?.suspended||0,aggregators:agg?.aggregators||0,gympass:agg?.gympass||0,totalpass:agg?.totalpass||0,vip:vip?.vip||0},comparison,lastSyncAt:run?.updated_at||null,lastRequests:run?.requests||0,logs,note:'Ativos: relatório de contratos. Agregadores: identificadores no cadastro atual; podem se sobrepor. VIP: categoria VIP encontrada nos contratos retornados pela população atual; vigência será tratada separadamente. Sem apagar históricos.'};
 }
+
+// deploy-trigger: gym-d1-dashboard
