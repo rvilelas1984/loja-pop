@@ -103,7 +103,7 @@ export default async function handler(req,res){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
   const body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};
   const unit=String(req.query.unit||body.unit||"bike").toLowerCase();
-  if(unit!=="bike")return res.status(423).json({ok:false,error:"SYNC_GYM_BLOQUEADO_EM_VALIDACAO"});
+  if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
   const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
   const job=async data=>{const r=await fetch(WORKER+"/admin/evo-current-job",{method:'POST',headers:{'Content-Type':'application/json','x-clubpop-admin-cookie':cookie},body:JSON.stringify({unit,...data})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok){const e=new Error(d.error||'FALHA_ESPELHO');e.httpStatus=r.status;throw e}return d};
   let runId=String(body.runId||""),requests=0;
