@@ -18,8 +18,37 @@ async function runScheduledStudentSync(env) {
   }
 }
 
+
+async function runScheduledAttendanceSync(env) {
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
+  const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
+  const hm=get("hour")+":"+get("minute"), date=get("year")+"-"+get("month")+"-"+get("day"), minuteKey=date+"T"+hm;
+  const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='attendance'").all()).results||[];
+  for(const row of rows){let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}if(!times.includes(hm))continue;const unit=row.unit==="gym"?"gym":"bike";
+    const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'attendance',?,'pending')").bind(unit,minuteKey).run();if(!ins.meta?.changes)continue;
+    let requests=0,classesFound=0,newClasses=0,saved=0;
+    try{
+      const cfg=await getEvoConfig(env,unit);
+      const evo=async (url,purpose)=>{requests++;const u=new URL(url),r=await fetch(u.href,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,'GET',?,?,?)").bind(unit,purpose,u.pathname,r.status,r.ok?1:0).run()}catch{}return r};
+      const sr=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+encodeURIComponent(date)+"&showFullWeek=false&onlyAvailables=false&take=100","schedule");if(!sr.ok)throw new Error("EVO_GRADE_HTTP_"+sr.status);
+      const raw=await sr.json(),list=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:[]),sessions=[];
+      for(const s of list){const d=String(s?.activityDate||s?.date||"").slice(0,10),id=s?.idAtividadeSessao??s?.idActivitySession??s?.idActivitieSession;if(d===date&&Number(s?.status)===6&&Number.isSafeInteger(Number(id))&&Number(id)>0)sessions.push({id:String(id),date:d})}
+      const unique=[...new Map(sessions.map(x=>[x.id,x])).values()];classesFound=unique.length;
+      let done=new Set();if(unique.length){const ids=unique.map(x=>x.id),q=await env.DB.prepare("SELECT id_activity_session FROM evo_attendance_sessions WHERE unit=? AND status='done' AND id_activity_session IN ("+ids.map(()=>"?").join(",")+")").bind(unit,...ids).all();done=new Set((q.results||[]).map(x=>String(x.id_activity_session)))}
+      const pending=unique.filter(x=>!done.has(x.id));newClasses=pending.length;
+      for(const s of pending){const dr=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(s.id),"checkin_detail");if(!dr.ok)throw new Error("EVO_DETALHE_HTTP_"+dr.status);const payload=await dr.json(),d=Array.isArray(payload)&&payload.length===1?payload[0]:payload;if(!d||String(d.idActivitySession)!==s.id||Number(d.status)!==6||!Array.isArray(d.enrollments))throw new Error("DETALHE_AULA_INVALIDO");
+        const mt=String(d.startTime||"").trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);if(!mt)throw new Error("HORARIO_AULA_INVALIDO");let h=Number(mt[1]);if(mt[3])h=h%12+(mt[3].toUpperCase()==="PM"?12:0);const st=String(h).padStart(2,"0")+":"+mt[2],stm=[];
+        for(const e of d.enrollments){if(e.removed===true||e.status!==0||!Number.isSafeInteger(e.idMember)||e.idMember<=0)continue;const mid=String(e.idMember),x={id:mid,date,startTime:st,activity:String(d.name||"").slice(0,200),idActivitySession:s.id,presenca:true,isFinalized:true};stm.push(env.DB.prepare("INSERT OR REPLACE INTO evo_member_attendance(unit,evo_member_id,attendance_key,attendance_date,start_time,activity_name,id_activity_session,raw_json,synced_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)").bind(unit,mid,s.id,date,st,x.activity,s.id,JSON.stringify(x)))}
+        if(stm.length)for(let i=0;i<stm.length;i+=40)await env.DB.batch(stm.slice(i,i+40));saved+=stm.length;
+        await env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,synced_at) VALUES(?,?,?,?,?, 'done',?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,status='done',attendance_count=excluded.attendance_count,synced_at=CURRENT_TIMESTAMP").bind(unit,s.id,date,st,String(d.name||"").slice(0,200),stm.length).run();
+      }
+      await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='done',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='attendance' AND scheduled_minute=?").bind(JSON.stringify({date,requests,classesFound,newClasses,presencesSaved:saved}).slice(0,1000),unit,minuteKey).run();
+    }catch(e){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='attendance' AND scheduled_minute=?").bind(JSON.stringify({date,requests,classesFound,newClasses,presencesSaved:saved,error:String(e.message||e)}).slice(0,1000),unit,minuteKey).run()}
+  }
+}
+
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(runScheduledStudentSync(env)); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env)])); },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
