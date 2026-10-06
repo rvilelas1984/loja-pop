@@ -1453,13 +1453,13 @@ async function currentStudentJob(env, body) {
     if(!/^\d+$/.test(s.id)||ids.has(s.id)||typeof s.name!=='string'||s.name.length>200||!['Active','Suspended'].includes(s.status)||typeof s.gympass!=='boolean'||typeof s.totalpass!=='boolean'||(s.fitcoins!==null&&!Number.isFinite(s.fitcoins))||typeof s.vip!=='boolean'||!Array.isArray(s.vipMemberships)||!s.raw||typeof s.raw!=='object'||String(s.raw.idMember)!==s.id)return {status:422,ok:false,error:'LOTE_INVALIDO'};
     ids.add(s.id);
   }
-  const old=(await db.prepare('SELECT evo_member_id FROM evo_current_stage WHERE run_id=?').bind(run.id).all()).results||[];
+  const old=(await db.prepare('SELECT evo_member_id FROM evo_current_stage_v2 WHERE run_id=?').bind(run.id).all()).results||[];
   if(old.some(s=>ids.has(s.evo_member_id)))return {status:409,ok:false,error:'PAGINACAO_DUPLICADA'};
   const report=body.skip===0?body.reportIds:JSON.parse(run.report_ids||'null');
   if(!Array.isArray(report)||report.some(id=>!/^\d+$/.test(String(id))))return {status:422,ok:false,error:'RELATORIO_ATIVOS_INVALIDO'};
   const next=run.next_skip+rows.length,requests=run.requests+Number(body.skip===0?2:1),done=rows.length<25;
   await db.batch([
-    db.prepare("INSERT INTO evo_current_stage(run_id,evo_member_id,payload) SELECT ?,json_extract(value,'$.id'),value FROM json_each(?)").bind(run.id,JSON.stringify(rows)),
+    db.prepare("INSERT INTO evo_current_stage_v2(run_id,evo_member_id,payload) SELECT ?,json_extract(value,'$.id'),value FROM json_each(?)").bind(run.id,JSON.stringify(rows)),
     db.prepare("UPDATE evo_current_runs_v2 SET next_skip=?,requests=?,report_ids=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(next,requests,JSON.stringify(report),run.id),
   ]);
   // Lossless EVO snapshot + categorized projections. No extra EVO requests.
@@ -1479,26 +1479,26 @@ async function currentStudentJob(env, body) {
   for(let i=0;i<masterStatements.length;i+=40)await db.batch(masterStatements.slice(i,i+40));
   for(let i=0;i<contractStatements.length;i+=40)await db.batch(contractStatements.slice(i,i+40));
   if(!done)return {ok:true,runId:run.id,nextSkip:next,done:false};
-  const fresh=(await db.prepare('SELECT payload FROM evo_current_stage WHERE run_id=?').bind(run.id).all()).results.map(x=>JSON.parse(x.payload));
+  const fresh=(await db.prepare('SELECT payload FROM evo_current_stage_v2 WHERE run_id=?').bind(run.id).all()).results.map(x=>JSON.parse(x.payload));
   if(!fresh.length)return {status:422,ok:false,error:'POPULACAO_VAZIA_NAO_PUBLICADA'};
   const previous=(await db.prepare("SELECT s.*,group_concat(c.category||':'||c.subtype) categories FROM evo_students s LEFT JOIN evo_student_categories c USING(unit,evo_member_id) WHERE s.unit=? AND s.is_current=1 GROUP BY s.evo_member_id").bind(unit).all()).results;
   const before=new Map(previous.map(x=>[x.evo_member_id,x])),after=new Set(fresh.map(x=>x.id));
   let added=0,changed=0;
   for(const s of fresh){const p=before.get(s.id);if(!p)added++;else if(p.display_name!==s.name||p.membership_status!==s.status||p.fitcoins!==s.fitcoins||Boolean((p.categories||'').includes('aggregator:gympass'))!==s.gympass||Boolean((p.categories||'').includes('aggregator:totalpass'))!==s.totalpass||Boolean((p.categories||'').includes('vip:found'))!==s.vip)changed++;}
   const removed=previous.filter(x=>!after.has(x.evo_member_id)).length;
-  const statement=db.prepare("INSERT INTO evo_students(unit,evo_member_id,display_name,membership_status,fitcoins,is_current,last_run) SELECT ?,evo_member_id,json_extract(payload,'$.name'),json_extract(payload,'$.status'),json_extract(payload,'$.fitcoins'),1,run_id FROM evo_current_stage WHERE run_id=? ON CONFLICT(unit,evo_member_id) DO UPDATE SET display_name=excluded.display_name,membership_status=excluded.membership_status,fitcoins=COALESCE(excluded.fitcoins,evo_students.fitcoins),is_current=1,last_run=excluded.last_run,updated_at=CURRENT_TIMESTAMP").bind(unit,run.id);
+  const statement=db.prepare("INSERT INTO evo_students(unit,evo_member_id,display_name,membership_status,fitcoins,is_current,last_run) SELECT ?,evo_member_id,json_extract(payload,'$.name'),json_extract(payload,'$.status'),json_extract(payload,'$.fitcoins'),1,run_id FROM evo_current_stage_v2 WHERE run_id=? ON CONFLICT(unit,evo_member_id) DO UPDATE SET display_name=excluded.display_name,membership_status=excluded.membership_status,fitcoins=COALESCE(excluded.fitcoins,evo_students.fitcoins),is_current=1,last_run=excluded.last_run,updated_at=CURRENT_TIMESTAMP").bind(unit,run.id);
   await db.batch([
     statement,
     db.prepare("UPDATE evo_students SET is_current=0,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND last_run<>? AND is_current=1").bind(unit,run.id),
     db.prepare("UPDATE evo_member_master SET is_current=0 WHERE unit=? AND source_run_id<>? AND is_current=1").bind(unit,run.id),
     db.prepare("DELETE FROM evo_student_categories WHERE unit=?").bind(unit),
-    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'aggregator','gympass','member_registration' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.gympass')=1").bind(unit,run.id),
-    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'aggregator','totalpass','member_registration' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.totalpass')=1").bind(unit,run.id),
-    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'suspended','','membershipStatus' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.status')='Suspended'").bind(unit,run.id),
-    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'vip','found','members_current_memberships' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.vip')=1").bind(unit,run.id),
+    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'aggregator','gympass','member_registration' FROM evo_current_stage_v2 WHERE run_id=? AND json_extract(payload,'$.gympass')=1").bind(unit,run.id),
+    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'aggregator','totalpass','member_registration' FROM evo_current_stage_v2 WHERE run_id=? AND json_extract(payload,'$.totalpass')=1").bind(unit,run.id),
+    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'suspended','','membershipStatus' FROM evo_current_stage_v2 WHERE run_id=? AND json_extract(payload,'$.status')='Suspended'").bind(unit,run.id),
+    db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'vip','found','members_current_memberships' FROM evo_current_stage_v2 WHERE run_id=? AND json_extract(payload,'$.vip')=1").bind(unit,run.id),
     db.prepare("UPDATE evo_current_runs_v2 SET state='done',added=?,changed=?,removed=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(added,changed,removed,run.id),
     db.prepare("UPDATE evo_sync_config SET last_sync_at=CURRENT_TIMESTAMP,last_sync_status='ok',last_sync_requests=?,updated_at=CURRENT_TIMESTAMP WHERE unit=?").bind(requests,unit),
-    db.prepare('DELETE FROM evo_current_stage WHERE run_id=?').bind(run.id),
+    db.prepare('DELETE FROM evo_current_stage_v2 WHERE run_id=?').bind(run.id),
   ]);
   return {ok:true,runId:run.id,nextSkip:next,done:true,total:next,added,changed,removed};
 }
