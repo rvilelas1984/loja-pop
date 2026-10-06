@@ -1034,6 +1034,60 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
 
       // =====================================================
+      // GERENCIAMENTO DE UNIDADES / VINCULOS (D1, SEM EVO)
+      // =====================================================
+      if (url.pathname === "/public/unit-theme" && request.method === "GET") {
+        const unit=["bike","gym","club"].includes(String(url.searchParams.get("unit")||""))?String(url.searchParams.get("unit")):"bike";
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS unit_ui_config(unit TEXT PRIMARY KEY, background_color TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const defaults={bike:"#dcc8ff",gym:"#ffc4df",club:"#bfe9d2"};
+        const row=await env.DB.prepare("SELECT background_color,updated_at FROM unit_ui_config WHERE unit=? LIMIT 1").bind(unit).first();
+        return json({ok:true,unit,backgroundColor:row?.background_color||defaults[unit],updatedAt:row?.updated_at||null});
+      }
+
+      if (url.pathname === "/admin/unit-management" && ["GET","PUT"].includes(request.method)) {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=["bike","gym","club"].includes(String(url.searchParams.get("unit")||""))?String(url.searchParams.get("unit")):"bike";
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS unit_ui_config(unit TEXT PRIMARY KEY, background_color TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const defaults={bike:"#dcc8ff",gym:"#ffc4df",club:"#bfe9d2"};
+        if(request.method==="PUT"){
+          const b=await readJson(request),color=String(b.backgroundColor||"").trim();
+          if(!/^#[0-9a-fA-F]{6}$/.test(color))return json({ok:false,error:"COR_INVALIDA"},400);
+          await env.DB.prepare("INSERT INTO unit_ui_config(unit,background_color,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET background_color=excluded.background_color,updated_at=CURRENT_TIMESTAMP").bind(unit,color).run();
+          await audit(env,"ADMIN",null,"UNIT_COLOR_UPDATED","UNIT",unit,{backgroundColor:color});
+        }
+        const row=await env.DB.prepare("SELECT background_color,updated_at FROM unit_ui_config WHERE unit=? LIMIT 1").bind(unit).first();
+        return json({ok:true,unit,backgroundColor:row?.background_color||defaults[unit],updatedAt:row?.updated_at||null});
+      }
+
+      if (url.pathname === "/admin/member-link" && ["GET","PUT"].includes(request.method)) {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const normId=v=>{const n=Number(String(v??"").trim());return Number.isFinite(n)&&n>0?String(Math.trunc(n)):""};
+        if(request.method==="GET"){
+          const cpf=normalizeCpf(url.searchParams.get("cpf")||"");
+          if(!validCpfShape(cpf))return json({ok:false,error:"CPF_INVALIDO"},400);
+          const cpfHash=await sha256(cpf);
+          const member=await env.DB.prepare("SELECT id,first_name,last_name,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(cpfHash).first();
+          const bike=await env.DB.prepare("SELECT evo_member_id,personal_json FROM evo_member_master WHERE unit='bike' AND json_extract(personal_json,'$.document')=? AND is_current=1 LIMIT 1").bind(cpf).first();
+          const gym=await env.DB.prepare("SELECT evo_member_id,personal_json FROM evo_member_master WHERE unit='gym' AND json_extract(personal_json,'$.document')=? AND is_current=1 LIMIT 1").bind(cpf).first();
+          const name=r=>{try{const p=JSON.parse(r?.personal_json||"{}");return [p.firstName,p.lastName].filter(Boolean).join(" ")}catch{return""}};
+          return json({ok:true,member:member?{id:member.id,name:[member.first_name,member.last_name].filter(Boolean).join(" "),bikeId:normId(member.evo_member_id),gymId:normId(member.gym_client_id)}:null,suggestion:{bike:bike?{id:normId(bike.evo_member_id),name:name(bike)}:null,gym:gym?{id:normId(gym.evo_member_id),name:name(gym)}:null}});
+        }
+        const b=await readJson(request),memberId=Number(b.memberId||0),bikeId=normId(b.bikeId),gymId=normId(b.gymId);
+        if(!memberId||(!bikeId&&!gymId))return json({ok:false,error:"VINCULO_INVALIDO"},400);
+        const member=await env.DB.prepare("SELECT id FROM members WHERE id=? LIMIT 1").bind(memberId).first();if(!member)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
+        if(bikeId){const exists=await env.DB.prepare("SELECT 1 ok FROM evo_member_master WHERE unit='bike' AND evo_member_id=? AND is_current=1 LIMIT 1").bind(bikeId).first();if(!exists)return json({ok:false,error:"BIKE_ID_NAO_ENCONTRADO"},404);}
+        if(gymId){const exists=await env.DB.prepare("SELECT 1 ok FROM evo_member_master WHERE unit='gym' AND evo_member_id=? AND is_current=1 LIMIT 1").bind(gymId).first();if(!exists)return json({ok:false,error:"GYM_ID_NAO_ENCONTRADO"},404);const collision=await env.DB.prepare("SELECT id FROM members WHERE CAST(gym_client_id AS TEXT)=? AND id<>? LIMIT 1").bind(gymId,memberId).first();if(collision)return json({ok:false,error:"GYM_JA_VINCULADO"},409);}
+        await env.DB.prepare("UPDATE members SET evo_member_id=COALESCE(?,evo_member_id),gym_client_id=COALESCE(?,gym_client_id),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(bikeId||null,gymId||null,memberId).run();
+        if(gymId){await env.DB.prepare("INSERT INTO gym_member_links(gym_client_id,member_id,link_source,status,linked_at) VALUES(?,?,'ADMIN_D1','ACTIVE',CURRENT_TIMESTAMP) ON CONFLICT(gym_client_id) DO UPDATE SET member_id=excluded.member_id,link_source='ADMIN_D1',status='ACTIVE',linked_at=CURRENT_TIMESTAMP").bind(gymId,memberId).run();}
+        await audit(env,"ADMIN",String(memberId),"UNIT_LINK_UPDATED","MEMBER",String(memberId),{bikeId:bikeId||null,gymId:gymId||null});
+        return json({ok:true,memberId,bikeId:bikeId||null,gymId:gymId||null});
+      }
+
+      // =====================================================
       // ADMIN - CONFIGURACAO EVO POR UNIDADE (FASE 0)
       // =====================================================
       if ((request.method === "GET" || request.method === "PUT" || request.method === "POST") && url.pathname === "/admin/evo-config") {
