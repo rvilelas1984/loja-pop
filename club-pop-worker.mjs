@@ -321,13 +321,24 @@ export default {
         const result=await currentStudentJob(env,await request.json());return json(result,result.status||200);
       }
 
+      if (url.pathname === "/admin/evo-contracts-checkpoint" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"").toLowerCase();if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_contract_sync_checkpoint(unit TEXT PRIMARY KEY,next_skip INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const q=await env.DB.prepare("SELECT next_skip,updated_at FROM evo_contract_sync_checkpoint WHERE unit=?").bind(unit).first();
+        return json({ok:true,unit,nextSkip:Number(q?.next_skip||0),updatedAt:q?.updated_at||null});
+      }
+
       if (url.pathname === "/admin/evo-contracts-ingest" && request.method === "POST") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const b=await request.json().catch(()=>({})),unit=String(b.unit||"bike").toLowerCase()==="gym"?"gym":"bike",rows=Array.isArray(b.rows)?b.rows:[];
-        if(rows.length>25)return json({ok:false,error:"LOTE_CONTRATOS_INVALIDO"},400);
+        const b=await request.json().catch(()=>({})),rawUnit=String(b.unit||"").toLowerCase();if(!["bike","gym"].includes(rawUnit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);const unit=rawUnit,rows=Array.isArray(b.rows)?b.rows:[];
+        if(rows.length>100)return json({ok:false,error:"LOTE_CONTRATOS_INVALIDO"},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_contract_sync_checkpoint(unit TEXT PRIMARY KEY,next_skip INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const stm=[];for(const x of rows){const mid=String(x.idMember||""),mm=String(x.idMemberMembership??x.idMembershipMember??x.id??""),im=String(x.idMembership??"");if(!/^\d+$/.test(mid))continue;const key=mm&&mm!=="undefined"&&mm!=="null"?mm:[im,x.startDate||x.startDateMembership||"",x.endDate||x.endDateMembership||""].join(":");stm.push(env.DB.prepare("INSERT INTO evo_member_contracts(unit,evo_member_id,contract_key,id_membership,id_member_membership,category_id,membership_name,membership_status,start_date,end_date,cancel_date,sale_date,is_additional,raw_json,source_run_id,synced_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_member_id,contract_key) DO UPDATE SET id_membership=excluded.id_membership,id_member_membership=excluded.id_member_membership,category_id=excluded.category_id,membership_name=excluded.membership_name,membership_status=excluded.membership_status,start_date=excluded.start_date,end_date=excluded.end_date,cancel_date=excluded.cancel_date,sale_date=excluded.sale_date,is_additional=excluded.is_additional,raw_json=excluded.raw_json,synced_at=CURRENT_TIMESTAMP").bind(unit,mid,key,im||null,mm||null,String(x.idCategoryMembership??x.idMembershipCategory??"" )||null,String(x.nameMembership??x.membershipName??x.name??"").slice(0,200)||null,String(x.statusMemberMembership??x.status??"active"),x.startDate??x.startDateMembership??null,x.endDate??x.endDateMembership??null,x.cancelDate??x.cancellationDate??null,x.saleDate??null,x.isAdditional?1:0,JSON.stringify(x),null))}
         if(stm.length)await env.DB.batch(stm);
+        const nextSkip=Math.max(Number(b.nextSkip)||0,Number(b.skip)||0);await env.DB.prepare("INSERT INTO evo_contract_sync_checkpoint(unit,next_skip,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET next_skip=excluded.next_skip,updated_at=CURRENT_TIMESTAMP").bind(unit,nextSkip).run();
         if(b.done){
           // Contratos complementam a classificação operacional sem apagar as fontes já homologadas do cadastro.
           // Somente alunos presentes no espelho atual recebem categorias derivadas de contrato.
