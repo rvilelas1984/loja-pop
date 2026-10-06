@@ -170,9 +170,9 @@ export default {
       if(url.pathname==="/admin/evo-attendance-import-queue" && request.method==="POST"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const b=await request.json().catch(()=>({}));if(b.unit!=="bike")return json({ok:false,error:"SYNC_GYM_BLOQUEADO"},423);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||"bike").toLowerCase()==="gym"?"gym":"bike";
         if(!Array.isArray(b.sessions)||b.sessions.length>100||b.sessions.some(s=>!s||!/^\d+$/.test(String(s.id))||!/^\d{4}-\d{2}-\d{2}$/.test(String(s.date))))return json({ok:false,error:"SESSOES_INVALIDAS"},400);
-        const stm=b.sessions.map(s=>env.DB.prepare("INSERT INTO evo_attendance_import_queue(unit,id_activity_session,activity_date,status) VALUES('bike',?,?,'pending') ON CONFLICT(unit,id_activity_session) DO NOTHING").bind(String(s.id),s.date));
+        const stm=b.sessions.map(s=>env.DB.prepare("INSERT INTO evo_attendance_import_queue(unit,id_activity_session,activity_date,status) VALUES(?,?,?,'pending') ON CONFLICT(unit,id_activity_session) DO NOTHING").bind(unit,String(s.id),s.date));
         if(stm.length)await env.DB.batch(stm);return json({ok:true,received:b.sessions.length});
       }
 
@@ -180,31 +180,31 @@ export default {
       if (url.pathname === "/admin/evo-attendance-import-queue" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase(),start=String(url.searchParams.get("start")||""),end=String(url.searchParams.get("end")||"");
-        if(unit!=="bike")return json({ok:false,error:"SYNC_GYM_BLOQUEADO"},423);if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return json({ok:false,error:"PERIODO_INVALIDO"},400);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike",start=String(url.searchParams.get("start")||""),end=String(url.searchParams.get("end")||"");
+if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return json({ok:false,error:"PERIODO_INVALIDO"},400);
         const from=start+"-01",[y,m]=end.split("-").map(Number),to=new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);
-        const q=await env.DB.prepare("SELECT id_activity_session id,activity_date date,status FROM evo_attendance_import_queue WHERE unit='bike' AND activity_date BETWEEN ? AND ? ORDER BY activity_date,id_activity_session").bind(from,to).all();
+        const q=await env.DB.prepare("SELECT id_activity_session id,activity_date date,status FROM evo_attendance_import_queue WHERE unit=? AND activity_date BETWEEN ? AND ? ORDER BY activity_date,id_activity_session").bind(unit,from,to).all();
         return json({ok:true,sessions:(q.results||[]).map(x=>({id:String(x.id),date:x.date,status:x.status}))});
       }
       if (url.pathname === "/admin/evo-attendance-sessions" && request.method === "POST") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const b=await request.json().catch(()=>({}));if(String(b.unit||"bike")!=="bike")return json({ok:false,error:"SYNC_GYM_BLOQUEADO"},423);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||"bike").toLowerCase()==="gym"?"gym":"bike";
         const ids=Array.isArray(b.sessionIds)?b.sessionIds.map(String).filter(x=>/^\d+$/.test(x)).slice(0,100):[];
         if(!ids.length)return json({ok:true,processed:[]});
-        const q=await env.DB.prepare("SELECT id_activity_session FROM evo_attendance_sessions WHERE unit='bike' AND status='done' AND id_activity_session IN ("+ids.map(()=>"?").join(",")+")").bind(...ids).all();
+        const q=await env.DB.prepare("SELECT id_activity_session FROM evo_attendance_sessions WHERE unit=? AND status='done' AND id_activity_session IN ("+ids.map(()=>"?").join(",")+")").bind(unit,...ids).all();
         return json({ok:true,processed:(q.results||[]).map(x=>String(x.id_activity_session))});
       }
       if (url.pathname === "/admin/evo-attendance-ingest-class" && request.method === "POST") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const b=await request.json().catch(()=>({}));if(String(b.unit||"bike")!=="bike")return json({ok:false,error:"SYNC_GYM_BLOQUEADO"},423);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||"bike").toLowerCase()==="gym"?"gym":"bike";
         const sid=String(b.sessionId||""),date=String(b.date||"").slice(0,10),rows=Array.isArray(b.rows)?b.rows:[];if(!/^\d+$/.test(sid)||!/^\d{4}-\d{2}-\d{2}$/.test(date)||rows.length>100)return json({ok:false,error:"LOTE_PRESENCAS_INVALIDO"},400);
-        const prior=await env.DB.prepare("SELECT status FROM evo_attendance_sessions WHERE unit='bike' AND id_activity_session=?").bind(sid).first();if(prior?.status==="done"){await env.DB.prepare("UPDATE evo_attendance_import_queue SET status='done',last_error=NULL WHERE unit='bike' AND id_activity_session=?").bind(sid).run();return json({ok:true,alreadyProcessed:true,saved:0});}
-        const stm=[];for(const x of rows){const id=String(x.id||"");if(!/^\d+$/.test(id)||String(x.idActivitySession)!==sid||String(x.date).slice(0,10)!==date)continue;stm.push(env.DB.prepare("INSERT OR REPLACE INTO evo_member_attendance(unit,evo_member_id,attendance_key,attendance_date,start_time,activity_name,id_activity_session,raw_json,synced_at) VALUES('bike',?,?,?,?,?,?,?,CURRENT_TIMESTAMP)").bind(id,sid,date,x.startTime||null,x.activity||null,sid,JSON.stringify(x)))}
+        const prior=await env.DB.prepare("SELECT status FROM evo_attendance_sessions WHERE unit=? AND id_activity_session=?").bind(unit,sid).first();if(prior?.status==="done"){await env.DB.prepare("UPDATE evo_attendance_import_queue SET status='done',last_error=NULL WHERE unit=? AND id_activity_session=?").bind(unit,sid).run();return json({ok:true,alreadyProcessed:true,saved:0});}
+        const stm=[];for(const x of rows){const id=String(x.id||"");if(!/^\d+$/.test(id)||String(x.idActivitySession)!==sid||String(x.date).slice(0,10)!==date)continue;stm.push(env.DB.prepare("INSERT OR REPLACE INTO evo_member_attendance(unit,evo_member_id,attendance_key,attendance_date,start_time,activity_name,id_activity_session,raw_json,synced_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)").bind(unit,id,sid,date,x.startTime||null,x.activity||null,sid,JSON.stringify(x)))}
         if(stm.length)for(let i=0;i<stm.length;i+=40)await env.DB.batch(stm.slice(i,i+40));
-        await env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,synced_at) VALUES('bike',?,?,?,?, 'done',?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,status='done',attendance_count=excluded.attendance_count,synced_at=CURRENT_TIMESTAMP").bind(sid,date,b.startTime||null,b.activity||null,stm.length).run();
-        await env.DB.prepare("UPDATE evo_attendance_import_queue SET status='done',attempts=attempts+1,last_error=NULL WHERE unit='bike' AND id_activity_session=?").bind(sid).run();
+        await env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,synced_at) VALUES(?,?,?,?,?, 'done',?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,status='done',attendance_count=excluded.attendance_count,synced_at=CURRENT_TIMESTAMP").bind(unit,sid,date,b.startTime||null,b.activity||null,stm.length).run();
+        await env.DB.prepare("UPDATE evo_attendance_import_queue SET status='done',attempts=attempts+1,last_error=NULL WHERE unit=? AND id_activity_session=?").bind(unit,sid).run();
         return json({ok:true,alreadyProcessed:false,saved:stm.length});
       }
 
