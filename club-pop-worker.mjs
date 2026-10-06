@@ -321,6 +321,18 @@ export default {
         const result=await currentStudentJob(env,await request.json());return json(result,result.status||200);
       }
 
+      if (url.pathname === "/admin/evo-contracts-ingest" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||"bike").toLowerCase()==="gym"?"gym":"bike",rows=Array.isArray(b.rows)?b.rows:[];
+        if(rows.length>25)return json({ok:false,error:"LOTE_CONTRATOS_INVALIDO"},400);
+        const stm=[];for(const x of rows){const mid=String(x.idMember||""),mm=String(x.idMemberMembership??x.idMembershipMember??x.id??""),im=String(x.idMembership??"");if(!/^\d+$/.test(mid))continue;const key=mm&&mm!=="undefined"&&mm!=="null"?mm:[im,x.startDate||x.startDateMembership||"",x.endDate||x.endDateMembership||""].join(":");stm.push(env.DB.prepare("INSERT INTO evo_member_contracts(unit,evo_member_id,contract_key,id_membership,id_member_membership,category_id,membership_name,membership_status,start_date,end_date,cancel_date,sale_date,is_additional,raw_json,source_run_id,synced_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_member_id,contract_key) DO UPDATE SET id_membership=excluded.id_membership,id_member_membership=excluded.id_member_membership,category_id=excluded.category_id,membership_name=excluded.membership_name,membership_status=excluded.membership_status,start_date=excluded.start_date,end_date=excluded.end_date,cancel_date=excluded.cancel_date,sale_date=excluded.sale_date,is_additional=excluded.is_additional,raw_json=excluded.raw_json,synced_at=CURRENT_TIMESTAMP").bind(unit,mid,key,im||null,mm||null,String(x.idCategoryMembership??x.idMembershipCategory??"" )||null,String(x.nameMembership??x.membershipName??x.name??"").slice(0,200)||null,String(x.statusMemberMembership??x.status??"active"),x.startDate??x.startDateMembership??null,x.endDate??x.endDateMembership??null,x.cancelDate??x.cancellationDate??null,x.saleDate??null,x.isAdditional?1:0,JSON.stringify(x),null))}
+        if(stm.length)await env.DB.batch(stm);
+        if(b.done){await env.DB.prepare("INSERT INTO evo_sync_config(unit,last_sync_at,last_sync_status,updated_at) VALUES(?,CURRENT_TIMESTAMP,'contracts_ok',CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET last_sync_at=CURRENT_TIMESTAMP,last_sync_status='contracts_ok',updated_at=CURRENT_TIMESTAMP").bind(unit).run();}
+        const q=await env.DB.prepare("SELECT COUNT(*) contracts,COUNT(DISTINCT evo_member_id) members,COUNT(DISTINCT CASE WHEN category_id IN ('4','5') THEN evo_member_id END) aggregators FROM evo_member_contracts WHERE unit=? AND lower(COALESCE(membership_status,''))='active'").bind(unit).first();
+        return json({ok:true,unit,saved:stm.length,summary:{contracts:Number(q?.contracts||0),members:Number(q?.members||0),aggregators:Number(q?.aggregators||0)}});
+      }
+
       // Espelho administrativo de alunos EVO: leitura exclusiva do D1, sem chamada à EVO.
       if (url.pathname === "/admin/evo-students" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
