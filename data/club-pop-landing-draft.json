@@ -39,7 +39,13 @@
         "hint": "Configure cada banner separadamente: imagem e destino do clique.",
         "active": true,
         "fields": {
-          "banners": [],
+          "banners": [
+            {
+              "imageUrl": "https://drive.google.com/file/d/1O8HHvamXD6XzVQT_ufPkG6MoNMRLTUuH/view?usp=drivesdk",
+              "linkUrl": "",
+              "newTab": false
+            }
+          ],
           "interval": "5"
         },
         "order": 1
