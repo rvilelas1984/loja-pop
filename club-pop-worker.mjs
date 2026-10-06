@@ -168,24 +168,6 @@ export default {
         return json({ok:true,unit,cached:!!cache,source:"d1-unified",evoRequestsMade:0,coverage:{cache:!!cache,master:!!master,student:!!student,contracts:projected.length,attendance:rows.length},updatedAt:cache?.updated_at||master?.synced_at||student?.updated_at||null,sync:{syncTime:sync?.sync_time||null,lastSyncAt:sync?.last_sync_at||null},data});
       }
 
-        if(unit==="gym"){
-          const parse=v=>{try{return JSON.parse(v||"{}")}catch{return {}}};
-          const master=await env.DB.prepare("SELECT personal_json,financial_json,memberships_json,synced_at FROM evo_member_master WHERE unit='gym' AND evo_member_id=?").bind(String(evoId)).first();
-          const student=await env.DB.prepare("SELECT fitcoins,membership_status FROM evo_students WHERE unit='gym' AND evo_member_id=? AND is_current=1 LIMIT 1").bind(String(evoId)).first();
-          const base=await env.DB.prepare("SELECT first_name,last_name FROM members WHERE id=?").bind(session.id).first();
-          const personal=parse(master?.personal_json),financial=parse(master?.financial_json),allMemberships=parse(master?.memberships_json);
-          const memberships=(Array.isArray(allMemberships)?allMemberships:[]).filter(m=>String(m?.membershipStatus||"").toLowerCase()==="active"&&!m?.cancelDate);
-          const data={member:{idMember:evoId,firstName:personal.firstName||base?.first_name||"Aluno",lastName:personal.lastName||base?.last_name||"",branchName:"Studio Gym Pop",membershipStatus:student?.membership_status||null,memberships}};
-          const coin=[student?.fitcoins,financial.totalFitCoins,financial.totalFitcoins].find(v=>v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)));data.fitcoins=coin===undefined?null:Number(coin);
-          const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()),part=t=>parts.find(p=>p.type===t).value,month=part("year")+"-"+part("month"),today=month+"-"+part("day");
-          const q=await env.DB.prepare("SELECT attendance_date,start_time,activity_name,id_activity_session FROM evo_member_attendance WHERE unit='gym' AND evo_member_id=? AND substr(attendance_date,1,7)=? ORDER BY attendance_date,start_time,id_activity_session").bind(String(evoId),month).all();
-          const rows=(q.results||[]).map(a=>({date:a.attendance_date,startTime:a.start_time,activity:a.activity_name,idActivitySession:a.id_activity_session,presenca:true,isFinalized:true})),times={},acts={},days=new Set();
-          for(const a of rows){days.add(a.date);if(a.startTime)times[a.startTime]=(times[a.startTime]||0)+1;if(a.activity)acts[a.activity]=(acts[a.activity]||0)+1}
-          const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0]?.[0]||null,monday=new Date(today+"T00:00:00Z");monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);const week=rows.filter(a=>a.date>=monday.toISOString().slice(0,10)&&a.date<=today);
-          data.attendance={ok:true,period:{month},attendanceCount:rows.length,distinctDays:days.size,favoriteTime:top(times),favoriteActivity:top(acts),currentWeek:{attendanceCount:week.length,distinctDays:new Set(week.map(a=>a.date)).size},attendance:rows};
-          const sync=await env.DB.prepare("SELECT sync_time,last_sync_at FROM evo_sync_config WHERE unit='gym'").first();
-          return json({ok:true,unit,cached:true,source:"d1-gym-mirror",evoRequestsMade:0,updatedAt:master?.synced_at||null,sync:{syncTime:sync?.sync_time||null,lastSyncAt:sync?.last_sync_at||null},data});
-        }
       // Diagnóstico do aluno logado: somente D1, sem requisição EVO.
       if (url.pathname === "/member/d1-diagnostic" && request.method === "GET") {
         const auth=request.headers.get("Authorization")||"";if(!auth.startsWith("Bearer "))return json({ok:false,error:"NAO_AUTORIZADO"},401);
