@@ -1432,17 +1432,17 @@ async function currentStudentJob(env, body) {
   const unit=String(body.unit||'bike').toLowerCase()==='gym'?'gym':'bike';
   const db=env.DB;
   if(body.action==='begin') {
-    await db.prepare("UPDATE evo_current_runs SET state='failed',error='SINCRONIZACAO_EXPIRADA' WHERE state='running' AND updated_at<datetime('now','-10 minutes')").run();
-    const running=await db.prepare("SELECT id FROM evo_current_runs WHERE unit=? AND state='running'").bind(unit).first();
+    await db.prepare("UPDATE evo_current_runs_v2 SET state='failed',error='SINCRONIZACAO_EXPIRADA' WHERE state='running' AND updated_at<datetime('now','-10 minutes')").run();
+    const running=await db.prepare("SELECT id FROM evo_current_runs_v2 WHERE unit=? AND state='running'").bind(unit).first();
     if(running)return {status:409,ok:false,error:'SINCRONIZACAO_JA_EM_ANDAMENTO'};
     const id=crypto.randomUUID();
-    await db.prepare("INSERT INTO evo_current_runs(id,unit,state) VALUES(?,?,'running')").bind(id,unit).run();
+    await db.prepare("INSERT INTO evo_current_runs_v2(id,unit,state) VALUES(?,?,'running')").bind(id,unit).run();
     return {ok:true,runId:id,nextSkip:0};
   }
-  const run=await db.prepare("SELECT * FROM evo_current_runs WHERE id=? AND unit=?").bind(String(body.runId||''),unit).first();
+  const run=await db.prepare("SELECT * FROM evo_current_runs_v2 WHERE id=? AND unit=?").bind(String(body.runId||''),unit).first();
   if(!run||run.state!=='running')return {status:409,ok:false,error:'SINCRONIZACAO_INATIVA'};
   if(body.action==='fail') {
-    await db.prepare("UPDATE evo_current_runs SET state='failed',error=?,requests=requests+?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(String(body.error||'EVO_FALHOU').slice(0,80),Number(body.requests||0),run.id).run();
+    await db.prepare("UPDATE evo_current_runs_v2 SET state='failed',error=?,requests=requests+?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(String(body.error||'EVO_FALHOU').slice(0,80),Number(body.requests||0),run.id).run();
     return {ok:true};
   }
   if(body.action==='check')return {ok:true,runId:run.id,nextSkip:run.next_skip};
@@ -1460,7 +1460,7 @@ async function currentStudentJob(env, body) {
   const next=run.next_skip+rows.length,requests=run.requests+Number(body.skip===0?2:1),done=rows.length<25;
   await db.batch([
     db.prepare("INSERT INTO evo_current_stage(run_id,evo_member_id,payload) SELECT ?,json_extract(value,'$.id'),value FROM json_each(?)").bind(run.id,JSON.stringify(rows)),
-    db.prepare("UPDATE evo_current_runs SET next_skip=?,requests=?,report_ids=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(next,requests,JSON.stringify(report),run.id),
+    db.prepare("UPDATE evo_current_runs_v2 SET next_skip=?,requests=?,report_ids=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(next,requests,JSON.stringify(report),run.id),
   ]);
   // Lossless EVO snapshot + categorized projections. No extra EVO requests.
   const masterStatements=[],contractStatements=[];
@@ -1496,7 +1496,7 @@ async function currentStudentJob(env, body) {
     db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'aggregator','totalpass','member_registration' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.totalpass')=1").bind(unit,run.id),
     db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'suspended','','membershipStatus' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.status')='Suspended'").bind(unit,run.id),
     db.prepare("INSERT INTO evo_student_categories(unit,evo_member_id,category,subtype,source) SELECT ?,evo_member_id,'vip','found','members_current_memberships' FROM evo_current_stage WHERE run_id=? AND json_extract(payload,'$.vip')=1").bind(unit,run.id),
-    db.prepare("UPDATE evo_current_runs SET state='done',added=?,changed=?,removed=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(added,changed,removed,run.id),
+    db.prepare("UPDATE evo_current_runs_v2 SET state='done',added=?,changed=?,removed=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(added,changed,removed,run.id),
     db.prepare("UPDATE evo_sync_config SET last_sync_at=CURRENT_TIMESTAMP,last_sync_status='ok',last_sync_requests=?,updated_at=CURRENT_TIMESTAMP WHERE unit=?").bind(requests,unit),
     db.prepare('DELETE FROM evo_current_stage WHERE run_id=?').bind(run.id),
   ]);
