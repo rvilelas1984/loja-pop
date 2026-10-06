@@ -1227,8 +1227,8 @@
         "hint": "Logo e favicon usados na Landing Page. Informe a URL do arquivo publicado (PNG, SVG, JPG ou ICO).",
         "active": true,
         "fields": {
-          "logoUrl": "",
-          "faviconUrl": ""
+          "logoUrl": "https://drive.google.com/file/d/1O8HHvamXD6XzVQT_ufPkG6MoNMRLTUuH/view?usp=drivesdk",
+          "faviconUrl": "https://drive.google.com/file/d/1ZcCmRERAt_WvGdaMDgdySULE7lOd73XM/view?usp=drivesdk"
         },
         "order": 0
       },
