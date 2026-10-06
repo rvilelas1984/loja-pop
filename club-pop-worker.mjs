@@ -321,6 +321,16 @@ export default {
         const result=await currentStudentJob(env,await request.json());return json(result,result.status||200);
       }
 
+      if (url.pathname === "/admin/evo-contracts-summary" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"").toLowerCase();if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_contract_sync_checkpoint(unit TEXT PRIMARY KEY,next_skip INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const q=await env.DB.prepare("SELECT COUNT(*) contracts,COUNT(DISTINCT evo_member_id) members,COUNT(DISTINCT CASE WHEN category_id IN ('4','5') THEN evo_member_id END) aggregators,MAX(synced_at) last_sync_at FROM evo_member_contracts WHERE unit=? AND lower(COALESCE(membership_status,''))='active'").bind(unit).first();
+        const cp=await env.DB.prepare("SELECT next_skip,updated_at FROM evo_contract_sync_checkpoint WHERE unit=?").bind(unit).first();
+        return json({ok:true,unit,summary:{contracts:Number(q?.contracts||0),members:Number(q?.members||0),aggregators:Number(q?.aggregators||0)},lastSyncAt:q?.last_sync_at||null,checkpoint:Number(cp?.next_skip||0),checkpointUpdatedAt:cp?.updated_at||null,evoRequestsMade:0});
+      }
+
       if (url.pathname === "/admin/evo-contracts-checkpoint" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
