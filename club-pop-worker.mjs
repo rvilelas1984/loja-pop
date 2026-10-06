@@ -327,7 +327,7 @@ export default {
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
-        if(unit==='bike')return json(await currentStudentsView(env));
+        return json(await currentStudentsView(env,unit));
         const q=await env.DB.prepare(`SELECT
           SUM(CASE WHEN json_extract(payload_json,'$.member.status')='Active' AND json_extract(payload_json,'$.member.gympassId') IS NULL AND json_extract(payload_json,'$.member.codeTotalpass') IS NULL THEN 1 ELSE 0 END) active,
           SUM(CASE WHEN json_extract(payload_json,'$.member.status')='Active' AND (json_extract(payload_json,'$.member.gympassId') IS NOT NULL OR json_extract(payload_json,'$.member.codeTotalpass') IS NOT NULL) THEN 1 ELSE 0 END) aggregators,
@@ -1502,12 +1502,14 @@ async function currentStudentJob(env, body) {
   ]);
   return {ok:true,runId:run.id,nextSkip:next,done:true,total:next,added,changed,removed};
 }
-async function currentStudentsView(env) {
-  const db=env.DB,run=await db.prepare("SELECT * FROM evo_current_runs WHERE unit='bike' AND state='done' ORDER BY updated_at DESC,rowid DESC LIMIT 1").first();
-  const total=await db.prepare("SELECT COUNT(*) total,SUM(membership_status='Active') statusActive,SUM(membership_status='Suspended') suspended FROM evo_students WHERE unit='bike' AND is_current=1").first();
-  const agg=await db.prepare("SELECT COUNT(DISTINCT evo_member_id) aggregators,SUM(subtype='gympass') gympass,SUM(subtype='totalpass') totalpass FROM evo_student_categories WHERE unit='bike' AND category='aggregator'").first();
-  const vip=await db.prepare("SELECT COUNT(DISTINCT evo_member_id) vip FROM evo_student_categories WHERE unit='bike' AND category='vip' AND subtype='found'").first();
-  const comparison=await db.prepare("WITH e AS(SELECT evo_member_id id FROM evo_students WHERE unit='bike' AND is_current=1),c AS(SELECT DISTINCT CAST(evo_member_id AS TEXT) id FROM members WHERE evo_member_id IS NOT NULL) SELECT (SELECT COUNT(*) FROM c) linked,(SELECT COUNT(*) FROM e JOIN c USING(id)) both,(SELECT COUNT(*) FROM e WHERE id NOT IN(SELECT id FROM c)) onlyEvo,(SELECT COUNT(*) FROM c WHERE id NOT IN(SELECT id FROM e)) onlyClub").first();
-  const logs=(await db.prepare("SELECT added,changed,removed,requests,updated_at createdAt,'População atual filtrada; histórico preservado.' details FROM evo_current_runs WHERE state='done' AND unit='bike' ORDER BY updated_at DESC LIMIT 20").all()).results;
-  return {ok:true,unit:'bike',source:'d1-current',counts:{active:run?new Set(JSON.parse(run.report_ids)).size:null,total:total.total,statusActive:total.statusActive||0,suspended:total.suspended||0,aggregators:agg.aggregators||0,gympass:agg.gympass||0,totalpass:agg.totalpass||0,vip:vip.vip||0},comparison,lastSyncAt:run?.updated_at||null,lastRequests:run?.requests||0,logs,note:'Ativos: relatório de contratos. Agregadores: identificadores no cadastro atual; podem se sobrepor. VIP: categoria VIP encontrada nos contratos retornados pela população atual; vigência será tratada separadamente. Sem apagar históricos.'};
+async function currentStudentsView(env, unit='bike') {
+  unit=unit==='gym'?'gym':'bike'; const db=env.DB;
+  const run=await db.prepare("SELECT * FROM evo_current_runs_v2 WHERE unit=? AND state='done' ORDER BY updated_at DESC,rowid DESC LIMIT 1").bind(unit).first();
+  const total=await db.prepare("SELECT COUNT(*) total,SUM(membership_status='Active') statusActive,SUM(membership_status='Suspended') suspended FROM evo_students WHERE unit=? AND is_current=1").bind(unit).first();
+  const agg=await db.prepare("SELECT COUNT(DISTINCT evo_member_id) aggregators,SUM(subtype='gympass') gympass,SUM(subtype='totalpass') totalpass FROM evo_student_categories WHERE unit=? AND category='aggregator'").bind(unit).first();
+  const vip=await db.prepare("SELECT COUNT(DISTINCT evo_member_id) vip FROM evo_student_categories WHERE unit=? AND category='vip' AND subtype='found'").bind(unit).first();
+  const comparison=await db.prepare("WITH e AS(SELECT evo_member_id id FROM evo_students WHERE unit=? AND is_current=1),c AS(SELECT DISTINCT CAST(evo_member_id AS TEXT) id FROM members WHERE evo_member_id IS NOT NULL) SELECT (SELECT COUNT(*) FROM c) linked,(SELECT COUNT(*) FROM e JOIN c USING(id)) both,(SELECT COUNT(*) FROM e WHERE id NOT IN(SELECT id FROM c)) onlyEvo,(SELECT COUNT(*) FROM c WHERE id NOT IN(SELECT id FROM e)) onlyClub").bind(unit).first();
+  const logs=(await db.prepare("SELECT added,changed,removed,requests,updated_at createdAt,'População atual filtrada; histórico preservado.' details FROM evo_current_runs_v2 WHERE state='done' AND unit=? ORDER BY updated_at DESC LIMIT 20").bind(unit).all()).results;
+  let active=total?.statusActive||0; try{if(run?.report_ids)active=new Set(JSON.parse(run.report_ids)).size}catch{}
+  return {ok:true,unit,source:'d1-current',counts:{active,total:total?.total||0,statusActive:total?.statusActive||0,suspended:total?.suspended||0,aggregators:agg?.aggregators||0,gympass:agg?.gympass||0,totalpass:agg?.totalpass||0,vip:vip?.vip||0},comparison,lastSyncAt:run?.updated_at||null,lastRequests:run?.requests||0,logs,note:'Ativos: relatório de contratos. Agregadores: identificadores no cadastro atual; podem se sobrepor. VIP: categoria VIP encontrada nos contratos retornados pela população atual; vigência será tratada separadamente. Sem apagar históricos.'};
 }
