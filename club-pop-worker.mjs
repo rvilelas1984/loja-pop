@@ -4,7 +4,22 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
 ]);
 
+
+
+async function runScheduledStudentSync(env) {
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
+  const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
+  const hm=get("hour")+":"+get("minute"), minuteKey=get("year")+"-"+get("month")+"-"+get("day")+"T"+hm;
+  const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='student'").all()).results||[];
+  for(const row of rows){let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}if(!times.includes(hm))continue;const unit=row.unit==="gym"?"gym":"bike";
+    const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'student',?,'pending')").bind(unit,minuteKey).run();if(!ins.meta?.changes)continue;
+    try{const r=await fetch("https://loja-pop-green.vercel.app/api/evo-config?route=auto-sync-students&unit="+unit,{method:"POST",headers:{"x-auto-sync-secret":String(env.AUTO_SYNC_SECRET||""),"Content-Type":"application/json"}}),d=await r.json().catch(()=>({}));await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status=?,detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(r.ok&&d.ok?"done":"failed",JSON.stringify({http:r.status,error:d.error||null,total:d.total||null,requests:d.requests||null}).slice(0,1000),unit,minuteKey).run();}
+    catch(e){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(String(e.message||e).slice(0,500),unit,minuteKey).run();}
+  }
+}
+
 export default {
+  async scheduled(event, env, ctx) { ctx.waitUntil(runScheduledStudentSync(env)); },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
@@ -311,6 +326,11 @@ export default {
         const ids=[...new Set((Array.isArray(x.vipIds)?x.vipIds:[]).map(Number).filter(Number.isInteger))],details=Array.isArray(x.details)?x.details.slice(-200):[];
         await env.DB.prepare("INSERT INTO evo_vip_diagnostic_checkpoint(unit,next_skip,contracts,requests,vip_json,details_json,updated_at) VALUES('bike',?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET next_skip=excluded.next_skip,contracts=excluded.contracts,requests=excluded.requests,vip_json=excluded.vip_json,details_json=excluded.details_json,updated_at=CURRENT_TIMESTAMP").bind(Number(x.nextSkip||0),Number(x.contracts||0),Number(x.requests||0),JSON.stringify(ids),JSON.stringify(details)).run();
         return json({ok:true,saved:true,nextSkip:Number(x.nextSkip||0),contracts:Number(x.contracts||0),vipCount:ids.length});
+      }
+
+      if (url.pathname === "/internal/evo-current-job" && request.method === "POST") {
+        const secret=request.headers.get("x-auto-sync-secret")||"";if(!secret||secret!==String(env.AUTO_SYNC_SECRET||""))return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const result=await currentStudentJob(env,await request.json());return json(result,result.status||200);
       }
 
       if (url.pathname === "/admin/evo-current-job" && request.method === "POST") {
