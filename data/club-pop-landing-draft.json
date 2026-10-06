@@ -9,26 +9,8 @@
         "hint": "Logo e favicon usados na Landing Page. Informe a URL do arquivo publicado (PNG, SVG, JPG ou ICO).",
         "active": true,
         "fields": {
-          "logoUrl": "https://drive.google.com/file/d/1O8HHvamXD6XzVQT_ufPkG6MoNMRLTUuH/view?usp=drivesdk",
-          "faviconUrl": "https://drive.google.com/file/d/1ZcCmRERAt_WvGdaMDgdySULE7lOd73XM/view?usp=drivesdk"
-        },
-        "order": 0
-      },
-      {
-        "id": "hero",
-        "type": "hero",
-        "name": "1. Abertura / Hero",
-        "hint": "Primeiro quadro da página — “Você treina pelos seus objetivos...”",
-        "active": true,
-        "fields": {
-          "eyebrow": "SEU TREINO. SUA CONSTÂNCIA. SUAS CONQUISTAS.",
-          "title": "Você treina pelos seus objetivos. O Club Pop recompensa o caminho.",
-          "text": "Transforme sua frequência em motivação: participe de missões, promoções e experiências que deixam cada treino ainda mais valioso.",
-          "imageUrl": "https://drive.google.com/file/d/13Ub5BiJafpdmMHvdVCsAkyWogX__TS2l/view?usp=drivesdk",
-          "buttonText": "QUERO FAZER PARTE →",
-          "buttonUrl": "https://loja-pop-green.vercel.app/?utm_source=chatgpt.com",
-          "buttonVisible": true,
-          "buttonNewTab": false
+          "logoUrl": "",
+          "faviconUrl": ""
         },
         "order": 0
       },
@@ -41,7 +23,7 @@
         "fields": {
           "banners": [
             {
-              "imageUrl": "https://drive.google.com/file/d/1O8HHvamXD6XzVQT_ufPkG6MoNMRLTUuH/view?usp=drivesdk",
+              "imageUrl": "https://drive.google.com/file/d/1O8HHvamXD6XzVQT_ufPkG6MoNMRLTUuH/view?usp=drive_link",
               "linkUrl": "",
               "newTab": false
             }
@@ -49,6 +31,24 @@
           "interval": "5"
         },
         "order": 1
+      },
+      {
+        "id": "hero",
+        "type": "hero",
+        "name": "2. Abertura / Hero",
+        "hint": "Primeiro quadro da página — “Você treina pelos seus objetivos...”",
+        "active": true,
+        "fields": {
+          "eyebrow": "SEU TREINO. SUA CONSTÂNCIA. SUAS CONQUISTAS.",
+          "title": "Você treina pelos seus objetivos. O Club Pop recompensa o caminho.",
+          "text": "Transforme sua frequência em motivação: participe de missões, promoções e experiências que deixam cada treino ainda mais valioso.",
+          "imageUrl": "https://drive.google.com/thumbnail?id=1Rcaa1dh9LS5ArsUI3x3U2C72kj3W8ITY&sz=w1200",
+          "buttonText": "QUERO FAZER PARTE →",
+          "buttonUrl": "/login.html",
+          "buttonVisible": true,
+          "buttonNewTab": false
+        },
+        "order": 2
       },
       {
         "id": "features",
@@ -62,7 +62,7 @@
           "fitcoinsText": "Seu esforço vale. E agora também rende.",
           "benefitsText": "Vantagens que acompanham a sua rotina."
         },
-        "order": 1
+        "order": 3
       },
       {
         "id": "how",
@@ -81,7 +81,7 @@
           "step3Title": "Conquiste vantagens",
           "step3Text": "Fitcoins, prêmios, descontos, experiências e promoções exclusivas."
         },
-        "order": 2
+        "order": 4
       },
       {
         "id": "promotion",
@@ -98,7 +98,7 @@
           "buttonVisible": true,
           "buttonNewTab": false
         },
-        "order": 3
+        "order": 5
       },
       {
         "id": "missions",
@@ -116,7 +116,7 @@
           "card3Title": "Conquistas que motivam",
           "card3Text": "Seu progresso merece ser visto, celebrado e recompensado."
         },
-        "order": 4
+        "order": 6
       },
       {
         "id": "partners",
@@ -139,7 +139,7 @@
             }
           ]
         },
-        "order": 5
+        "order": 7
       },
       {
         "id": "header",
@@ -149,11 +149,11 @@
         "active": true,
         "fields": {
           "buttonText": "Acessar Club Pop →",
-          "buttonUrl": "https://loja-pop-green.vercel.app",
+          "buttonUrl": "/login.html",
           "buttonVisible": true,
           "buttonNewTab": false
         },
-        "order": 6
+        "order": 8
       },
       {
         "id": "footer",
@@ -166,7 +166,7 @@
           "tagline": "Treine. Conquiste. Evolua.",
           "text": "Academias parceiras: Bike Pop • Gym Pop"
         },
-        "order": 7
+        "order": 9
       }
     ]
   }
