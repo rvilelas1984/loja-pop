@@ -1034,6 +1034,37 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
 
       // =====================================================
+      // LANDING PAGE V2 - D1 (RASCUNHO / PUBLICADO)
+      // =====================================================
+      if (url.pathname === "/public/landing-v2" && request.method === "GET") {
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS landing_v2_content(slot TEXT PRIMARY KEY, content_json TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const row=await env.DB.prepare("SELECT content_json,updated_at FROM landing_v2_content WHERE slot='published' LIMIT 1").first();
+        return json({ok:true,landing:row?JSON.parse(row.content_json):null,updatedAt:row?.updated_at||null,source:"d1"});
+      }
+      if (url.pathname === "/admin/landing-v2" && ["GET","PUT","POST"].includes(request.method)) {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS landing_v2_content(slot TEXT PRIMARY KEY, content_json TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        if(request.method==="GET"){
+          const slot=url.searchParams.get("slot")==="published"?"published":"draft",row=await env.DB.prepare("SELECT content_json,updated_at FROM landing_v2_content WHERE slot=? LIMIT 1").bind(slot).first();
+          return json({ok:true,slot,landing:row?JSON.parse(row.content_json):null,updatedAt:row?.updated_at||null,source:"d1"});
+        }
+        if(request.method==="PUT"){
+          const b=await readJson(request),landing=b?.landing;
+          if(!landing||!Array.isArray(landing.blocks))return json({ok:false,error:"RASCUNHO_INVALIDO"},400);
+          const raw=JSON.stringify(landing);if(raw.length>200000)return json({ok:false,error:"RASCUNHO_MUITO_GRANDE"},413);
+          await env.DB.prepare("INSERT INTO landing_v2_content(slot,content_json,updated_at) VALUES('draft',?,CURRENT_TIMESTAMP) ON CONFLICT(slot) DO UPDATE SET content_json=excluded.content_json,updated_at=CURRENT_TIMESTAMP").bind(raw).run();
+          return json({ok:true,slot:"draft",saved:true,bytes:raw.length});
+        }
+        const draft=await env.DB.prepare("SELECT content_json FROM landing_v2_content WHERE slot='draft' LIMIT 1").first();
+        if(!draft)return json({ok:false,error:"SEM_RASCUNHO"},404);
+        await env.DB.prepare("INSERT INTO landing_v2_content(slot,content_json,updated_at) VALUES('published',?,CURRENT_TIMESTAMP) ON CONFLICT(slot) DO UPDATE SET content_json=excluded.content_json,updated_at=CURRENT_TIMESTAMP").bind(draft.content_json).run();
+        await audit(env,"ADMIN",null,"LANDING_V2_PUBLISHED","LANDING","v2");
+        return json({ok:true,published:true,source:"d1"});
+      }
+
+      // =====================================================
       // GERENCIAMENTO DE UNIDADES / VINCULOS (D1, SEM EVO)
       // =====================================================
       if (url.pathname === "/public/unit-theme" && request.method === "GET") {
