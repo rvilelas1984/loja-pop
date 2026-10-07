@@ -1,6 +1,24 @@
 {
   "version": 2,
-  "products": [],
+  "products": [
+    {
+      "id": "prod-1791375513049",
+      "unit": "gym",
+      "name": "Agua mineral - 500 ml",
+      "category": "Hidratação",
+      "price": 3.5,
+      "fitcoins": 140,
+      "discountPrice": 0,
+      "stock": 15,
+      "start": "2026-10-01",
+      "end": "2026-10-31",
+      "status": "Ativo",
+      "featured": false,
+      "imageUrl": "https://drive.google.com/file/d/1uIXTvdGhrJO7-f8YCCX-RWBzIIuo4GE8/view?usp=drive_link",
+      "description": "blue",
+      "cardTheme": "blue"
+    }
+  ],
   "banners": [],
   "benefits": [],
   "missions": {},
