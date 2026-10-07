@@ -1056,7 +1056,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(request.method==="PUT"){
           const b=await readJson(request),color=String(b.backgroundColor||"").trim(),logoData=String(b.logoData||""),faviconData=String(b.faviconData||""),logoLink=String(b.logoLink||"").trim();
           if(!/^#[0-9a-fA-F]{6}$/.test(color))return json({ok:false,error:"COR_INVALIDA"},400);
-          if(logoData.length>500000||faviconData.length>180000)return json({ok:false,error:"IMAGEM_MUITO_GRANDE"},413);
+          if(logoData.length>1450000||faviconData.length>430000)return json({ok:false,error:"IMAGEM_MUITO_GRANDE"},413);
           if(logoData&&!/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,/i.test(logoData))return json({ok:false,error:"LOGO_INVALIDA"},400);
           if(faviconData&&!/^data:image\/(?:png|x-icon|vnd\.microsoft\.icon|webp|svg\+xml);base64,/i.test(faviconData))return json({ok:false,error:"FAVICON_INVALIDO"},400);
           if(logoLink&&!/^https?:\/\//i.test(logoLink))return json({ok:false,error:"LINK_LOGO_INVALIDO"},400);
