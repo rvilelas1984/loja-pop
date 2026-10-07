@@ -1067,6 +1067,14 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({ok:true,unit,backgroundColor:row?.background_color||defaults[unit],logoData:row?.logo_data||"",faviconData:row?.favicon_data||"",logoLink:row?.logo_link||"",updatedAt:row?.updated_at||null});
       }
 
+      if (url.pathname === "/admin/auto-link-history" && request.method==="GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const rows=(await env.DB.prepare("SELECT id,action,actor_type,actor_id,target_id,details_json,created_at FROM audit_log WHERE action IN ('AUTO_LINK_RUN','UNIT_LINK_UPDATED') ORDER BY id DESC LIMIT 50").all()).results||[];
+        const items=rows.map(r=>{let d={};try{d=JSON.parse(r.details_json||"{}")}catch{}return {id:r.id,at:r.created_at,mode:r.action==="AUTO_LINK_RUN"?"automatic":"manual",actor:r.actor_type||null,memberId:r.target_id||null,candidates:Number(d.candidates||0),linked:Number(d.created||0),pending:Number(d.skipped||0),conflicts:Number(d.conflicts||0),bikeId:d.bikeId||null,gymId:d.gymId||null,evoRequestsMade:0}});
+        return json({ok:true,items,evoRequestsMade:0});
+      }
+
       if (url.pathname === "/admin/auto-link" && ["GET","PUT","POST"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
