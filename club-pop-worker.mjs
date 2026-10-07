@@ -1169,6 +1169,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!base)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_entries(member_id INTEGER NOT NULL,unit TEXT NOT NULL,attendance_key TEXT NOT NULL,weight REAL,height REAL,calories INTEGER,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(member_id,unit,attendance_key))").run();
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_images(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,scope TEXT NOT NULL,image_data TEXT NOT NULL,period_label TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_manual_activities(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,activity_name TEXT NOT NULL,activity_date TEXT NOT NULL,start_time TEXT,calories INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const scopeRaw=String(url.searchParams.get("scope")||"bike").toLowerCase(),scope=["bike","gym","club"].includes(scopeRaw)?scopeRaw:"bike";
         const ids={bike:base.evo_member_id?String(base.evo_member_id):null,gym:base.gym_client_id?String(base.gym_client_id):null};
         if(request.method==="GET"){
@@ -1176,6 +1177,12 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           if(action==="images"){
             const q=await env.DB.prepare("SELECT id,scope,image_data,period_label,created_at FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3").bind(base.id,scope).all();
             return json({ok:true,source:"d1",evoRequestsMade:0,images:q.results||[]});
+          }
+          if(action==="manual-activities"){
+            const m=String(url.searchParams.get("month")||"2026-10");
+            if(m!=="2026-09"&&m!=="2026-10")return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
+            const q=await env.DB.prepare("SELECT id,activity_name,activity_date,start_time,calories FROM pop_fit_manual_activities WHERE member_id=? AND substr(activity_date,1,7)=? ORDER BY activity_date DESC,start_time DESC,id DESC").bind(base.id,m).all();
+            return json({ok:true,source:"d1",evoRequestsMade:0,activities:q.results||[]});
           }
           const month=String(url.searchParams.get("month")||"2026-10");
           if(!["2026-09","2026-10"].includes(month))return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
@@ -1201,6 +1208,13 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         }
         if(request.method==="POST"){
           const b=await readJson(request);
+          if(String(b.action||"")==="add-manual-activity"){
+            const name=String(b.activityName||"").trim().slice(0,60),date=String(b.activityDate||""),time=String(b.startTime||"").trim(),cal=b.calories===""||b.calories==null?null:Number(b.calories);
+            if(!name||date.length!==10||(date.slice(0,7)!=="2026-09"&&date.slice(0,7)!=="2026-10"))return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
+            if(cal!==null&&(!Number.isFinite(cal)||cal<0||cal>5000))return json({ok:false,error:"CALORIAS_INVALIDAS"},400);
+            await env.DB.prepare("INSERT INTO pop_fit_manual_activities(member_id,activity_name,activity_date,start_time,calories) VALUES(?,?,?,?,?)").bind(base.id,name,date,time||null,cal).run();
+            return json({ok:true,saved:true,source:"d1",evoRequestsMade:0});
+          }
           if(String(b.action||"")==="save-image"){
             const image=String(b.imageData||"");
             if(!/^data:image\/jpeg;base64,/.test(image)||image.length>1600000)return json({ok:false,error:"IMAGEM_INVALIDA_OU_GRANDE"},400);
