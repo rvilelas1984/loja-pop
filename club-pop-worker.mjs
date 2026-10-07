@@ -1169,11 +1169,12 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!base)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_entries(member_id INTEGER NOT NULL,unit TEXT NOT NULL,attendance_key TEXT NOT NULL,weight REAL,height REAL,calories INTEGER,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(member_id,unit,attendance_key))").run();
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_images(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,scope TEXT NOT NULL,image_data TEXT NOT NULL,period_label TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
-        await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_manual_activities(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,activity_name TEXT NOT NULL,activity_date TEXT NOT NULL,start_time TEXT,calories INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_manual_activities(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,activity_name TEXT NOT NULL,activity_date TEXT NOT NULL,start_time TEXT,calories INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_profile(member_id INTEGER PRIMARY KEY,height REAL,initial_weight REAL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const scopeRaw=String(url.searchParams.get("scope")||"bike").toLowerCase(),scope=["bike","gym","club"].includes(scopeRaw)?scopeRaw:"bike";
         const ids={bike:base.evo_member_id?String(base.evo_member_id):null,gym:base.gym_client_id?String(base.gym_client_id):null};
         if(request.method==="GET"){
           const action=String(url.searchParams.get("action")||"activities");
+          if(action==="profile"){const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
           if(action==="images"){
             const q=await env.DB.prepare("SELECT id,scope,image_data,period_label,created_at FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3").bind(base.id,scope).all();
             return json({ok:true,source:"d1",evoRequestsMade:0,images:q.results||[]});
@@ -1201,13 +1202,14 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const exists=await env.DB.prepare("SELECT 1 ok FROM evo_member_attendance WHERE unit=? AND evo_member_id=? AND attendance_key=? LIMIT 1").bind(unit,ids[unit],key).first();
           if(!exists)return json({ok:false,error:"ATIVIDADE_NAO_ENCONTRADA"},404);
           const num=(v,min,max)=>v===null||v===undefined||v===""?null:(Number.isFinite(Number(v))&&Number(v)>=min&&Number(v)<=max?Number(v):NaN);
-          const weight=num(b.weight,20,350),height=num(b.height,0.8,2.5),calories=num(b.calories,0,5000);
+          const weight=num(b.weight,20,350),calories=num(b.calories,0,5000);const old=await env.DB.prepare("SELECT height FROM pop_fit_entries WHERE member_id=? AND unit=? AND attendance_key=? LIMIT 1").bind(base.id,unit,key).first(),height=old?.height??null;
           if([weight,height,calories].some(Number.isNaN))return json({ok:false,error:"VALOR_INVALIDO"},400);
           await env.DB.prepare("INSERT INTO pop_fit_entries(member_id,unit,attendance_key,weight,height,calories,updated_at) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id,unit,attendance_key) DO UPDATE SET weight=excluded.weight,height=excluded.height,calories=excluded.calories,updated_at=CURRENT_TIMESTAMP").bind(base.id,unit,key,weight,height,calories).run();
           return json({ok:true,saved:true,source:"d1",evoRequestsMade:0});
         }
         if(request.method==="POST"){
           const b=await readJson(request);
+          if(String(b.action||"")==="save-profile"){const num=(v,min,max)=>v===null||v===undefined||v===""?null:(Number.isFinite(Number(v))&&Number(v)>=min&&Number(v)<=max?Number(v):NaN),height=num(b.height,0.8,2.5),initialWeight=num(b.initialWeight,20,350);if([height,initialWeight].some(Number.isNaN))return json({ok:false,error:"VALOR_INVALIDO"},400);await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=excluded.height,initial_weight=COALESCE(pop_fit_profile.initial_weight,excluded.initial_weight),updated_at=CURRENT_TIMESTAMP").bind(base.id,height,initialWeight).run();const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,saved:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
           if(String(b.action||"")==="add-manual-activity"){
             const name=String(b.activityName||"").trim().slice(0,60),date=String(b.activityDate||""),time=String(b.startTime||"").trim(),cal=b.calories===""||b.calories==null?null:Number(b.calories);
             if(!name||date.length!==10||(date.slice(0,7)!=="2026-09"&&date.slice(0,7)!=="2026-10"))return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
