@@ -1038,11 +1038,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       // =====================================================
       if (url.pathname === "/public/unit-theme" && request.method === "GET") {
         const unit=["bike","gym","club"].includes(String(url.searchParams.get("unit")||""))?String(url.searchParams.get("unit")):"bike";
-        await env.DB.prepare("CREATE TABLE IF NOT EXISTS unit_ui_config(unit TEXT PRIMARY KEY, background_color TEXT NOT NULL, logo_data TEXT, favicon_data TEXT, logo_link TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
-        for(const q of ["ALTER TABLE unit_ui_config ADD COLUMN logo_data TEXT","ALTER TABLE unit_ui_config ADD COLUMN favicon_data TEXT","ALTER TABLE unit_ui_config ADD COLUMN logo_link TEXT"]){try{await env.DB.prepare(q).run()}catch{}}
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS unit_ui_config(unit TEXT PRIMARY KEY, background_color TEXT NOT NULL, header_color TEXT, logo_data TEXT, favicon_data TEXT, logo_link TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        for(const q of ["ALTER TABLE unit_ui_config ADD COLUMN header_color TEXT","ALTER TABLE unit_ui_config ADD COLUMN logo_data TEXT","ALTER TABLE unit_ui_config ADD COLUMN favicon_data TEXT","ALTER TABLE unit_ui_config ADD COLUMN logo_link TEXT"]){try{await env.DB.prepare(q).run()}catch{}}
         const defaults={bike:"#dcc8ff",gym:"#ffc4df",club:"#bfe9d2"};
-        const row=await env.DB.prepare("SELECT background_color,logo_data,favicon_data,logo_link,updated_at FROM unit_ui_config WHERE unit=? LIMIT 1").bind(unit).first();
-        return json({ok:true,unit,backgroundColor:row?.background_color||defaults[unit],logoData:row?.logo_data||"",faviconData:row?.favicon_data||"",logoLink:row?.logo_link||"",updatedAt:row?.updated_at||null});
+        const row=await env.DB.prepare("SELECT background_color,header_color,logo_data,favicon_data,logo_link,updated_at FROM unit_ui_config WHERE unit=? LIMIT 1").bind(unit).first();
+        return json({ok:true,unit,backgroundColor:row?.background_color||defaults[unit],headerColor:row?.header_color||"#ffffff",logoData:row?.logo_data||"",faviconData:row?.favicon_data||"",logoLink:row?.logo_link||"",updatedAt:row?.updated_at||null});
       }
 
       if (url.pathname === "/admin/unit-management" && ["GET","PUT"].includes(request.method)) {
@@ -1050,21 +1050,21 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit=["bike","gym","club"].includes(String(url.searchParams.get("unit")||""))?String(url.searchParams.get("unit")):"bike";
-        await env.DB.prepare("CREATE TABLE IF NOT EXISTS unit_ui_config(unit TEXT PRIMARY KEY, background_color TEXT NOT NULL, logo_data TEXT, favicon_data TEXT, logo_link TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
-        for(const q of ["ALTER TABLE unit_ui_config ADD COLUMN logo_data TEXT","ALTER TABLE unit_ui_config ADD COLUMN favicon_data TEXT","ALTER TABLE unit_ui_config ADD COLUMN logo_link TEXT"]){try{await env.DB.prepare(q).run()}catch{}}
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS unit_ui_config(unit TEXT PRIMARY KEY, background_color TEXT NOT NULL, header_color TEXT, logo_data TEXT, favicon_data TEXT, logo_link TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        for(const q of ["ALTER TABLE unit_ui_config ADD COLUMN header_color TEXT","ALTER TABLE unit_ui_config ADD COLUMN logo_data TEXT","ALTER TABLE unit_ui_config ADD COLUMN favicon_data TEXT","ALTER TABLE unit_ui_config ADD COLUMN logo_link TEXT"]){try{await env.DB.prepare(q).run()}catch{}}
         const defaults={bike:"#dcc8ff",gym:"#ffc4df",club:"#bfe9d2"};
         if(request.method==="PUT"){
-          const b=await readJson(request),color=String(b.backgroundColor||"").trim(),logoData=String(b.logoData||""),faviconData=String(b.faviconData||""),logoLink=String(b.logoLink||"").trim();
-          if(!/^#[0-9a-fA-F]{6}$/.test(color))return json({ok:false,error:"COR_INVALIDA"},400);
+          const b=await readJson(request),color=String(b.backgroundColor||"").trim(),headerColor=String(b.headerColor||"#ffffff").trim(),logoData=String(b.logoData||""),faviconData=String(b.faviconData||""),logoLink=String(b.logoLink||"").trim();
+          if(!/^#[0-9a-fA-F]{6}$/.test(color)||!/^#[0-9a-fA-F]{6}$/.test(headerColor))return json({ok:false,error:"COR_INVALIDA"},400);
           if(logoData.length>1450000||faviconData.length>430000)return json({ok:false,error:"IMAGEM_MUITO_GRANDE"},413);
           if(logoData&&!/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,/i.test(logoData))return json({ok:false,error:"LOGO_INVALIDA"},400);
           if(faviconData&&!/^data:image\/(?:png|x-icon|vnd\.microsoft\.icon|webp|svg\+xml);base64,/i.test(faviconData))return json({ok:false,error:"FAVICON_INVALIDO"},400);
           if(logoLink&&!/^https?:\/\//i.test(logoLink))return json({ok:false,error:"LINK_LOGO_INVALIDO"},400);
-          await env.DB.prepare("INSERT INTO unit_ui_config(unit,background_color,logo_data,favicon_data,logo_link,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET background_color=excluded.background_color,logo_data=excluded.logo_data,favicon_data=excluded.favicon_data,logo_link=excluded.logo_link,updated_at=CURRENT_TIMESTAMP").bind(unit,color,logoData,faviconData,logoLink).run();
-          await audit(env,"ADMIN",null,"UNIT_IDENTITY_UPDATED","UNIT",unit,{backgroundColor:color,hasLogo:!!logoData,hasFavicon:!!faviconData,logoLink:logoLink||null});
+          await env.DB.prepare("INSERT INTO unit_ui_config(unit,background_color,header_color,logo_data,favicon_data,logo_link,updated_at) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET background_color=excluded.background_color,header_color=excluded.header_color,logo_data=excluded.logo_data,favicon_data=excluded.favicon_data,logo_link=excluded.logo_link,updated_at=CURRENT_TIMESTAMP").bind(unit,color,headerColor,logoData,faviconData,logoLink).run();
+          await audit(env,"ADMIN",null,"UNIT_IDENTITY_UPDATED","UNIT",unit,{backgroundColor:color,headerColor,hasLogo:!!logoData,hasFavicon:!!faviconData,logoLink:logoLink||null});
         }
-        const row=await env.DB.prepare("SELECT background_color,logo_data,favicon_data,logo_link,updated_at FROM unit_ui_config WHERE unit=? LIMIT 1").bind(unit).first();
-        return json({ok:true,unit,backgroundColor:row?.background_color||defaults[unit],logoData:row?.logo_data||"",faviconData:row?.favicon_data||"",logoLink:row?.logo_link||"",updatedAt:row?.updated_at||null});
+        const row=await env.DB.prepare("SELECT background_color,header_color,logo_data,favicon_data,logo_link,updated_at FROM unit_ui_config WHERE unit=? LIMIT 1").bind(unit).first();
+        return json({ok:true,unit,backgroundColor:row?.background_color||defaults[unit],headerColor:row?.header_color||"#ffffff",logoData:row?.logo_data||"",faviconData:row?.favicon_data||"",logoLink:row?.logo_link||"",updatedAt:row?.updated_at||null});
       }
 
       if (url.pathname === "/admin/auto-link-history" && request.method==="GET") {
