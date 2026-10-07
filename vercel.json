@@ -17,6 +17,16 @@
       "destination": "/missoes.html"
     },
     {
+      "source": "/pop-fit",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/pop-fit.html"
+    },
+    {
       "source": "/beneficios",
       "has": [
         {
