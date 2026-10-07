@@ -962,47 +962,6 @@
       "rewards": [
         "Aula avulsa Horário Livre"
       ]
-    },
-    {
-      "id": "mission-1790878431403",
-      "type": "presence",
-      "unit": "bike",
-      "name": "Setembro 2026",
-      "description": "",
-      "start": "2026-09-01",
-      "end": "2026-09-30",
-      "status": "Ativo",
-      "period": "month",
-      "requirements": [
-        {
-          "unit": "bike",
-          "activity": "*",
-          "quantity": 1
-        }
-      ],
-      "goals": [
-        {
-          "id": "goal-1",
-          "value": 8,
-          "rewardType": "product",
-          "rewardId": "prod-1790871460911",
-          "rewardName": "Agua mineral ",
-          "rewardValue": null
-        },
-        {
-          "id": "goal-2",
-          "value": 12,
-          "rewardType": "service",
-          "rewardId": "service-1790873255440",
-          "rewardName": "Aula avulsa Horário Livre",
-          "rewardValue": null
-        }
-      ],
-      "rewards": [
-        "Agua mineral ",
-        "Aula avulsa Horário Livre"
-      ],
-      "cardTheme": "pink"
     }
   ],
   "services": [
