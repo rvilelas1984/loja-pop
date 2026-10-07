@@ -1070,8 +1070,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       if (url.pathname === "/admin/auto-link-history" && request.method==="GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const rows=(await env.DB.prepare("SELECT id,action,actor_type,actor_id,target_id,details_json,created_at FROM audit_log WHERE action IN ('AUTO_LINK_RUN','UNIT_LINK_UPDATED') ORDER BY id DESC LIMIT 50").all()).results||[];
-        const items=rows.map(r=>{let d={};try{d=JSON.parse(r.details_json||"{}")}catch{}return {id:r.id,at:r.created_at,mode:r.action==="AUTO_LINK_RUN"?"automatic":"manual",actor:r.actor_type||null,memberId:r.target_id||null,candidates:Number(d.candidates||0),linked:Number(d.created||0),pending:Number(d.skipped||0),conflicts:Number(d.conflicts||0),bikeId:d.bikeId||null,gymId:d.gymId||null,evoRequestsMade:0}});
+        const rows=(await env.DB.prepare("SELECT id,action,actor_type,actor_id,entity_id,metadata_json,created_at FROM audit_log WHERE action IN ('AUTO_LINK_RUN','UNIT_LINK_UPDATED') ORDER BY id DESC LIMIT 50").all()).results||[];
+        const items=rows.map(r=>{let d={};try{d=JSON.parse(r.metadata_json||"{}")}catch{}return {id:r.id,at:r.created_at,mode:r.action==="AUTO_LINK_RUN"?"automatic":"manual",actor:r.actor_type||null,memberId:r.entity_id||null,candidates:Number(d.candidates||0),linked:Number(d.created||0),pending:Number(d.skipped||0),conflicts:Number(d.conflicts||0),bikeId:d.bikeId||null,gymId:d.gymId||null,evoRequestsMade:0}});
         return json({ok:true,items,evoRequestsMade:0});
       }
 
@@ -1090,12 +1090,18 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const cpf=String(x.cpf),hash=await sha256(cpf);
           let m=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first();
           if(!m){
-            const idsCollision=await env.DB.prepare("SELECT id FROM members WHERE CAST(evo_member_id AS TEXT)=? OR CAST(gym_client_id AS TEXT)=? LIMIT 1").bind(String(x.bike_id),String(x.gym_id)).first();
-            if(idsCollision){conflicts++;continue}
+            const bikeExisting=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash FROM members WHERE CAST(evo_member_id AS TEXT)=? LIMIT 1").bind(String(x.bike_id)).first();
+            const gymExisting=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash FROM members WHERE CAST(gym_client_id AS TEXT)=? LIMIT 1").bind(String(x.gym_id)).first();
+            if(gymExisting&&(!bikeExisting||Number(gymExisting.id)!==Number(bikeExisting.id))){conflicts++;continue}
             const src=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit='bike' AND evo_member_id=? AND is_current=1 LIMIT 1").bind(String(x.bike_id)).first();
             let p={};try{p=JSON.parse(src?.personal_json||"{}")}catch{}
             const first=String(p.firstName||p.name||"Aluno").trim().slice(0,120),last=String(p.lastName||"").trim().slice(0,160),email=normalizeEmail(p.email||p.emailAddress||p.mail||""),birth=normalizeDate(p.birthDate||p.dateBirth||p.birthdate||p.birthday||"");
-            await env.DB.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?, 'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").bind(String(x.bike_id),String(x.gym_id),hash,cpf.slice(-4),first,last,email||null,birth||null).run();
+            if(bikeExisting){
+              if(!String(bikeExisting.cpf_hash||"").startsWith("evo-placeholder:")){conflicts++;continue}
+              await env.DB.prepare("UPDATE members SET gym_client_id=?,cpf_hash=?,cpf_last4=?,first_name=CASE WHEN first_name IS NULL OR first_name='' OR first_name='Aluno' THEN ? ELSE first_name END,last_name=CASE WHEN last_name IS NULL OR last_name='' THEN ? ELSE last_name END,email=COALESCE(NULLIF(email,''),?),birth_date=COALESCE(NULLIF(birth_date,''),?),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(String(x.gym_id),hash,cpf.slice(-4),first,last,email||null,birth||null,bikeExisting.id).run();
+            }else{
+              await env.DB.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?, 'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").bind(String(x.bike_id),String(x.gym_id),hash,cpf.slice(-4),first,last,email||null,birth||null).run();
+            }
             m=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first();
             if(!m){skipped++;continue}
           }
