@@ -1071,7 +1071,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const rows=(await env.DB.prepare("SELECT id,action,actor_type,actor_id,entity_id,metadata_json,created_at FROM audit_log WHERE action IN ('AUTO_LINK_RUN','UNIT_LINK_UPDATED') ORDER BY id DESC LIMIT 50").all()).results||[];
-        const items=rows.map(r=>{let d={};try{d=JSON.parse(r.metadata_json||"{}")}catch{}return {id:r.id,at:r.created_at,mode:r.action==="AUTO_LINK_RUN"?"automatic":"manual",actor:r.actor_type||null,memberId:r.entity_id||null,candidates:Number(d.candidates||0),linked:Number(d.created||0),pending:Number(d.skipped||0),conflicts:Number(d.conflicts||0),bikeId:d.bikeId||null,gymId:d.gymId||null,evoRequestsMade:0}});
+        const items=rows.map(r=>{let d={};try{d=JSON.parse(r.metadata_json||"{}")}catch{}return {id:r.id,at:r.created_at,mode:r.action==="AUTO_LINK_RUN"?"automatic":"manual",actor:r.actor_type||null,memberId:r.entity_id||null,candidates:Number(d.candidates||0),linked:Number(d.created||0),pending:Number(d.skipped||0),conflicts:Number(d.conflicts||0),bikeId:d.bikeId||null,gymId:d.gymId||null,trigger:d.trigger||null,evoRequestsMade:0}});
         return json({ok:true,items,evoRequestsMade:0});
       }
 
@@ -1080,38 +1080,13 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_settings(key TEXT PRIMARY KEY,value TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const setting=await env.DB.prepare("SELECT value,updated_at FROM club_settings WHERE key='auto_member_link' LIMIT 1").first();
-        if(request.method==="PUT"){const b=await readJson(request),enabled=!!b.enabled;await env.DB.prepare("INSERT INTO club_settings(key,value,updated_at) VALUES('auto_member_link',?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP").bind(enabled?"1":"0").run();await audit(env,"ADMIN",null,"AUTO_LINK_SETTING","SYSTEM","auto_member_link",{enabled});return json({ok:true,enabled,evoRequestsMade:0});}
+        if(request.method==="PUT"){const b=await readJson(request),enabled=!!b.enabled;await env.DB.prepare("INSERT INTO club_settings(key,value,updated_at) VALUES('auto_member_link',?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP").bind(enabled?"1":"0").run();await audit(env,"ADMIN",null,"AUTO_LINK_SETTING","SYSTEM","auto_member_link",{enabled});const initial=enabled?await runAutoLinkD1(env,{trigger:"activation",actorType:"ADMIN"}):null;return json({ok:true,enabled,initial,evoRequestsMade:0});}
         const summarize=async()=>{const linked=await env.DB.prepare("SELECT COUNT(*) n FROM gym_member_links WHERE status='ACTIVE' AND link_source IN ('AUTO_D1_CPF','ADMIN_D1')").first();const pairs=await env.DB.prepare("WITH b AS(SELECT json_extract(personal_json,'$.document') cpf,COUNT(*) n FROM evo_member_master WHERE unit='bike' AND is_current=1 AND length(json_extract(personal_json,'$.document'))=11 GROUP BY cpf),g AS(SELECT json_extract(personal_json,'$.document') cpf,COUNT(*) n FROM evo_member_master WHERE unit='gym' AND is_current=1 AND length(json_extract(personal_json,'$.document'))=11 GROUP BY cpf) SELECT SUM(CASE WHEN b.n=1 AND g.n=1 THEN 1 ELSE 0 END) uniquePairs,SUM(CASE WHEN b.n<>1 OR g.n<>1 THEN 1 ELSE 0 END) conflicts FROM b JOIN g USING(cpf)").first();const last=await env.DB.prepare("SELECT created_at FROM audit_log WHERE action='AUTO_LINK_RUN' ORDER BY id DESC LIMIT 1").first();return {linked:Number(linked?.n||0),pending:Math.max(0,Number(pairs?.uniquePairs||0)-Number(linked?.n||0)),conflicts:Number(pairs?.conflicts||0),lastRunAt:last?.created_at||null};};
         if(request.method==="GET")return json({ok:true,enabled:setting?.value==="1",...(await summarize()),evoRequestsMade:0});
         const enabled=setting?.value==="1";if(!enabled&&url.searchParams.get("action")!=="run")return json({ok:false,error:"VINCULO_AUTOMATICO_DESATIVADO"},409);
-        const rows=(await env.DB.prepare("WITH b AS(SELECT json_extract(personal_json,'$.document') cpf,MIN(evo_member_id) bike_id,COUNT(*) n FROM evo_member_master WHERE unit='bike' AND is_current=1 AND length(json_extract(personal_json,'$.document'))=11 GROUP BY cpf),g AS(SELECT json_extract(personal_json,'$.document') cpf,MIN(evo_member_id) gym_id,COUNT(*) n FROM evo_member_master WHERE unit='gym' AND is_current=1 AND length(json_extract(personal_json,'$.document'))=11 GROUP BY cpf) SELECT b.cpf,b.bike_id,g.gym_id FROM b JOIN g USING(cpf) WHERE b.n=1 AND g.n=1").all()).results||[];
-        let created=0,skipped=0,conflicts=0;
-        for(const x of rows){
-          const cpf=String(x.cpf),hash=await sha256(cpf);
-          let m=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first();
-          if(!m){
-            const bikeExisting=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash FROM members WHERE CAST(evo_member_id AS TEXT)=? LIMIT 1").bind(String(x.bike_id)).first();
-            const gymExisting=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash FROM members WHERE CAST(gym_client_id AS TEXT)=? LIMIT 1").bind(String(x.gym_id)).first();
-            if(gymExisting&&(!bikeExisting||Number(gymExisting.id)!==Number(bikeExisting.id))){conflicts++;continue}
-            const src=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit='bike' AND evo_member_id=? AND is_current=1 LIMIT 1").bind(String(x.bike_id)).first();
-            let p={};try{p=JSON.parse(src?.personal_json||"{}")}catch{}
-            const first=String(p.firstName||p.name||"Aluno").trim().slice(0,120),last=String(p.lastName||"").trim().slice(0,160),email=normalizeEmail(p.email||p.emailAddress||p.mail||""),birth=normalizeDate(p.birthDate||p.dateBirth||p.birthdate||p.birthday||"");
-            if(bikeExisting){
-              if(!String(bikeExisting.cpf_hash||"").startsWith("evo-placeholder:")){conflicts++;continue}
-              await env.DB.prepare("UPDATE members SET gym_client_id=?,cpf_hash=?,cpf_last4=?,first_name=CASE WHEN first_name IS NULL OR first_name='' OR first_name='Aluno' THEN ? ELSE first_name END,last_name=CASE WHEN last_name IS NULL OR last_name='' THEN ? ELSE last_name END,email=COALESCE(NULLIF(email,''),?),birth_date=COALESCE(NULLIF(birth_date,''),?),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(String(x.gym_id),hash,cpf.slice(-4),first,last,email||null,birth||null,bikeExisting.id).run();
-            }else{
-              await env.DB.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?, 'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").bind(String(x.bike_id),String(x.gym_id),hash,cpf.slice(-4),first,last,email||null,birth||null).run();
-            }
-            m=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first();
-            if(!m){skipped++;continue}
-          }
-          if((m.evo_member_id&&String(m.evo_member_id)!==String(x.bike_id))||(m.gym_client_id&&String(m.gym_client_id)!==String(x.gym_id))){conflicts++;continue}
-          const collision=await env.DB.prepare("SELECT id FROM members WHERE CAST(gym_client_id AS TEXT)=? AND id<>? LIMIT 1").bind(String(x.gym_id),m.id).first();if(collision){conflicts++;continue}
-          await env.DB.batch([env.DB.prepare("UPDATE members SET evo_member_id=?,gym_client_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(String(x.bike_id),String(x.gym_id),m.id),env.DB.prepare("INSERT INTO gym_member_links(gym_client_id,member_id,link_source,status,linked_at) VALUES(?,?,'AUTO_D1_CPF','ACTIVE',CURRENT_TIMESTAMP) ON CONFLICT(gym_client_id) DO UPDATE SET member_id=excluded.member_id,link_source='AUTO_D1_CPF',status='ACTIVE',linked_at=CURRENT_TIMESTAMP").bind(String(x.gym_id),m.id)]);
-          created++;
-        }
-        await audit(env,"ADMIN",null,"AUTO_LINK_RUN","SYSTEM","d1",{candidates:rows.length,created,skipped,conflicts,evoRequestsMade:0});
-        return json({ok:true,enabled,candidates:rows.length,created,skipped,conflicts,evoRequestsMade:0,...(await summarize())});
+        const result=await runAutoLinkD1(env,{trigger:"manual_button",actorType:"ADMIN",force:url.searchParams.get("action")==="run"});
+        if(result.skippedRun)return json({ok:false,error:"VINCULO_AUTOMATICO_DESATIVADO"},409);
+        return json({...result,...(await summarize())});
       }
 
       if (url.pathname === "/admin/member-link" && ["GET","PUT"].includes(request.method)) {
@@ -1675,6 +1650,43 @@ function allowedEvoTarget(value, method) {
 
 
 // Current Bike students: staging is isolated from operational and historical caches.
+async function runAutoLinkD1(env,{trigger="manual",actorType="SYSTEM",force=false}={}) {
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_settings(key TEXT PRIMARY KEY,value TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+  const setting=await env.DB.prepare("SELECT value FROM club_settings WHERE key='auto_member_link' LIMIT 1").first(),enabled=setting?.value==="1";
+  if(!enabled&&!force)return {ok:true,enabled:false,skippedRun:true,candidates:0,created:0,skipped:0,conflicts:0,evoRequestsMade:0};
+  const rows=(await env.DB.prepare("WITH b AS(SELECT json_extract(personal_json,'$.document') cpf,MIN(evo_member_id) bike_id,COUNT(*) n FROM evo_member_master WHERE unit='bike' AND is_current=1 AND length(json_extract(personal_json,'$.document'))=11 GROUP BY cpf),g AS(SELECT json_extract(personal_json,'$.document') cpf,MIN(evo_member_id) gym_id,COUNT(*) n FROM evo_member_master WHERE unit='gym' AND is_current=1 AND length(json_extract(personal_json,'$.document'))=11 GROUP BY cpf) SELECT b.cpf,b.bike_id,g.gym_id FROM b JOIN g USING(cpf) WHERE b.n=1 AND g.n=1").all()).results||[];
+  let created=0,skipped=0,conflicts=0;
+  for(const x of rows){
+    const cpf=String(x.cpf),hash=await sha256(cpf);
+    let m=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first();
+    if(!m){
+      const bikeExisting=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash FROM members WHERE CAST(evo_member_id AS TEXT)=? LIMIT 1").bind(String(x.bike_id)).first();
+      const gymExisting=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash FROM members WHERE CAST(gym_client_id AS TEXT)=? LIMIT 1").bind(String(x.gym_id)).first();
+      if(gymExisting&&(!bikeExisting||Number(gymExisting.id)!==Number(bikeExisting.id))){conflicts++;continue}
+      const src=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit='bike' AND evo_member_id=? AND is_current=1 LIMIT 1").bind(String(x.bike_id)).first();
+      let p={};try{p=JSON.parse(src?.personal_json||"{}")}catch{}
+      const first=String(p.firstName||p.name||"Aluno").trim().slice(0,120),last=String(p.lastName||"").trim().slice(0,160),email=normalizeEmail(p.email||p.emailAddress||p.mail||""),birth=normalizeDate(p.birthDate||p.dateBirth||p.birthdate||p.birthday||"");
+      if(bikeExisting){
+        if(!String(bikeExisting.cpf_hash||"").startsWith("evo-placeholder:")){conflicts++;continue}
+        await env.DB.prepare("UPDATE members SET gym_client_id=?,cpf_hash=?,cpf_last4=?,first_name=CASE WHEN first_name IS NULL OR first_name='' OR first_name='Aluno' THEN ? ELSE first_name END,last_name=CASE WHEN last_name IS NULL OR last_name='' THEN ? ELSE last_name END,email=COALESCE(NULLIF(email,''),?),birth_date=COALESCE(NULLIF(birth_date,''),?),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(String(x.gym_id),hash,cpf.slice(-4),first,last,email||null,birth||null,bikeExisting.id).run();
+      }else{
+        await env.DB.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?, 'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").bind(String(x.bike_id),String(x.gym_id),hash,cpf.slice(-4),first,last,email||null,birth||null).run();
+      }
+      m=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first();
+      if(!m){skipped++;continue}
+    }
+    if((m.evo_member_id&&String(m.evo_member_id)!==String(x.bike_id))||(m.gym_client_id&&String(m.gym_client_id)!==String(x.gym_id))){conflicts++;continue}
+    const collision=await env.DB.prepare("SELECT id FROM members WHERE CAST(gym_client_id AS TEXT)=? AND id<>? LIMIT 1").bind(String(x.gym_id),m.id).first();if(collision){conflicts++;continue}
+    const priorLink=await env.DB.prepare("SELECT member_id,status FROM gym_member_links WHERE gym_client_id=? LIMIT 1").bind(String(x.gym_id)).first();
+  const isNewLink=!priorLink||priorLink.status!=="ACTIVE"||Number(priorLink.member_id)!==Number(m.id);
+  await env.DB.batch([env.DB.prepare("UPDATE members SET evo_member_id=?,gym_client_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(String(x.bike_id),String(x.gym_id),m.id),env.DB.prepare("INSERT INTO gym_member_links(gym_client_id,member_id,link_source,status,linked_at) VALUES(?,?,'AUTO_D1_CPF','ACTIVE',CURRENT_TIMESTAMP) ON CONFLICT(gym_client_id) DO UPDATE SET member_id=excluded.member_id,link_source='AUTO_D1_CPF',status='ACTIVE',linked_at=CURRENT_TIMESTAMP").bind(String(x.gym_id),m.id)]);
+    if(isNewLink)created++;
+  }
+  await audit(env,actorType,null,"AUTO_LINK_RUN","SYSTEM","d1",{candidates:rows.length,created,skipped,conflicts,evoRequestsMade:0,trigger,automatic:true});
+
+  return {ok:true,enabled,candidates:rows.length,created,skipped,conflicts,evoRequestsMade:0,trigger};
+}
+
 async function currentStudentJob(env, body) {
   const unit=String(body.unit||'bike').toLowerCase()==='gym'?'gym':'bike';
   const db=env.DB;
@@ -1747,7 +1759,8 @@ async function currentStudentJob(env, body) {
     db.prepare("UPDATE evo_sync_config SET last_sync_at=CURRENT_TIMESTAMP,last_sync_status='ok',last_sync_requests=?,updated_at=CURRENT_TIMESTAMP WHERE unit=?").bind(requests,unit),
     db.prepare('DELETE FROM evo_current_stage_v2 WHERE run_id=?').bind(run.id),
   ]);
-  return {ok:true,runId:run.id,nextSkip:next,done:true,total:next,added,changed,removed};
+  let autoLink=null;try{autoLink=await runAutoLinkD1(env,{trigger:"student_sync:"+unit,actorType:"SYSTEM"});}catch(e){autoLink={ok:false,error:String(e?.message||e),evoRequestsMade:0};}
+  return {ok:true,runId:run.id,nextSkip:next,done:true,total:next,added,changed,removed,autoLink};
 }
 async function currentStudentsView(env, unit='bike') {
   unit=unit==='gym'?'gym':'bike'; const db=env.DB;
