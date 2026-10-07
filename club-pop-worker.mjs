@@ -1158,6 +1158,62 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         }
       }
 
+
+      // =====================================================
+      // POP FIT - ATIVIDADES E EVOLUCAO (D1 ONLY)
+      // =====================================================
+      if(url.pathname==="/member/pop-fit"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const base=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,first_name,last_name FROM members WHERE id=? LIMIT 1").bind(member.id).first();
+        if(!base)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_entries(member_id INTEGER NOT NULL,unit TEXT NOT NULL,attendance_key TEXT NOT NULL,weight REAL,height REAL,calories INTEGER,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(member_id,unit,attendance_key))").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_images(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,scope TEXT NOT NULL,image_data TEXT NOT NULL,period_label TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const scopeRaw=String(url.searchParams.get("scope")||"bike").toLowerCase(),scope=["bike","gym","club"].includes(scopeRaw)?scopeRaw:"bike";
+        const ids={bike:base.evo_member_id?String(base.evo_member_id):null,gym:base.gym_client_id?String(base.gym_client_id):null};
+        if(request.method==="GET"){
+          const action=String(url.searchParams.get("action")||"activities");
+          if(action==="images"){
+            const q=await env.DB.prepare("SELECT id,scope,image_data,period_label,created_at FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3").bind(base.id,scope).all();
+            return json({ok:true,source:"d1",evoRequestsMade:0,images:q.results||[]});
+          }
+          const month=String(url.searchParams.get("month")||"2026-10");
+          if(!["2026-09","2026-10"].includes(month))return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
+          const units=scope==="club"?["bike","gym"]:[scope],rows=[];
+          for(const u of units){
+            if(!ids[u])continue;
+            const q=await env.DB.prepare("SELECT a.attendance_key,a.attendance_date,a.start_time,a.activity_name,a.id_activity_session,p.weight,p.height,p.calories,p.updated_at FROM evo_member_attendance a LEFT JOIN pop_fit_entries p ON p.member_id=? AND p.unit=a.unit AND p.attendance_key=a.attendance_key WHERE a.unit=? AND a.evo_member_id=? AND substr(a.attendance_date,1,7)=? ORDER BY a.attendance_date DESC,a.start_time DESC").bind(base.id,u,ids[u],month).all();
+            for(const x of q.results||[])rows.push({...x,unit:u});
+          }
+          rows.sort((a,b)=>String(b.attendance_date+" "+(b.start_time||"")).localeCompare(String(a.attendance_date+" "+(a.start_time||""))));
+          return json({ok:true,source:"d1",evoRequestsMade:0,scope,month,student:{firstName:base.first_name||"Aluno",lastName:base.last_name||""},linked:{bike:!!ids.bike,gym:!!ids.gym},activities:rows});
+        }
+        if(request.method==="PUT"){
+          const b=await readJson(request),unit=String(b.unit||"").toLowerCase(),key=String(b.attendanceKey||"");
+          if(!["bike","gym"].includes(unit)||!key||!ids[unit])return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
+          const exists=await env.DB.prepare("SELECT 1 ok FROM evo_member_attendance WHERE unit=? AND evo_member_id=? AND attendance_key=? LIMIT 1").bind(unit,ids[unit],key).first();
+          if(!exists)return json({ok:false,error:"ATIVIDADE_NAO_ENCONTRADA"},404);
+          const num=(v,min,max)=>v===null||v===undefined||v===""?null:(Number.isFinite(Number(v))&&Number(v)>=min&&Number(v)<=max?Number(v):NaN);
+          const weight=num(b.weight,20,350),height=num(b.height,0.8,2.5),calories=num(b.calories,0,5000);
+          if([weight,height,calories].some(Number.isNaN))return json({ok:false,error:"VALOR_INVALIDO"},400);
+          await env.DB.prepare("INSERT INTO pop_fit_entries(member_id,unit,attendance_key,weight,height,calories,updated_at) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id,unit,attendance_key) DO UPDATE SET weight=excluded.weight,height=excluded.height,calories=excluded.calories,updated_at=CURRENT_TIMESTAMP").bind(base.id,unit,key,weight,height,calories).run();
+          return json({ok:true,saved:true,source:"d1",evoRequestsMade:0});
+        }
+        if(request.method==="POST"){
+          const b=await readJson(request);
+          if(String(b.action||"")==="save-image"){
+            const image=String(b.imageData||"");
+            if(!/^data:image\/jpeg;base64,/.test(image)||image.length>1600000)return json({ok:false,error:"IMAGEM_INVALIDA_OU_GRANDE"},400);
+            await env.DB.prepare("INSERT INTO pop_fit_images(member_id,scope,image_data,period_label,created_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)").bind(base.id,scope,image,String(b.periodLabel||"").slice(0,80)).run();
+            await env.DB.prepare("DELETE FROM pop_fit_images WHERE member_id=? AND scope=? AND id NOT IN (SELECT id FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3)").bind(base.id,scope,base.id,scope).run();
+            const q=await env.DB.prepare("SELECT id,scope,image_data,period_label,created_at FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3").bind(base.id,scope).all();
+            return json({ok:true,saved:true,kept:3,images:q.results||[],source:"d1",evoRequestsMade:0});
+          }
+          return json({ok:false,error:"ACAO_INVALIDA"},400);
+        }
+        return json({ok:false,error:"METODO_NAO_PERMITIDO"},405);
+      }
+
       // =====================================================
       // LOGOUT
       // =====================================================
