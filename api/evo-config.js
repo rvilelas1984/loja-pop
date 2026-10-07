@@ -104,6 +104,12 @@ export default async function handler(req,res){
   const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
   try{const wr=await fetch(WORKER+"/admin/evo-contracts-summary?unit="+unit,{headers:{"x-clubpop-admin-cookie":cookie},cache:"no-store"}),wd=await wr.json().catch(()=>({}));return res.status(wr.status).json(wd)}catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_RESUMO_CONTRATOS"})}
  }
+ if(req.query.route==="contracts-list"){
+  res.setHeader("Cache-Control","no-store");if(req.method!=="GET")return res.status(405).json({ok:false});
+  const unit=String(req.query.unit||"bike").toLowerCase();if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
+  const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+  try{const wr=await fetch(WORKER+"/admin/evo-contracts-list?unit="+unit,{headers:{"x-clubpop-admin-cookie":cookie},cache:"no-store"}),wd=await wr.json().catch(()=>({}));return res.status(wr.status).json(wd)}catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_LISTA_CONTRATOS"})}
+ }
  if(req.query.route==="sync-contracts"){
   res.setHeader("Cache-Control","no-store"); if(req.method!=="POST")return res.status(405).json({ok:false});
   const body=typeof req.body==="string"?JSON.parse(req.body):req.body||{},unit=String(req.query.unit||body.unit||"bike").toLowerCase();
