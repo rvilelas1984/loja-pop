@@ -7,7 +7,12 @@ function adminCookieValid(req){const key=process.env.ADMIN_KEY;if(!key)return fa
 function send(res,status,obj){res.status(status).setHeader("content-type","application/json; charset=utf-8");res.setHeader("cache-control","no-store");res.send(JSON.stringify(obj))}
 async function gh(path,opt={}){const token=process.env.GITHUB_TOKEN;const h={"accept":"application/vnd.github+json","user-agent":"club-pop",...(opt.headers||{})};if(token)h.authorization="Bearer "+token;return fetch("https://api.github.com"+path,{...opt,headers:h})}
 export default async function handler(req,res){
- if(req.method==="GET"){if(req.query?.draft!=="1"){try{const r=await fetch(WORKER+"/content-store",{cache:"no-store"}),j=await r.json();if(r.ok&&j.ok&&j.content)return send(res,200,j.content)}catch{}}try{const path=req.query?.draft==="1"?DRAFT_PATH:PATH;const r=await gh(`/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}`);if(!r.ok)throw new Error("read");const j=await r.json();return send(res,200,JSON.parse(Buffer.from(j.content,"base64").toString("utf8")))}catch{return send(res,200,JSON.parse(seed))}}
+ if(req.method==="GET"){
+  if(req.query?.draft==="1"){
+   try{const r=await gh(`/repos/${OWNER}/${REPO}/contents/${DRAFT_PATH}?ref=${BRANCH}`);if(!r.ok)throw Error("draft unavailable");const j=await r.json();return send(res,200,JSON.parse(Buffer.from(j.content,"base64").toString("utf8")))}catch{return send(res,503,{error:"Rascunho indisponível."})}
+  }
+  try{const r=await fetch(WORKER+"/content-store",{cache:"no-store"});if(!r.ok)throw Error("D1 unavailable");const j=await r.json();if(!j.ok||!j.content)throw Error("Invalid D1 content");return send(res,200,j.content)}catch{return send(res,503,{error:"Conteúdo indisponível. Tente novamente."})}
+ }
  if(!["PUT","PATCH"].includes(req.method))return send(res,405,{error:"Método não permitido"});
  if(!adminCookieValid(req)&&(!process.env.ADMIN_KEY||req.headers["x-admin-key"]!==process.env.ADMIN_KEY))return send(res,401,{error:"Sessão administrativa inválida."});
  if(!process.env.GITHUB_TOKEN)return send(res,503,{error:"GITHUB_TOKEN ainda não configurado no Vercel."});
@@ -15,13 +20,13 @@ export default async function handler(req,res){
   if(req.query?.draft==="1"){const body=typeof req.body==="string"?JSON.parse(req.body):req.body;if(!body||body.section!=="landingPage")return send(res,400,{error:"Rascunho inválido."});let sha;try{const cur=await gh(`/repos/${OWNER}/${REPO}/contents/${DRAFT_PATH}?ref=${BRANCH}`);if(cur.ok)sha=(await cur.json()).sha}catch{}const draftData={landingPageDraft:body.value};const payload={message:"Atualiza rascunho da Landing Page",content:Buffer.from(JSON.stringify(draftData,null,2)).toString("base64"),branch:BRANCH,...(sha?{sha}:{})};const wr=await gh(`/repos/${OWNER}/${REPO}/contents/${DRAFT_PATH}`,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});if(!wr.ok)throw new Error(await wr.text());return send(res,200,{ok:true,draft:true})}
   if(req.query?.publish==="1"){const dr=await gh(`/repos/${OWNER}/${REPO}/contents/${DRAFT_PATH}?ref=${BRANCH}`);if(!dr.ok)return send(res,404,{error:"Nenhum rascunho para publicar."});const dj=await dr.json(),draft=JSON.parse(Buffer.from(dj.content,"base64").toString("utf8")).landingPageDraft;req.body={section:"landingPage",value:draft};}
 
-  const current=await gh(`/repos/${OWNER}/${REPO}/contents/${PATH}?ref=${BRANCH}`);const cj=await current.json();
+  const current=await fetch(WORKER+"/content-store",{cache:"no-store"});if(!current.ok)throw Error("Falha ao ler D1");const cj=await current.json();if(!cj.ok||!cj.content)throw Error("Conteúdo D1 inválido");
   const body=typeof req.body==="string"?JSON.parse(req.body):req.body;
   let next=body;
   if(req.method==="PATCH"){
    const allowed=new Set(["missionList","promotions","landingPage"]);
    if(!body||!allowed.has(body.section)||(body.section!=="landingPage"&&!Array.isArray(body.value)))return send(res,400,{error:"Seção inválida para atualização."});
-   const currentData=JSON.parse(Buffer.from(cj.content,"base64").toString("utf8"));
+   const currentData=cj.content;
    next={...currentData,[body.section]:body.value};
   }
   const wr=await fetch(WORKER+"/content-store",{method:"PUT",headers:{"content-type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify(next)});
