@@ -4,6 +4,16 @@ import { parseActiveReport } from "../lib/evo-active-report.js";
 import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 export default async function handler(req,res){
+ if(req.query.route==="voucher-models"){
+  res.setHeader("Cache-Control","no-store");
+  if(!["GET","POST","PUT"].includes(req.method))return res.status(405).json({ok:false});
+  const unit=String(req.method==="GET"?req.query.unit:req.body?.unit||"").toLowerCase();
+  if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
+  try{
+   const r=await fetch(WORKER+"/admin/club-voucher-models"+(req.method==="GET"?"?unit="+unit:""),{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="GET"?undefined:JSON.stringify(req.body||{}),cache:"no-store"});
+   const t=await r.text();res.status(r.status);res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t);
+  }catch{return res.status(502).json({ok:false,error:"FALHA_MODELOS_D1"})}
+ }
  if(req.query.route==="voucher-create"){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
