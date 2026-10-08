@@ -192,7 +192,7 @@ export default async function handler(req,res){
  }
 
 if(req.query.route==="attendance-day-test"){
-  res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return await logFailure(405,{ok:false,error:"Método não permitido"});
+  res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"Método não permitido"});
   const cookie=String(req.headers.cookie||""),date=String(req.query.date||"");
   const logFailure=async(status,body)=>{try{const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike";await fetch(WORKER+"/admin/evo-automation-run-log",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit,kind:"attendance",status:"failed",detail:{manual:true,date,error:body.error||"FALHA",sessionId:body.sessionId||null,requests:body.requests||0,diagnostic:body.diagnostic||null}}),cache:"no-store"});}catch{}return res.status(status).json(body);};
 if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return await logFailure(400,{ok:false,error:"DATA_INVALIDA"});
