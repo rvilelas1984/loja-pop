@@ -40,7 +40,7 @@ async function loadDaily(){
  if(scope==="club"){dailyUnit.textContent="CLUB POP";dailyUnitLabel.textContent="Selecione Bike Pop ou Gym Pop";dailyTotal.textContent=dailyAverage.textContent=dailyRecord.textContent="—";dailyRecordDate.textContent="";dailyRows.innerHTML='<div class="empty">Selecione Bike Pop ou Gym Pop para visualizar as presenças.</div>';dailyMore.hidden=true;return}
  dailyUnit.textContent=unit(scope);dailyUnitLabel.textContent="Presenças confirmadas por aula · D1";dailyRows.innerHTML='<div class="empty">Consultando D1...</div>';dailyMore.hidden=true;
  try{
- const r=await fetch("/api/daily-attendance?unit="+encodeURIComponent(scope)+"&month="+encodeURIComponent(month),{cache:"no-store"}),d=await r.json();
+ const r=await fetch("/api/admin-auth?route=daily-attendance&unit="+encodeURIComponent(scope)+"&month="+encodeURIComponent(month),{cache:"no-store"}),d=await r.json();
  if(requestId!==dailyRequest)return;
  if(!r.ok||!d.ok)throw Error(d.error||"Falha ao consultar D1");
  dailyData=d.days||[];const total=dailyData.reduce((n,x)=>n+x.count,0),active=dailyData.filter(x=>x.sessions>0);
