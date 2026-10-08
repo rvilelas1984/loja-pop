@@ -285,7 +285,7 @@ export default {
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit=String(url.searchParams.get("unit")||""),start=String(url.searchParams.get("start")||"");
-        if(!["bike","gym","club"].includes(unit)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(start))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        if(!["bike","gym","club"].includes(unit)||!/^\d{4}-\d{2}-\d{2}$/.test(start))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
         const end=new Date(start+"T12:00:00Z");if(Number.isNaN(end.getTime()))return json({ok:false,error:"DATA_INVALIDA"},400);end.setUTCDate(end.getUTCDate()+6);
         const endDate=end.toISOString().slice(0,10);
         const sql="SELECT unit,activity_date AS date,start_time AS time,COALESCE(attendance_count,0) AS count FROM evo_attendance_sessions WHERE status='done' AND activity_date>=? AND activity_date<=?"+(unit==="club"?"":" AND unit=?")+" ORDER BY activity_date,start_time";
