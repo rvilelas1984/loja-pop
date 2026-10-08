@@ -97,6 +97,35 @@ export default {
         });
 
 
+
+      if (url.pathname === "/admin/club-voucher-models" && ["GET","POST","PUT"].includes(request.method)) {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=request.method==="GET"?{}:await request.json().catch(()=>null);
+        if(!b)return json({ok:false,error:"JSON_INVALIDO"},400);
+        const unit=String(request.method==="GET"?url.searchParams.get("unit"):b.unit||"").toLowerCase();
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        if(request.method==="GET"){
+          const q=await env.DB.prepare("SELECT id,unit,name,discount_type discountType,discount_value discountValue,validity_days validityDays,contract_ids_json contractIdsJson,enabled,created_at createdAt FROM club_voucher_models WHERE unit=? ORDER BY id DESC").bind(unit).all();
+          return json({ok:true,unit,models:(q.results||[]).map(x=>({...x,contractIds:JSON.parse(x.contractIdsJson||"[]")}))});
+        }
+        const name=String(b.name||"").trim(),type=Number(b.discountType),value=Number(b.discountValue),days=Number(b.validityDays),ids=Array.isArray(b.contractIds)?[...new Set(b.contractIds.map(Number))]:[];
+        if(name.length<3||name.length>100||![1,2].includes(type)||!Number.isFinite(value)||value<=0||(type===1&&value>100)||!Number.isInteger(days)||days<1||days>365||!ids.length||ids.length>100||ids.some(x=>!Number.isSafeInteger(x)||x<=0))return json({ok:false,error:"MODELO_INVALIDO"},400);
+        const known=await env.DB.prepare("SELECT DISTINCT id_membership FROM evo_member_contracts WHERE unit=? AND id_membership IS NOT NULL").bind(unit).all();
+        const allowed=new Set((known.results||[]).map(x=>String(x.id_membership)));
+        if(ids.some(x=>!allowed.has(String(x))))return json({ok:false,error:"CONTRATO_NAO_ENCONTRADO_NO_D1"},400);
+        if(request.method==="POST"){
+          const q=await env.DB.prepare("INSERT INTO club_voucher_models(unit,name,discount_type,discount_value,validity_days,contract_ids_json) VALUES(?,?,?,?,?,?)").bind(unit,name,type,value,days,JSON.stringify(ids)).run();
+          return json({ok:true,id:q.meta.last_row_id,unit});
+        }
+        const id=Number(b.id);
+        if(!Number.isSafeInteger(id)||id<=0)return json({ok:false,error:"ID_INVALIDO"},400);
+        const q=await env.DB.prepare("UPDATE club_voucher_models SET name=?,discount_type=?,discount_value=?,validity_days=?,contract_ids_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND unit=?").bind(name,type,value,days,JSON.stringify(ids),id,unit).run();
+        return json({ok:!!q.meta.changes,id,unit,error:q.meta.changes?undefined:"MODELO_NAO_ENCONTRADO"},q.meta.changes?200:404);
+      }
       // Authenticated server-to-server transport: credentials remain inside this Worker.
       if ((url.pathname === "/internal/evo-bike" || url.pathname === "/internal/evo-unit") && request.method === "POST") {
         const body = await request.text();
