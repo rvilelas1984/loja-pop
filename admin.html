@@ -5,7 +5,7 @@
 <header class="top"><div><div class="ey">VISÃO GERAL DO SISTEMA</div><h1>Dashboard</h1></div><div class="who"><b>Administrador</b> · CLUB POP</div></header><div class="scope"><button class="chip active" data-scope="club">CLUB POP</button><button class="chip" data-scope="bike">BIKE POP</button><button class="chip" data-scope="gym">GYM POP</button></div>
 <section class="overview"><article class="metric"><div class="label">MISSÕES ATIVAS</div><strong id="missionsN">—</strong><small>Configurações publicadas</small><a class="link" href="/admin-missoes.html">GERENCIAR →</a></article><article class="metric"><div class="label">PROMOÇÕES ATIVAS</div><strong id="promosN">—</strong><small>Campanhas publicadas</small><a class="link" href="/admin-promocoes.html">GERENCIAR →</a></article><article class="metric"><div class="label">PRODUTOS ATIVOS</div><strong id="productsN">—</strong><small>Disponíveis na Loja Pop</small><a class="link" href="/admin-loja.html">GERENCIAR →</a></article><article class="metric"><div class="label">BENEFÍCIOS ATIVOS</div><strong id="benefitsN">—</strong><small>Disponíveis para alunos</small><a class="link" href="/admin-beneficios.html">GERENCIAR →</a></article></section>
 <div class="grid"><div><section class="panel"><div class="ph"><h2>Em andamento</h2><a href="/admin-promocoes.html">VER PROMOÇÕES</a></div><div class="items" id="running"><div class="empty">Carregando configurações...</div></div></section><section class="panel"><div class="ph"><h2>Atenção</h2></div><div id="alerts"><div class="empty">Verificando configurações...</div></div></section></div><div><section class="panel"><div class="ph"><h2>Atalhos rápidos</h2></div><div class="quick"><a href="/admin-missoes.html">+ Nova missão<span>Criar ou editar desafios</span></a><a href="/admin-promocoes.html">+ Nova promoção<span>Campanhas e regras</span></a><a href="/admin-loja.html">+ Produto<span>Gerenciar Loja Pop</span></a><a href="/admin-beneficios.html">+ Benefício<span>Parceiros e vantagens</span></a></div></section><section class="panel"><div class="ph"><h2>Integrações</h2></div><div class="health"><div class="healthrow"><span><i class="dot"></i>CLUB POP</span><b>Operacional</b></div><div class="healthrow"><span><i class="dot"></i>EVO Bike Pop</span><b>Configurada</b></div><div class="healthrow"><span><i class="dot"></i>EVO Gym Pop</span><b>Configurada</b></div></div><div class="attention" style="margin-top:13px">O painel exibe somente informações que possuem fonte real no sistema. Métricas operacionais sem fonte confirmada não são simuladas.</div></section></div></div>
-<section class="panel daily-presence" id="dailyPresence"><div class="daily-head"><div><h2 style="margin:0 0 5px">Presença diária</h2><small id="dailyUnitLabel">Selecione Bike Pop ou Gym Pop</small></div><input id="dailyMonth" type="month" aria-label="Mês das presenças" style="border:1px solid #e4e8ec;border-radius:10px;padding:9px"></div><div class="daily-stats"><div class="daily-stat"><small>UNIDADE</small><strong id="dailyUnit">—</strong></div><div class="daily-stat"><small>TOTAL NO MÊS</small><strong id="dailyTotal">—</strong></div><div class="daily-stat"><small>MÉDIA POR DIA COM AULAS</small><strong id="dailyAverage">—</strong></div><div class="daily-stat"><small>🏆 DIA RECORDE</small><strong id="dailyRecord">—</strong><small id="dailyRecordDate"></small></div></div><div id="dailyRows" aria-live="polite"><div class="empty">Selecione uma unidade para consultar as presenças.</div></div><button class="daily-more" id="dailyMore" type="button" hidden>Ver mais dias</button></section><section class="panel monthly-chart" id="monthlyPresence"><div class="daily-head"><div><h2 style="margin:0 0 5px">Histórico Mensal de Presenças</h2><small id="monthlyUnitLabel">Presenças confirmadas · D1</small></div></div><div id="monthlyChart" class="monthly-bars" role="img" aria-label="Histórico mensal de presenças"><div class="empty">Carregando histórico...</div></div><p class="monthly-note" id="monthlyNote">Dados mensais a partir de setembro de 2026. Mês atual em andamento.</p></section><section class="panel" id="evoUsage"><div class="ph"><h2>Uso de Requisições EVO — Hoje</h2><a href="/admin-requisicoes.html">DETALHES →</a></div><div id="evoUsageBody"><div class="empty">Carregando consumo...</div></div></section><section class="panel" id="automationTasks"><div class="ph"><h2>Tarefas</h2><a href="/admin-automacao.html">CENTRAL DE AUTOMAÇÃO →</a></div><div class="items" id="autoTaskList"><div class="empty">Verificando automações...</div></div></section><section class="panel" id="systemHealth"><div class="ph"><h2>Saúde do Sistema</h2><a href="/admin-automacao.html">DETALHES →</a></div><div id="healthBody"><div class="empty">Calculando saúde pelos dados do D1...</div></div></section></main></div><script>
+<section class="panel daily-presence" id="dailyPresence"><div class="daily-head"><div><h2 style="margin:0 0 5px">Presença diária</h2><small id="dailyUnitLabel">Selecione Bike Pop ou Gym Pop</small></div><input id="dailyMonth" type="month" aria-label="Mês das presenças" style="border:1px solid #e4e8ec;border-radius:10px;padding:9px"></div><div class="daily-stats"><div class="daily-stat"><small>UNIDADE</small><strong id="dailyUnit">—</strong></div><div class="daily-stat"><small>TOTAL NO MÊS</small><strong id="dailyTotal">—</strong></div><div class="daily-stat"><small>MÉDIA POR DIA COM AULAS</small><strong id="dailyAverage">—</strong></div><div class="daily-stat"><small>🏆 DIA RECORDE</small><strong id="dailyRecord">—</strong><small id="dailyRecordDate"></small></div></div><div id="dailyRows" aria-live="polite"><div class="empty">Selecione uma unidade para consultar as presenças.</div></div><button class="daily-more" id="dailyMore" type="button" hidden>Ver mais dias</button></section><section class="panel monthly-chart" id="monthlyPresence"><div class="daily-head"><div><h2 style="margin:0 0 5px">Histórico Mensal de Presenças</h2><small id="monthlyUnitLabel">Presenças confirmadas · D1</small></div></div><div class="monthly-controls" style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0"><select id="monthlyMode" aria-label="Modo de comparação"><option value="year">Visão anual</option><option value="years">Comparativo anual</option><option value="months">Comparar dois meses</option></select><select id="monthlyYear" aria-label="Ano principal"></select><select id="monthlyYear2" aria-label="Segundo ano"></select><select id="monthlyMonth1" aria-label="Primeiro mês"></select><select id="monthlyMonth2" aria-label="Segundo mês"></select></div><p id="monthlyComparison" class="monthly-note" aria-live="polite"></p><div id="monthlyChart" class="monthly-bars" role="img" aria-label="Histórico mensal de presenças"><div class="empty">Carregando histórico...</div></div><p class="monthly-note" id="monthlyNote">Dados mensais a partir de setembro de 2026. Mês atual em andamento.</p></section><section class="panel" id="evoUsage"><div class="ph"><h2>Uso de Requisições EVO — Hoje</h2><a href="/admin-requisicoes.html">DETALHES →</a></div><div id="evoUsageBody"><div class="empty">Carregando consumo...</div></div></section><section class="panel" id="automationTasks"><div class="ph"><h2>Tarefas</h2><a href="/admin-automacao.html">CENTRAL DE AUTOMAÇÃO →</a></div><div class="items" id="autoTaskList"><div class="empty">Verificando automações...</div></div></section><section class="panel" id="systemHealth"><div class="ph"><h2>Saúde do Sistema</h2><a href="/admin-automacao.html">DETALHES →</a></div><div id="healthBody"><div class="empty">Calculando saúde pelos dados do D1...</div></div></section></main></div><script>
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const unit=u=>u==="gym"?"GYM POP":u==="club"?"CLUB POP":"BIKE POP";
 let dashboardData=null,currentScope=(window.cpAdminScope?.get?.()||new URLSearchParams(location.search).get("scope")||sessionStorage.getItem("cpAdminScope")||"club");
@@ -53,36 +53,44 @@ async function loadDaily(){
 
 // Historico mensal: somente leituras D1 da API de presencas existente.
 let monthlyRequest=0;
+const monthlyMode=document.getElementById("monthlyMode"),monthlyYear=document.getElementById("monthlyYear"),monthlyYear2=document.getElementById("monthlyYear2"),monthlyMonth1=document.getElementById("monthlyMonth1"),monthlyMonth2=document.getElementById("monthlyMonth2"),monthlyComparison=document.getElementById("monthlyComparison");
+const monthNames=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+const currentYear=Number(dailyToday().slice(0,4));
+for(let y=2026;y<=Math.max(2027,currentYear+1);y++){monthlyYear.add(new Option(String(y),String(y)));monthlyYear2.add(new Option(String(y),String(y)))}
+monthlyYear.value=String(currentYear);monthlyYear2.value=String(currentYear+1);
+for(let y=2026;y<=Math.max(2027,currentYear+1);y++)for(let m=1;m<=12;m++){const key=y+"-"+String(m).padStart(2,"0"),label=monthNames[m-1]+"/"+y;monthlyMonth1.add(new Option(label,key));monthlyMonth2.add(new Option(label,key))}
+monthlyMonth1.value="2026-09";monthlyMonth2.value="2027-09";
+function syncMonthlyControls(){const mode=monthlyMode.value;monthlyYear.hidden=mode==="months";monthlyYear2.hidden=mode!=="years";monthlyMonth1.hidden=monthlyMonth2.hidden=mode!=="months"}
+[monthlyMode,monthlyYear,monthlyYear2,monthlyMonth1,monthlyMonth2].forEach(el=>el.addEventListener("change",()=>{syncMonthlyControls();loadMonthly()}));syncMonthlyControls();
 async function loadMonthly(){
- const scope=currentScope,requestId=++monthlyRequest;
- const now=dailyToday().slice(0,7),months=[];
- for(let y=2026,m=9;y<Number(now.slice(0,4))||(y===Number(now.slice(0,4))&&m<=Number(now.slice(5,7)));m++){if(m===13){m=1;y++}months.push(y+"-"+String(m).padStart(2,"0"))}
+ const scope=currentScope,requestId=++monthlyRequest,mode=monthlyMode.value;
+ const fmt=n=>n.toLocaleString("pt-BR"),key=(y,m)=>y+"-"+String(m).padStart(2,"0");
+ const months=mode==="months"?[monthlyMonth1.value,monthlyMonth2.value]:mode==="years"?Array.from({length:12},(_,i)=>[key(monthlyYear.value,i+1),key(monthlyYear2.value,i+1)]).flat():Array.from({length:12},(_,i)=>key(monthlyYear.value,i+1));
+ const unique=[...new Set(months)],units=scope==="club"?["bike","gym"]:[scope],values={};
  monthlyUnitLabel.textContent=(scope==="club"?"Bike Pop + Gym Pop":unit(scope))+" · D1";
- monthlyChart.innerHTML='<div class="empty">Consultando histórico mensal...</div>';
- if(!months.length){monthlyChart.innerHTML='<div class="empty">Histórico disponível a partir de setembro de 2026.</div>';return}
+ monthlyChart.innerHTML='<div class="empty">Consultando histórico mensal...</div>';monthlyComparison.textContent="";
  try{
-  const units=scope==="club"?["bike","gym"]:[scope];
-  const totals=[];
-  for(const month of months){
-   let total=0;
-   for(const u of units){
+  // Consulta apenas meses até o mês atual, sem novas chamadas à EVO.
+  const now=dailyToday().slice(0,7);
+  await Promise.all(unique.filter(m=>m>="2026-09"&&m<=now).map(async month=>{
+   const counts=await Promise.all(units.map(async u=>{
     const r=await fetch("/api/admin-auth?route=daily-attendance&unit="+encodeURIComponent(u)+"&month="+month,{cache:"no-store"});
-    const d=await r.json();
-    if(!r.ok||!d.ok)throw Error("Consulta D1 indisponível");
-    total+=(d.days||[]).reduce((sum,row)=>sum+Number(row.count||0),0);
-   }
-   if(requestId!==monthlyRequest)return;
-   totals.push(total);
-  }
+    const d=await r.json();if(!r.ok||!d.ok)throw Error("Consulta D1 indisponível");
+    return (d.days||[]).reduce((sum,row)=>sum+Number(row.count||0),0);
+   }));
+   values[month]=counts.reduce((a,b)=>a+b,0);
+  }));
   if(requestId!==monthlyRequest)return;
-  const max=Math.max(1,...totals),fmt=n=>n.toLocaleString("pt-BR");
-  monthlyChart.innerHTML=months.map((month,i)=>{
-   const total=totals[i],prev=totals[i-1],pct=i===0?"":prev===0?(total>0?"Novo":"0%"):(total-prev>=0?"+":"")+(((total-prev)/prev)*100).toLocaleString("pt-BR",{maximumFractionDigits:1})+"%";
-   const label=new Date(month+"-02T12:00:00").toLocaleDateString("pt-BR",{month:"short",year:"numeric"});
-   return '<div class="monthly-col"><span class="monthly-value">'+fmt(total)+'</span><div class="monthly-bar" style="height:'+Math.max(3,Math.round(total/max*145))+'px" title="'+fmt(total)+' presenças"></div><span class="monthly-label">'+esc(label)+'</span><span class="monthly-change">'+esc(pct)+'</span></div>';
-  }).join("");
-  monthlyChart.setAttribute("aria-label",months.map((m,i)=>m+": "+fmt(totals[i])+" presenças").join("; "));
-  monthlyNote.textContent="Total de presenças registradas no D1. "+(scope==="club"?"Bike Pop e Gym Pop somados. ":"")+"O mês atual está em andamento; a variação compara com o mês anterior.";
+  const max=Math.max(1,...Object.values(values)),bar=(month,series)=>{
+   const total=values[month],future=month>now,unknown=month<"2026-09"||future;
+   const val=unknown?"—":fmt(total??0),height=unknown?3:Math.max(3,Math.round((total||0)/max*145));
+   return '<div class="monthly-col" style="min-width:65px"><span class="monthly-value">'+val+'</span><div class="monthly-bar" style="height:'+height+'px;'+(series===2?'background:linear-gradient(180deg,#16a6b3,#0c6c77);':'')+(unknown?'opacity:.2;':'')+'" title="'+esc(month)+' · '+val+' presenças"></div><span class="monthly-label">'+monthNames[Number(month.slice(5))-1]+'<br>'+month.slice(0,4)+'</span></div>';
+  };
+  if(mode==="year"){monthlyChart.innerHTML=months.map(m=>bar(m,1)).join("");monthlyComparison.textContent="Ano "+monthlyYear.value+" · meses sem dados identificados por —."}
+  else if(mode==="years"){monthlyChart.innerHTML=Array.from({length:12},(_,i)=>'<div style="display:flex;align-items:flex-end;gap:3px;border-right:1px solid #eee;padding-right:8px">'+bar(months[i*2],1)+bar(months[i*2+1],2)+'</div>').join("");monthlyComparison.textContent="Roxo: "+monthlyYear.value+" · Azul: "+monthlyYear2.value+" · — indica dados indisponíveis."}
+  else {monthlyChart.innerHTML=bar(months[0],1)+bar(months[1],2);const a=values[months[0]],b=values[months[1]];monthlyComparison.textContent=a===undefined||b===undefined?"Comparação indisponível para meses sem dados.":"Diferença: "+(b-a>=0?"+":"")+fmt(b-a)+" presenças · Variação: "+(a===0?(b===0?"0%":"não calculável (base zero)"):(b-a>=0?"+":"")+(((b-a)/a)*100).toLocaleString("pt-BR",{maximumFractionDigits:1})+"%");}
+  monthlyChart.setAttribute("aria-label",months.map(m=>m+": "+(values[m]===undefined?"sem dados":fmt(values[m])+" presenças")).join("; "));
+  monthlyNote.textContent="Presenças registradas no D1 por unidade selecionada. Mês atual em andamento. Meses sem dados não são tratados como zero.";
  }catch(e){if(requestId!==monthlyRequest)return;monthlyChart.innerHTML='<div class="attention">Não foi possível consultar o histórico mensal no D1.</div>'}
 }
 dailyMore.addEventListener("click",()=>{dailyVisible+=7;renderDailyRows()});dailyMonth.addEventListener("change",loadDaily);
