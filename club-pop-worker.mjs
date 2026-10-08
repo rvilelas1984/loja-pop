@@ -109,8 +109,16 @@ export default {
         if (!target) return json({ok:false,error:"OPERACAO_EVO_NAO_PERMITIDA"},400);
         const requestedUnit=url.pathname==="/internal/evo-bike"?"bike":String(operation.unit||"bike").toLowerCase();
         const cfg=await getEvoConfig(env,requestedUnit);
-        const upstream=await fetch(target.href,{method:operation.method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});
-        try { const p=target.pathname.toLowerCase(), purpose=(p==="/api/v2/management/activeclients"||(p==="/api/v2/members"&&target.searchParams.get("status")==="1"))?"student_sync":p.includes("/membermembership")?"contracts":p==="/api/v1/activities"?"activities_catalog":p.includes("/activities/schedule/detail")?"checkin_detail":p.includes("/activities/schedule")?"schedule":p.includes("/fitcoins")?"fitcoins":p.includes("/member/sessions")?"attendance":p.includes("/members/")||p==="/api/v2/members"?"member_profile":"other"; await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,?,?)").bind(requestedUnit,purpose,String(operation.method||"GET").toUpperCase(),target.pathname,upstream.status,upstream.ok?1:0).run(); } catch {}
+        const isVoucherCreate=target.pathname==="/api/v2/voucher"&&operation.method==="POST";
+        if(isVoucherCreate){
+          const v=operation.payload;
+          if(!v||typeof v!=="object"||Array.isArray(v)||!Array.isArray(v.idsContratos)||!v.idsContratos.length||v.idsContratos.some(x=>!Number.isSafeInteger(x)||x<=0)||!/^.{3,100}$/.test(String(v.nome||""))||!Number.isFinite(v.valor)||v.valor<=0||![1,2].includes(v.tipoDesconto)||v.tipoDesconto===1&&v.valor>100||!v.inicio||!v.validade||!Number.isInteger(v.qtde)||v.qtde<1||v.qtde>50||v.flContrato!==true||v.flIlimitado!==false)return json({ok:false,error:"VOUCHER_INVALIDO"},400);
+          const known=await env.DB.prepare("SELECT DISTINCT id_membership FROM evo_member_contracts WHERE unit=? AND id_membership IS NOT NULL").bind(requestedUnit).all();
+          const allowed=new Set((known.results||[]).map(x=>String(x.id_membership)));
+          if(v.idsContratos.some(x=>!allowed.has(String(x))))return json({ok:false,error:"CONTRATO_NAO_ENCONTRADO_NO_D1"},400);
+        }
+        const upstream=await fetch(target.href,{method:operation.method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json",...(isVoucherCreate?{"Content-Type":"application/json-patch+json"}:{})},...(isVoucherCreate?{body:JSON.stringify(operation.payload)}:{})});
+        try { const p=target.pathname.toLowerCase(), purpose=(p==="/api/v2/management/activeclients"||(p==="/api/v2/members"&&target.searchParams.get("status")==="1"))?"student_sync":p.includes("/membermembership")?"contracts":p==="/api/v1/activities"?"activities_catalog":p.includes("/activities/schedule/detail")?"checkin_detail":p.includes("/activities/schedule")?"schedule":p==="/api/v2/voucher"?"voucher_create":p.includes("/fitcoins")?"fitcoins":p.includes("/member/sessions")?"attendance":p.includes("/members/")||p==="/api/v2/members"?"member_profile":"other"; await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,?,?)").bind(requestedUnit,purpose,String(operation.method||"GET").toUpperCase(),target.pathname,upstream.status,upstream.ok?1:0).run(); } catch {}
         if (target.pathname === "/api/v2/management/activeclients") {
           return new Response(upstream.body, {
             status: upstream.status,
@@ -1774,6 +1782,7 @@ function allowedEvoTarget(value, method) {
   let url; try { url=new URL(value); } catch { return null; }
   if (url.protocol!=="https:" || url.port || url.username || url.password || url.hash || !["evo-integracao.w12app.com.br","evo-integracao-api.w12app.com.br"].includes(url.hostname)) return null;
   const path=url.pathname;
+  if(method==="POST")return path==="/api/v2/voucher"&&!url.search?url:null;
   if (method==="PUT") return path==="/api/v1/members/fitcoins" ? url : null;
   if (method!=="GET") return null;
   if (path==="/api/v2/management/activeclients" || path==="/api/v2/members/active-members") return url;
