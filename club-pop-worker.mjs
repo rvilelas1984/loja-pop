@@ -196,6 +196,18 @@ export default {
         return json({ok:true,unit,saved:statements.length});
       }
 
+      // Leitura agregada de presencas por aula no D1; nao consulta EVO.
+      if(url.pathname==="/admin/daily-attendance"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||""),month=String(url.searchParams.get("month")||"");
+        if(!["bike","gym"].includes(unit)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const q=await env.DB.prepare("SELECT activity_date AS date,SUM(COALESCE(attendance_count,0)) AS count,COUNT(*) AS sessions FROM evo_attendance_sessions WHERE unit=? AND status='done' AND substr(activity_date,1,7)=? GROUP BY activity_date ORDER BY activity_date DESC").bind(unit,month).all();
+        return json({ok:true,source:"d1",evoRequestsMade:0,unit,month,days:(q.results||[]).map(r=>({date:r.date,count:Number(r.count||0),sessions:Number(r.sessions||0)}))});
+      }
       // Diagnóstico econômico do Dashboard: lê somente o D1 e calcula quantas chamadas de sessões ainda faltariam.
       if (url.pathname === "/admin/evo-dashboard-diagnostic" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
