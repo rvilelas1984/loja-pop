@@ -25,6 +25,7 @@ export default async function handler(req,res){
  }
  if(req.query.route==="voucher-create"){
   res.setHeader("Cache-Control","no-store");
+  return res.status(503).json({ok:false,error:"EMISSAO_PENDENTE_INTEGRACAO_D1",evoRequestsMade:0});
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"ADMIN_NAO_AUTORIZADO"});
   try{
