@@ -233,6 +233,20 @@ export default {
         const q=await env.DB.prepare("SELECT activity_date AS date,SUM(COALESCE(attendance_count,0)) AS count,COUNT(*) AS sessions FROM evo_attendance_sessions WHERE unit=? AND status='done' AND substr(activity_date,1,7)=? GROUP BY activity_date ORDER BY activity_date DESC").bind(unit,month).all();
         return json({ok:true,source:"d1",evoRequestsMade:0,unit,month,days:(q.results||[]).map(r=>({date:r.date,count:Number(r.count||0),sessions:Number(r.sessions||0)}))});
       }
+      // Desempenho semanal: leitura de aulas confirmadas no D1, sem EVO.
+      if(url.pathname==="/admin/weekly-attendance"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||""),start=String(url.searchParams.get("start")||"");
+        if(!["bike","gym","club"].includes(unit)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(start))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const end=new Date(start+"T12:00:00Z");if(Number.isNaN(end.getTime()))return json({ok:false,error:"DATA_INVALIDA"},400);end.setUTCDate(end.getUTCDate()+6);
+        const endDate=end.toISOString().slice(0,10);
+        const sql="SELECT unit,activity_date AS date,start_time AS time,COALESCE(attendance_count,0) AS count FROM evo_attendance_sessions WHERE status='done' AND activity_date>=? AND activity_date<=?"+(unit==="club"?"":" AND unit=?")+" ORDER BY activity_date,start_time";
+        const q=await env.DB.prepare(sql).bind(...(unit==="club"?[start,endDate]:[start,endDate,unit])).all();
+        return json({ok:true,unit,start,end:endDate,source:"d1",evoRequestsMade:0,classes:(q.results||[]).map(x=>({unit:x.unit,date:x.date,time:x.time,count:Number(x.count||0)}))});
+      }
       // Diagnóstico econômico do Dashboard: lê somente o D1 e calcula quantas chamadas de sessões ainda faltariam.
       if (url.pathname === "/admin/evo-dashboard-diagnostic" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
