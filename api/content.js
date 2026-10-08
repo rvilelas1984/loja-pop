@@ -15,7 +15,7 @@ export default async function handler(req,res){
  }
  if(!["PUT","PATCH"].includes(req.method))return send(res,405,{error:"Método não permitido"});
  if(!adminCookieValid(req)&&(!process.env.ADMIN_KEY||req.headers["x-admin-key"]!==process.env.ADMIN_KEY))return send(res,401,{error:"Sessão administrativa inválida."});
- if(!process.env.GITHUB_TOKEN)return send(res,503,{error:"GITHUB_TOKEN ainda não configurado no Vercel."});
+ if(!process.env.GITHUB_TOKEN && !(req.method==="PATCH" && (typeof req.body==="string"?JSON.parse(req.body):req.body)?.section==="landingPageRebuild"))return send(res,503,{error:"GITHUB_TOKEN ainda não configurado no Vercel."});
  try{
   if(req.query?.draft==="1"){const body=typeof req.body==="string"?JSON.parse(req.body):req.body;if(!body||body.section!=="landingPage")return send(res,400,{error:"Rascunho inválido."});let sha;try{const cur=await gh(`/repos/${OWNER}/${REPO}/contents/${DRAFT_PATH}?ref=${BRANCH}`);if(cur.ok)sha=(await cur.json()).sha}catch{}const draftData={landingPageDraft:body.value};const payload={message:"Atualiza rascunho da Landing Page",content:Buffer.from(JSON.stringify(draftData,null,2)).toString("base64"),branch:BRANCH,...(sha?{sha}:{})};const wr=await gh(`/repos/${OWNER}/${REPO}/contents/${DRAFT_PATH}`,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});if(!wr.ok)throw new Error(await wr.text());return send(res,200,{ok:true,draft:true})}
   if(req.query?.publish==="1"){const dr=await gh(`/repos/${OWNER}/${REPO}/contents/${DRAFT_PATH}?ref=${BRANCH}`);if(!dr.ok)return send(res,404,{error:"Nenhum rascunho para publicar."});const dj=await dr.json(),draft=JSON.parse(Buffer.from(dj.content,"base64").toString("utf8")).landingPageDraft;req.body={section:"landingPage",value:draft};}
@@ -24,10 +24,10 @@ export default async function handler(req,res){
   const body=typeof req.body==="string"?JSON.parse(req.body):req.body;
   let next=body;
   if(req.method==="PATCH"){
-   const allowed=new Set(["missionList","promotions","landingPage","landingPageV3"]);
-   if(!body||!allowed.has(body.section)||(body.section!=="landingPage"&&!Array.isArray(body.value)))return send(res,400,{error:"Seção inválida para atualização."});
+   const allowed=new Set(["missionList","promotions","landingPage","landingPageV3","landingPageRebuild"]);
+   if(!body||!allowed.has(body.section)||(!["landingPage","landingPageRebuild"].includes(body.section)&&!Array.isArray(body.value)))return send(res,400,{error:"Seção inválida para atualização."});
    const currentData=cj.content;
-   next={...currentData,[body.section]:body.value};
+   if(body.section==="landingPageRebuild"){const v=body.value;const ids=["identity","carousel","hero","features","how","promotion","missions","partners","header","footer"];if(!v||v.version!==1||!Array.isArray(v.blocks)||v.blocks.length!==10||!ids.every(id=>v.blocks.some(b=>b.id===id&&b.fields&&typeof b.fields==="object"))||JSON.stringify(v).length>150000)return send(res,400,{error:"Landing inválida: confira os dez blocos."});next={...currentData,landingPageRebuild:{...v,publishedAt:new Date().toISOString()}};}else next={...currentData,[body.section]:body.value};
   }
   const wr=await fetch(WORKER+"/content-store",{method:"PUT",headers:{"content-type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify(next)});
   const saved=await wr.json().catch(()=>({}));if(!wr.ok||!saved.ok)throw new Error(saved.error||"Falha ao salvar conteúdo no D1");
