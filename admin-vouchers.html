@@ -31,7 +31,19 @@ function clearModel(){editId=null;$("formTitle").textContent="Novo modelo";$("mN
 function renderContracts(){$("contracts").innerHTML=contracts.length?contracts.map(c=>'<label><input type="checkbox" value="'+c.id+'"><span>'+escapeHtml(c.name)+' (ID '+c.id+')</span></label>').join(""):'<p class="muted">Nenhum contrato disponível. Emissão bloqueada.</p>'}
 async function load(){
 loading=true;contracts=[];models=[];renderContracts();renderModels();notify("Carregando contratos reais do D1...");
-try{const r=await fetch("/api/evo-config?route=contracts-list&unit="+unit(),{cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok||d.unit!==unit())throw Error(d.error||"Falha ao carregar contratos");contracts=[...new Map((d.contracts||[]).filter(c=>Number.isSafeInteger(Number(c.id))&&Number(c.id)>0&&c.name).map(c=>[String(c.id),{id:Number(c.id),name:c.name}])).values()];const mr=await fetch("/api/evo-config?route=voucher-models&unit="+unit(),{cache:"no-store"}),md=await mr.json();if(!mr.ok||!md.ok)throw Error(md.error||"Falha ao carregar modelos do D1");models=(md.models||[]).map(m=>({id:m.id,unit:m.unit,name:m.name,type:Number(m.discountType)===1?"P":"V",value:Number(m.discountValue),days:Number(m.validityDays),ids:m.contractIds}));renderContracts();renderModels();notify("Contratos e modelos carregados do D1. A criação administrativa na EVO é REAL.");}catch(e){notify("Falha ao consultar contratos: "+e.message+". Não é possível emitir vouchers.");}finally{loading=false;loadRequests()}
+try{const r=await fetch("/api/evo-config?route=contracts-list&unit="+unit(),{cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok||d.unit!==unit())throw Error(d.error||"Falha ao carregar contratos");contracts=[...new Map((d.contracts||[]).filter(c=>Number.isSafeInteger(Number(c.id))&&Number(c.id)>0&&c.name).map(c=>[String(c.id),{id:Number(c.id),name:c.name}])).values()];const mr=await fetch("/api/evo-config?route=voucher-models&unit="+unit(),{cache:"no-store"}),md=await mr.json();if(!mr.ok||!md.ok)throw Error(md.error||"Falha ao carregar modelos do D1");models=(md.models||[]).map(m=>({id:m.id,unit:m.unit,name:m.name,type:Number(m.discountType)===1?"P":"V",value:Number(m.discountValue),days:Number(m.validityDays),ids:m.contractIds}));renderContracts();renderModels();notify("Contratos e modelos carregados do D1. A criação administrativa na EVO é REAL.");}catch(e){notify("Falha ao consultar contratos: "+e.message+". Não é possível emitir vouchers.");}finally{loading=false;loadRequests();loadVoucherStatus()}
+}
+async function loadVoucherStatus(){
+ const selected=unit();
+ try{
+  const r=await fetch("/api/evo-config?route=voucher-status&unit="+selected,{cache:"no-store"}),d=await r.json();
+  if(!r.ok||!d.ok||selected!==unit())return;
+  $("issued").textContent=d.counts.issued;
+  $("pending").textContent=d.counts.waiting;
+  const rows=Array.isArray(d.requests)?d.requests:[];
+  $("queueRows").innerHTML=rows.filter(x=>x.status==="pending").map(x=>'<tr><td>—</td><td>'+escapeHtml(x.sourceId)+'</td><td>'+escapeHtml(x.sourceType)+'</td><td>'+escapeHtml(x.createdAt)+'</td><td>'+escapeHtml(x.status)+'</td></tr>').join("")||'<tr><td colspan="5">Nenhuma solicitação pendente registrada no D1.</td></tr>';
+  $("historyRows").innerHTML=rows.map(x=>'<tr><td>—</td><td>'+escapeHtml(x.assignedCode||x.evoVoucherId||"—")+'</td><td>'+escapeHtml(x.sourceType)+'</td><td>'+escapeHtml(x.createdAt)+'</td><td>'+escapeHtml(x.status)+'</td><td>'+escapeHtml(x.sourceId)+'</td></tr>').join("")||'<tr><td colspan="6">Nenhuma emissão registrada no D1. Emissões antigas da EVO podem não estar nesta lista.</td></tr>';
+ }catch{}
 }
 async function loadRequests(){try{const r=await fetch("/api/evo-config?route=evo-requests&unit="+unit()+"&days=1",{cache:"no-store"}),d=await r.json();if(r.ok&&d.ok){reqs=(d.purposes||[]).reduce((n,p)=>n+Number(p.total||0),0);$("evoCount").textContent=reqs;}}catch{}}
 $("hamb").onclick=()=>$("drawer").classList.toggle("show");
@@ -51,11 +63,11 @@ const name=("CP-"+unit().toUpperCase()+"-"+m.name.normalize("NFD").replace(/[\u0
 const body={unit:unit(),nome:name,idsContratos:ids,inicio:day(),validade:expiry(m.days),qtde:qty,tipoDesconto:m.type==="P"?1:2,valor:Number(m.value),flUtilizarSite:true,flCodigoUnico:!batch};
 if(!confirm("EMISSÃO MANUAL: CRIAR "+qty+" VOUCHER(S) REAIS na EVO para "+names[unit()]+"? Esta ação consome 1 requisição EVO. "+(batch?"Os códigos do lote ainda devem ser consultados no painel EVO.":"O nome não foi confirmado como código de resgate.")))return;
 const btn=$("generate");btn.disabled=true;btn.textContent="Enviando à EVO...";
-try{const r=await fetch("/api/evo-config?route=voucher-create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||d.evoResponse?.message||"EVO recusou a operação");notify("Voucher EVO ID "+d.voucherId+" criado. "+(batch?"Consulte e valide os códigos individuais no painel EVO antes de distribuir.":"Confirme o código de compra na EVO antes de entregar ao aluno."));}catch(e){notify("Erro: "+e.message+". Confira a EVO antes de tentar novamente para evitar duplicidade.");}finally{btn.disabled=false;btn.textContent="Gerar na EVO";loadRequests()}
+try{const r=await fetch("/api/evo-config?route=voucher-create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||d.evoResponse?.message||"EVO recusou a operação");notify("Voucher EVO ID "+d.voucherId+" criado. "+(batch?"Consulte e valide os códigos individuais no painel EVO antes de distribuir.":"Confirme o código de compra na EVO antes de entregar ao aluno."));}catch(e){notify("Erro: "+e.message+". Confira a EVO antes de tentar novamente para evitar duplicidade.");}finally{btn.disabled=false;btn.textContent="Gerar na EVO";loadRequests();loadVoucherStatus()}
 };
 $("queueRows").innerHTML='<tr><td colspan="5">Fila automática ainda não integrada ao D1.</td></tr>';
 $("historyRows").innerHTML='<tr><td colspan="6">Histórico de distribuição ainda não integrado ao D1.</td></tr>';
-$("process").disabled=true;$("process").textContent="Processamento indisponível";
+$("process").disabled=true;$("process").textContent="Processamento pela Automação";
 $("redeem").disabled=true;$("redeem").textContent="Resgate em integração";
 $("rewardModel").disabled=true;$("rewardMode").disabled=true;
 $("historySearch").disabled=true;$("historyStatus").disabled=true;
