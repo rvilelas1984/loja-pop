@@ -4,6 +4,25 @@ import { parseActiveReport } from "../lib/evo-active-report.js";
 import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 export default async function handler(req,res){
+ if(req.query.route==="voucher-create"){
+  res.setHeader("Cache-Control","no-store");
+  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"ADMIN_NAO_AUTORIZADO"});
+  try{
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));
+   if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"ADMIN_NAO_AUTORIZADO"});
+   const b=typeof req.body==="string"?JSON.parse(req.body):req.body||{},unit=String(b.unit||"").toLowerCase();
+   if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
+   const ids=Array.isArray(b.idsContratos)?b.idsContratos.map(Number):[],value=Number(b.valor),qtde=Number(b.qtde),inicio=String(b.inicio||""),validade=String(b.validade||"");
+   if(!ids.length||ids.some(x=>!Number.isSafeInteger(x)||x<=0)||!Number.isSafeInteger(qtde)||qtde<1||qtde>50||![1,2].includes(b.tipoDesconto)||!Number.isFinite(value)||value<=0||(b.tipoDesconto===1&&value>100)||!/^.{3,100}$/.test(String(b.nome||""))||!/^\\d{4}-\\d{2}-\\d{2}$/.test(inicio)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(validade)||validade<inicio)return res.status(400).json({ok:false,error:"CAMPOS_OBRIGATORIOS_INVALIDOS"});
+   const payload={nome:String(b.nome).trim(),qtde,flIlimitado:false,flUtilizarSite:!!b.flUtilizarSite,validade:validade+"T23:59:59",inicio:inicio+"T00:00:00",flCodigoUnico:!!b.flCodigoUnico,tipoDesconto:b.tipoDesconto,valor:value,flContrato:true,idsContratos:ids,idsServicos:[],flDebitoRecorrente:!!b.flDebitoRecorrente,flNaoPermiteConvenio:!!b.flNaoPermiteConvenio};
+   if(b.mesesDescontoRecorrente){const m=Number(b.mesesDescontoRecorrente);if(!Number.isSafeInteger(m)||m<1||m>120)return res.status(400).json({ok:false,error:"MESES_INVALIDOS"});payload.mesesDescontoRecorrente=m}
+   const cfg=getEvoTransport(unit);if(!cfg.configured)return res.status(503).json({ok:false,error:"UNIDADE_SEM_EVO"});
+   const rr=await cfg.fetch("https://evo-integracao-api.w12app.com.br/api/v2/voucher",{method:"POST",body:JSON.stringify(payload)}),raw=await rr.text();let data;try{data=JSON.parse(raw)}catch{data={message:raw.slice(0,300)}}
+   return res.status(rr.status).json({ok:rr.ok,unit,voucherId:data?.voucherId??null,evoResponse:data,evoRequestsMade:1});
+  }catch(e){return res.status(e.status||502).json({ok:false,error:e.code||"ERRO_VOUCHER",detail:String(e.message||"").slice(0,160),evoRequestsMade:0})}
+ }
+
  if(req.query.route==="verify-service"){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="POST")return res.status(405).json({ok:false});
