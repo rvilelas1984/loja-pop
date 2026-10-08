@@ -9,7 +9,7 @@
 <script>
 const $=id=>document.getElementById(id),names={bike:"Bike Pop",gym:"Gym Pop"};
 let models=[],contracts=[],editId=null,loading=false,reqs=0,loadSequence=0;
-const unit=()=>$("unit").value;
+const unit=()=>{const scope=window.cpAdminScope?.get?.();return scope==="gym"?"gym":"bike"};
 const key=()=>"clubpop-voucher-models-v1-"+unit();
 const escapeHtml=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const notify=t=>{$("operationalNotice").textContent=t;};
@@ -52,7 +52,8 @@ document.addEventListener("change",e=>{if(e.target.closest("#contracts")||["mTyp
 document.addEventListener("input",e=>{if(e.target.id==="mValue")renderContractReview()});
 $("hamb").onclick=()=>$("drawer").classList.toggle("show");
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll(".section").forEach(x=>x.classList.toggle("active",x.id===b.dataset.tab))});
-$("unit").onchange=()=>{editId=null;models=[];contracts=[];renderContracts();renderModels();clearModel();$("issued").textContent="—";$("pending").textContent="—";$("evoCount").textContent="—";$("queueRows").innerHTML='<tr><td colspan="5">Carregando unidade...</td></tr>';$("historyRows").innerHTML='<tr><td colspan="6">Carregando unidade...</td></tr>';load()};
+function onVoucherUnitChange(){editId=null;models=[];contracts=[];renderContracts();renderModels();clearModel();$("issued").textContent="—";$("pending").textContent="—";$("evoCount").textContent="—";$("queueRows").innerHTML='<tr><td colspan="5">Carregando unidade...</td></tr>';$("historyRows").innerHTML='<tr><td colspan="6">Carregando unidade...</td></tr>';load()}
+window.addEventListener("cp:scopechange",onVoucherUnitChange);
 $("clearModel").onclick=clearModel;
 $("saveModel").onclick=async()=>{const name=$("mName").value.trim(),ids=[...document.querySelectorAll('#contracts input:checked')].map(x=>Number(x.value)),value=Number($("mValue").value),type=$("mType").value,days=Number($("mDays").value);if(!name||!ids.length||!Number.isFinite(value)||value<=0||(type==="P"&&value>100)||!Number.isInteger(days)||days<1){notify("Informe nome, contratos e desconto válidos.");return}const body={unit:unit(),name,discountType:type==="P"?1:2,discountValue:value,validityDays:days,contractIds:ids,...(editId?{id:editId}:{})};const btn=$("saveModel");btn.disabled=true;try{const r=await fetch("/api/evo-config?route=voucher-models",{method:editId?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||"Erro ao salvar modelo");clearModel();await load();notify("Modelo salvo no D1 para "+names[unit()]+".")}catch(e){notify("Falha ao salvar no D1: "+e.message)}finally{btn.disabled=false}};
 $("issueModel").onchange=()=>{const m=current();preview()};
