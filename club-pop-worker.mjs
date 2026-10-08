@@ -98,6 +98,22 @@ export default {
 
 
 
+      if (url.pathname === "/admin/club-voucher-status" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"").toLowerCase();
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const [rq,cq,bq]=await Promise.all([
+          env.DB.prepare("SELECT id,source_type sourceType,source_id sourceId,status,delivery_mode deliveryMode,evo_voucher_id evoVoucherId,assigned_code assignedCode,created_at createdAt FROM club_voucher_requests WHERE unit=? ORDER BY id DESC LIMIT 100").bind(unit).all(),
+          env.DB.prepare("SELECT status,COUNT(*) n FROM club_voucher_codes WHERE unit=? GROUP BY status").bind(unit).all(),
+          env.DB.prepare("SELECT status,COUNT(*) n FROM club_voucher_batches WHERE unit=? GROUP BY status").bind(unit).all()
+        ]);
+        const requests=rq.results||[],codes=cq.results||[],batches=bq.results||[];
+        return json({ok:true,unit,requests,codes,batches,counts:{requests:requests.length,waiting:requests.filter(x=>x.status==="pending").length,issued:requests.filter(x=>x.evoVoucherId).length}});
+      }
       if (url.pathname === "/admin/club-voucher-models" && ["GET","POST","PUT"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
