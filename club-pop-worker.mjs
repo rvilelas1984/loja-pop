@@ -6,15 +6,31 @@ const ALLOWED_ORIGINS = new Set([
 
 
 
+
+// Accept a short delay in the minute-based Cron trigger, without replaying old schedules.
+// The stored scheduled minute remains the configured time for idempotency.
+function dueScheduledMinute(times, now, timeZone="America/Sao_Paulo") {
+  const local=new Intl.DateTimeFormat("en-CA",{timeZone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now);
+  const get=t=>local.find(x=>x.type===t)?.value||"";
+  const date=get("year")+"-"+get("month")+"-"+get("day");
+  const current=Number(get("hour"))*60+Number(get("minute"));
+  for(const t of times){
+    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(t))continue;
+    const [h,m]=t.split(":").map(Number),scheduled=h*60+m;
+    if(current>=scheduled&&current-scheduled<=5)return date+"T"+t;
+  }
+  return null;
+}
+
 async function runScheduledStudentSync(env) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
   const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
   const hm=get("hour")+":"+get("minute"), minuteKey=get("year")+"-"+get("month")+"-"+get("day")+"T"+hm;
   const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='student'").all()).results||[];
-  for(const row of rows){let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}if(!times.includes(hm))continue;const unit=row.unit==="gym"?"gym":"bike";
-    const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'student',?,'pending')").bind(unit,minuteKey).run();if(!ins.meta?.changes)continue;
-    try{const r=await fetch("https://loja-pop-green.vercel.app/api/evo-config?route=auto-sync-students&unit="+unit,{method:"POST",headers:{"x-auto-sync-secret":String(env.AUTO_SYNC_SECRET||""),"Content-Type":"application/json"}}),d=await r.json().catch(()=>({}));await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status=?,detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(r.ok&&d.ok?"done":"failed",JSON.stringify({http:r.status,error:d.error||null,total:d.total||null,requests:d.requests||null}).slice(0,1000),unit,minuteKey).run();}
-    catch(e){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(String(e.message||e).slice(0,500),unit,minuteKey).run();}
+  for(const row of rows){let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=dueScheduledMinute(times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
+    const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'student',?,'pending')").bind(unit,dueKey).run();if(!ins.meta?.changes)continue;
+    try{const r=await fetch("https://loja-pop-green.vercel.app/api/evo-config?route=auto-sync-students&unit="+unit,{method:"POST",headers:{"x-auto-sync-secret":String(env.AUTO_SYNC_SECRET||""),"Content-Type":"application/json"}}),d=await r.json().catch(()=>({}));await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status=?,detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(r.ok&&d.ok?"done":"failed",JSON.stringify({http:r.status,error:d.error||null,total:d.total||null,requests:d.requests||null}).slice(0,1000),unit,dueKey).run();}
+    catch(e){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(String(e.message||e).slice(0,500),unit,dueKey).run();}
   }
 }
 
@@ -24,8 +40,8 @@ async function runScheduledAttendanceSync(env) {
   const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
   const hm=get("hour")+":"+get("minute"), date=get("year")+"-"+get("month")+"-"+get("day"), minuteKey=date+"T"+hm;
   const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='attendance'").all()).results||[];
-  for(const row of rows){let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}if(!times.includes(hm))continue;const unit=row.unit==="gym"?"gym":"bike";
-    const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'attendance',?,'pending')").bind(unit,minuteKey).run();if(!ins.meta?.changes)continue;
+  for(const row of rows){let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=dueScheduledMinute(times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
+    const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'attendance',?,'pending')").bind(unit,dueKey).run();if(!ins.meta?.changes)continue;
     let requests=0,classesFound=0,newClasses=0,saved=0;
     try{
       const cfg=await getEvoConfig(env,unit);
@@ -42,8 +58,8 @@ async function runScheduledAttendanceSync(env) {
         if(stm.length)for(let i=0;i<stm.length;i+=40)await env.DB.batch(stm.slice(i,i+40));saved+=stm.length;
         await env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,synced_at) VALUES(?,?,?,?,?, 'done',?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,status='done',attendance_count=excluded.attendance_count,synced_at=CURRENT_TIMESTAMP").bind(unit,s.id,date,st,String(d.name||"").slice(0,200),stm.length).run();
       }
-      await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='done',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='attendance' AND scheduled_minute=?").bind(JSON.stringify({date,requests,classesFound,newClasses,presencesSaved:saved,diagnostic}).slice(0,1000),unit,minuteKey).run();
-    }catch(e){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='attendance' AND scheduled_minute=?").bind(JSON.stringify({date,requests,classesFound,newClasses,presencesSaved:saved,error:String(e.message||e)}).slice(0,1000),unit,minuteKey).run()}
+      await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='done',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='attendance' AND scheduled_minute=?").bind(JSON.stringify({date,requests,classesFound,newClasses,presencesSaved:saved,diagnostic}).slice(0,1000),unit,dueKey).run();
+    }catch(e){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='attendance' AND scheduled_minute=?").bind(JSON.stringify({date,requests,classesFound,newClasses,presencesSaved:saved,error:String(e.message||e)}).slice(0,1000),unit,dueKey).run()}
   }
 }
 
