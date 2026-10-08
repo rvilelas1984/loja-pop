@@ -24,7 +24,7 @@ export default async function handler(req,res){
   const body=typeof req.body==="string"?JSON.parse(req.body):req.body;
   let next=body;
   if(req.method==="PATCH"){
-   const allowed=new Set(["missionList","promotions","landingPage"]);
+   const allowed=new Set(["missionList","promotions","landingPage","landingPageV3"]);
    if(!body||!allowed.has(body.section)||(body.section!=="landingPage"&&!Array.isArray(body.value)))return send(res,400,{error:"Seção inválida para atualização."});
    const currentData=cj.content;
    next={...currentData,[body.section]:body.value};
