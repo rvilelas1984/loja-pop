@@ -130,6 +130,26 @@ export default async function handler(req,res){
   const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
   try{const wr=await fetch(WORKER+"/admin/evo-contracts-summary?unit="+unit,{headers:{"x-clubpop-admin-cookie":cookie},cache:"no-store"}),wd=await wr.json().catch(()=>({}));return res.status(wr.status).json(wd)}catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_RESUMO_CONTRATOS"})}
  }
+ if(req.query.route==="bike-membership-diagnostic"){
+  res.setHeader("Cache-Control","no-store");
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  if(String(req.query.unit||"bike").toLowerCase()!=="bike")return res.status(403).json({ok:false,error:"SOMENTE_BIKE_POP"});
+  const cookie=String(req.headers.cookie||"");
+  if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+  try{
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"});
+   const session=await auth.json().catch(()=>({}));
+   if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Administrador necessário"});
+   const evo=getEvoTransport("bike");
+   const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v3/membership?active=true&take=200&skip=0");
+   if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
+   const raw=await rr.json();
+   const rows=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:(Array.isArray(raw?.items)?raw.items:(Array.isArray(raw?.results)?raw.results:null)));
+   if(!rows)return res.status(502).json({ok:false,error:"FORMATO_EVO_INESPERADO",requests:1,fields:Object.keys(raw||{}).slice(0,12)});
+   const unique=[...new Map(rows.filter(x=>Number.isSafeInteger(Number(x.idMembership))&&Number(x.idMembership)>0&&x.inactive!==true).map(x=>[String(x.idMembership),{id:Number(x.idMembership),name:String(x.nameMembership||x.displayName||"").slice(0,150),branchId:x.idBranch??null}])).values()];
+   return res.json({ok:true,unit:"bike",source:"EVO_API_V3_MEMBERSHIP",requests:1,totalActive:unique.length,returnedRows:rows.length,complete:rows.length<200,contracts:unique});
+  }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_DIAGNOSTICO_EVO"});}
+ }
  if(req.query.route==="contracts-list"){
   res.setHeader("Cache-Control","no-store");if(req.method!=="GET")return res.status(405).json({ok:false});
   const unit=String(req.query.unit||"bike").toLowerCase();if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
