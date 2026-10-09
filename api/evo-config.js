@@ -353,6 +353,12 @@ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return await logFailure(400,{ok:false,error
   const headers={"Content-Type":"application/json"}; if(!pub)headers["x-clubpop-admin-cookie"]=String(req.headers.cookie||"");
   try{const r=await fetch(WORKER+path+(qs.toString()?"?"+qs:""),{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:JSON.stringify(req.body||{})});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao acessar gerenciamento da unidade"})}
  }
+ if(req.query.route==="mission-modalities"){
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
+  const unit=String(req.query.unit||"bike").toLowerCase();
+  if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"Unidade inválida"});
+  try{const r=await fetch(WORKER+"/admin/mission-modalities?unit="+encodeURIComponent(unit),{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")}});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao consultar modalidades no D1"})}
+ }
  if(req.query.route==="checkin-layouts"){
   if(!["GET","PUT"].includes(req.method))return res.status(405).json({ok:false,error:"Método não permitido"});
   const unit=String(req.query.unit||req.body?.unit||"bike").toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,40);
