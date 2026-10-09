@@ -81,7 +81,7 @@ picker.onchange=()=>{const m=stored.missionList.find(x=>x.id===picker.value);if(
 document.getElementById("cpV5New").onclick=()=>{delete selected[active];picker.value="";notify("Nova missão: configure os campos e salve.")};
 document.getElementById("cpV5Reload").onclick=()=>load().catch(e=>notify(e.message,true));
 document.getElementById("cpV5Save").onclick=async()=>{const b=document.getElementById("cpV5Save");b.disabled=true;try{await save()}catch(e){notify(e.message,true)}finally{b.disabled=false}};
-document.getElementById("topunit").onchange=e=>{contractCatalog=(window.cpAllMissionContracts||[]).filter(x=>window.cpAdminScope?.get()==='club'||x.unit===window.cpAdminScope?.get());categoryFilter='all';modalities=await loadD1Modalities();refreshPicker();render()};
+document.getElementById("topunit").onchange=async e=>{contractCatalog=(window.cpAllMissionContracts||[]).filter(x=>window.cpAdminScope?.get()==='club'||x.unit===window.cpAdminScope?.get());categoryFilter='all';modalities=await loadD1Modalities();refreshPicker();render()};
 // Preserve the shared admin navigation and mobile hamburger menu.
 document.getElementById("preview").addEventListener("click",()=>{ /* prévia apenas: nenhuma gravação de resgate */ });
 load().catch(e=>notify(e.message,true));
