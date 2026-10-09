@@ -527,6 +527,37 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({ok:true,unit,summary:{contracts:Number(q?.contracts||0),members:Number(q?.members||0),aggregators:Number(q?.aggregators||0)},lastSyncAt:q?.last_sync_at||null,checkpoint:Number(cp?.next_skip||0),checkpointUpdatedAt:cp?.updated_at||null,evoRequestsMade:0});
       }
 
+      if (url.pathname === "/admin/evo-contract-catalog" && ["GET","POST"].includes(request.method)) {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"").toLowerCase();
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const tenant="club-pop";
+        if(request.method==="GET"){
+          const rows=await env.DB.prepare("SELECT evo_contract_id id,contract_name name,category_id categoryId,category_name category,is_active active,last_synced_at syncedAt FROM evo_contract_catalog WHERE tenant_key=? AND unit=? ORDER BY lower(contract_name),evo_contract_id").bind(tenant,unit).all();
+          const meta=await env.DB.prepare("SELECT last_success_at lastSuccessAt,last_count lastCount,last_error lastError FROM evo_contract_catalog_sync WHERE tenant_key=? AND unit=?").bind(tenant,unit).first();
+          const contracts=(rows.results||[]).map(x=>({id:x.id,name:x.name,categoryId:x.categoryId,category:x.category||"Sem categoria",inactive:Number(x.active)!==1}));
+          return json({ok:true,unit,contracts,lastSyncAt:meta?.lastSuccessAt||null,source:"evo_contract_catalog",evoRequestsMade:0});
+        }
+        const body=await request.json().catch(()=>({}));
+        const list=body.contracts;
+        if(!Array.isArray(list)||!body.complete||list.length<1||list.length>200||!Number.isSafeInteger(Number(body.reportedTotal))||Number(body.reportedTotal)!==list.length)return json({ok:false,error:"CATALOGO_INCOMPLETO_OU_INVALIDO"},422);
+        const seen=new Set(),rows=[];
+        for(const c of list){
+          const id=String(c.id??"").trim(),name=String(c.name||"").trim();
+          if(!/^\d+$/.test(id)||!name||name.length>250||seen.has(id))return json({ok:false,error:"CONTRATO_INVALIDO_OU_DUPLICADO"},422);
+          seen.add(id);
+          rows.push({id,name,categoryId:c.categoryId==null?null:String(c.categoryId).slice(0,100),category:String(c.category||"Sem categoria").slice(0,200)});
+        }
+        const statements=rows.map(c=>env.DB.prepare("INSERT INTO evo_contract_catalog (tenant_key,unit,evo_contract_id,contract_name,category_id,category_name,is_active,last_seen_at,last_synced_at,inactive_since) VALUES (?,?,?,?,?,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL) ON CONFLICT(tenant_key,unit,evo_contract_id) DO UPDATE SET contract_name=excluded.contract_name,category_id=excluded.category_id,category_name=excluded.category_name,is_active=1,last_seen_at=CURRENT_TIMESTAMP,last_synced_at=CURRENT_TIMESTAMP,inactive_since=NULL").bind(tenant,unit,c.id,c.name,c.categoryId,c.category));
+        statements.push(env.DB.prepare("UPDATE evo_contract_catalog SET is_active=0,inactive_since=COALESCE(inactive_since,CURRENT_TIMESTAMP),last_synced_at=CURRENT_TIMESTAMP WHERE tenant_key=? AND unit=? AND evo_contract_id NOT IN ("+rows.map(()=>"?").join(",")+")").bind(tenant,unit,...rows.map(c=>c.id)));
+        statements.push(env.DB.prepare("INSERT INTO evo_contract_catalog_sync(tenant_key,unit,last_attempt_at,last_success_at,last_result,last_count,last_error) VALUES(?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,'ok',?,NULL) ON CONFLICT(tenant_key,unit) DO UPDATE SET last_attempt_at=CURRENT_TIMESTAMP,last_success_at=CURRENT_TIMESTAMP,last_result='ok',last_count=excluded.last_count,last_error=NULL").bind(tenant,unit,rows.length));
+        await env.DB.batch(statements);
+        return json({ok:true,unit,saved:rows.length,evoRequestsMade:0});
+      }
+
       if (url.pathname === "/admin/evo-contracts-list" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
