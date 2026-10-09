@@ -278,6 +278,15 @@ export default {
         const q=await env.DB.prepare("SELECT activity_date AS date,SUM(COALESCE(attendance_count,0)) AS count,COUNT(*) AS sessions FROM evo_attendance_sessions WHERE unit=? AND status='done' AND substr(activity_date,1,7)=? GROUP BY activity_date ORDER BY activity_date DESC").bind(unit,month).all();
         return json({ok:true,source:"d1",evoRequestsMade:0,unit,month,days:(q.results||[]).map(r=>({date:r.date,count:Number(r.count||0),sessions:Number(r.sessions||0)}))});
       }
+      if(url.pathname==="/admin/activity-center"){
+        if(request.method!=="GET")return json({ok:false,error:"METODO_INVALIDO"},405);
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        let params;try{params=activityParams(url.searchParams)}catch{return json({ok:false,error:"PARAMETROS_INVALIDOS"},400)}
+        return json(await readActivityCenter(env,params));
+      }
       // Desempenho semanal: leitura de aulas confirmadas no D1, sem EVO.
       if(url.pathname==="/admin/weekly-attendance"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
@@ -988,8 +997,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           LIMIT 1
         `).bind(cpfHash).first();
 
-        if (!member?.pin_hash || !member?.pin_salt) {
-          return json({
+        if (!member?.pin_hash || !member?.pin_salt) {          return json({
             ok: false,
             error: "PRIMEIRO_ACESSO_NECESSARIO",
           }, 401);
@@ -1359,10 +1367,20 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const weight=num(b.weight,20,350),calories=num(b.calories,0,5000);const old=await env.DB.prepare("SELECT height FROM pop_fit_entries WHERE member_id=? AND unit=? AND attendance_key=? LIMIT 1").bind(base.id,unit,key).first(),height=old?.height??null;
           if([weight,height,calories].some(Number.isNaN))return json({ok:false,error:"VALOR_INVALIDO"},400);
           await env.DB.prepare("INSERT INTO pop_fit_entries(member_id,unit,attendance_key,weight,height,calories,updated_at) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id,unit,attendance_key) DO UPDATE SET weight=excluded.weight,height=excluded.height,calories=excluded.calories,updated_at=CURRENT_TIMESTAMP").bind(base.id,unit,key,weight,height,calories).run();
+          await audit(env,"MEMBER",String(base.id),"POP_FIT_EDITED","POP_FIT_ENTRY",key,{unit});
           return json({ok:true,saved:true,source:"d1",evoRequestsMade:0});
         }
         if(request.method==="POST"){
           const b=await readJson(request);
+          if(b.action==="share-click"){
+            if(!["bike","gym","club"].includes(scopeRaw)||(scope!=="club"&&!ids[scope]))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+            const imageId=Number(b.imageId);
+            if(!Number.isSafeInteger(imageId)||imageId<1)return json({ok:false,error:"IMAGEM_INVALIDA"},400);
+            const owned=await env.DB.prepare("SELECT id FROM pop_fit_images WHERE id=? AND member_id=? AND scope=?").bind(imageId,base.id,scope).first();
+            if(!owned)return json({ok:false,error:"IMAGEM_NAO_ENCONTRADA"},404);
+            await audit(env,"MEMBER",String(base.id),"POP_FIT_SHARE_CLICKED","POP_FIT_IMAGE",String(imageId),{unit:scope});
+            return json({ok:true,source:"d1",evoRequestsMade:0});
+          }
           if(String(b.action||"")==="save-profile"){const num=(v,min,max)=>v===null||v===undefined||v===""?null:(Number.isFinite(Number(v))&&Number(v)>=min&&Number(v)<=max?Number(v):NaN),height=num(b.height,0.8,2.5),initialWeight=num(b.initialWeight,20,350);if([height,initialWeight].some(Number.isNaN))return json({ok:false,error:"VALOR_INVALIDO"},400);await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=excluded.height,initial_weight=COALESCE(pop_fit_profile.initial_weight,excluded.initial_weight),updated_at=CURRENT_TIMESTAMP").bind(base.id,height,initialWeight).run();const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,saved:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
           if(String(b.action||"")==="add-manual-activity"){
             const name=String(b.activityName||"").trim().slice(0,60),date=String(b.activityDate||""),time=String(b.startTime||"").trim(),cal=b.calories===""||b.calories==null?null:Number(b.calories);
@@ -1374,10 +1392,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           if(String(b.action||"")==="save-image"){
             const image=String(b.imageData||"");
             if(!/^data:image\/jpeg;base64,/.test(image)||image.length>1600000)return json({ok:false,error:"IMAGEM_INVALIDA_OU_GRANDE"},400);
-            await env.DB.prepare("INSERT INTO pop_fit_images(member_id,scope,image_data,period_label,created_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)").bind(base.id,scope,image,String(b.periodLabel||"").slice(0,80)).run();
+            const inserted=await env.DB.prepare("INSERT INTO pop_fit_images(member_id,scope,image_data,period_label,created_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)").bind(base.id,scope,image,String(b.periodLabel||"").slice(0,80)).run();
+            await audit(env,"MEMBER",String(base.id),"POP_FIT_IMAGE_GENERATED","POP_FIT_IMAGE",String(inserted.meta.last_row_id),{unit:scope});
             await env.DB.prepare("DELETE FROM pop_fit_images WHERE member_id=? AND scope=? AND id NOT IN (SELECT id FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3)").bind(base.id,scope,base.id,scope).run();
             const q=await env.DB.prepare("SELECT id,scope,image_data,period_label,created_at FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3").bind(base.id,scope).all();
-            return json({ok:true,saved:true,kept:3,images:q.results||[],source:"d1",evoRequestsMade:0});
+            return json({ok:true,saved:true,imageId:inserted.meta.last_row_id,kept:3,images:q.results||[],source:"d1",evoRequestsMade:0});
           }
           return json({ok:false,error:"ACAO_INVALIDA"},400);
         }
@@ -1977,8 +1996,7 @@ async function currentStudentJob(env, body) {
   await db.batch([
     db.prepare("INSERT INTO evo_current_stage_v2(run_id,evo_member_id,payload) SELECT ?,json_extract(value,'$.id'),value FROM json_each(?)").bind(run.id,JSON.stringify(rows)),
     db.prepare("UPDATE evo_current_runs_v2 SET next_skip=?,requests=?,report_ids=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(next,requests,JSON.stringify(report),run.id),
-  ]);
-  // Lossless EVO snapshot + categorized projections. No extra EVO requests.
+  ]);  // Lossless EVO snapshot + categorized projections. No extra EVO requests.
   const masterStatements=[],contractStatements=[];
   for(const s of rows){
     const m=s.raw||{}, memberships=Array.isArray(m.memberships)?m.memberships:Array.isArray(m.memberMemberships)?m.memberMemberships:Array.isArray(m.membership)?m.membership:[];
@@ -2032,3 +2050,60 @@ async function currentStudentsView(env, unit='bike') {
 }
 
 // deploy-trigger: gym-d1-dashboard
+
+
+// Central de Atividades: consultas exclusivamente D1. Sem transporte EVO.
+export const activityTypes = [
+  ['reservation','Reservas','unavailable','Não há fonte de reservas no D1.'],
+  ['cancellation','Cancelamentos','unavailable','Não há fonte de cancelamentos no D1.'],
+  ['workout_created','Treinos criados','partial','Atividades pessoais registradas no Pop Fit; não são aulas reservadas.'],
+  ['workout_edited','Treinos editados','partial','Edições do Pop Fit capturadas a partir desta publicação.'],
+  ['image_generated','Imagens geradas','partial','Histórico anterior limitado às imagens ainda armazenadas. Novas gerações são auditadas.'],
+  ['share_clicked','Cliques em compartilhar','partial','Cliques capturados a partir desta publicação; não comprovam envio.'],
+  ['referral','Indicações','unavailable','Não há fonte de indicações no D1.'],
+  ['fitcoins_granted','Fitcoins concedidos','partial','Créditos concluídos de missões/promoções no D1; estornos excluídos.'],
+  ['reward_requested','Recompensas solicitadas','partial','Resgates do D1 e cópia do conteúdo. Operações legadas salvas apenas no GitHub não estão incluídas em tempo real.'],
+  ['reward_completed','Recompensas concluídas','partial','Conclusões com data no D1; operações legadas do GitHub podem estar ausentes.'],
+  ['failure','Falhas registradas','partial','Falhas de primeiro acesso auditadas; não representa todas as falhas do sistema.']
+];
+export function activityParams(p) {
+  const unit=p.get('unit'),start=p.get('start'),end=p.get('end');
+  const valid=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||'') && Number.isFinite(Date.parse(d)) && new Date(d).toISOString().slice(0,10)===d;
+  const category=p.get('category')||'',status=p.get('status')||'',origin=p.get('origin')||'',search=(p.get('search')||'').trim(),page=Number(p.get('page')||1);
+  if(!['bike','gym','club'].includes(unit)||!valid(start)||!valid(end)||start>end||(Date.parse(end)-Date.parse(start))/86400000>365||search.length>80||!Number.isSafeInteger(page)||page<1||page>10000||category&&!activityTypes.some(x=>x[0]===category)||status&&!['confirmed','failed'].includes(status)||origin&&!['Pop Fit','Auditoria','Resgates D1','Conteúdo D1'].includes(origin))throw new Error('PARAMETROS_INVALIDOS');
+  // São Paulo: limites do dia local convertidos em UTC, mantendo o banco em UTC.
+  return {unit,start,end,category,status,origin,search,page,from:start+'T03:00:00Z',until:new Date(Date.parse(end+'T03:00:00Z')+86400000).toISOString()};
+}
+export const activityCTE = `WITH
+content_redemptions AS (SELECT j.value v FROM app_content c,json_each(c.content_json,'$.redemptions') j WHERE c.content_key='club-pop'),
+content_transactions AS (SELECT j.value v FROM app_content c,json_each(c.content_json,'$.transactions') j WHERE c.content_key='club-pop'),
+event_group_0(id,at,member_id,unit,category,origin,status,amount) AS MATERIALIZED (
+ SELECT 'manual:'||id,created_at,member_id,'club','workout_created','Pop Fit','confirmed',1 FROM pop_fit_manual_activities
+ UNION ALL SELECT 'image:'||id,created_at,member_id,scope,'image_generated','Pop Fit','confirmed',1 FROM pop_fit_images i WHERE NOT EXISTS(SELECT 1 FROM audit_log a WHERE a.action='POP_FIT_IMAGE_GENERATED' AND a.entity_type='POP_FIT_IMAGE' AND a.entity_id=CAST(i.id AS TEXT))
+ UNION ALL SELECT 'audit:'||id,created_at,CASE WHEN actor_type='MEMBER' THEN actor_id END,
+ CASE WHEN json_valid(metadata_json) THEN COALESCE(json_extract(metadata_json,'$.unit'),'club') ELSE 'club' END,
+ CASE action WHEN 'POP_FIT_EDITED' THEN 'workout_edited' WHEN 'POP_FIT_IMAGE_GENERATED' THEN 'image_generated' WHEN 'POP_FIT_SHARE_CLICKED' THEN 'share_clicked' ELSE 'failure' END,
+ CASE WHEN action LIKE 'POP_FIT_%' THEN 'Pop Fit' ELSE 'Auditoria' END,
+ CASE WHEN action LIKE 'POP_FIT_%' THEN 'confirmed' ELSE 'failed' END,1
+ FROM audit_log WHERE action IN ('POP_FIT_EDITED','POP_FIT_IMAGE_GENERATED','POP_FIT_SHARE_CLICKED','FIRST_ACCESS_DATA_MISMATCH','FIRST_ACCESS_MEMBER_NOT_FOUND')),
+event_group_1(id,at,member_id,unit,category,origin,status,amount) AS MATERIALIZED (SELECT 'redemption-request:'||id,requested_at,member_id,COALESCE(unit,'club'),'reward_requested','Resgates D1','confirmed',1 FROM redemptions
+ UNION ALL SELECT 'redemption-complete:'||id,completed_at,member_id,COALESCE(unit,'club'),'reward_completed','Resgates D1','confirmed',1 FROM redemptions WHERE completed_at IS NOT NULL
+ UNION ALL SELECT 'content-request:'||json_extract(v,'$.id'),json_extract(v,'$.createdAt'),(SELECT id FROM members WHERE (json_extract(v,'$.unit')='bike' AND CAST(evo_member_id AS TEXT)=CAST(json_extract(v,'$.memberId') AS TEXT)) OR (json_extract(v,'$.unit')='gym' AND CAST(gym_client_id AS TEXT)=CAST(json_extract(v,'$.memberId') AS TEXT)) LIMIT 1),COALESCE(json_extract(v,'$.unit'),'club'),'reward_requested','Conteúdo D1','confirmed',1 FROM content_redemptions),
+event_group_2(id,at,member_id,unit,category,origin,status,amount) AS MATERIALIZED (SELECT 'content-complete:'||json_extract(v,'$.id'),json_extract(v,'$.completedAt'),(SELECT id FROM members WHERE (json_extract(v,'$.unit')='bike' AND CAST(evo_member_id AS TEXT)=CAST(json_extract(v,'$.memberId') AS TEXT)) OR (json_extract(v,'$.unit')='gym' AND CAST(gym_client_id AS TEXT)=CAST(json_extract(v,'$.memberId') AS TEXT)) LIMIT 1),COALESCE(json_extract(v,'$.unit'),'club'),'reward_completed','Conteúdo D1','confirmed',1 FROM content_redemptions WHERE json_extract(v,'$.completedAt') IS NOT NULL
+ UNION ALL SELECT 'transaction:'||json_extract(v,'$.id'),json_extract(v,'$.createdAt'),(SELECT id FROM members WHERE (json_extract(v,'$.unit')='bike' AND CAST(evo_member_id AS TEXT)=CAST(json_extract(v,'$.memberId') AS TEXT)) OR (json_extract(v,'$.unit')='gym' AND CAST(gym_client_id AS TEXT)=CAST(json_extract(v,'$.memberId') AS TEXT)) LIMIT 1),COALESCE(json_extract(v,'$.unit'),'club'),'fitcoins_granted','Conteúdo D1','confirmed',CAST(json_extract(v,'$.fitcoins') AS REAL) FROM content_transactions WHERE json_extract(v,'$.status')='COMPLETED' AND json_extract(v,'$.direction')='credit' AND json_extract(v,'$.origin') IN ('mission','promotion') AND CAST(json_extract(v,'$.fitcoins') AS REAL)>0
+),
+events(id,at,member_id,unit,category,origin,status,amount) AS (SELECT * FROM event_group_0 UNION ALL SELECT * FROM event_group_1 UNION ALL SELECT * FROM event_group_2), named AS (SELECT e.*,trim(COALESCE(m.first_name,'')||' '||COALESCE(m.last_name,'')) name FROM events e LEFT JOIN members m ON m.id=e.member_id), filtered AS (SELECT * FROM named WHERE datetime(at)>=datetime(?) AND datetime(at)<datetime(?) AND (?='club' OR unit=?) AND (?='' OR category=?) AND (?='' OR status=?) AND (?='' OR origin=?) AND (?='' OR instr(lower(name),lower(?))>0 OR CAST(member_id AS TEXT)=?)) `;
+export async function readActivityCenter(env,p) {
+ const args=[p.from,p.until,p.unit,p.unit,p.category,p.category,p.status,p.status,p.origin,p.origin,p.search,p.search,p.search];
+ const result=await env.DB.batch([
+  env.DB.prepare(activityCTE+'SELECT category,COUNT(*) count,SUM(amount) amount FROM filtered GROUP BY category').bind(...args),
+  env.DB.prepare(activityCTE+'SELECT id,at,member_id,unit,category,origin,status,amount,name FROM filtered ORDER BY datetime(at) DESC,id DESC LIMIT 50 OFFSET ?').bind(...args,(p.page-1)*50),
+  env.DB.prepare("SELECT COUNT(*) count FROM evo_member_attendance WHERE substr(attendance_date,1,10) BETWEEN ? AND ? AND (?='club' OR unit=?)").bind(p.start,p.end,p.unit,p.unit),
+  env.DB.prepare("SELECT COUNT(*) count FROM evo_attendance_sessions WHERE status='done' AND substr(activity_date,1,10) BETWEEN ? AND ? AND (?='club' OR unit=?)").bind(p.start,p.end,p.unit,p.unit),
+  env.DB.prepare("SELECT unit,activity_date,start_time,activity_name,attendance_count FROM evo_attendance_sessions WHERE status='done' AND substr(activity_date,1,10) BETWEEN ? AND ? AND (?='club' OR unit=?) ORDER BY attendance_count DESC,activity_date DESC,start_time DESC LIMIT 1").bind(p.start,p.end,p.unit,p.unit),
+  env.DB.prepare("SELECT start_time,SUM(COALESCE(attendance_count,0)) count FROM evo_attendance_sessions WHERE status='done' AND substr(activity_date,1,10) BETWEEN ? AND ? AND (?='club' OR unit=?) AND start_time IS NOT NULL GROUP BY start_time ORDER BY count DESC,start_time LIMIT 1").bind(p.start,p.end,p.unit,p.unit),
+  env.DB.prepare("SELECT activity_name,COUNT(*) count FROM evo_member_attendance WHERE substr(attendance_date,1,10) BETWEEN ? AND ? AND (?='club' OR unit=?) AND activity_name IS NOT NULL GROUP BY activity_name ORDER BY count DESC,activity_name LIMIT 1").bind(p.start,p.end,p.unit,p.unit)
+ ]);
+ const grouped=result[0].results||[],total=grouped.reduce((n,r)=>n+Number(r.count),0);
+ return {ok:true,source:'d1',evoRequestsMade:0,unit:p.unit,start:p.start,end:p.end,page:p.page,pageSize:50,total,events:result[1].results||[],metrics:activityTypes.map(([key,label,coverage,note])=>{const r=grouped.find(x=>x.category===key);return {key,label,coverage,note,count:coverage==='unavailable'?null:Number(r?.count||0),amount:coverage==='unavailable'?null:Number(r?.amount||0)}}),attendance:Number(result[2].results?.[0]?.count||0),classes:Number(result[3].results?.[0]?.count||0),participation:{bestClass:result[4].results?.[0]||null,busiestTime:result[5].results?.[0]||null,topActivity:result[6].results?.[0]||null}};
+}
