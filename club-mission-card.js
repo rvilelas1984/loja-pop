@@ -15,9 +15,10 @@ else html+='<div class="mc-kicker">🔥 MISSÃO PRESENÇA · '+esc(String(m.unit
 html+='<div class="mc-row"><b>PROGRESSO DA MISSÃO</b><b>'+pct+'%</b></div><div class="mc-bar"><i style="width:'+pct+'%"></i></div>';
 if(isWeek){html+='<h2>'+done+' de '+target+' semanas concluídas</h2><div class="mc-weeks">'+Array.from({length:target},(_,i)=>'<div><span class="'+(i===done?"current":"")+'">'+(i+1)+'</span><small>SEM '+(i+1)+'</small></div>').join("")+'</div>'}
 else{html+='<h2>'+n+' de '+target+' presenças</h2><p>Faltam '+Math.max(0,Number(next?.value||target)-n)+' aulas para o próximo prêmio</p>'}
-html+='<div class="mc-rewards">'+gs.map(g=>'<div class="mc-reward"><b>'+esc(g.value)+' '+(isWeek?"SEMANAS":"PRESENÇAS")+' · '+(value>=Number(g.value)?"META ATINGIDA":g===next?"PRÓXIMO NÍVEL":"META FUTURA")+'</b><strong>'+rewardLabels(g,catalog).map(esc).join(" + ")+'</strong><small>'+ (value>=Number(g.value)?"Meta alcançada":"Faltam "+Math.max(0,Number(g.value)-value)+(isWeek?" semanas":" aulas"))+'</small></div>').join("")+'</div>';
+html+='<div class="mc-rewards">'+gs.map(g=>'<div class="mc-reward"><b>'+esc(g.value)+' '+(isWeek?"SEMANAS":"PRESENÇAS")+' · '+(value>=Number(g.value)?"META ATINGIDA":g===next?"PRÓXIMO NÍVEL":"META FUTURA")+'</b><strong>'+rewardLabels(g,catalog).map(esc).join(" + ")+'</strong><small>'+ (value>=Number(g.value)?"Meta alcançada":"Faltam "+Math.max(0,Number(g.value)-value)+(isWeek?" semanas":" aulas"))+'</small>'+( !isWeek && value>=Number(g.value) ? '<button class="mc-claim" data-mission="'+esc(m.id)+'" data-goal="'+esc(g.id)+'">RESGATAR PRÊMIO</button>' : '' )+'</div>').join("")+'</div>';
 html+='<div class="mc-status">'+(pct>=100?"🏆 MISSÃO CONCLUÍDA":"MISSÃO EM ANDAMENTO")+'</div><a class="mc-action" href="/missoes.html">VER MINHA MISSÃO</a></section>';
 return html;
 }
+document.addEventListener("click",e=>{const btn=e.target.closest(".mc-claim");if(btn&&typeof window.claimMission==="function")window.claimMission(btn.dataset.mission,btn.dataset.goal,btn)});
 window.ClubMissionCard={render,rewardLabels};
 })();
