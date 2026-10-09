@@ -144,10 +144,10 @@ export default async function handler(req,res){
    const rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v3/membership?active=true&take=200&skip=0");
    if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
    const raw=await rr.json();
-   const rows=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:(Array.isArray(raw?.items)?raw.items:(Array.isArray(raw?.results)?raw.results:null)));
-   if(!rows)return res.status(502).json({ok:false,error:"FORMATO_EVO_INESPERADO",requests:1,fields:Object.keys(raw||{}).slice(0,12)});
-   const unique=[...new Map(rows.filter(x=>Number.isSafeInteger(Number(x.idMembership))&&Number(x.idMembership)>0&&x.inactive!==true).map(x=>[String(x.idMembership),{id:Number(x.idMembership),name:String(x.nameMembership||x.displayName||"").slice(0,150),branchId:x.idBranch??null}])).values()];
-   return res.json({ok:true,unit:"bike",source:"EVO_API_V3_MEMBERSHIP",requests:1,totalActive:unique.length,returnedRows:rows.length,complete:rows.length<200,contracts:unique});
+   const rows=Array.isArray(raw)?raw:(Array.isArray(raw?.lista)?raw.lista:(Array.isArray(raw?.list)?raw.list:(Array.isArray(raw?.data)?raw.data:(Array.isArray(raw?.items)?raw.items:(Array.isArray(raw?.results)?raw.results:null)))));
+   if(!rows)return res.status(502).json({ok:false,error:"FORMATO_EVO_INESPERADO",requests:1,fields:Object.keys(raw||{}).slice(0,12),fieldTypes:Object.fromEntries(Object.entries(raw||{}).slice(0,12).map(([k,v])=>[k,Array.isArray(v)?"array":typeof v]))});
+   const unique=[...new Map(rows.filter(x=>Number.isSafeInteger(Number(x.idMembership??x.id))&&Number(x.idMembership??x.id)>0&&x.inactive!==true).map(x=>[String(x.idMembership??x.id),{id:Number(x.idMembership??x.id),name:String(x.nameMembership||x.name||x.description||x.displayName||"").slice(0,150),branchId:x.idBranch??null}])).values()];
+   return res.json({ok:true,unit:"bike",source:"EVO_API_V3_MEMBERSHIP",requests:1,totalActive:unique.length,returnedRows:rows.length,reportedTotal:raw?.qtde??null,complete:rows.length<200&&(!Number.isFinite(Number(raw?.qtde))||Number(raw.qtde)<=rows.length),sampleFields:rows[0]?Object.keys(rows[0]).slice(0,15):[],contracts:unique});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_DIAGNOSTICO_EVO"});}
  }
  if(req.query.route==="contracts-list"){
