@@ -527,6 +527,32 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({ok:true,unit,summary:{contracts:Number(q?.contracts||0),members:Number(q?.members||0),aggregators:Number(q?.aggregators||0)},lastSyncAt:q?.last_sync_at||null,checkpoint:Number(cp?.next_skip||0),checkpointUpdatedAt:cp?.updated_at||null,evoRequestsMade:0});
       }
 
+      if (url.pathname === "/admin/evo-contract-categories" && ["GET","POST"].includes(request.method)) {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"").toLowerCase(),tenant="club-pop";
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        if(request.method==="GET"){
+          const q=await env.DB.prepare("SELECT category_id id,category_name name,last_synced_at syncedAt FROM evo_contract_categories WHERE tenant_key=? AND unit=? ORDER BY lower(category_name)").bind(tenant,unit).all();
+          const m=await env.DB.prepare("SELECT COUNT(*) total,SUM(CASE WHEN category_id IS NOT NULL THEN 1 ELSE 0 END) linked FROM evo_contract_catalog WHERE tenant_key=? AND unit=? AND is_active=1").bind(tenant,unit).first();
+          return json({ok:true,unit,categories:q.results||[],contracts:Number(m?.total||0),linked:Number(m?.linked||0),evoRequestsMade:0});
+        }
+        const body=await request.json().catch(()=>({})),list=body.categories;
+        if(!Array.isArray(list)||!list.length||list.length>300||body.complete!==true)return json({ok:false,error:"CATEGORIAS_INCOMPLETAS"},422);
+        const ids=new Set(),categories=[];
+        for(const c of list){const id=String(c.id??"").trim(),name=String(c.name??"").trim();if(!/^\d+$/.test(id)||!name||name.length>200||ids.has(id))return json({ok:false,error:"CATEGORIA_INVALIDA"},422);ids.add(id);categories.push({id,name});}
+        const statements=categories.map(c=>env.DB.prepare("INSERT INTO evo_contract_categories(tenant_key,unit,category_id,category_name,source,last_synced_at) VALUES(?,?,?,?,'evo',CURRENT_TIMESTAMP) ON CONFLICT(tenant_key,unit,category_id) DO UPDATE SET category_name=excluded.category_name,last_synced_at=CURRENT_TIMESTAMP").bind(tenant,unit,c.id,c.name));
+        await env.DB.batch(statements);
+        const q=await env.DB.prepare("SELECT c.evo_contract_id id,MIN(m.category_id) categoryId,COUNT(DISTINCT m.category_id) variants FROM evo_contract_catalog c JOIN evo_member_contracts m ON m.unit=c.unit AND CAST(m.id_membership AS TEXT)=c.evo_contract_id WHERE c.tenant_key=? AND c.unit=? AND m.category_id IS NOT NULL GROUP BY c.evo_contract_id").bind(tenant,unit).all();
+        const known=new Map(categories.map(c=>[c.id,c.name]));
+        const matches=(q.results||[]).filter(x=>Number(x.variants)===1&&known.has(String(x.categoryId)));
+        if(matches.length)await env.DB.batch(matches.map(x=>env.DB.prepare("UPDATE evo_contract_catalog SET category_id=?,category_name=? WHERE tenant_key=? AND unit=? AND evo_contract_id=? AND (category_id IS NULL OR category_id=?)").bind(String(x.categoryId),known.get(String(x.categoryId)),tenant,unit,String(x.id),String(x.categoryId))));
+        const summary=await env.DB.prepare("SELECT COUNT(*) total,SUM(CASE WHEN category_id IS NOT NULL THEN 1 ELSE 0 END) linked FROM evo_contract_catalog WHERE tenant_key=? AND unit=? AND is_active=1").bind(tenant,unit).first();
+        return json({ok:true,unit,categoriesSaved:categories.length,linked:Number(summary?.linked||0),contracts:Number(summary?.total||0),evoRequestsMade:0});
+      }
+
       if (url.pathname === "/admin/evo-contract-catalog" && ["GET","POST"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
