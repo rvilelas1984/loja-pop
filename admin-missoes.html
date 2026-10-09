@@ -50,8 +50,7 @@ document.getElementById("cpV5New").onclick=()=>{delete selected[active];picker.v
 document.getElementById("cpV5Reload").onclick=()=>load().catch(e=>notify(e.message,true));
 document.getElementById("cpV5Save").onclick=async()=>{const b=document.getElementById("cpV5Save");b.disabled=true;try{await save()}catch(e){notify(e.message,true)}finally{b.disabled=false}};
 document.getElementById("topunit").onchange=e=>{s().unit=e.target.value;render()};
-document.getElementById("navdrawer").remove();
-document.getElementById("hamb").remove();
+// Preserve the shared admin navigation and mobile hamburger menu.
 document.getElementById("preview").addEventListener("click",()=>{ /* prévia apenas: nenhuma gravação de resgate */ });
 load().catch(e=>notify(e.message,true));
 })();
