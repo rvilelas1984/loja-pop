@@ -113,7 +113,8 @@ export default {
         }
         const config=await voucherSettings(env,unit),stats=await env.DB.prepare("SELECT delivery_mode,status,COUNT(*) total FROM club_voucher_requests WHERE unit=? GROUP BY delivery_mode,status").bind(unit).all();
         const history=await env.DB.prepare("SELECT id,model_id,requested_quantity,evo_voucher_id,status,created_at,completed_at FROM club_voucher_batches WHERE unit=? ORDER BY id DESC LIMIT 30").bind(unit).all();
-        return json({ok:true,unit,config,stats:stats.results||[],history:history.results||[]});
+        const queued=await env.DB.prepare("SELECT COUNT(*) AS total FROM club_voucher_requests WHERE unit=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL").bind(unit).first();
+        return json({ok:true,unit,config,stats:stats.results||[],history:history.results||[],nextBatchCount:Number(queued?.total||0)});
       }
       if (url.pathname === "/admin/club-voucher-status" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
@@ -2252,9 +2253,10 @@ async function voucherBatchTick(env){
  const now=voucherLocal(),hh=now.slice(11,16);
  for(const unit of ['bike','gym']){
   const settings=await voucherSettings(env,unit);
-  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];const currentMinute=Number(hh.slice(0,2))*60+Number(hh.slice(3));if(!settings.enabled||!schedule.some(t=>{const minute=Number(t.slice(0,2))*60+Number(t.slice(3));return currentMinute===minute}))continue;
-  const groups=await env.DB.prepare("SELECT model_id,COUNT(*) n FROM club_voucher_requests WHERE unit=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL GROUP BY model_id").bind(unit).all();
-  for(const group of groups.results||[]){
+  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];const currentMinute=Number(hh.slice(0,2))*60+Number(hh.slice(3));const isScheduled=settings.enabled&&schedule.some(t=>{const minute=Number(t.slice(0,2))*60+Number(t.slice(3));return currentMinute===minute});
+  // New EVO POSTs run only at configured times; existing EVO IDs are polled safely each minute.
+  const groups=isScheduled?await env.DB.prepare("SELECT model_id,COUNT(*) n FROM club_voucher_requests WHERE unit=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL GROUP BY model_id").bind(unit).all():{results:[]};
+  for(const group of (isScheduled?groups.results:[])||[]){
    const model=await env.DB.prepare("SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1").bind(group.model_id,unit).first();
    if(!model)continue;
    const lock=await env.DB.prepare("INSERT INTO club_voucher_batches(unit,model_id,requested_quantity,status) SELECT ?,?,?,'creating' WHERE NOT EXISTS(SELECT 1 FROM club_voucher_batches WHERE unit=? AND model_id=? AND status IN ('creating','awaiting_codes','review_required'))").bind(unit,group.model_id,group.n,unit,group.model_id).run();
@@ -2287,7 +2289,8 @@ async function voucherBatchTick(env){
     }
     const assigned=await env.DB.prepare("SELECT q.*,m.name model_name FROM club_voucher_requests q JOIN club_voucher_models m ON m.id=q.model_id WHERE q.batch_id=? AND q.assigned_code IS NOT NULL").bind(batch.id).all();
     for(const q of assigned.results||[])await voucherDeliverBatch(env,q);
-    await env.DB.prepare("UPDATE club_voucher_batches SET status='completed',completed_at=CURRENT_TIMESTAMP WHERE id=?").bind(batch.id).run();
+    const outstanding=await env.DB.prepare("SELECT COUNT(*) AS n FROM club_voucher_requests WHERE batch_id=? AND status!='issued'").bind(batch.id).first();
+    if(Number(outstanding?.n||0)===0)await env.DB.prepare("UPDATE club_voucher_batches SET status='completed',completed_at=CURRENT_TIMESTAMP WHERE id=?").bind(batch.id).run();
    }catch(e){/* keep existing batch for retry; never recreate */}
   }
  }
