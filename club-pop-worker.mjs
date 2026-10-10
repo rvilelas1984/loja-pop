@@ -2235,7 +2235,7 @@ function voucherName(unit,name,id){const slug=String(name||'voucher').normalize(
 async function voucherDeliverBatch(env,request){
  if(!request.assigned_code||!request.evo_voucher_id||!request.batch_id)return;
  if(request.status==='issued')return;
- const match=/^MISSION:(\\d+):(.+):([^:]+):(.+):EVO$/.exec(request.idempotency_key||'');
+ const match=/^MISSION:(\d+):(.+):([^:]+):(.+):EVO$/.exec(request.idempotency_key||'');
  if(!match)return;
  const dedupe=request.idempotency_key.slice(0,-4),missionId=match[2],goalId=match[3];
  const metadata=JSON.stringify({missionId,goalId,provider:'EVO',evoVoucherId:request.evo_voucher_id,modelId:request.model_id,unit:request.unit});
