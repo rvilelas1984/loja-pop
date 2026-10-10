@@ -150,6 +150,8 @@ export default {
         if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
         if(order.provider_order_id)return json({ok:true,orderId:id,providerOrderId:order.provider_order_id,status:order.status});
         if(order.status!=="created")return json({ok:false,error:"PEDIDO_NAO_DISPONIVEL"},409);
+        const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='creating',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='created' AND provider_order_id IS NULL").bind(id,member.id).run();
+        if(Number(claim.meta?.changes||0)!==1)return json({ok:false,error:"COBRANCA_EM_PROCESSAMENTO"},409);
         const catalog=await clubContent(env);
         const item=(order.item_type==="product"?catalog.products:catalog.services||[])?.find(x=>String(x.id)===order.item_id&&String(x.unit||"bike")===order.unit);
         if(!item||String(item.status||"Ativo")!=="Ativo")return json({ok:false,error:"ITEM_INDISPONIVEL"},409);
@@ -162,9 +164,9 @@ export default {
         const payload={type:"online",external_reference:id,total_amount:amount,processing_mode:"automatic",transactions:{payments:[{amount,payment_method:{id:"pix",type:"bank_transfer"}}]},payer:{email}};
         let response;
         try{response=await fetch("https://api.mercadopago.com/v1/orders",{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json","X-Idempotency-Key":order.idempotency_key},body:JSON.stringify(payload)});}
-        catch{return json({ok:false,error:"PROVEDOR_INDISPONIVEL"},502)}
+        catch{await env.DB.prepare("UPDATE club_pix_orders SET status='review',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='creating'").bind(id).run();return json({ok:false,error:"PROVEDOR_INDISPONIVEL_REVISAO_NECESSARIA"},502)}
         const result=await response.json().catch(()=>({}));
-        if(!response.ok||!result.id)return json({ok:false,error:"FALHA_CRIAR_PIX",providerStatus:response.status},502);
+        if(!response.ok||!result.id){await env.DB.prepare("UPDATE club_pix_orders SET status='review',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='creating'").bind(id).run();return json({ok:false,error:"FALHA_CRIAR_PIX_REVISAO_NECESSARIA",providerStatus:response.status},502)}
         const method=result.transactions?.payments?.[0]?.payment_method||{};
         await env.DB.prepare("UPDATE club_pix_orders SET provider_order_id=?,status='pending',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND provider_order_id IS NULL").bind(String(result.id),id,member.id).run();
         return json({ok:true,orderId:id,providerOrderId:String(result.id),status:"pending",qrCode:method.qr_code||null,qrCodeBase64:method.qr_code_base64||null,ticketUrl:method.ticket_url||null});
