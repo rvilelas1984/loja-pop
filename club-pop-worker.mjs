@@ -150,8 +150,6 @@ export default {
         if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
         if(order.provider_order_id)return json({ok:true,orderId:id,providerOrderId:order.provider_order_id,status:order.status});
         if(order.status!=="created")return json({ok:false,error:"PEDIDO_NAO_DISPONIVEL"},409);
-        const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='creating',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='created' AND provider_order_id IS NULL").bind(id,member.id).run();
-        if(Number(claim.meta?.changes||0)!==1)return json({ok:false,error:"COBRANCA_EM_PROCESSAMENTO"},409);
         const catalog=await clubContent(env);
         const item=(order.item_type==="product"?catalog.products:catalog.services||[])?.find(x=>String(x.id)===order.item_id&&String(x.unit||"bike")===order.unit);
         if(!item||String(item.status||"Ativo")!=="Ativo")return json({ok:false,error:"ITEM_INDISPONIVEL"},409);
@@ -160,6 +158,8 @@ export default {
         if(Math.round(Number(item.price)*100)!==Number(order.amount_cents))return json({ok:false,error:"PRECO_ALTERADO"},409);
         const email=String(member.email||"").trim();
         if(email.includes(" ")||!email.includes("@")||!email.split("@")[1]?.includes("."))return json({ok:false,error:"EMAIL_INVALIDO"},409);
+        const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='creating',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='created' AND provider_order_id IS NULL").bind(id,member.id).run();
+        if(Number(claim.meta?.changes||0)!==1)return json({ok:false,error:"COBRANCA_EM_PROCESSAMENTO"},409);
         const amount=(Number(order.amount_cents)/100).toFixed(2);
         const payload={type:"online",external_reference:id,total_amount:amount,processing_mode:"automatic",transactions:{payments:[{amount,payment_method:{id:"pix",type:"bank_transfer"}}]},payer:{email}};
         let response;
@@ -239,6 +239,18 @@ export default {
         if(String(result.id)!==String(order.provider_order_id)||String(result.external_reference)!==order.id||Math.round(Number(result.total_amount)*100)!==Number(order.amount_cents))return json({ok:false,error:"DADOS_DIVERGENTES"},409);
         const pm=result.transactions?.payments?.[0]?.payment_method||{};
         return json({ok:true,orderId:order.id,status:order.status,qrCode:pm.qr_code||null,qrCodeBase64:pm.qr_code_base64||null,ticketUrl:pm.ticket_url||null,fulfilled:false});
+      }
+
+      // Authenticated fulfillment state, no external mutation or premature delivery.
+      if(url.pathname==="/checkout/pix/fulfillment"&&request.method==="GET"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const id=String(url.searchParams.get("orderId")||"");
+        if(!/^[0-9a-f-]{36}$/.test(id))return json({ok:false,error:"PEDIDO_INVALIDO"},400);
+        const order=await env.DB.prepare("SELECT id,status FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
+        if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
+        const step=await env.DB.prepare("SELECT debit_state,delivery_state FROM club_pix_fulfillment WHERE order_id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
+        return json({ok:true,orderId:id,paymentStatus:order.status,fitcoinsStatus:step?.debit_state||"not_started",deliveryStatus:step?.delivery_state||"blocked",fulfilled:step?.delivery_state==="completed"});
       }
 
       // Pix sandbox: authenticated order history, no charge or balance mutation.
