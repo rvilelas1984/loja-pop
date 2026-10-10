@@ -9,5 +9,10 @@
       "database_name": "club-pop-db",
       "database_id": "0447f24a-0efb-43bf-a121-a83273ddb46e"
     }
-  ]
+  ],
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  }
 }
