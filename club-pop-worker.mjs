@@ -133,6 +133,40 @@ export default {
         return json({ok:true,orderId,status:"created",amountCents:cents,paymentCreated:false},201);
       }
 
+      // Test-only Mercado Pago Orders API. Disabled unless explicitly enabled in Worker.
+      if (url.pathname === "/checkout/pix/create" && request.method === "POST") {
+        if(env.CLUB_PIX_TEST_ENABLED!=="true")return json({ok:false,error:"PIX_TEST_DISABLED"},503);
+        const token=env.MERCADOPAGO_ACCESS_TOKEN_TEST;
+        if(!token)return json({ok:false,error:"PIX_TEST_NOT_CONFIGURED"},503);
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({}));
+        const id=String(b.orderId||"");
+        if(!/^[0-9a-f-]{36}$/.test(id))return json({ok:false,error:"PEDIDO_INVALIDO"},400);
+        const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
+        if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
+        if(order.provider_order_id)return json({ok:true,orderId:id,providerOrderId:order.provider_order_id,status:order.status});
+        if(order.status!=="created")return json({ok:false,error:"PEDIDO_NAO_DISPONIVEL"},409);
+        const catalog=await clubContent(env);
+        const item=(order.item_type==="product"?catalog.products:catalog.services||[])?.find(x=>String(x.id)===order.item_id&&String(x.unit||"bike")===order.unit);
+        if(!item||String(item.status||"Ativo")!=="Ativo")return json({ok:false,error:"ITEM_INDISPONIVEL"},409);
+        if(order.item_type==="product"&&Number(item.stock||0)<=0)return json({ok:false,error:"SEM_ESTOQUE"},409);
+        if(!["pix","both"].includes(String(item.paymentMethod||"fitcoins")))return json({ok:false,error:"PIX_NAO_HABILITADO"},409);
+        if(Math.round(Number(item.price)*100)!==Number(order.amount_cents))return json({ok:false,error:"PRECO_ALTERADO"},409);
+        const email=String(member.email||"").trim();
+        if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email))return json({ok:false,error:"EMAIL_INVALIDO"},409);
+        const amount=(Number(order.amount_cents)/100).toFixed(2);
+        const payload={type:"online",external_reference:id,total_amount:amount,processing_mode:"automatic",transactions:{payments:[{amount,payment_method:{id:"pix",type:"bank_transfer"}}]},payer:{email}};
+        let response;
+        try{response=await fetch("https://api.mercadopago.com/v1/orders",{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json","X-Idempotency-Key":order.idempotency_key},body:JSON.stringify(payload)});}
+        catch{return json({ok:false,error:"PROVEDOR_INDISPONIVEL"},502)}
+        const result=await response.json().catch(()=>({}));
+        if(!response.ok||!result.id)return json({ok:false,error:"FALHA_CRIAR_PIX",providerStatus:response.status},502);
+        const method=result.transactions?.payments?.[0]?.payment_method||{};
+        await env.DB.prepare("UPDATE club_pix_orders SET provider_order_id=?,status='pending',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND provider_order_id IS NULL").bind(String(result.id),id,member.id).run();
+        return json({ok:true,orderId:id,providerOrderId:String(result.id),status:"pending",qrCode:method.qr_code||null,qrCodeBase64:method.qr_code_base64||null,ticketUrl:method.ticket_url||null});
+      }
+
       // Pix sandbox: authenticated order history, no charge or balance mutation.
       if (url.pathname === "/checkout/pix/orders" && request.method === "GET") {
         const member = await authenticatedMember(request, env);
