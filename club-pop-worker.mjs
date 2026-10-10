@@ -1,4 +1,34 @@
 
+// Production Mercado Pago credentials are encrypted per unit in D1.
+async function clubPixCredentials(env,unit){
+ if(!["bike","gym"].includes(unit)||!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)return null;
+ const row=await env.DB.prepare("SELECT access_token_cipher,webhook_secret_cipher FROM club_mp_credentials WHERE unit=? AND environment='production'").bind(unit).first();
+ if(!row?.access_token_cipher||!row?.webhook_secret_cipher)return null;
+ const raw=Uint8Array.from(atob(env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY),c=>c.charCodeAt(0));
+ if(raw.length!==32)throw Error("PIX_CRYPTO_KEY_INVALID");
+ const key=await crypto.subtle.importKey("raw",raw,"AES-GCM",false,["decrypt"]);
+ const decode=v=>Uint8Array.from(atob(v),c=>c.charCodeAt(0));
+ const decrypt=async v=>{const [iv,cipher]=v.split(".");return new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:decode(iv),additionalData:new TextEncoder().encode(unit+":production")},key,decode(cipher)))};
+ return {token:await decrypt(row.access_token_cipher),secret:await decrypt(row.webhook_secret_cipher)};
+}
+async function clubPixReconcile(env,order,result){
+ if(String(result.id)!==String(order.provider_order_id)||String(result.external_reference)!==String(order.id)||Math.round(Number(result.total_amount)*100)!==Number(order.amount_cents))throw Error("PIX_PROVIDER_MISMATCH");
+ const raw=String(result.status||"").toLowerCase();
+ const next=raw==="processed"?"approved":raw==="cancelled"?"cancelled":raw==="expired"?"expired":raw==="failed"?"rejected":"pending";
+ if(next==="approved"){
+   // Atomic, idempotent fulfillment: a single pending redemption per paid order.
+   // Existing Central de Resgates handles physical delivery after payment.
+   await env.DB.batch([
+    env.DB.prepare("UPDATE club_pix_orders SET status='approved',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='approved'").bind(order.id),
+    env.DB.prepare("INSERT OR IGNORE INTO club_pix_fulfillment(order_id,member_id,unit,delivery_state) VALUES(?,?,?,'ready')").bind(order.id,order.member_id,order.unit),
+    env.DB.prepare("INSERT INTO redemptions(member_id,redemption_type,reference_id,fitcoins,status,source_type,source_id,title,details,cash_amount,unit,dedupe_key) SELECT ?,?,?,0,'PENDING','PIX',?,?,?, ?,?,? WHERE NOT EXISTS (SELECT 1 FROM redemptions WHERE dedupe_key=?)").bind(order.member_id,order.item_type,order.item_id,order.item_id,"Compra Pix "+order.item_type,"Pagamento confirmado • Pedido "+order.id,Number(order.amount_cents)/100,order.unit,"pix:"+order.id,"pix:"+order.id)
+   ]);
+ }else{
+   await env.DB.prepare("UPDATE club_pix_orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('approved','review')").bind(next,order.id).run();
+ }
+ return {status:next,fulfilled:false,deliveryQueued:next==="approved"};
+}
+
 // Encrypted Mercado Pago configuration. No secret is ever returned to the browser.
 async function mpAdminConfig(request,env,url,json){
  const respond=(data,status=200)=>json(data,status);
@@ -1418,7 +1448,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       // =====================================================
       // Sandbox order registration. This route never calls a payment provider.
       if (url.pathname === "/checkout/pix/draft" && request.method === "POST") {
-        if(env.CLUB_PIX_TEST_ENABLED!=="true")return json({ok:false,error:"PIX_TEST_DISABLED"},503);
+        if(env.CLUB_PIX_PRODUCTION_ENABLED!=="true")return json({ok:false,error:"PIX_PRODUCTION_DISABLED"},503);
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const b=await request.json().catch(()=>({}));
@@ -1441,9 +1471,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
       // Test-only Mercado Pago Orders API. Disabled unless explicitly enabled in Worker.
       if (url.pathname === "/checkout/pix/create" && request.method === "POST") {
-        if(env.CLUB_PIX_TEST_ENABLED!=="true")return json({ok:false,error:"PIX_TEST_DISABLED"},503);
-        const token=env.MERCADOPAGO_ACCESS_TOKEN_TEST;
-        if(!token)return json({ok:false,error:"PIX_TEST_NOT_CONFIGURED"},503);
+        if(env.CLUB_PIX_PRODUCTION_ENABLED!=="true")return json({ok:false,error:"PIX_PRODUCTION_DISABLED"},503);
+        
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const b=await request.json().catch(()=>({}));
@@ -1452,6 +1481,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
         if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
         if(order.provider_order_id)return json({ok:true,orderId:id,providerOrderId:order.provider_order_id,status:order.status});
+        const credentials=await clubPixCredentials(env,order.unit);
+        const token=credentials?.token;
+        if(!token)return json({ok:false,error:"PIX_PRODUCTION_NOT_CONFIGURED"},503);
         if(order.status!=="created")return json({ok:false,error:"PEDIDO_NAO_DISPONIVEL"},409);
         const catalog=await clubContent(env);
         const item=(order.item_type==="product"?catalog.products:catalog.services||[])?.find(x=>String(x.id)===order.item_id&&String(x.unit||"bike")===order.unit);
@@ -1484,63 +1516,53 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
         if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
         if(!order.provider_order_id)return json({ok:true,orderId:id,status:order.status,fulfilled:false});
-        if(env.CLUB_PIX_TEST_ENABLED!=="true"||!env.MERCADOPAGO_ACCESS_TOKEN_TEST)return json({ok:false,error:"PIX_TEST_DISABLED"},503);
+        if(env.CLUB_PIX_PRODUCTION_ENABLED!=="true")return json({ok:false,error:"PIX_PRODUCTION_DISABLED"},503);
+        const creds=await clubPixCredentials(env,order.unit);if(!creds?.token)return json({ok:false,error:"PIX_PRODUCTION_NOT_CONFIGURED"},503);
         let response;
-        try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id),{headers:{"Authorization":"Bearer "+env.MERCADOPAGO_ACCESS_TOKEN_TEST,"Accept":"application/json"}});}
+        try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id),{headers:{"Authorization":"Bearer "+creds.token,"Accept":"application/json"}});}
         catch{return json({ok:false,error:"PROVEDOR_INDISPONIVEL"},502)}
         if(!response.ok)return json({ok:false,error:"CONSULTA_PAGAMENTO_FALHOU",providerStatus:response.status},502);
         const result=await response.json().catch(()=>({}));
-        if(String(result.id)!==String(order.provider_order_id)||String(result.external_reference)!==id)return json({ok:false,error:"DADOS_PAGAMENTO_DIVERGENTES"},409);
-        const amount=Math.round(Number(result.total_amount)*100);
-        if(amount!==Number(order.amount_cents))return json({ok:false,error:"VALOR_PAGAMENTO_DIVERGENTE"},409);
-        const raw=String(result.status||"").toLowerCase();
-        const state=raw==="processed"?"approved":raw==="cancelled"?"cancelled":raw==="expired"?"expired":raw==="failed"?"rejected":"pending";
-        if(order.status==="approved"&&state!=="approved")return json({ok:false,error:"PAGAMENTO_REQUER_REVISAO"},409);
-        if(order.status!=="approved"||state==="approved"){
-          await env.DB.prepare("UPDATE club_pix_orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status!='approved'").bind(state,id,member.id).run();
-        }
-        return json({ok:true,orderId:id,status:state,providerStatus:raw,fulfilled:false,manualFulfillmentRequired:state==="approved"});
+        try{const outcome=await clubPixReconcile(env,order,result);return json({ok:true,orderId:id,...outcome,providerStatus:String(result.status||"")});}catch{return json({ok:false,error:"PAGAMENTO_REQUER_REVISAO"},409)}
       }
 
       // Webhook signature is required. Notification only reconciles, never fulfills.
       if(url.pathname==="/checkout/pix/webhook"&&request.method==="POST"){
-        if(env.CLUB_PIX_TEST_ENABLED!=="true"||!env.MERCADOPAGO_ACCESS_TOKEN_TEST||!env.MERCADOPAGO_WEBHOOK_SECRET_TEST)return json({ok:false,error:"PIX_TEST_DISABLED"},503);
+        if(env.CLUB_PIX_PRODUCTION_ENABLED!=="true")return json({ok:false,error:"PIX_PRODUCTION_DISABLED"},503);
         const signature=request.headers.get("x-signature")||"",requestId=request.headers.get("x-request-id")||"";
         const ts=signature.match(/(?:^|,)\s*ts=([^,]+)/)?.[1]?.trim()||"";
         const v1=signature.match(/(?:^|,)\s*v1=([a-f0-9]+)/i)?.[1]?.trim().toLowerCase()||"";
         const providerId=url.searchParams.get("data.id")||"";
-        if(!ts||!v1||!requestId||!providerId||!/^[0-9]+$/.test(ts))return json({ok:false,error:"ASSINATURA_INVALIDA"},401);
-        if(Math.abs(Date.now()-Number(ts)*1000)>300000)return json({ok:false,error:"ASSINATURA_EXPIRADA"},401);
+        if(!ts||!v1||!requestId||!providerId||!/^[0-9]+$/.test(ts)||Math.abs(Date.now()-Number(ts)*1000)>300000)return json({ok:false,error:"ASSINATURA_INVALIDA"},401);
+        const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE provider_order_id=? LIMIT 1").bind(providerId).first();
+        if(!order)return json({ok:true,ignored:true});
+        const credentials=await clubPixCredentials(env,order.unit);
+        if(!credentials?.secret||!credentials.token)return json({ok:false,error:"PIX_PRODUCTION_NOT_CONFIGURED"},503);
         const manifest="id:"+providerId.toLowerCase()+";request-id:"+requestId+";ts:"+ts+";";
-        const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(env.MERCADOPAGO_WEBHOOK_SECRET_TEST),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+        const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(credentials.secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
         const mac=await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(manifest));
         const expected=Array.from(new Uint8Array(mac),x=>x.toString(16).padStart(2,"0")).join("");
         if(expected.length!==v1.length||!Array.from(expected).every((ch,i)=>ch===v1[i]))return json({ok:false,error:"ASSINATURA_INVALIDA"},401);
-        const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE provider_order_id=? LIMIT 1").bind(providerId).first();
-        if(!order)return json({ok:true,ignored:true});
-        const response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(providerId),{headers:{Authorization:"Bearer "+env.MERCADOPAGO_ACCESS_TOKEN_TEST}});
+        const response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(providerId),{headers:{Authorization:"Bearer "+credentials.token}});
         if(!response.ok)return json({ok:false,error:"CONSULTA_FALHOU"},502);
         const result=await response.json().catch(()=>({}));
-        if(String(result.id)!==providerId||String(result.external_reference)!==order.id||Math.round(Number(result.total_amount)*100)!==Number(order.amount_cents))return json({ok:false,error:"DADOS_DIVERGENTES"},409);
-        const raw=String(result.status||"").toLowerCase();
-        const next=raw==="processed"?"approved":raw==="cancelled"?"cancelled":raw==="expired"?"expired":raw==="failed"?"rejected":"pending";
-        const paymentRef=String(result.id);
-        const eventKey="orders:"+paymentRef+":"+raw;
-        // Record only provider-verified events; duplicates are ignored by primary key.
-        await env.DB.prepare("INSERT OR IGNORE INTO club_pix_provider_events(event_key,order_id,provider_order_id,provider_status,amount_cents) VALUES(?,?,?,?,?)").bind(eventKey,order.id,paymentRef,raw,Number(order.amount_cents)).run();
-        if(order.status!=="approved")await env.DB.prepare("UPDATE club_pix_orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='approved'").bind(next,order.id).run();
-        return json({ok:true,status:next,fulfilled:false});
+        try{
+          const outcome=await clubPixReconcile(env,order,result);
+          await env.DB.prepare("INSERT OR IGNORE INTO club_pix_provider_events(event_key,order_id,provider_order_id,provider_status,amount_cents) VALUES(?,?,?,?,?)").bind("orders:"+providerId+":"+String(result.status),order.id,providerId,String(result.status),Number(order.amount_cents)).run();
+          return json({ok:true,...outcome});
+        }catch{return json({ok:false,error:"PAGAMENTO_REQUER_REVISAO"},409)}
       }
 
       // Retrieve QR data again after a page refresh, never returning provider credentials.
       if(url.pathname==="/checkout/pix/details"&&request.method==="GET"){
-        if(env.CLUB_PIX_TEST_ENABLED!=="true"||!env.MERCADOPAGO_ACCESS_TOKEN_TEST)return json({ok:false,error:"PIX_TEST_DISABLED"},503);
+        if(env.CLUB_PIX_PRODUCTION_ENABLED!=="true")return json({ok:false,error:"PIX_PRODUCTION_DISABLED"},503);
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(String(url.searchParams.get("orderId")||""),member.id).first();
         if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
         if(!order.provider_order_id)return json({ok:false,error:"COBRANCA_NAO_CRIADA"},409);
-        const response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id),{headers:{Authorization:"Bearer "+env.MERCADOPAGO_ACCESS_TOKEN_TEST}});
+        const creds=await clubPixCredentials(env,order.unit);if(!creds?.token)return json({ok:false,error:"PIX_PRODUCTION_NOT_CONFIGURED"},503);
+        const response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id),{headers:{Authorization:"Bearer "+creds.token}});
         if(!response.ok)return json({ok:false,error:"CONSULTA_FALHOU"},502);
         const result=await response.json().catch(()=>({}));
         if(String(result.id)!==String(order.provider_order_id)||String(result.external_reference)!==order.id||Math.round(Number(result.total_amount)*100)!==Number(order.amount_cents))return json({ok:false,error:"DADOS_DIVERGENTES"},409);
@@ -1563,7 +1585,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       
 // Pix sandbox: authenticated order history, no charge or balance mutation.
       if (url.pathname === "/checkout/pix/orders" && request.method === "GET") {
-        if(env.CLUB_PIX_TEST_ENABLED!=="true")return json({ok:false,error:"PIX_TEST_DISABLED"},503);
+        if(env.CLUB_PIX_PRODUCTION_ENABLED!=="true")return json({ok:false,error:"PIX_PRODUCTION_DISABLED"},503);
         const member = await authenticatedMember(request, env);
         if (!member) return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit = String(url.searchParams.get("unit")||"bike");
