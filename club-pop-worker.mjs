@@ -98,6 +98,22 @@ export default {
 
 
 
+      if (url.pathname === "/checkout/pix/preview" && request.method === "POST") {
+        const member = await authenticatedMember(request, env);
+        if (!member) return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({}));
+        const unit=String(b.unit||""),kind=String(b.itemType||""),id=String(b.itemId||"");
+        if(!["bike","gym"].includes(unit)||!["product","service"].includes(kind)||!id||id.length>128)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const data=await clubContent(env);
+        const item=(kind==="product"?data.products:data.services||[])?.find(x=>String(x.id)===id&&String(x.unit||"bike")===unit);
+        if(!item||String(item.status||"Ativo")!=="Ativo")return json({ok:false,error:"ITEM_INDISPONIVEL"},404);
+        if(kind==="product"&&Number(item.stock||0)<=0)return json({ok:false,error:"SEM_ESTOQUE"},409);
+        if(!["pix","both","mixed"].includes(String(item.paymentMethod||"fitcoins")))return json({ok:false,error:"PIX_NAO_HABILITADO"},409);
+        const amountCents=Math.round(Number(item.price)*100);
+        if(!Number.isSafeInteger(amountCents)||amountCents<=0)return json({ok:false,error:"PRECO_INVALIDO"},400);
+        return json({ok:true,readyToCharge:false,itemId:id,unit,itemType:kind,amountCents});
+      }
+
       // Pix sandbox: authenticated order history, no charge or balance mutation.
       if (url.pathname === "/checkout/pix/orders" && request.method === "GET") {
         const member = await authenticatedMember(request, env);
