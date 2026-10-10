@@ -1488,7 +1488,7 @@ if (url.pathname === "/admin/mission-redemptions" && request.method === "GET") {
       }
       if (url.pathname === "/student-vouchers" && request.method === "GET") {
         const member=await authenticatedMember(request,env);if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const rows=await env.DB.prepare("SELECT v.id,v.code,v.type,v.description,v.status,v.title,v.redemption_id,v.source_type,v.source_id,r.requested_at,r.unit,r.status AS redemption_status FROM vouchers v LEFT JOIN redemptions r ON r.id=v.redemption_id WHERE v.member_id=? ORDER BY v.id DESC LIMIT 100").bind(member.id).all();
+        const rows=await env.DB.prepare("SELECT v.id,v.code,v.type,v.description,v.status,v.title,v.redemption_id,v.source_type,v.source_id,v.metadata_json,r.requested_at,r.unit,r.status AS redemption_status FROM vouchers v LEFT JOIN redemptions r ON r.id=v.redemption_id WHERE v.member_id=? ORDER BY v.id DESC LIMIT 100").bind(member.id).all();
         return json({ok:true,vouchers:rows.results||[]});
       }
       if (url.pathname === "/mission-redemptions/mine" && request.method === "GET") {
