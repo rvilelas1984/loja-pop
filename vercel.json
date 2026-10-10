@@ -7,6 +7,16 @@
   },
   "rewrites": [
     {
+      "source": "/minhas-compras",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.clubpopfit.com.br"
+        }
+      ],
+      "destination": "/minhas-compras.html"
+    },
+    {
       "source": "/checkout/pix/:path*",
       "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/checkout/pix/:path*"
     },
