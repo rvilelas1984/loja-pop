@@ -2231,7 +2231,7 @@ async function deliverMissionVoucher(env,member,mission,goal,request,dedupe){
 const voucherLocal=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date()).replace(' ','T');
 async function voucherSettings(env,unit){
  const row=await env.DB.prepare("SELECT value FROM club_voucher_automation WHERE unit=?").bind(unit).first();
- try{return {...{enabled:true,dailyLimit:5,batchTime:'22:00',times:['22:00'],times:['22:00']},...JSON.parse(row?.value||'{}')}}catch{return {enabled:true,dailyLimit:5,batchTime:'22:00'}}
+ try{return {...{enabled:false,dailyLimit:5,batchTime:'22:00',times:['22:00'],times:['22:00']},...JSON.parse(row?.value||'{}')}}catch{return {enabled:false,dailyLimit:5,batchTime:'22:00'}}
 }
 function voucherName(unit,name,id){const slug=String(name||'voucher').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]/g,'').toLowerCase()||'voucher';return (unit==='gym'?'Gp':'Bp')+slug.slice(0,80)+String(id).padStart(2,'0')}
 async function voucherDeliverBatch(env,request){
@@ -2252,7 +2252,7 @@ async function voucherBatchTick(env){
  const now=voucherLocal(),hh=now.slice(11,16);
  for(const unit of ['bike','gym']){
   const settings=await voucherSettings(env,unit);
-  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];const currentMinute=Number(hh.slice(0,2))*60+Number(hh.slice(3));if(!settings.enabled||!schedule.some(t=>{const minute=Number(t.slice(0,2))*60+Number(t.slice(3));return currentMinute>=minute&&currentMinute<minute+5}))continue;
+  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];const currentMinute=Number(hh.slice(0,2))*60+Number(hh.slice(3));if(!settings.enabled||!schedule.some(t=>{const minute=Number(t.slice(0,2))*60+Number(t.slice(3));return currentMinute===minute}))continue;
   const groups=await env.DB.prepare("SELECT model_id,COUNT(*) n FROM club_voucher_requests WHERE unit=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL GROUP BY model_id").bind(unit).all();
   for(const group of groups.results||[]){
    const model=await env.DB.prepare("SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1").bind(group.model_id,unit).first();
