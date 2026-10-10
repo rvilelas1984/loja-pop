@@ -1,6 +1,6 @@
 
 // Encrypted Mercado Pago configuration. No secret is ever returned to the browser.
-async function mpAdminConfig(request,env,url){
+async function mpAdminConfig(request,env,url,json){
  const respond=(data,status=200)=>json(data,status);
  const ck=request.headers.get("x-clubpop-admin-cookie")||"";
  if(!ck)return respond({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -1406,7 +1406,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       }
 
       // =====================================================
-      if(url.pathname==="/admin/mercadopago-config")return await mpAdminConfig(request,env,url);
+      if(url.pathname==="/admin/mercadopago-config")return await mpAdminConfig(request,env,url,json);
 
             // ADMIN - CONFIGURACAO EVO POR UNIDADE (FASE 0)
       // =====================================================
