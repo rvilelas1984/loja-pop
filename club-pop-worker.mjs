@@ -638,30 +638,34 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const cfg=await getEvoConfig(env,unit);
         const base="https://evo-integracao-api.w12app.com.br/api/v1/service";
         const all=[];let skip=0,requests=0,done=false;
-        while(requests<10){
-          const response=await fetch(base+"?take=100&skip="+skip,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});
+        while(requests<20){
+          const response=await fetch(base+"?take=50&skip="+skip,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"},signal:AbortSignal.timeout(15000)});
           requests++;
-          if(!response.ok)return json({ok:false,error:"EVO_SERVICOS_HTTP_"+response.status,requests},502);
+          try { await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,'GET',?,?,?)").bind(unit,"services_catalog","/api/v1/service",response.status,response.ok?1:0).run(); } catch {}
+          if(!response.ok)return json({ok:false,error:"EVO_SERVICOS_HTTP_"+response.status,requests,...(response.status===403?{message:"A EVO negou acesso aos serviços desta unidade (403). Em EVO → Configurações → Integrações → API EVO, edite o token utilizado e confira a permissão Service → GET /api/v1/service. Se já estiver habilitada, solicite a verificação ao suporte EVO. O catálogo anterior foi preservado."}:{})},502);
           const payload=await response.json().catch(()=>null);
           const items=Array.isArray(payload)?payload:Array.isArray(payload?.data)?payload.data:Array.isArray(payload?.items)?payload.items:null;
-          if(!items||items.length>100)return json({ok:false,error:"FORMATO_SERVICOS_EVO_NAO_RECONHECIDO",requests},502);
+          if(!items||items.length>50)return json({ok:false,error:"FORMATO_SERVICOS_EVO_NAO_RECONHECIDO",requests},502);
           all.push(...items);
-          if(items.length<100){done=true;break;}
+          if(items.length<50){done=true;break;}
           skip+=items.length;
         }
         if(!done)return json({ok:false,error:"PAGINACAO_SERVICOS_INCOMPLETA",requests},422);
         const seen=new Set(),normalized=[];
         for(const item of all){
+          if(!item||typeof item!=="object")return json({ok:false,error:"SERVICO_EVO_INVALIDO",requests},422);
           const id=String(item.idService??item.id??"").trim();
-          const name=String(item.name??item.description??item.serviceName??"").trim();
+          const name=String(item.nameService??item.name??item.description??item.serviceName??"").trim();
           if(!/^\d+$/.test(id)||!name||name.length>250||seen.has(id))return json({ok:false,error:"SERVICO_EVO_INVALIDO",requests},422);
           seen.add(id);
           const rawPrice=item.value??item.price??item.saleValue??null;
           const price=rawPrice===null?null:Number(rawPrice);
-          normalized.push({id,name,price:Number.isFinite(price)?price:null,active:item.active===false||item.isActive===false?0:1,raw:JSON.stringify(item)});
+          normalized.push({id,name,price:Number.isFinite(price)?price:null,active:item.inactive===true||item.active===false||item.isActive===false?0:1,raw:JSON.stringify(item)});
         }
         const writes=normalized.map(s=>env.DB.prepare("INSERT INTO evo_service_catalog(unit,evo_service_id,service_name,price,is_active,raw_json,last_synced_at) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_service_id) DO UPDATE SET service_name=excluded.service_name,price=excluded.price,is_active=excluded.is_active,raw_json=excluded.raw_json,last_synced_at=CURRENT_TIMESTAMP").bind(unit,s.id,s.name,s.price,s.active,s.raw));
-        if(normalized.length)writes.push(env.DB.prepare("UPDATE evo_service_catalog SET is_active=0 WHERE unit=? AND evo_service_id NOT IN ("+normalized.map(()=>"?").join(",")+")").bind(unit,...normalized.map(s=>s.id)));
+        // Keep each statement below D1's parameter limit, even for large catalogs.
+        // The batch is atomic: a failed write restores the previous catalog.
+        writes.unshift(env.DB.prepare("UPDATE evo_service_catalog SET is_active=0 WHERE unit=?").bind(unit));
         writes.push(env.DB.prepare("INSERT INTO evo_service_catalog_sync(unit,last_success_at,last_count) VALUES(?,CURRENT_TIMESTAMP,?) ON CONFLICT(unit) DO UPDATE SET last_success_at=CURRENT_TIMESTAMP,last_count=excluded.last_count").bind(unit,normalized.length));
         await env.DB.batch(writes);
         return json({ok:true,unit,saved:normalized.length,requests});
