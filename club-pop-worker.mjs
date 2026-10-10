@@ -2251,7 +2251,11 @@ export async function claimEvoMissionVoucher(env,member,mission,goal,rewards){
     const locked=await env.DB.prepare("UPDATE club_voucher_requests SET status='creating',attempts=attempts+1,processed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending' AND attempts=0").bind(q.id).run();
     if(!locked.meta.changes)return {ok:true,rewardType:'voucher',requiresReview:true,warning:'EMISSAO_EVO_EM_PROCESSAMENTO',evoRequestsMade:0};
     const now=new Date(),until=new Date(now.getTime()+model.validity_days*86400000);
-    const payload={nome:('Club Pop #'+q.id+' - '+model.name).slice(0,100),qtde:1,flUtilizarSite:true,flCodigoUnico:true,flIlimitado:false,inicio:now.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,flContrato:true,idsContratos:ids};
+    const earlier=await env.DB.prepare('SELECT COUNT(*) AS total FROM club_voucher_requests WHERE unit=? AND model_id=? AND id<=?').bind(unit,q.model_id,q.id).first();
+    const serial=String(Number(earlier?.total||1)).padStart(2,'0');
+    const slug=String(model.name||'voucher').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]/g,'').toLowerCase()||'voucher';
+    const label=(unit==='gym'?'Gp':'Bp')+slug.slice(0,96-serial.length)+serial;
+    const payload={nome:label,qtde:1,flUtilizarSite:true,flCodigoUnico:true,flIlimitado:false,inicio:now.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,flContrato:true,idsContratos:ids};
     try{requests++;const result=await voucherEvoCall(env,cfg,'/api/v2/voucher','POST',payload),id=Number(result?.voucherId);if(!Number.isSafeInteger(id)||id<1)throw voucherError('EVO_NAO_RETORNOU_ID');
       await env.DB.prepare("UPDATE club_voucher_requests SET evo_voucher_id=?,status='awaiting_code',error=NULL,processed_at=CURRENT_TIMESTAMP WHERE id=?").bind(id,q.id).run();q.evo_voucher_id=id;
     }catch{await env.DB.prepare("UPDATE club_voucher_requests SET status='review_required',error='EMISSAO_NAO_CONFIRMADA_NAO_REEMITIR',processed_at=CURRENT_TIMESTAMP WHERE id=?").bind(q.id).run();return {ok:true,rewardType:'voucher',requiresReview:true,warning:'EMISSAO_EVO_EM_CONFERENCIA',evoRequestsMade:requests};}
