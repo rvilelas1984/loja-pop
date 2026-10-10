@@ -1489,9 +1489,11 @@ if (url.pathname === "/mission-redemptions/mine" && request.method === "GET") {
         const body=await readJson(request),missionKey=String(body.missionId||""),goalKey=String(body.goalId||"");
         const mission=await clubContentItem(env,"mission",missionKey); if(!mission)return json({ok:false,error:"MISSAO_NAO_ENCONTRADA"},404);
         const goal=(mission.goals||[]).find(x=>String(x.id)===goalKey); if(!goal)return json({ok:false,error:"META_NAO_ENCONTRADA"},404);
+        const rewards=Array.isArray(goal.rewards)?goal.rewards.filter(x=>x&&x.type):[];
+        if(rewards.length>1)return json({ok:false,error:"RECOMPENSAS_MULTIPLAS_AGUARDANDO_PROCESSAMENTO_SEGURO"},409);
         const progress=await missionProgressValue(env,member,mission); if(progress<Number(goal.value||0))return json({ok:false,error:"META_AINDA_NAO_ATINGIDA",progress},409);
         const period=mission.period==="month"?String(mission.start||new Date().toISOString()).slice(0,7):String(mission.start||"")+"_"+String(mission.end||"");
-        const dedupe="MISSION:"+member.id+":"+missionKey+":"+period;
+        const dedupe="MISSION:"+member.id+":"+missionKey+":"+goalKey+":"+period;
         const old=await env.DB.prepare("SELECT id,title,status FROM redemptions WHERE dedupe_key=? LIMIT 1").bind(dedupe).first();
         if(old)return json({ok:true,alreadyClaimed:true,redemption:old});
         await env.DB.prepare("INSERT INTO redemptions(member_id,redemption_type,reference_id,status,source_type,source_id,title,details,unit,dedupe_key) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(member.id,goal.rewardType||"mission",missionKey,"PENDING","MISSION",goalKey,goal.rewardName||"Recompensa",mission.name||"",mission.unit||"bike",dedupe).run();
