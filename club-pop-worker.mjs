@@ -107,7 +107,7 @@ export default {
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
         if(request.method==="PUT"){
           const b=await request.json().catch(()=>({})),dailyLimit=Number(b.dailyLimit),times=b.times;
-          if(!Number.isInteger(dailyLimit)||dailyLimit<0||dailyLimit>100||typeof b.enabled!=="boolean"||!Array.isArray(times)||times.length>24||times.some(t=>typeof t!=="string"||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(t)))return json({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
+          if(!Number.isInteger(dailyLimit)||dailyLimit<0||dailyLimit>100||typeof b.enabled!=="boolean"||!Array.isArray(times)||times.length>24||times.some(t=>typeof t!=="string"||!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)))return json({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
           const clean=[...new Set(times)].sort();
           await env.DB.prepare("INSERT INTO club_voucher_automation(unit,value) VALUES(?,?) ON CONFLICT(unit) DO UPDATE SET value=excluded.value").bind(unit,JSON.stringify({enabled:b.enabled,dailyLimit,times:clean,batchTime:clean[0]||'22:00'})).run();
         }
