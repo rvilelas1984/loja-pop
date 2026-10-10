@@ -106,12 +106,14 @@ export default {
         const unit=String(url.searchParams.get("unit")||"").toLowerCase();
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
         if(request.method==="PUT"){
-          const b=await request.json().catch(()=>({})),dailyLimit=Number(b.dailyLimit),batchTime=String(b.batchTime||"");
-          if(!Number.isInteger(dailyLimit)||dailyLimit<0||dailyLimit>100||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(batchTime)||typeof b.enabled!=="boolean")return json({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
-          await env.DB.prepare("INSERT INTO club_voucher_automation(unit,value) VALUES(?,?) ON CONFLICT(unit) DO UPDATE SET value=excluded.value").bind(unit,JSON.stringify({enabled:b.enabled,dailyLimit,batchTime})).run();
+          const b=await request.json().catch(()=>({})),dailyLimit=Number(b.dailyLimit),times=b.times;
+          if(!Number.isInteger(dailyLimit)||dailyLimit<0||dailyLimit>100||typeof b.enabled!=="boolean"||!Array.isArray(times)||times.length>24||times.some(t=>typeof t!=="string"||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(t)))return json({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
+          const clean=[...new Set(times)].sort();
+          await env.DB.prepare("INSERT INTO club_voucher_automation(unit,value) VALUES(?,?) ON CONFLICT(unit) DO UPDATE SET value=excluded.value").bind(unit,JSON.stringify({enabled:b.enabled,dailyLimit,times:clean,batchTime:clean[0]||'22:00'})).run();
         }
         const config=await voucherSettings(env,unit),stats=await env.DB.prepare("SELECT delivery_mode,status,COUNT(*) total FROM club_voucher_requests WHERE unit=? GROUP BY delivery_mode,status").bind(unit).all();
-        return json({ok:true,unit,config,stats:stats.results||[]});
+        const history=await env.DB.prepare("SELECT id,model_id,requested_quantity,evo_voucher_id,status,created_at,completed_at FROM club_voucher_batches WHERE unit=? ORDER BY id DESC LIMIT 30").bind(unit).all();
+        return json({ok:true,unit,config,stats:stats.results||[],history:history.results||[]});
       }
       if (url.pathname === "/admin/club-voucher-status" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
@@ -2229,7 +2231,7 @@ async function deliverMissionVoucher(env,member,mission,goal,request,dedupe){
 const voucherLocal=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date()).replace(' ','T');
 async function voucherSettings(env,unit){
  const row=await env.DB.prepare("SELECT value FROM club_voucher_automation WHERE unit=?").bind(unit).first();
- try{return {...{enabled:true,dailyLimit:5,batchTime:'22:00'},...JSON.parse(row?.value||'{}')}}catch{return {enabled:true,dailyLimit:5,batchTime:'22:00'}}
+ try{return {...{enabled:true,dailyLimit:5,batchTime:'22:00',times:['22:00'],times:['22:00']},...JSON.parse(row?.value||'{}')}}catch{return {enabled:true,dailyLimit:5,batchTime:'22:00'}}
 }
 function voucherName(unit,name,id){const slug=String(name||'voucher').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]/g,'').toLowerCase()||'voucher';return (unit==='gym'?'Gp':'Bp')+slug.slice(0,80)+String(id).padStart(2,'0')}
 async function voucherDeliverBatch(env,request){
@@ -2250,7 +2252,7 @@ async function voucherBatchTick(env){
  const now=voucherLocal(),hh=now.slice(11,16);
  for(const unit of ['bike','gym']){
   const settings=await voucherSettings(env,unit);
-  if(!settings.enabled||hh<settings.batchTime)continue;
+  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];if(!settings.enabled||!schedule.some(t=>hh>=t&&hh<t.slice(0,3)+String(Math.min(59,Number(t.slice(3))+5)).padStart(2,'0')))continue;
   const groups=await env.DB.prepare("SELECT model_id,COUNT(*) n FROM club_voucher_requests WHERE unit=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL GROUP BY model_id").bind(unit).all();
   for(const group of groups.results||[]){
    const model=await env.DB.prepare("SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1").bind(group.model_id,unit).first();
