@@ -167,6 +167,33 @@ export default {
         return json({ok:true,orderId:id,providerOrderId:String(result.id),status:"pending",qrCode:method.qr_code||null,qrCodeBase64:method.qr_code_base64||null,ticketUrl:method.ticket_url||null});
       }
 
+      // Reconcile status with the provider; never trust a browser-supplied payment status.
+      if (url.pathname === "/checkout/pix/status" && request.method === "GET") {
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const id=String(url.searchParams.get("orderId")||"");
+        if(!/^[0-9a-f-]{36}$/.test(id))return json({ok:false,error:"PEDIDO_INVALIDO"},400);
+        const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
+        if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
+        if(!order.provider_order_id)return json({ok:true,orderId:id,status:order.status,fulfilled:false});
+        if(env.CLUB_PIX_TEST_ENABLED!=="true"||!env.MERCADOPAGO_ACCESS_TOKEN_TEST)return json({ok:false,error:"PIX_TEST_DISABLED"},503);
+        let response;
+        try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id),{headers:{"Authorization":"Bearer "+env.MERCADOPAGO_ACCESS_TOKEN_TEST,"Accept":"application/json"}});}
+        catch{return json({ok:false,error:"PROVEDOR_INDISPONIVEL"},502)}
+        if(!response.ok)return json({ok:false,error:"CONSULTA_PAGAMENTO_FALHOU",providerStatus:response.status},502);
+        const result=await response.json().catch(()=>({}));
+        if(String(result.id)!==String(order.provider_order_id)||String(result.external_reference)!==id)return json({ok:false,error:"DADOS_PAGAMENTO_DIVERGENTES"},409);
+        const amount=Math.round(Number(result.total_amount)*100);
+        if(amount!==Number(order.amount_cents))return json({ok:false,error:"VALOR_PAGAMENTO_DIVERGENTE"},409);
+        const raw=String(result.status||"").toLowerCase();
+        const state=raw==="processed"?"approved":raw==="cancelled"?"cancelled":raw==="expired"?"expired":raw==="failed"?"rejected":"pending";
+        if(order.status==="approved"&&state!=="approved")return json({ok:false,error:"PAGAMENTO_REQUER_REVISAO"},409);
+        if(order.status!=="approved"||state==="approved"){
+          await env.DB.prepare("UPDATE club_pix_orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status!='approved'").bind(state,id,member.id).run();
+        }
+        return json({ok:true,orderId:id,status:state,providerStatus:raw,fulfilled:false,manualFulfillmentRequired:state==="approved"});
+      }
+
       // Pix sandbox: authenticated order history, no charge or balance mutation.
       if (url.pathname === "/checkout/pix/orders" && request.method === "GET") {
         const member = await authenticatedMember(request, env);
