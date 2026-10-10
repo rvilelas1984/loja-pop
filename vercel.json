@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/checkout/pix/:path*",
+      "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/checkout/pix/:path*"
+    },
+    {
       "source": "/desafios",
       "has": [
         {
