@@ -1,3 +1,44 @@
+
+// Encrypted Mercado Pago configuration. No secret is ever returned to the browser.
+async function mpAdminConfig(request,env,url){
+ const respond=(data,status=200)=>json(data,status);
+ const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+ if(!ck)return respond({ok:false,error:"NAO_AUTORIZADO"},401);
+ let vr;try{vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}})}catch{return respond({ok:false,error:"FALHA_AUTENTICACAO"},502)}
+ const vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return respond({ok:false,error:"NAO_AUTORIZADO"},403);
+ const unit=url.searchParams.get("unit"),environment=url.searchParams.get("environment")||"test",action=url.searchParams.get("action")||"status";
+ if(!["bike","gym","club"].includes(unit)||!["test","production"].includes(environment))return respond({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+ if(!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)return respond({ok:false,error:"CHAVE_CRIPTOGRAFIA_NAO_CONFIGURADA"},503);
+ const keyBytes=Uint8Array.from(atob(env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY),x=>x.charCodeAt(0));
+ if(keyBytes.length!==32)return respond({ok:false,error:"CHAVE_CRIPTOGRAFIA_INVALIDA"},503);
+ const key=await crypto.subtle.importKey("raw",keyBytes,"AES-GCM",false,["encrypt","decrypt"]);
+ const encode=x=>btoa(String.fromCharCode(...x));
+ const decode=x=>Uint8Array.from(atob(x),c=>c.charCodeAt(0));
+ const encrypt=async value=>{const iv=crypto.getRandomValues(new Uint8Array(12));const cipher=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:new TextEncoder().encode(unit+":"+environment)},key,new TextEncoder().encode(value)));return encode(iv)+"."+encode(cipher)};
+ const decrypt=async value=>{const [iv,cipher]=value.split(".");return new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:decode(iv),additionalData:new TextEncoder().encode(unit+":"+environment)},key,decode(cipher)))};
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_mp_credentials(unit TEXT NOT NULL,environment TEXT NOT NULL,access_token_cipher TEXT,webhook_secret_cipher TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,environment))").run();
+ const record=await env.DB.prepare("SELECT * FROM club_mp_credentials WHERE unit=? AND environment=?").bind(unit,environment).first();
+ if(request.method==="GET"&&action==="status")return respond({ok:true,configured:!!record?.access_token_cipher,webhookConfigured:!!record?.webhook_secret_cipher,environment,unit,paymentsEnabled:false});
+ if(request.method==="PUT"&&action==="save"){
+  const b=await request.json().catch(()=>({}));
+  const token=String(b.accessToken||"").trim(),secret=String(b.webhookSecret||"").trim();
+  if((token&&(!/^(TEST-|APP_USR-)/.test(token)||token.length>512))||(secret&&secret.length>512))return respond({ok:false,error:"CREDENCIAL_INVALIDA"},400);
+  if(environment==="production")return respond({ok:false,error:"PRODUCAO_BLOQUEADA"},403);
+  if(!token&&!secret)return respond({ok:false,error:"CREDENCIAL_OBRIGATORIA"},400);
+  const encryptedToken=token?await encrypt(token):record?.access_token_cipher||null;
+  const encryptedSecret=secret?await encrypt(secret):record?.webhook_secret_cipher||null;
+  await env.DB.prepare("INSERT INTO club_mp_credentials(unit,environment,access_token_cipher,webhook_secret_cipher) VALUES(?,?,?,?) ON CONFLICT(unit,environment) DO UPDATE SET access_token_cipher=excluded.access_token_cipher,webhook_secret_cipher=excluded.webhook_secret_cipher,updated_at=CURRENT_TIMESTAMP").bind(unit,environment,encryptedToken,encryptedSecret).run();
+  return respond({ok:true,saved:true,paymentsEnabled:false});
+ }
+ if(request.method==="POST"&&action==="test"){
+  if(!record?.access_token_cipher)return respond({ok:false,error:"TOKEN_NAO_CADASTRADO"},409);
+  const token=await decrypt(record.access_token_cipher);
+  const response=await fetch("https://api.mercadopago.com/users/me",{headers:{Authorization:"Bearer "+token},signal:AbortSignal.timeout(8000)}).catch(()=>null);
+  if(!response)return respond({ok:false,error:"PROVEDOR_INDISPONIVEL"},502);
+  return response.ok?respond({ok:true,message:"Conexão autenticada com Mercado Pago. Pix ainda desativado."}):respond({ok:false,error:"TOKEN_RECUSADO",providerStatus:response.status},409);
+ }
+ return respond({ok:false,error:"OPERACAO_INVALIDA"},405);
+}
 function attendanceClassFinished(date,time,now=new Date()) {const x=String(time||"").trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);if(!x||!/^\d{4}-\d{2}-\d{2}$/.test(String(date)))return false;let h=Number(x[1]),minute=Number(x[2]);if(x[3]){if(h<1||h>12)return false;h=h%12+(x[3].toUpperCase()==="PM"?12:0)}if(h>23||minute>59)return false;const local=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),v=t=>local.find(p=>p.type===t)?.value||"";const today=v("year")+"-"+v("month")+"-"+v("day");if(date<today)return true;if(date>today)return false;return h*60+minute+60<=Number(v("hour"))*60+Number(v("minute"));}
 const ALLOWED_ORIGINS = new Set([
   "https://loja-pop-green.vercel.app",
@@ -252,6 +293,8 @@ export default {
         const step=await env.DB.prepare("SELECT debit_state,delivery_state FROM club_pix_fulfillment WHERE order_id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
         return json({ok:true,orderId:id,paymentStatus:order.status,fitcoinsStatus:step?.debit_state||"not_started",deliveryStatus:step?.delivery_state||"blocked",fulfilled:step?.delivery_state==="completed"});
       }
+
+      if(url.pathname==="/admin/mercadopago-config")return await mpAdminConfig(request,env,url);
 
       // Pix sandbox: authenticated order history, no charge or balance mutation.
       if (url.pathname === "/checkout/pix/orders" && request.method === "GET") {
