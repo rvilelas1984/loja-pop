@@ -1504,7 +1504,8 @@ if (url.pathname === "/mission-redemptions/mine" && request.method === "GET") {
           const statements=[];
           for(let i=0;i<rewards.length;i++){
             const rw=rewards[i],key=prefix+":reward:"+i;
-            statements.push(env.DB.prepare("INSERT INTO redemptions(member_id,redemption_type,reference_id,status,source_type,source_id,title,details,unit,dedupe_key) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(member.id,rw.type,missionKey,"PENDING","MISSION",goalKey,rw.rewardName||rw.name||"Recompensa",mission.name||"",mission.unit||"bike",key));
+            statements.push(env.DB.prepare("INSERT INTO redemptions(member_id,redemption_type,reference_id,status,source_type,source_id,title,details,unit,dedupe_key) SELECT ?,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM redemptions WHERE dedupe_key=?)").bind(member.id,rw.type,missionKey,"PENDING","MISSION",goalKey,rw.rewardName||rw.name||"Recompensa",mission.name||"",mission.unit||"bike",key,key));
+            statements.push(env.DB.prepare("INSERT INTO vouchers(member_id,code,type,description,status,redemption_id,source_type,source_id,title,metadata_json) SELECT ?,?,?,?,'ACTIVE',r.id,'MISSION',?,?,? FROM redemptions r WHERE r.dedupe_key=? AND NOT EXISTS (SELECT 1 FROM vouchers v WHERE v.redemption_id=r.id)").bind(member.id,"M"+randomToken(12).toUpperCase(),rw.type,rw.rewardName||rw.name||"Recompensa",goalKey,rw.rewardName||rw.name||"Recompensa",JSON.stringify({missionId:missionKey,goalId:goalKey,rewardIndex:i,rewardId:rw.rewardId}),key));
           }
           await env.DB.batch(statements);
           const rows=await env.DB.prepare("SELECT id,title,status FROM redemptions WHERE dedupe_key LIKE ? ORDER BY id").bind(prefix+":reward:%").all();
