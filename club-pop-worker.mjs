@@ -98,6 +98,16 @@ export default {
 
 
 
+      // Pix sandbox: authenticated order history, no charge or balance mutation.
+      if (url.pathname === "/checkout/pix/orders" && request.method === "GET") {
+        const member = await authenticatedMember(request, env);
+        if (!member) return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit = String(url.searchParams.get("unit")||"bike");
+        if (!["bike","gym"].includes(unit)) return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const rows = await env.DB.prepare("SELECT id,unit,item_type,item_id,amount_cents,status,created_at,updated_at FROM club_pix_orders WHERE member_id=? AND unit=? ORDER BY created_at DESC LIMIT 30").bind(member.id,unit).all();
+        return json({ok:true,orders:rows.results||[]});
+      }
+
       if (url.pathname === "/admin/voucher-automation" && ["GET","PUT"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
