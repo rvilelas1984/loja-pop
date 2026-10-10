@@ -2247,7 +2247,7 @@ async function voucherDeliverBatch(env,request){
 }
 
 async function voucherBatchTick(env){
- const now=voucherLocal(),day=now.slice(0,10),hh=now.slice(11,16);
+ const now=voucherLocal(),hh=now.slice(11,16);
  for(const unit of ['bike','gym']){
   const settings=await voucherSettings(env,unit);
   if(!settings.enabled||hh<settings.batchTime)continue;
