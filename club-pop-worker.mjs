@@ -194,27 +194,30 @@ export default {
         return json({ok:true,orderId:id,status:state,providerStatus:raw,fulfilled:false,manualFulfillmentRequired:state==="approved"});
       }
 
-      // Webhook is only a reconciliation trigger. Provider data is always re-fetched.
+      // Webhook signature is required. Notification only reconciles, never fulfills.
       if(url.pathname==="/checkout/pix/webhook"&&request.method==="POST"){
-        if(env.CLUB_PIX_TEST_ENABLED!=="true"||!env.MERCADOPAGO_ACCESS_TOKEN_TEST)return json({ok:false,error:"PIX_TEST_DISABLED"},503);
-        const event=await request.json().catch(()=>({}));
-        const providerId=String(event?.data?.id||event?.id||"");
-        if(!providerId||providerId.length>128)return json({ok:false,error:"EVENTO_INVALIDO"},400);
+        if(env.CLUB_PIX_TEST_ENABLED!=="true"||!env.MERCADOPAGO_ACCESS_TOKEN_TEST||!env.MERCADOPAGO_WEBHOOK_SECRET_TEST)return json({ok:false,error:"PIX_TEST_DISABLED"},503);
+        const signature=request.headers.get("x-signature")||"",requestId=request.headers.get("x-request-id")||"";
+        const ts=signature.match(/(?:^|,)\s*ts=([^,]+)/)?.[1]?.trim()||"";
+        const v1=signature.match(/(?:^|,)\s*v1=([a-f0-9]+)/i)?.[1]?.trim().toLowerCase()||"";
+        const providerId=url.searchParams.get("data.id")||"";
+        if(!ts||!v1||!requestId||!providerId||!/^[0-9]+$/.test(ts))return json({ok:false,error:"ASSINATURA_INVALIDA"},401);
+        if(Math.abs(Date.now()-Number(ts)*1000)>300000)return json({ok:false,error:"ASSINATURA_EXPIRADA"},401);
+        const manifest="id:"+providerId.toLowerCase()+";request-id:"+requestId+";ts:"+ts+";";
+        const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(env.MERCADOPAGO_WEBHOOK_SECRET_TEST),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+        const mac=await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(manifest));
+        const expected=Array.from(new Uint8Array(mac),x=>x.toString(16).padStart(2,"0")).join("");
+        if(expected.length!==v1.length||!Array.from(expected).every((ch,i)=>ch===v1[i]))return json({ok:false,error:"ASSINATURA_INVALIDA"},401);
         const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE provider_order_id=? LIMIT 1").bind(providerId).first();
         if(!order)return json({ok:true,ignored:true});
-        let providerResponse;
-        try{providerResponse=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(providerId),{headers:{"Authorization":"Bearer "+env.MERCADOPAGO_ACCESS_TOKEN_TEST,"Accept":"application/json"}})}
-        catch{return json({ok:false,error:"PROVEDOR_INDISPONIVEL"},502)}
-        if(!providerResponse.ok)return json({ok:false,error:"CONSULTA_PAGAMENTO_FALHOU"},502);
-        const result=await providerResponse.json().catch(()=>({}));
-        if(String(result.id)!==providerId||String(result.external_reference)!==order.id||Math.round(Number(result.total_amount)*100)!==Number(order.amount_cents))return json({ok:false,error:"DADOS_PAGAMENTO_DIVERGENTES"},409);
+        const response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(providerId),{headers:{Authorization:"Bearer "+env.MERCADOPAGO_ACCESS_TOKEN_TEST}});
+        if(!response.ok)return json({ok:false,error:"CONSULTA_FALHOU"},502);
+        const result=await response.json().catch(()=>({}));
+        if(String(result.id)!==providerId||String(result.external_reference)!==order.id||Math.round(Number(result.total_amount)*100)!==Number(order.amount_cents))return json({ok:false,error:"DADOS_DIVERGENTES"},409);
         const raw=String(result.status||"").toLowerCase();
         const next=raw==="processed"?"approved":raw==="cancelled"?"cancelled":raw==="expired"?"expired":raw==="failed"?"rejected":"pending";
-        if(order.status==="approved"&&next!=="approved")return json({ok:false,error:"REVISAO_NECESSARIA"},409);
-        if(order.status!==next&&order.status!=="approved"){
-          await env.DB.prepare("UPDATE club_pix_orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='approved'").bind(next,order.id).run();
-        }
-        return json({ok:true,orderId:order.id,status:next,fulfilled:false});
+        if(order.status!=="approved")await env.DB.prepare("UPDATE club_pix_orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='approved'").bind(next,order.id).run();
+        return json({ok:true,status:next,fulfilled:false});
       }
 
       // Pix sandbox: authenticated order history, no charge or balance mutation.
