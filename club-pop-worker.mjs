@@ -2234,6 +2234,7 @@ async function voucherSettings(env,unit){
 function voucherName(unit,name,id){const slug=String(name||'voucher').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]/g,'').toLowerCase()||'voucher';return (unit==='gym'?'Gp':'Bp')+slug.slice(0,80)+String(id).padStart(2,'0')}
 async function voucherDeliverBatch(env,request){
  if(!request.assigned_code||!request.evo_voucher_id||!request.batch_id)return;
+ if(request.status==='issued')return;
  const match=/^MISSION:(\\d+):(.+):([^:]+):(.+):EVO$/.exec(request.idempotency_key||'');
  if(!match)return;
  const dedupe=request.idempotency_key.slice(0,-4),missionId=match[2],goalId=match[3];
@@ -2275,7 +2276,7 @@ async function voucherBatchTick(env){
     const data=await voucherEvoCall(env,cfg,'/api/v1/voucher/get-codes-by-voucher-id/'+batch.evo_voucher_id+'?take='+batch.requested_quantity+'&skip=0','GET');
     const codes=(data?.list||[]).filter(x=>Number(x.voucherId)===Number(batch.evo_voucher_id)&&typeof x.voucherCode==='string'&&x.voucherCode.trim()).map(x=>x.voucherCode.trim());
     if(codes.length!==batch.requested_quantity||new Set(codes).size!==codes.length)continue;
-    const pending=await env.DB.prepare("SELECT id FROM club_voucher_requests WHERE unit=? AND model_id=? AND delivery_mode='batch' AND status='pending' AND batch_id=? ORDER BY id LIMIT ?").bind(unit,batch.model_id,batch.id,batch.requested_quantity).all();
+    const pending=await env.DB.prepare("SELECT id FROM club_voucher_requests WHERE unit=? AND model_id=? AND delivery_mode='batch' AND status IN ('pending','code_pending','issued') AND batch_id=? ORDER BY id LIMIT ?").bind(unit,batch.model_id,batch.id,batch.requested_quantity).all();
     if((pending.results||[]).length!==codes.length)continue;
     for(let i=0;i<codes.length;i++){
      const requestId=pending.results[i].id;
