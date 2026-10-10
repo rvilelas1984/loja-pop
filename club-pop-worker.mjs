@@ -2331,13 +2331,13 @@ export async function claimEvoMissionVoucher(env,member,mission,goal,rewards){
     if(!model||![1,2].includes(model.discount_type)||!Number.isFinite(model.discount_value)||model.discount_value<=0||model.discount_type===1&&model.discount_value>100||!Number.isInteger(model.validity_days)||model.validity_days<1||model.validity_days>365||!Array.isArray(ids)||!ids.length||ids.some(x=>!Number.isSafeInteger(x)||x<=0))throw voucherError('MODELO_VOUCHER_INVALIDO');
     const config=await voucherSettings(env,unit);
     const day=voucherLocal().slice(0,10);
-    const claimed=await env.DB.prepare("SELECT COUNT(*) n FROM club_voucher_requests WHERE unit=? AND delivery_mode='immediate' AND substr(datetime(created_at,'-3 hours'),1,10)=?").bind(unit,day).first();
+    const claimed=await env.DB.prepare("SELECT COUNT(*) n FROM club_voucher_requests WHERE unit=? AND delivery_mode='immediate' AND id<>? AND substr(datetime(created_at,'-3 hours'),1,10)=?").bind(unit,q.id,day).first();
     if(!config.enabled||Number(claimed?.n||0)>=config.dailyLimit){
       await env.DB.prepare("UPDATE club_voucher_requests SET delivery_mode='batch' WHERE id=? AND status='pending'").bind(q.id).run();
       return {ok:true,rewardType:'voucher',requiresReview:true,warning:'AGUARDANDO_LOTE',evoRequestsMade:0};
     }
-    const locked=await env.DB.prepare("UPDATE club_voucher_requests SET status='creating',attempts=attempts+1,processed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending' AND attempts=0").bind(q.id).run();
-    if(!locked.meta.changes)return {ok:true,rewardType:'voucher',requiresReview:true,warning:'EMISSAO_EVO_EM_PROCESSAMENTO',evoRequestsMade:0};
+    const locked=await env.DB.prepare("UPDATE club_voucher_requests SET status='creating',attempts=attempts+1,processed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending' AND attempts=0 AND (SELECT COUNT(*) FROM club_voucher_requests WHERE unit=? AND delivery_mode='immediate' AND id<>? AND substr(datetime(created_at,'-3 hours'),1,10)=?)<?").bind(q.id,unit,q.id,day,config.dailyLimit).run();
+    if(!locked.meta.changes){const state=await read();if(state?.status==='pending'){await env.DB.prepare("UPDATE club_voucher_requests SET delivery_mode='batch' WHERE id=? AND status='pending'").bind(q.id).run();return {ok:true,rewardType:'voucher',requiresReview:true,warning:'AGUARDANDO_LOTE',evoRequestsMade:0};}return {ok:true,rewardType:'voucher',requiresReview:true,warning:'EMISSAO_EVO_EM_PROCESSAMENTO',evoRequestsMade:0};}
     const now=new Date(),until=new Date(now.getTime()+model.validity_days*86400000);
     const label=voucherName(unit,model.name,q.id);
     const payload={nome:label,qtde:1,flUtilizarSite:true,flCodigoUnico:true,flIlimitado:false,inicio:now.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,flContrato:true,idsContratos:ids};
