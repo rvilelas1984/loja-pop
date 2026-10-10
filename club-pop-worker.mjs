@@ -38,7 +38,7 @@ async function mpAdminConfig(request,env,url,json){
   const methods=await response.json().catch(()=>[]);
   if(!Array.isArray(methods))return respond({ok:false,error:"RESPOSTA_METODOS_INVALIDA"},502);
   const pix=methods.find(x=>String(x.id||"").toLowerCase()==="pix");
-  return respond({ok:true,unit,environment,pixAvailable:!!pix,methodType:pix?.payment_type_id||null,credentialsConfigured:true,webhookConfigured:!!record.webhook_secret_cipher,paymentsEnabled:false,canCreateCharge:false,message:pix?"Pix disponível na conta. Cobranças ainda desativadas.":"Pix não retornou entre os métodos disponíveis da conta."});
+  return respond({ok:true,unit,environment,pixAvailable:!!pix,methodType:pix?.payment_type_id||null,credentialsConfigured:true,webhookConfigured:!!record.webhook_secret_cipher,paymentsEnabled:false,canCreateCharge:false,message:pix?"Pix aparece na listagem de métodos. A geração de QR Code ainda precisa ser testada.":"Consulta concluída, mas esta listagem não confirma a disponibilidade de Pix via Orders. É necessário testar a criação controlada de um pedido."});
  }
  if(request.method==="POST"&&action==="test"){
   if(!record?.access_token_cipher)return respond({ok:false,error:"TOKEN_NAO_CADASTRADO"},409);
