@@ -125,7 +125,10 @@ export default {
         const item=(kind==="product"?data.products:data.services||[])?.find(x=>String(x.id)===id&&String(x.unit||"bike")===unit);
         if(!item||String(item.status||"Ativo")!=="Ativo")return json({ok:false,error:"ITEM_INDISPONIVEL"},404);
         if(kind==="product"&&Number(item.stock||0)<=0)return json({ok:false,error:"SEM_ESTOQUE"},409);
-        if(!["pix","both"].includes(String(item.paymentMethod||"fitcoins")))return json({ok:false,error:"PIX_NAO_HABILITADO"},409);
+        if(!["pix","both","mixed"].includes(String(item.paymentMethod||"fitcoins")))return json({ok:false,error:"PIX_NAO_HABILITADO"},409);
+        // Mixed checkout requires an authoritative, atomic Fitcoins debit.
+        // Until that ledger is integrated, reject it rather than charging an incorrect amount.
+        if(String(item.paymentMethod)==="mixed"||Number(b.fitcoinsToUse||0)>0)return json({ok:false,error:"PAGAMENTO_MISTO_AGUARDANDO_LEDGER"},409);
         const cents=Math.round(Number(item.price)*100);
         if(!Number.isSafeInteger(cents)||cents<=0)return json({ok:false,error:"PRECO_INVALIDO"},400);
         const orderId=crypto.randomUUID(),key=crypto.randomUUID();
@@ -218,6 +221,22 @@ export default {
         const next=raw==="processed"?"approved":raw==="cancelled"?"cancelled":raw==="expired"?"expired":raw==="failed"?"rejected":"pending";
         if(order.status!=="approved")await env.DB.prepare("UPDATE club_pix_orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='approved'").bind(next,order.id).run();
         return json({ok:true,status:next,fulfilled:false});
+      }
+
+      // Retrieve QR data again after a page refresh, never returning provider credentials.
+      if(url.pathname==="/checkout/pix/details"&&request.method==="GET"){
+        if(env.CLUB_PIX_TEST_ENABLED!=="true"||!env.MERCADOPAGO_ACCESS_TOKEN_TEST)return json({ok:false,error:"PIX_TEST_DISABLED"},503);
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(String(url.searchParams.get("orderId")||""),member.id).first();
+        if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
+        if(!order.provider_order_id)return json({ok:false,error:"COBRANCA_NAO_CRIADA"},409);
+        const response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id),{headers:{Authorization:"Bearer "+env.MERCADOPAGO_ACCESS_TOKEN_TEST}});
+        if(!response.ok)return json({ok:false,error:"CONSULTA_FALHOU"},502);
+        const result=await response.json().catch(()=>({}));
+        if(String(result.id)!==String(order.provider_order_id)||String(result.external_reference)!==order.id||Math.round(Number(result.total_amount)*100)!==Number(order.amount_cents))return json({ok:false,error:"DADOS_DIVERGENTES"},409);
+        const pm=result.transactions?.payments?.[0]?.payment_method||{};
+        return json({ok:true,orderId:order.id,status:order.status,qrCode:pm.qr_code||null,qrCodeBase64:pm.qr_code_base64||null,ticketUrl:pm.ticket_url||null,fulfilled:false});
       }
 
       // Pix sandbox: authenticated order history, no charge or balance mutation.
