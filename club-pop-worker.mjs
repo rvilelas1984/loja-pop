@@ -154,7 +154,7 @@ export default {
         if(!["pix","both"].includes(String(item.paymentMethod||"fitcoins")))return json({ok:false,error:"PIX_NAO_HABILITADO"},409);
         if(Math.round(Number(item.price)*100)!==Number(order.amount_cents))return json({ok:false,error:"PRECO_ALTERADO"},409);
         const email=String(member.email||"").trim();
-        if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email))return json({ok:false,error:"EMAIL_INVALIDO"},409);
+        if(email.includes(" ")||!email.includes("@")||!email.split("@")[1]?.includes("."))return json({ok:false,error:"EMAIL_INVALIDO"},409);
         const amount=(Number(order.amount_cents)/100).toFixed(2);
         const payload={type:"online",external_reference:id,total_amount:amount,processing_mode:"automatic",transactions:{payments:[{amount,payment_method:{id:"pix",type:"bank_transfer"}}]},payer:{email}};
         let response;
