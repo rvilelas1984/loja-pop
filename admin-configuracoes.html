@@ -44,7 +44,7 @@ const initialScope=window.cpAdminScope?.get?.();if(initialScope==="gym")layoutUn
 const mpUnit=document.getElementById("mpUnit"),mpEnvironment=document.getElementById("mpEnvironment"),mpToken=document.getElementById("mpToken"),mpWebhook=document.getElementById("mpWebhook"),mpStatus=document.getElementById("mpStatus"),mpSave=document.getElementById("mpSave"),mpCheck=document.getElementById("mpCheck");
 mpUnit.value=unit;
 async function mpCall(method,action,payload){
- const r=await fetch("/api/mercadopago-config?unit="+encodeURIComponent(mpUnit.value)+"&environment="+encodeURIComponent(mpEnvironment.value)+"&action="+encodeURIComponent(action),{method,headers:{"Content-Type":"application/json"},body:method==="GET"?undefined:JSON.stringify(payload||{}),cache:"no-store"});
+ const r=await fetch("/api/evo-config?route=mercadopago-config&unit="+encodeURIComponent(mpUnit.value)+"&environment="+encodeURIComponent(mpEnvironment.value)+"&action="+encodeURIComponent(action),{method,headers:{"Content-Type":"application/json"},body:method==="GET"?undefined:JSON.stringify(payload||{}),cache:"no-store"});
  const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||"Falha na integração");return d;
 }
 async function mpLoad(){try{const d=await mpCall("GET","status");mpStatus.textContent=d.configured?"Credenciais protegidas cadastradas. Pix permanece desativado.":"Nenhuma credencial cadastrada neste ambiente."}catch(e){mpStatus.textContent="Integração indisponível: "+e.message}}
