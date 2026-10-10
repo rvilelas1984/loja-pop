@@ -2265,7 +2265,7 @@ async function voucherBatchTick(env){
 
    try{
     const ids=JSON.parse(model.contract_ids_json||'[]'),cfg=await getEvoConfig(env,unit);
-    const payload={nome:voucherName(unit,model.name,batchId)+'L',qtde:group.n,flUtilizarSite:true,flCodigoUnico:true,flIlimitado:false,inicio:nowDate.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,flContrato:true,idsContratos:ids};
+    const payload={nome:voucherName(unit,model.name,batchId)+'L',qtde:group.n,flUtilizarSite:true,flCodigoUnico:false,flIlimitado:false,inicio:nowDate.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,flContrato:true,idsContratos:ids};
     const result=await voucherEvoCall(env,cfg,'/api/v2/voucher','POST',payload),id=Number(result?.voucherId);
     if(!Number.isSafeInteger(id)||id<1)throw Error('EVO_SEM_ID');
     await env.DB.prepare("UPDATE club_voucher_batches SET evo_voucher_id=?,status='awaiting_codes' WHERE id=?").bind(id,batchId).run();
