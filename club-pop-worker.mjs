@@ -1489,9 +1489,31 @@ if (url.pathname === "/mission-redemptions/mine" && request.method === "GET") {
         const body=await readJson(request),missionKey=String(body.missionId||""),goalKey=String(body.goalId||"");
         const mission=await clubContentItem(env,"mission",missionKey); if(!mission)return json({ok:false,error:"MISSAO_NAO_ENCONTRADA"},404);
         const goal=(mission.goals||[]).find(x=>String(x.id)===goalKey); if(!goal)return json({ok:false,error:"META_NAO_ENCONTRADA"},404);
+        const rewards=Array.isArray(goal.rewards)?goal.rewards.filter(x=>x&&x.type):[];
+        if(rewards.length>1){
+          if(rewards.some(r=>r.type==="fitcoins"))return json({ok:false,error:"FITCOINS_MULTIPLOS_EXIGEM_ENTREGA_TRANSACIONAL"},409);
+          if(rewards.some(r=>!["voucher","service","product"].includes(r.type)||!r.rewardId))return json({ok:false,error:"RECOMPENSA_MULTIPLA_INVALIDA"},409);
+          const progress=await missionProgressValue(env,member,mission);
+          if(progress<Number(goal.value||0))return json({ok:false,error:"META_AINDA_NAO_ATINGIDA",progress},409);
+          const period=mission.period==="month"?String(mission.start||new Date().toISOString()).slice(0,7):String(mission.start||"")+"_"+String(mission.end||"");
+          const prefix="MISSION:"+member.id+":"+missionKey+":"+goalKey+":"+period;
+          const existing=await env.DB.prepare("SELECT id,title,status FROM redemptions WHERE dedupe_key=? LIMIT 1").bind(prefix).first();
+          if(existing)return json({ok:true,alreadyClaimed:true,redemption:existing});
+          const pending=await env.DB.prepare("SELECT id,title,status FROM redemptions WHERE dedupe_key LIKE ? ORDER BY id").bind(prefix+":reward:%").all();
+          if((pending.results||[]).length)return json({ok:true,alreadyClaimed:true,redemptions:pending.results});
+          const statements=[];
+          for(let i=0;i<rewards.length;i++){
+            const rw=rewards[i],key=prefix+":reward:"+i;
+            statements.push(env.DB.prepare("INSERT INTO redemptions(member_id,redemption_type,reference_id,status,source_type,source_id,title,details,unit,dedupe_key) SELECT ?,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM redemptions WHERE dedupe_key=?)").bind(member.id,rw.type,missionKey,"PENDING","MISSION",goalKey,rw.rewardName||rw.name||"Recompensa",mission.name||"",mission.unit||"bike",key,key));
+            statements.push(env.DB.prepare("INSERT INTO vouchers(member_id,code,type,description,status,redemption_id,source_type,source_id,title,metadata_json) SELECT ?,?,?,?,'ACTIVE',r.id,'MISSION',?,?,? FROM redemptions r WHERE r.dedupe_key=? AND NOT EXISTS (SELECT 1 FROM vouchers v WHERE v.redemption_id=r.id)").bind(member.id,"M"+randomToken(12).toUpperCase(),rw.type,rw.rewardName||rw.name||"Recompensa",goalKey,rw.rewardName||rw.name||"Recompensa",JSON.stringify({missionId:missionKey,goalId:goalKey,rewardIndex:i,rewardId:rw.rewardId}),key));
+          }
+          await env.DB.batch(statements);
+          const rows=await env.DB.prepare("SELECT id,title,status FROM redemptions WHERE dedupe_key LIKE ? ORDER BY id").bind(prefix+":reward:%").all();
+          return json({ok:true,claimed:true,redemptions:rows.results||[],requiresReview:true,warning:"RECOMPENSAS_REGISTRADAS_AGUARDANDO_ENTREGA"});
+        }
         const progress=await missionProgressValue(env,member,mission); if(progress<Number(goal.value||0))return json({ok:false,error:"META_AINDA_NAO_ATINGIDA",progress},409);
         const period=mission.period==="month"?String(mission.start||new Date().toISOString()).slice(0,7):String(mission.start||"")+"_"+String(mission.end||"");
-        const dedupe="MISSION:"+member.id+":"+missionKey+":"+period;
+        const dedupe="MISSION:"+member.id+":"+missionKey+":"+goalKey+":"+period;
         const old=await env.DB.prepare("SELECT id,title,status FROM redemptions WHERE dedupe_key=? LIMIT 1").bind(dedupe).first();
         if(old)return json({ok:true,alreadyClaimed:true,redemption:old});
         await env.DB.prepare("INSERT INTO redemptions(member_id,redemption_type,reference_id,status,source_type,source_id,title,details,unit,dedupe_key) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(member.id,goal.rewardType||"mission",missionKey,"PENDING","MISSION",goalKey,goal.rewardName||"Recompensa",mission.name||"",mission.unit||"bike",dedupe).run();
