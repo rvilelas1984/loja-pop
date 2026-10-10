@@ -22,8 +22,7 @@ async function mpAdminConfig(request,env,url,json){
  if(request.method==="PUT"&&action==="save"){
   const b=await request.json().catch(()=>({}));
   const token=String(b.accessToken||"").trim(),secret=String(b.webhookSecret||"").trim();
-  if((token&&(!/^(TEST-|APP_USR-)/.test(token)||token.length>512))||(secret&&secret.length>512))return respond({ok:false,error:"CREDENCIAL_INVALIDA"},400);
-  if(environment==="production")return respond({ok:false,error:"PRODUCAO_BLOQUEADA"},403);
+  if((token&&(token.length>512||(environment==="test"?!token.startsWith("TEST-"):!token.startsWith("APP_USR-"))))||(secret&&secret.length>512))return respond({ok:false,error:"CREDENCIAL_INCOMPATIVEL_COM_AMBIENTE"},400);
   if(!token&&!secret)return respond({ok:false,error:"CREDENCIAL_OBRIGATORIA"},400);
   const encryptedToken=token?await encrypt(token):record?.access_token_cipher||null;
   const encryptedSecret=secret?await encrypt(secret):record?.webhook_secret_cipher||null;
