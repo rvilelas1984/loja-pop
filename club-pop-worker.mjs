@@ -2252,7 +2252,7 @@ async function voucherBatchTick(env){
  const now=voucherLocal(),hh=now.slice(11,16);
  for(const unit of ['bike','gym']){
   const settings=await voucherSettings(env,unit);
-  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];if(!settings.enabled||!schedule.some(t=>hh>=t&&hh<t.slice(0,3)+String(Math.min(59,Number(t.slice(3))+5)).padStart(2,'0')))continue;
+  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];const currentMinute=Number(hh.slice(0,2))*60+Number(hh.slice(3));if(!settings.enabled||!schedule.some(t=>{const minute=Number(t.slice(0,2))*60+Number(t.slice(3));return currentMinute>=minute&&currentMinute<minute+5}))continue;
   const groups=await env.DB.prepare("SELECT model_id,COUNT(*) n FROM club_voucher_requests WHERE unit=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL GROUP BY model_id").bind(unit).all();
   for(const group of groups.results||[]){
    const model=await env.DB.prepare("SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1").bind(group.model_id,unit).first();
