@@ -29,6 +29,17 @@ async function mpAdminConfig(request,env,url,json){
   await env.DB.prepare("INSERT INTO club_mp_credentials(unit,environment,access_token_cipher,webhook_secret_cipher) VALUES(?,?,?,?) ON CONFLICT(unit,environment) DO UPDATE SET access_token_cipher=excluded.access_token_cipher,webhook_secret_cipher=excluded.webhook_secret_cipher,updated_at=CURRENT_TIMESTAMP").bind(unit,environment,encryptedToken,encryptedSecret).run();
   return respond({ok:true,saved:true,paymentsEnabled:false});
  }
+ if(request.method==="POST"&&action==="pix-readiness"){
+  if(!record?.access_token_cipher)return respond({ok:false,error:"TOKEN_NAO_CADASTRADO"},409);
+  const token=await decrypt(record.access_token_cipher);
+  const response=await fetch("https://api.mercadopago.com/v1/payment_methods",{headers:{Authorization:"Bearer "+token,Accept:"application/json"},signal:AbortSignal.timeout(10000)}).catch(()=>null);
+  if(!response)return respond({ok:false,error:"PROVEDOR_INDISPONIVEL"},502);
+  if(!response.ok)return respond({ok:false,error:"CONSULTA_METODOS_FALHOU",providerStatus:response.status},502);
+  const methods=await response.json().catch(()=>[]);
+  if(!Array.isArray(methods))return respond({ok:false,error:"RESPOSTA_METODOS_INVALIDA"},502);
+  const pix=methods.find(x=>String(x.id||"").toLowerCase()==="pix");
+  return respond({ok:true,unit,environment,pixAvailable:!!pix,methodType:pix?.payment_type_id||null,credentialsConfigured:true,webhookConfigured:!!record.webhook_secret_cipher,paymentsEnabled:false,canCreateCharge:false,message:pix?"Pix disponível na conta. Cobranças ainda desativadas.":"Pix não retornou entre os métodos disponíveis da conta."});
+ }
  if(request.method==="POST"&&action==="test"){
   if(!record?.access_token_cipher)return respond({ok:false,error:"TOKEN_NAO_CADASTRADO"},409);
   const token=await decrypt(record.access_token_cipher);
