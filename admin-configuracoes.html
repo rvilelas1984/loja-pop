@@ -41,7 +41,9 @@ const initialScope=window.cpAdminScope?.get?.();if(initialScope==="gym")layoutUn
 
 // Mercado Pago: all secret operations go through authenticated server proxy.
 const mpUnit=document.getElementById("mpUnit"),mpEnvironment=document.getElementById("mpEnvironment"),mpToken=document.getElementById("mpToken"),mpWebhook=document.getElementById("mpWebhook"),mpStatus=document.getElementById("mpStatus"),mpSave=document.getElementById("mpSave"),mpCheck=document.getElementById("mpCheck");
-mpUnit.value=unit;
+mpUnit.value=["bike","gym","club"].includes(window.cpAdminScope?.get?.())?window.cpAdminScope.get():"bike";
+window.addEventListener("cp:scopechange",event=>{const next=event.detail?.scope;if(["bike","gym","club"].includes(next)){mpUnit.value=next;mpToken.value="";mpWebhook.value="";mpLoad()}});
+
 async function mpCall(method,action,payload){
  const r=await fetch("/api/evo-config?route=mercadopago-config&unit="+encodeURIComponent(mpUnit.value)+"&environment="+encodeURIComponent(mpEnvironment.value)+"&action="+encodeURIComponent(action),{method,headers:{"Content-Type":"application/json"},body:method==="GET"?undefined:JSON.stringify(payload||{}),cache:"no-store"});
  const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||"Falha na integração");return d;
