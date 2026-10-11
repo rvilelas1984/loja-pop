@@ -232,6 +232,39 @@ export default {
         const queued=await env.DB.prepare("SELECT COUNT(*) AS total FROM club_voucher_requests WHERE unit=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL").bind(unit).first();
         return json({ok:true,unit,config,stats:stats.results||[],history:history.results||[],nextBatchCount:Number(queued?.total||0)});
       }
+      if (url.pathname === "/admin/club-voucher-manual" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||"").toLowerCase(),modelId=Number(b.modelId);
+        if(!["bike","gym"].includes(unit)||!Number.isSafeInteger(modelId)||modelId<1||b.quantity!==1)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const model=await env.DB.prepare("SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1").bind(modelId,unit).first();
+        if(!model)return json({ok:false,error:"MODELO_NAO_ENCONTRADO"},404);
+        const selection=voucherSelection(model.contract_ids_json),fields=voucherPayloadSelection(selection);
+        const catalog=selection.kind==="service"?await env.DB.prepare("SELECT evo_service_id id FROM evo_service_catalog WHERE unit=? AND is_active=1").bind(unit).all():await env.DB.prepare("SELECT DISTINCT id_membership id FROM evo_member_contracts WHERE unit=? AND id_membership IS NOT NULL").bind(unit).all();
+        const allowed=new Set((catalog.results||[]).map(x=>Number(x.id)));
+        if(selection.ids.some(x=>!allowed.has(x)))return json({ok:false,error:"ITEM_NAO_ENCONTRADO_NO_D1"},400);
+        const cfg=await getEvoConfig(env,unit);
+        const lock=await env.DB.prepare("INSERT INTO club_voucher_batches(unit,model_id,requested_quantity,status) SELECT ?,?,1,'creating' WHERE NOT EXISTS(SELECT 1 FROM club_voucher_batches WHERE unit=? AND model_id=? AND status IN ('creating','awaiting_codes','review_required'))").bind(unit,modelId,unit,modelId).run();
+        if(!lock.meta.changes)return json({ok:false,error:"EMISSAO_PENDENTE_CONFERENCIA",evoRequestsMade:0},409);
+        const batchId=lock.meta.last_row_id,now=new Date(),until=new Date(now.getTime()+Number(model.validity_days)*86400000);
+        const payload={nome:voucherName(unit,model.name,batchId)+"M",qtde:1,flUtilizarSite:true,flCodigoUnico:true,flIlimitado:false,inicio:now.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,...fields};
+        try{
+          const created=await voucherEvoCall(env,cfg,"/api/v2/voucher","POST",payload),voucherId=Number(created?.voucherId);
+          if(!Number.isSafeInteger(voucherId)||voucherId<1)throw voucherError("EVO_NAO_RETORNOU_ID");
+          await env.DB.prepare("UPDATE club_voucher_batches SET evo_voucher_id=?,status='awaiting_codes' WHERE id=?").bind(voucherId,batchId).run();
+          const codes=await voucherEvoCall(env,cfg,"/api/v1/voucher/get-codes-by-voucher-id/"+voucherId+"?take=1&skip=0","GET");
+          const code=evoVoucherCode(codes,voucherId);
+          if(!code)return json({ok:true,voucherId,batchId,status:"awaiting_codes",warning:"CODIGO_PENDENTE_CONFERENCIA",evoRequestsMade:2});
+          await env.DB.prepare("UPDATE club_voucher_batches SET status='completed',completed_at=CURRENT_TIMESTAMP WHERE id=?").bind(batchId).run();
+          return json({ok:true,voucherId,batchId,code,status:"completed",evoRequestsMade:2});
+        }catch(e){
+          await env.DB.prepare("UPDATE club_voucher_batches SET status='review_required' WHERE id=?").bind(batchId).run();
+          return json({ok:false,error:"EMISSAO_EXIGE_CONFERENCIA_NA_EVO",batchId,detail:String(e?.message||e),evoRequestsMade:1},502);
+        }
+      }
       if (url.pathname === "/admin/club-voucher-status" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
