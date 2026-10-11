@@ -34,6 +34,8 @@ async function clubPixReconcile(env,order,result){
    if(Math.round(Number(result.total_paid_amount)*100)!==Number(order.amount_cents)||!payments.length||payments.some(p=>p.status!=="processed"||p.payment_method?.id!=="pix")||(result.currency_id&&result.currency_id!=="BRL"))throw Error("PIX_PAYMENT_UNCONFIRMED");
  }
  if(next==="approved"&&order.external_member_id){
+   if(order.status==="approved")return {status:"approved",deliveryQueued:true};
+   if(order.external_state==="review"||order.external_state==="running")return {status:"paid_pending_coins",coinsState:"review",fulfilled:false};
    await env.DB.prepare("UPDATE club_pix_orders SET status='paid_pending_coins',choice_expires_at=NULL WHERE id=? AND status NOT IN ('approved','refunded') AND reservation_state='held'").bind(order.id).run();
    return settleFitcoins(env.DB,order,await checkoutEvo(env,order.unit));
  }
