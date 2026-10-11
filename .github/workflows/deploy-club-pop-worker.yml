@@ -5,6 +5,7 @@ on:
     paths:
       - "club-pop-worker.mjs"
       - "lib/currency-ledger.mjs"
+      - "lib/checkout.mjs"
       - "wrangler.jsonc"
       - ".github/workflows/deploy-club-pop-worker.yml"
   workflow_dispatch:

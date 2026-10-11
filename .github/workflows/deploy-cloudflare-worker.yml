@@ -7,6 +7,7 @@ on:
     paths:
       - "club-pop-worker.mjs"
       - "lib/currency-ledger.mjs"
+      - "lib/checkout.mjs"
       - "wrangler.jsonc"
       - ".github/workflows/deploy-cloudflare-worker.yml"
   workflow_dispatch:

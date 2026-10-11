@@ -1,3 +1,4 @@
+import { options as checkoutOptions, quote as checkoutQuote, validateChoice, checkoutError } from './lib/checkout.mjs';
 import { currencyAdmin, currencyStudent, currencyRewardTick, currencyMissionProgress, activeCurrency, ledgerStatements, localToday } from './lib/currency-ledger.mjs';
 
 // Production Mercado Pago credentials are encrypted per unit in D1.
@@ -16,6 +17,10 @@ async function clubPixReconcile(env,order,result){
  if(String(result.id)!==String(order.provider_order_id)||String(result.external_reference)!==String(order.id)||Math.round(Number(result.total_amount)*100)!==Number(order.amount_cents))throw Error("PIX_PROVIDER_MISMATCH");
  const raw=String(result.status||"").toLowerCase();
  const next=raw==="processed"?"approved":raw==="cancelled"?"cancelled":raw==="expired"?"expired":raw==="failed"?"rejected":"pending";
+ if(next==="approved"&&order.original_cents!=null){
+   const payments=result.transactions?.payments||[];
+   if(Math.round(Number(result.total_paid_amount)*100)!==Number(order.amount_cents)||!payments.length||payments.some(p=>p.status!=="processed"||p.payment_method?.id!=="pix")||(result.currency_id&&result.currency_id!=="BRL"))throw Error("PIX_PAYMENT_UNCONFIRMED");
+ }
  if(next==="approved"){
    // Atomic, idempotent fulfillment: a single pending redemption per paid order.
    // Existing Central de Resgates handles physical delivery after payment.
@@ -25,7 +30,7 @@ async function clubPixReconcile(env,order,result){
     env.DB.prepare("INSERT INTO redemptions(member_id,redemption_type,reference_id,fitcoins,status,source_type,source_id,title,details,cash_amount,unit,dedupe_key) SELECT ?,?,?,0,'PENDING','PIX',?,?,?, ?,?,? WHERE NOT EXISTS (SELECT 1 FROM redemptions WHERE dedupe_key=?)").bind(order.member_id,order.item_type,order.item_id,order.item_id,"Compra Pix "+order.item_type,"Pagamento confirmado • Pedido "+order.id,Number(order.amount_cents)/100,order.unit,"pix:"+order.id,"pix:"+order.id)
    ]);
  }else{
-   await env.DB.prepare("UPDATE club_pix_orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('approved','review')").bind(next,order.id).run();
+   await env.DB.prepare("UPDATE club_pix_orders SET status=?,reservation_state=CASE WHEN ? IN ('cancelled','expired','rejected') THEN 'released' ELSE reservation_state END,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('approved')").bind(next,next,order.id).run();
  }
  return {status:next,fulfilled:false,deliveryQueued:next==="approved"};
 }
@@ -1457,82 +1462,25 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       }
 
       // =====================================================
-      // Authoritative currency options for the shared product/service checkout. D1 only.
-      if(url.pathname==="/checkout/mixed/options"&&request.method==="GET"){
+      // Shared checkout: D1 balances, authoritative amounts and durable choices.
+      if((url.pathname==="/checkout/mixed/options"&&request.method==="GET")||(["/checkout/mixed/quote","/checkout/pix/draft"].includes(url.pathname)&&request.method==="POST")){
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const unit=url.searchParams.get("unit"),kind=url.searchParams.get("itemType"),id=url.searchParams.get("itemId");
-        if(!["bike","gym"].includes(unit)||!["product","service"].includes(kind)||!id)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
-        const data=await clubContent(env),item=(kind==="product"?data.products:data.services||[])?.find(x=>String(x.id)===id&&String(x.unit||"bike")===unit&&x.status==="Ativo");
-        if(!item)return json({ok:false,error:"ITEM_INDISPONIVEL"},404);
-        const cfg=item.currencyPayment;
-        if(!cfg?.enabled)return json({ok:true,offers:[],evoRequestsMade:0});
-        const c=await env.DB.prepare("SELECT c.* FROM club_currencies c JOIN club_currency_units u ON u.currency_id=c.id WHERE c.code=? AND c.status='active' AND u.unit=? AND u.enabled=1").bind(String(cfg.currency||""),unit).first();
-        if(!c)return json({ok:true,offers:[],evoRequestsMade:0});
-        const rate=Number(c.brl_value),pct=Number(cfg.maxDiscountPercent),price=Math.round(Number(item.price)*100);
-        if(!Number.isFinite(rate)||rate<=0||!Number.isInteger(pct)||pct<1||pct>100||!Number.isSafeInteger(price)||price<=0)return json({ok:false,error:"CONFIGURACAO_INVALIDA"},409);
-        let balance=0;
-        if(c.source==="external"){
-          const extId=unit==="gym"?member.gym_client_id:member.evo_member_id;
-          if(extId!=null){const row=await env.DB.prepare("SELECT fitcoins FROM evo_students WHERE unit=? AND evo_member_id=? AND is_current=1 LIMIT 1").bind(unit,String(extId)).first();balance=Math.max(0,Math.floor(Number(row?.fitcoins)||0));}
-        }else{
-          const row=await env.DB.prepare("SELECT balance FROM club_currency_wallets WHERE member_id=? AND unit=? AND currency_id=? LIMIT 1").bind(member.id,unit,c.id).first();balance=Math.max(0,Math.floor(Number(row?.balance)||0));
-        }
-        const maxCoins=Math.min(balance,Math.floor(Math.floor(price*pct/100)/(rate*100)+1e-8));
-        return json({ok:true,offers:[{currency_id:c.id,currency_code:c.code,currency_name:c.name,source:c.source,brl_value:rate,balance,maxCoins,max_discount_percent:pct}],evoRequestsMade:0});
-      }
-
-      // Server-authoritative quote for a mixed payment; never creates a discounted Pix without a debit ledger.
-      if(url.pathname==="/checkout/mixed/quote"&&request.method==="POST"){
-        const member=await authenticatedMember(request,env);
-        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const b=await request.json().catch(()=>({})),unit=String(b.unit||""),kind=String(b.itemType||""),id=String(b.itemId||"");
-        if(!["bike","gym"].includes(unit)||!["product","service"].includes(kind)||!id)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
-        const catalog=await clubContent(env),item=(kind==="product"?catalog.products:catalog.services||[])?.find(x=>String(x.id)===id&&String(x.unit||"bike")===unit&&x.status==="Ativo");
-        if(!item)return json({ok:false,error:"ITEM_INDISPONIVEL"},404);
-        const originalCents=Math.round(Number(item.price)*100),quantity=Number(b.quantity||0),config=item.currencyPayment;
-        if(!Number.isSafeInteger(originalCents)||originalCents<=0||!Number.isSafeInteger(quantity)||quantity<0)return json({ok:false,error:"VALOR_INVALIDO"},400);
-        if(quantity===0)return json({ok:true,originalCents,discountCents:0,pixCents:originalCents,quantity:0,canPay:true});
-        if(!config?.enabled||!["mixed","both","fitcoins"].includes(String(item.paymentMethod||"")))return json({ok:false,error:"MOEDA_NAO_PERMITIDA"},409);
-        const currency=await env.DB.prepare("SELECT c.* FROM club_currencies c JOIN club_currency_units u ON u.currency_id=c.id WHERE c.code=? AND c.status='active' AND u.unit=? AND u.enabled=1").bind(String(config.currency||""),unit).first();
-        if(!currency||String(b.currencyId||"")!==String(currency.id))return json({ok:false,error:"MOEDA_INDISPONIVEL"},409);
-        const percent=Number(config.maxDiscountPercent),rate=Number(currency.brl_value);
-        if(!Number.isInteger(percent)||percent<1||percent>100||!Number.isFinite(rate)||rate<=0)return json({ok:false,error:"CONFIGURACAO_INVALIDA"},409);
-        let balance=0;
-        if(currency.source==="local"){balance=Number((await env.DB.prepare("SELECT balance FROM club_currency_wallets WHERE member_id=? AND unit=? AND currency_id=?").bind(member.id,unit,currency.id).first())?.balance||0)}
-        else {const extId=unit==="gym"?member.gym_client_id:member.evo_member_id;if(extId!=null){const row=await env.DB.prepare("SELECT fitcoins FROM evo_students WHERE unit=? AND evo_member_id=? AND is_current=1 LIMIT 1").bind(unit,String(extId)).first();balance=Math.max(0,Math.floor(Number(row?.fitcoins)||0))}}
-        if(quantity>balance)return json({ok:false,error:"SALDO_INSUFICIENTE"},409);
-        const capCents=Math.floor(originalCents*percent/100),discountCents=Math.round(quantity*rate*100);
-        if(discountCents<=0||discountCents>capCents)return json({ok:false,error:"LIMITE_DESCONTO_EXCEDIDO"},409);
-        return json({ok:true,originalCents,discountCents,pixCents:originalCents-discountCents,quantity,currencyName:currency.name,canPay:false,reason:"DEBITO_MOEDA_PENDENTE",evoRequestsMade:0});
-      }
-
-      // Sandbox order registration. This route never calls a payment provider.
-      if (url.pathname === "/checkout/pix/draft" && request.method === "POST") {
-        if(env.CLUB_PIX_PRODUCTION_ENABLED!=="true")return json({ok:false,error:"PIX_PRODUCTION_DISABLED"},503);
-        const member=await authenticatedMember(request,env);
-        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const b=await request.json().catch(()=>({}));
-        const unit=String(b.unit||""),kind=String(b.itemType||""),id=String(b.itemId||"");
-        if(!["bike","gym"].includes(unit)||!["product","service"].includes(kind)||!id||id.length>128)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
-        const data=await clubContent(env);
-        const item=(kind==="product"?data.products:data.services||[])?.find(x=>String(x.id)===id&&String(x.unit||"bike")===unit);
-        if(!item||String(item.status||"Ativo")!=="Ativo")return json({ok:false,error:"ITEM_INDISPONIVEL"},404);
-        if(kind==="product"&&Number(item.stock||0)<=0)return json({ok:false,error:"SEM_ESTOQUE"},409);
-        if(!["pix","both","mixed"].includes(String(item.paymentMethod||"fitcoins")))return json({ok:false,error:"PIX_NAO_HABILITADO"},409);
-        // Mixed checkout requires an authoritative, atomic Fitcoins debit.
-        // Until that ledger is integrated, reject it rather than charging an incorrect amount.
-        if(String(item.paymentMethod)==="mixed"||Number(b.fitcoinsToUse||0)>0)return json({ok:false,error:"PAGAMENTO_MISTO_AGUARDANDO_LEDGER"},409);
-        const cents=Math.round(Number(item.price)*100);
-        if(!Number.isSafeInteger(cents)||cents<=0)return json({ok:false,error:"PRECO_INVALIDO"},400);
-        const orderId=crypto.randomUUID(),key=crypto.randomUUID();
-        await env.DB.prepare("INSERT INTO club_pix_orders(id,member_id,unit,item_type,item_id,amount_cents,status,idempotency_key) VALUES(?,?,?,?,?,?,'created',?)").bind(orderId,member.id,unit,kind,id,cents,key).run();
-        return json({ok:true,orderId,status:"created",amountCents:cents,paymentCreated:false},201);
+        try{
+          if(request.method==="GET")return json(await checkoutOptions(env.DB,member,Object.fromEntries(url.searchParams)));
+          let body=await request.json();
+          if(url.pathname.endsWith("/draft")){
+            if(Number(body.fitcoinsToUse||0)!==0)return json({ok:false,error:"SALVE_ESCOLHA_COM_MOEDAS"},409);
+            body={...body,quantity:0,mode:"pix",save:true,key:crypto.randomUUID()};
+          }
+          const choice=await checkoutQuote(env.DB,member,body);
+          return json({...choice,amountCents:choice.pixCents});
+        }catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
       }
 
       // Test-only Mercado Pago Orders API. Disabled unless explicitly enabled in Worker.
       if (url.pathname === "/checkout/pix/create" && request.method === "POST") {
-        if(env.CLUB_PIX_PRODUCTION_ENABLED!=="true")return json({ok:false,error:"PIX_PRODUCTION_DISABLED"},503);
+
         
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -1542,9 +1490,21 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
         if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
         if(order.provider_order_id)return json({ok:true,orderId:id,providerOrderId:order.provider_order_id,status:order.status});
+        if(order.status==="approved")return json({ok:true,orderId:id,status:"approved",amountCents:order.amount_cents});
+        let savedChoice=false;
+        try{savedChoice=await validateChoice(env.DB,member,order);}catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
+        if(savedChoice&&order.amount_cents===0){
+          try{
+            const settled=await env.DB.prepare("UPDATE club_pix_orders SET status='approved',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='selected' AND reservation_state='held' AND datetime(choice_expires_at)>datetime('now')").bind(id,member.id).run();
+            if(Number(settled.meta?.changes)!==1)return json({ok:false,error:"ESCOLHA_EXPIRADA_SALVE_NOVAMENTE"},409);
+            return json({ok:true,orderId:id,status:"approved",amountCents:0,deliveryQueued:true});
+          }catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
+        }
+        if(env.CLUB_PIX_PRODUCTION_ENABLED!=="true")return json({ok:false,error:"PIX_PRODUCTION_DISABLED"},503);
         const credentials=await clubPixCredentials(env,order.unit);
         const token=credentials?.token;
         if(!token)return json({ok:false,error:"PIX_PRODUCTION_NOT_CONFIGURED"},503);
+        if(!savedChoice){
         if(order.status!=="created")return json({ok:false,error:"PEDIDO_NAO_DISPONIVEL"},409);
         const catalog=await clubContent(env);
         const item=(order.item_type==="product"?catalog.products:catalog.services||[])?.find(x=>String(x.id)===order.item_id&&String(x.unit||"bike")===order.unit);
@@ -1552,9 +1512,10 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(order.item_type==="product"&&Number(item.stock||0)<=0)return json({ok:false,error:"SEM_ESTOQUE"},409);
         if(!["pix","both"].includes(String(item.paymentMethod||"fitcoins")))return json({ok:false,error:"PIX_NAO_HABILITADO"},409);
         if(Math.round(Number(item.price)*100)!==Number(order.amount_cents))return json({ok:false,error:"PRECO_ALTERADO"},409);
+        }
         const email=String(member.email||"").trim();
         if(email.includes(" ")||!email.includes("@")||!email.split("@")[1]?.includes("."))return json({ok:false,error:"EMAIL_INVALIDO"},409);
-        const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='creating',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='created' AND provider_order_id IS NULL").bind(id,member.id).run();
+        const claim=await env.DB.prepare(savedChoice?"UPDATE club_pix_orders SET status='creating',choice_expires_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='selected' AND reservation_state='held' AND datetime(choice_expires_at)>datetime('now') AND provider_order_id IS NULL":"UPDATE club_pix_orders SET status='creating',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='created' AND provider_order_id IS NULL").bind(id,member.id).run();
         if(Number(claim.meta?.changes||0)!==1)return json({ok:false,error:"COBRANCA_EM_PROCESSAMENTO"},409);
         const amount=(Number(order.amount_cents)/100).toFixed(2);
         const payload={type:"online",external_reference:id,total_amount:amount,processing_mode:"automatic",transactions:{payments:[{amount,payment_method:{id:"pix",type:"bank_transfer"}}]},payer:{email}};
@@ -1594,7 +1555,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const ts=signature.match(/(?:^|,)\s*ts=([^,]+)/)?.[1]?.trim()||"";
         const v1=signature.match(/(?:^|,)\s*v1=([a-f0-9]+)/i)?.[1]?.trim().toLowerCase()||"";
         const providerId=url.searchParams.get("data.id")||"";
-        if(!ts||!v1||!requestId||!providerId||!/^[0-9]+$/.test(ts)||Math.abs(Date.now()-Number(ts)*1000)>300000)return json({ok:false,error:"ASSINATURA_INVALIDA"},401);
+        if(!ts||!v1||!requestId||!providerId||!/^[0-9]+$/.test(ts)||Math.abs(Date.now()-(Number(ts)>1e12?Number(ts):Number(ts)*1000))>300000)return json({ok:false,error:"ASSINATURA_INVALIDA"},401);
         const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE provider_order_id=? LIMIT 1").bind(providerId).first();
         if(!order)return json({ok:true,ignored:true});
         const credentials=await clubPixCredentials(env,order.unit);
@@ -1651,7 +1612,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if (!member) return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit = String(url.searchParams.get("unit")||"bike");
         if (!["bike","gym"].includes(unit)) return json({ok:false,error:"UNIDADE_INVALIDA"},400);
-        const rows = await env.DB.prepare("SELECT o.id,o.unit,o.item_type,o.item_id,o.amount_cents,o.status,o.created_at,o.updated_at,f.delivery_state FROM club_pix_orders o LEFT JOIN club_pix_fulfillment f ON f.order_id=o.id WHERE o.member_id=? AND unit=? ORDER BY created_at DESC LIMIT 30").bind(member.id,unit).all();
+        const rows = await env.DB.prepare("SELECT o.id,o.unit,o.item_type,o.item_id,o.amount_cents,o.status,o.created_at,o.updated_at,f.delivery_state FROM club_pix_orders o LEFT JOIN club_pix_fulfillment f ON f.order_id=o.id WHERE o.member_id=? AND o.unit=? ORDER BY created_at DESC LIMIT 30").bind(member.id,unit).all();
         return json({ok:true,orders:rows.results||[]});
       }
 
