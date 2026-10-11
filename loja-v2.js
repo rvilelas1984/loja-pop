@@ -44,17 +44,36 @@ function openDetails(type,id){
  if(!saved?.canPay)return;
  if(saved.pixCents>0){startPix(el("cpPay"),type,id,saved);return}
  if(saved.mode!=="coins"||saved.quantity<1){notify("Forma de pagamento inválida.");return}
- if(busy)return;busy=true;const btn=el("cpPay"),old=btn.textContent;btn.disabled=true;btn.textContent="PROCESSANDO PAGAMENTO...";
- const scope=unit()==="gym"?"Gym Pop":"Bike Pop";
- const show=(title,subtitle,body)=>{sheet.innerHTML=checkoutView(item,type,scope,Number(saved.quantity),0,title,subtitle,body)};
+ if(busy)return;busy=true;
+ const choice=saved,btn=el("cpPay"),scope=unit()==="gym"?"Gym Pop":"Bike Pop";
+ btn.disabled=true;btn.textContent="PROCESSANDO PAGAMENTO...";
+ const show=(title,subtitle,body)=>{sheet.innerHTML=checkoutView(item,type,scope,Number(choice.quantity),0,title,subtitle,body)};
+ const waiting=()=>show("Aguardando confirmação","Estamos verificando seu pagamento com Fitcoins.",'<div class="cx-state"><span class="cx-pulse"></span>Consultando a confirmação da EVO...</div><p class="cx-note">Não realize outro pagamento. Esta tela será atualizada automaticamente.</p>');
+ const success=()=>{show("Compra confirmada!","Seu pagamento com Fitcoins foi concluído.",'<div class="cx-success">✓</div><div class="cx-state">✓ '+(type==="product"?"Seu produto está disponível para retirada na recepção do "+scope+".":"Seu serviço foi comprado. Consulte seus vouchers no aplicativo.")+'</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails;render()};
+ const review=()=>{show("Compra em conferência","Ainda não recebemos a confirmação final das suas moedas.",'<div class="cx-state">Não tente pagar novamente. A recepção pode conferir esta transação com segurança.</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails};
  try{
-  show("Confirmando suas moedas","Estamos validando seu resgate com segurança.",'<div class="cx-state"><span class="cx-pulse"></span>Confirmando o débito das suas Fitcoins...</div><p class="cx-note">Não feche esta tela enquanto confirmamos a compra.</p>');
-  const token=sessionStorage.getItem("clubpop_token"),response=await fetch(WORKER_PIX+"/checkout/coins/confirm",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({orderId:saved.orderId})}),result=await response.json().catch(()=>({}));
-  if(!response.ok||!result.ok||result.status!=="approved")throw Error(result.error||"Compra em conferência. Não tente debitar novamente.");
-  show("Compra confirmada!","Parabéns! Seu pagamento com Fitcoins foi concluído.",'<div class="cx-success">✓</div><div class="cx-state">✓ '+(type==="product"?"Seu produto está disponível para retirada na recepção do "+scope+".":"Seu serviço foi comprado. Consulte seus vouchers no aplicativo.")+'</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');
-  sheet.querySelector("#cxClose").onclick=closeDetails;render();
- }catch(e){show("Compra em conferência","Estamos verificando a confirmação das suas moedas.",'<div class="cx-state">'+esc(e.message)+'</div><p class="cx-note">Não confirme a compra novamente. Consulte suas compras ou a recepção.</p><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails}
- finally{busy=false;btn.textContent=old;btn.disabled=false}
+  waiting();
+  const token=sessionStorage.getItem("clubpop_token"),headers={"Content-Type":"application/json",Authorization:"Bearer "+token};
+  let confirmed=false,terminal=false;
+  try{
+   const response=await fetch(WORKER_PIX+"/checkout/coins/confirm",{method:"POST",headers,body:JSON.stringify({orderId:choice.orderId})});
+   const result=await response.json().catch(()=>({}));
+   if(response.ok&&result.ok&&result.status==="approved")confirmed=true;
+   else if(["ESCOLHA_EXPIRADA_SALVE_NOVAMENTE","SALDO_INSUFICIENTE","PAGAMENTO_NAO_E_MOEDAS","PEDIDO_NAO_ENCONTRADO"].includes(result.error))terminal=true;
+  }catch{}
+  if(confirmed){success();return}
+  if(terminal){review();return}
+  for(let attempt=0;attempt<15;attempt++){
+   await new Promise(resolve=>setTimeout(resolve,2000));
+   try{
+    const r=await fetch(WORKER_PIX+"/checkout/coins/status?orderId="+encodeURIComponent(choice.orderId),{headers:{Authorization:"Bearer "+token},cache:"no-store"});
+    const d=await r.json().catch(()=>({}));
+    if(r.ok&&d.ok&&d.status==="approved"){confirmed=true;break}
+    if(r.ok&&d.ok&&["refunded","cancelled","expired"].includes(d.status)){terminal=true;break}
+   }catch{}
+  }
+  if(confirmed)success();else review();
+ }finally{busy=false;if(btn.isConnected){btn.disabled=false;btn.textContent="CONFIRMAR COM MOEDAS"}}
 };
  el("modalClose").onclick=closeDetails;
  if(methods.length)sheet.querySelector("[data-method]").click();else el("cpSaved").textContent="Nenhuma forma de pagamento habilitada.";

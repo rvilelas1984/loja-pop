@@ -1538,7 +1538,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(order.provider_order_id)return json({ok:true,orderId:id,providerOrderId:order.provider_order_id,status:order.status});
         if(order.status==="approved")return json({ok:true,orderId:id,status:"approved",amountCents:order.amount_cents});
         if(order.external_member_id&&order.amount_cents===0&&order.status==='creating'&&['failed','confirmed'].includes(order.external_state)){
-          try{return json({ok:true,orderId:id,amountCents:0,...await settleFitcoins(env.DB,order,await checkoutEvo(env,order.unit))});}catch{return json({ok:false,error:"FITCOINS_REQUER_CONFERENCIA",orderId:id},409)}
+          try{return json({ok:true,orderId:id,amountCents:0,...await settleFitcoins(env.DB,{...order,status:'creating'},await checkoutEvo(env,order.unit))});}catch{return json({ok:false,error:"FITCOINS_REQUER_CONFERENCIA",orderId:id},409)}
         }
         let savedChoice=false;
         try{savedChoice=await validateChoice(env.DB,member,order);}catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
@@ -1601,6 +1601,17 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!response.ok)return json({ok:false,error:"CONSULTA_PAGAMENTO_FALHOU",providerStatus:response.status},502);
         const result=await response.json().catch(()=>({}));
         try{const outcome=await clubPixReconcile(env,order,result);return json({ok:true,orderId:id,...outcome,providerStatus:String(result.status||"")});}catch{return json({ok:false,error:"PAGAMENTO_REQUER_REVISAO"},409)}
+      }
+
+      if(url.pathname==="/checkout/coins/status"&&request.method==="GET"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const id=String(url.searchParams.get("orderId")||"");
+        if(!/^[0-9a-f-]{36}$/.test(id))return json({ok:false,error:"PEDIDO_INVALIDO"},400);
+        const order=await env.DB.prepare("SELECT id,status,external_state,payment_mode,amount_cents,currency_quantity FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
+        if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
+        if(order.payment_mode!=="coins"||Number(order.amount_cents)!==0||Number(order.currency_quantity)<1)return json({ok:false,error:"PAGAMENTO_NAO_E_MOEDAS"},409);
+        return json({ok:true,orderId:id,status:order.status,externalState:order.external_state});
       }
 
       // Webhook signature is required. Notification only reconciles, never fulfills.
