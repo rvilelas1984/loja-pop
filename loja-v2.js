@@ -40,7 +40,7 @@ function openDetails(type,id){
   catch(e){el("cpSaved").textContent="Não foi possível salvar: "+e.message;}
   finally{saving=false;el("cpSave").disabled=!quote;}
  };
- el("cpPay").onclick=()=>{if(!saved?.canPay)return;startPix(el("cpPay"),type,id,saved)};
+ el("cpPay").onclick=async()=>{if(!saved?.canPay)return;if(saved.pixCents>0){startPix(el("cpPay"),type,id,saved);return;}if(saved.mode!=="coins"||saved.quantity<1){notify("Forma de pagamento inválida.");return;}if(busy)return;busy=true;const btn=el("cpPay"),old=btn.textContent;btn.disabled=true;btn.textContent="CONFIRMANDO MOEDAS...";try{const token=sessionStorage.getItem("clubpop_token");const response=await fetch("/checkout/coins/confirm",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({orderId:saved.orderId})});const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||"Não foi possível confirmar as moedas.");if(result.status!=="approved")throw Error("Resgate pendente de conferência.");closeDetails();notify("Resgate confirmado com moedas. Consulte seus resgates.");render();}catch(e){notify(e.message)}finally{busy=false;btn.textContent=old;btn.disabled=false}};
  el("modalClose").onclick=closeDetails;
  if(methods.length)sheet.querySelector("[data-method]").click();else el("cpSaved").textContent="Nenhuma forma de pagamento habilitada.";
  if(hasCurrency){
