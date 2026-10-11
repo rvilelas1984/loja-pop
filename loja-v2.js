@@ -52,7 +52,7 @@ function openDetails(type,id){
  const success=async()=>{show("Compra confirmada!","Seu pagamento com Fitcoins foi concluído.",'<div class="cx-success">✓</div><div class="cx-state">✓ '+(type==="product"?"Seu produto está disponível para retirada na recepção do "+scope+".":"Seu serviço foi comprado. Consulte seus vouchers no aplicativo.")+'</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails;render();
  if(type==="service"){
   try{
-   const response=await fetch(WORKER_PIX+"/checkout/service-voucher",{method:"POST",headers,body:JSON.stringify({orderId:choice.orderId})});
+   const response=await fetch(WORKER_PIX+"/checkout/service-voucher",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("clubpop_token")},body:JSON.stringify({orderId:choice.orderId})});
    const result=await response.json();
    if(result.status==="issued"&&result.code){
     const block=document.createElement("div");block.className="cx-state";block.innerHTML='<strong>Seu voucher:</strong><div class="cx-code">'+esc(result.code)+'</div><button class="cx-btn" id="cxCopyVoucher">COPIAR CÓDIGO</button>';
