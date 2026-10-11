@@ -229,8 +229,8 @@ export default {
           await env.DB.prepare("INSERT INTO "+(voucherType==="service"?"club_voucher_service_automation":"club_voucher_automation")+"(unit,value) VALUES(?,?) ON CONFLICT(unit) DO UPDATE SET value=excluded.value").bind(unit,JSON.stringify({enabled:b.enabled,dailyLimit,times:clean,batchTime:clean[0]||'22:00'})).run();
         }
         const config=await voucherSettings(env,unit,voucherType),stats=await env.DB.prepare("SELECT delivery_mode,status,COUNT(*) total FROM club_voucher_requests WHERE unit=? GROUP BY delivery_mode,status").bind(unit).all();
-        const history=await env.DB.prepare("SELECT id,model_id,requested_quantity,evo_voucher_id,status,created_at,completed_at FROM club_voucher_batches WHERE unit=? ORDER BY id DESC LIMIT 30").bind(unit).all();
-        const queued=await env.DB.prepare("SELECT COUNT(*) AS total FROM club_voucher_requests WHERE unit=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL").bind(unit).first();
+        const history=await env.DB.prepare("SELECT b.id,b.model_id,b.requested_quantity,b.evo_voucher_id,b.status,b.created_at,b.completed_at FROM club_voucher_batches b JOIN club_voucher_models m ON m.id=b.model_id AND m.unit=b.unit WHERE b.unit=? AND (CASE WHEN substr(m.contract_ids_json,1,1)='{' THEN 'service' ELSE 'contract' END)=? ORDER BY b.id DESC LIMIT 30").bind(unit,voucherType).all();
+        const queued=await env.DB.prepare("SELECT COUNT(*) AS total FROM club_voucher_requests r JOIN club_voucher_models m ON m.id=r.model_id AND m.unit=r.unit WHERE r.unit=? AND r.delivery_mode='batch' AND r.status='pending' AND r.batch_id IS NULL AND (CASE WHEN substr(m.contract_ids_json,1,1)='{' THEN 'service' ELSE 'contract' END)=?").bind(unit,voucherType).first();
         return json({ok:true,unit,config,stats:stats.results||[],history:history.results||[],nextBatchCount:Number(queued?.total||0)});
       }
       if (url.pathname === "/admin/club-voucher-manual" && request.method === "POST") {
