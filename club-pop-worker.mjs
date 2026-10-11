@@ -1,5 +1,16 @@
+import {settleFitcoins,receptionRecord,receptionAction} from './lib/checkout-fitcoins.mjs';
 import { options as checkoutOptions, quote as checkoutQuote, validateChoice, checkoutError } from './lib/checkout.mjs';
 import { currencyAdmin, currencyStudent, currencyRewardTick, currencyMissionProgress, activeCurrency, ledgerStatements, localToday } from './lib/currency-ledger.mjs';
+
+// Same unit credentials, endpoint and request accounting as the existing Fitcoins transport.
+async function checkoutEvo(env,unit){
+ const cfg=await getEvoConfig(env,unit);
+ return async(path,method)=>{
+  const response=await fetch("https://evo-integracao-api.w12app.com.br"+path,{method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"},signal:AbortSignal.timeout(15000)});
+  try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,?,?)").bind(unit,"fitcoins",method,path.split("?")[0],response.status,response.ok?1:0).run()}catch{}
+  return response;
+ };
+}
 
 // Production Mercado Pago credentials are encrypted per unit in D1.
 async function clubPixCredentials(env,unit){
@@ -15,12 +26,18 @@ async function clubPixCredentials(env,unit){
 }
 async function clubPixReconcile(env,order,result){
  if(String(result.id)!==String(order.provider_order_id)||String(result.external_reference)!==String(order.id)||Math.round(Number(result.total_amount)*100)!==Number(order.amount_cents))throw Error("PIX_PROVIDER_MISMATCH");
+ if(order.status==="refunded")return {status:"refunded",fulfilled:false};
  const raw=String(result.status||"").toLowerCase();
  const next=raw==="processed"?"approved":raw==="cancelled"?"cancelled":raw==="expired"?"expired":raw==="failed"?"rejected":"pending";
  if(next==="approved"&&order.original_cents!=null){
    const payments=result.transactions?.payments||[];
    if(Math.round(Number(result.total_paid_amount)*100)!==Number(order.amount_cents)||!payments.length||payments.some(p=>p.status!=="processed"||p.payment_method?.id!=="pix")||(result.currency_id&&result.currency_id!=="BRL"))throw Error("PIX_PAYMENT_UNCONFIRMED");
  }
+ if(next==="approved"&&order.external_member_id){
+   await env.DB.prepare("UPDATE club_pix_orders SET status='paid_pending_coins',choice_expires_at=NULL WHERE id=? AND status NOT IN ('approved','refunded') AND reservation_state='held'").bind(order.id).run();
+   return settleFitcoins(env.DB,order,await checkoutEvo(env,order.unit));
+ }
+ if(next!=="approved"&&order.external_member_id&&order.external_state!=="none")return {status:order.status,fulfilled:false};
  if(next==="approved"){
    // Atomic, idempotent fulfillment: a single pending redemption per paid order.
    // Existing Central de Resgates handles physical delivery after payment.
@@ -276,6 +293,10 @@ export default {
           const known=await env.DB.prepare("SELECT DISTINCT id_membership FROM evo_member_contracts WHERE unit=? AND id_membership IS NOT NULL").bind(requestedUnit).all();
           const allowed=new Set((known.results||[]).map(x=>String(x.id_membership)));
           if(v.idsContratos.some(x=>!allowed.has(String(x))))return json({ok:false,error:"CONTRATO_NAO_ENCONTRADO_NO_D1"},400);
+        }
+        if(target.pathname==="/api/v1/members/fitcoins"&&operation.method==="PUT"){
+          const held=await env.DB.prepare("SELECT id FROM club_pix_orders WHERE unit=? AND external_member_id=? AND ((reservation_state='held' AND (choice_expires_at IS NULL OR datetime(choice_expires_at)>datetime('now'))) OR external_state IN ('running','review','refunding')) LIMIT 1").bind(requestedUnit,target.searchParams.get("idMember")||"").first();
+          if(held)return json({ok:false,error:"FITCOINS_RESERVADOS_EM_COMPRA"},409);
         }
         const upstream=await fetch(target.href,{method:operation.method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json",...(isVoucherCreate?{"Content-Type":"application/json-patch+json"}:{})},...(isVoucherCreate?{body:JSON.stringify(operation.payload)}:{})});
         try { const p=target.pathname.toLowerCase(), purpose=(p==="/api/v2/management/activeclients"||(p==="/api/v2/members"&&target.searchParams.get("status")==="1"))?"student_sync":p.includes("/membermembership")?"contracts":p==="/api/v1/activities"?"activities_catalog":p.includes("/activities/schedule/detail")?"checkin_detail":p.includes("/activities/schedule")?"schedule":p==="/api/v2/voucher"?"voucher_create":p.includes("/fitcoins")?"fitcoins":p.includes("/member/sessions")?"attendance":p.includes("/members/")||p==="/api/v2/members"?"member_profile":"other"; await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,?,?)").bind(requestedUnit,purpose,String(operation.method||"GET").toUpperCase(),target.pathname,upstream.status,upstream.ok?1:0).run(); } catch {}
@@ -1462,6 +1483,24 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       }
 
       // =====================================================
+      if(url.pathname==="/admin/checkout-redemptions"&&["GET","POST"].includes(request.method)){
+        const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),auth=await ar.json().catch(()=>({}));
+        if(!ar.ok||!["admin","reception"].includes(auth.role)||!Array.isArray(auth.units)||!auth.permissions?.some(p=>p==="*"||p==="/admin-resgates.html"||request.method==="GET"&&p==="/admin-transacoes.html"))return json({ok:false,error:"SEM_PERMISSAO"},403);
+        const scopes=auth.units.filter(u=>["bike","gym"].includes(u));if(!scopes.length)return json({ok:true,redemptions:[],transactions:[]});
+        if(request.method==="GET"){
+          const rows=(await env.DB.prepare("SELECT o.*,trim(coalesce(m.first_name,'')||' '||coalesce(m.last_name,'')) member_name,f.delivery_state FROM club_pix_orders o JOIN members m ON m.id=o.member_id LEFT JOIN club_pix_fulfillment f ON f.order_id=o.id WHERE o.external_member_id IS NOT NULL AND o.external_state NOT IN ('none','failed') AND o.unit IN ("+scopes.map(()=>"?").join(',')+") ORDER BY o.created_at DESC LIMIT 500").bind(...scopes).all()).results||[];
+          const content=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop'").first();
+          const transactions=(JSON.parse(content?.content_json||'{}').transactions||[]).filter(t=>String(t.redemptionId||'').startsWith('checkout:')&&scopes.includes(t.unit));
+          return json({ok:true,redemptions:rows.map(receptionRecord),transactions});
+        }
+        const b=await request.json(),id=String(b.redemptionId||'').replace(/^checkout:/,'');
+        const o=await env.DB.prepare("SELECT o.*,trim(coalesce(m.first_name,'')||' '||coalesce(m.last_name,'')) member_name FROM club_pix_orders o JOIN members m ON m.id=o.member_id WHERE o.id=? AND o.external_member_id IS NOT NULL").bind(id).first();
+        if(!o||!scopes.includes(o.unit))return json({ok:false,error:"RESGATE_NAO_ENCONTRADO"},404);
+        try{return json(await receptionAction(env.DB,o,String(b.action||''),await checkoutEvo(env,o.unit)));}catch(e){return json({ok:false,error:e.checkoutError?e.message:"FITCOINS_REQUER_CONFERENCIA"},409)}
+      }
+
       // Shared checkout: D1 balances, authoritative amounts and durable choices.
       if((url.pathname==="/checkout/mixed/options"&&request.method==="GET")||(["/checkout/mixed/quote","/checkout/pix/draft"].includes(url.pathname)&&request.method==="POST")){
         const member=await authenticatedMember(request,env);
@@ -1491,8 +1530,17 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
         if(order.provider_order_id)return json({ok:true,orderId:id,providerOrderId:order.provider_order_id,status:order.status});
         if(order.status==="approved")return json({ok:true,orderId:id,status:"approved",amountCents:order.amount_cents});
+        if(order.external_member_id&&order.amount_cents===0&&order.status==='creating'&&['failed','confirmed'].includes(order.external_state)){
+          try{return json({ok:true,orderId:id,amountCents:0,...await settleFitcoins(env.DB,order,await checkoutEvo(env,order.unit))});}catch{return json({ok:false,error:"FITCOINS_REQUER_CONFERENCIA",orderId:id},409)}
+        }
         let savedChoice=false;
         try{savedChoice=await validateChoice(env.DB,member,order);}catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
+        if(order.external_member_id)await getEvoConfig(env,order.unit);
+        if(savedChoice&&order.amount_cents===0&&order.external_member_id){
+          const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='creating',choice_expires_at=NULL WHERE id=? AND status='selected' AND reservation_state='held' AND datetime(choice_expires_at)>datetime('now')").bind(id).run();
+          if(claim.meta.changes!==1)return json({ok:false,error:"ESCOLHA_EXPIRADA_SALVE_NOVAMENTE"},409);
+          try{return json({ok:true,orderId:id,amountCents:0,...await settleFitcoins(env.DB,order,await checkoutEvo(env,order.unit))});}catch(e){return json({ok:false,error:"FITCOINS_REQUER_CONFERENCIA",orderId:id},409)}
+        }
         if(savedChoice&&order.amount_cents===0){
           try{
             const settled=await env.DB.prepare("UPDATE club_pix_orders SET status='approved',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='selected' AND reservation_state='held' AND datetime(choice_expires_at)>datetime('now')").bind(id,member.id).run();
