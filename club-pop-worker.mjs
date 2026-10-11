@@ -1874,14 +1874,18 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
  if(!get.ok)return json({ok:false,error:"CONSULTA_PIX_FALHOU"},502);
  const state=await get.json().catch(()=>({}));
  if(String(state.external_reference)!==id||Math.round(Number(state.total_amount)*100)!==Number(order.amount_cents))return json({ok:false,error:"PIX_NAO_CORRESPONDE_AO_PEDIDO"},409);
- let refunded=state.status==="refunded";
+ let refunded=state.status==="refunded"||state.transactions?.refunds?.some(x=>x.status==="processed");
  if(!refunded){
+  if(state.transactions?.refunds?.some(x=>["pending","processing"].includes(x.status)))return json({ok:true,status:"refund_pending",message:"Estorno em processamento no Mercado Pago"});
   if(state.status!=="processed")return json({ok:false,error:"PIX_NAO_PROCESSADO",providerStatus:state.status},409);
-  const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='refund_pending' WHERE id=? AND status IN ('paid_pending_coins','pending','approved') AND external_state IN ('none','failed')").bind(id).run();
-  if(claim.meta.changes!==1)return json({ok:false,error:"ESTORNO_EM_PROCESSAMENTO"},409);
+  if(!["refund_pending","paid_pending_coins","pending","approved"].includes(order.status))return json({ok:false,error:"PEDIDO_INDISPONIVEL"},409);
+  if(order.status!=="refund_pending"){
+   const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='refund_pending' WHERE id=? AND status IN ('paid_pending_coins','pending','approved') AND external_state IN ('none','failed')").bind(id).run();
+   if(claim.meta.changes!==1)return json({ok:false,error:"ESTORNO_EM_PROCESSAMENTO"},409);
+  }
   let response;try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id)+"/refund",{method:"POST",headers:{...headers,"X-Idempotency-Key":id,"Content-Type":"application/json"},body:"{}"})}catch{return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA"},502)}
   const result=await response.json().catch(()=>({}));
-  if(!response.ok)return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status},409);
+  if(!response.ok)return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||"").slice(0,80)},409);
   refunded=result.status==="refunded"||result.transactions?.refunds?.some(x=>x.status==="processed");
  }
  if(!refunded)return json({ok:true,status:"refund_pending",message:"Mercado Pago está processando o estorno."});
