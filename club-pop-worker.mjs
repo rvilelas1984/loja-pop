@@ -233,6 +233,17 @@ export default {
         const queued=await env.DB.prepare("SELECT COUNT(*) AS total FROM club_voucher_requests r JOIN club_voucher_models m ON m.id=r.model_id AND m.unit=r.unit WHERE r.unit=? AND r.delivery_mode='batch' AND r.status='pending' AND r.batch_id IS NULL AND (CASE WHEN substr(m.contract_ids_json,1,1)='{' THEN 'service' ELSE 'contract' END)=?").bind(unit,voucherType).first();
         return json({ok:true,unit,config,stats:stats.results||[],history:history.results||[],nextBatchCount:Number(queued?.total||0)});
       }
+      if (url.pathname === "/admin/voucher-run-now" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||"").toLowerCase(),type=String(b.type||"").toLowerCase();
+        if(!["bike","gym"].includes(unit)||!["contract","service"].includes(type))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const result=await voucherBatchTick(env,{unit,type,force:true});
+        return json({ok:true,...result});
+      }
       if (url.pathname === "/admin/club-voucher-manual" && request.method === "POST") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -2773,22 +2784,25 @@ async function voucherDeliverBatch(env,request){
  ]);
 }
 
-async function voucherBatchTick(env){
+async function voucherBatchTick(env,options={}){
  const now=voucherLocal(),hh=now.slice(11,16);
- for(const unit of ['bike','gym']){
+ for(const unit of (options.unit?[options.unit]:['bike','gym'])){
   const settings=await voucherSettings(env,unit);
   const serviceSettings=await voucherSettings(env,unit,'service');
-  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];const currentMinute=Number(hh.slice(0,2))*60+Number(hh.slice(3));const isScheduled=settings.enabled&&schedule.some(t=>{const minute=Number(t.slice(0,2))*60+Number(t.slice(3));return currentMinute===minute});
+  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];const currentMinute=Number(hh.slice(0,2))*60+Number(hh.slice(3));const isScheduled=(options.force&&options.type==="contract")||(!options.force&&settings.enabled&&schedule.some(t=>{const minute=Number(t.slice(0,2))*60+Number(t.slice(3));return currentMinute===minute}));
   // New EVO POSTs run only at configured times; existing EVO IDs are polled safely each minute.
-  const serviceSchedule=Array.isArray(serviceSettings.times)?serviceSettings.times:[serviceSettings.batchTime||'22:00'];const isServiceScheduled=serviceSettings.enabled&&serviceSchedule.some(t=>currentMinute===Number(t.slice(0,2))*60+Number(t.slice(3)));
+  const serviceSchedule=Array.isArray(serviceSettings.times)?serviceSettings.times:[serviceSettings.batchTime||'22:00'];const isServiceScheduled=(options.force&&options.type==="service")||(!options.force&&serviceSettings.enabled&&serviceSchedule.some(t=>currentMinute===Number(t.slice(0,2))*60+Number(t.slice(3))));
   const groups=(isScheduled||isServiceScheduled)?await env.DB.prepare("SELECT r.model_id,COUNT(*) n,m.contract_ids_json FROM club_voucher_requests r JOIN club_voucher_models m ON m.id=r.model_id AND m.unit=r.unit WHERE r.unit=? AND r.delivery_mode='batch' AND r.status='pending' AND r.batch_id IS NULL GROUP BY r.model_id").bind(unit).all():{results:[]};
+  let queued=0,created=0,blocked=0;
   for(const group of groups.results||[]){
    const groupType=voucherSelection(group.contract_ids_json).kind;
    if(groupType==='service'?!isServiceScheduled:!isScheduled)continue;
+   queued+=Number(group.n);
    const model=await env.DB.prepare("SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1").bind(group.model_id,unit).first();
    if(!model)continue;
    const lock=await env.DB.prepare("INSERT INTO club_voucher_batches(unit,model_id,requested_quantity,status) SELECT ?,?,?,'creating' WHERE NOT EXISTS(SELECT 1 FROM club_voucher_batches WHERE unit=? AND model_id=? AND status IN ('creating','awaiting_codes','review_required'))").bind(unit,group.model_id,group.n,unit,group.model_id).run();
-   if(!lock.meta.changes)continue;
+   if(!lock.meta.changes){blocked+=Number(group.n);continue;}
+   created+=Number(group.n);
    const batchId=lock.meta.last_row_id, nowDate=new Date(),until=new Date(nowDate.getTime()+model.validity_days*86400000);
    const reserved=await env.DB.prepare("UPDATE club_voucher_requests SET batch_id=? WHERE id IN (SELECT id FROM club_voucher_requests WHERE unit=? AND model_id=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL ORDER BY id LIMIT ?)").bind(batchId,unit,group.model_id,group.n).run();
    if(Number(reserved.meta.changes)!==Number(group.n)){await env.DB.prepare("UPDATE club_voucher_batches SET status='review_required' WHERE id=?").bind(batchId).run();continue;}
@@ -2821,8 +2835,9 @@ async function voucherBatchTick(env){
     if(Number(outstanding?.n||0)===0)await env.DB.prepare("UPDATE club_voucher_batches SET status='completed',completed_at=CURRENT_TIMESTAMP WHERE id=?").bind(batch.id).run();
    }catch(e){/* keep existing batch for retry; never recreate */}
   }
+  if(options.force)return {unit,type:options.type,queued,submitted:created,blocked,pending:queued-created};
  }
-}
+} 
 
 export async function claimEvoMissionVoucher(env,member,mission,goal,rewards){
   if(rewards.length!==1||rewards[0].type!=='voucher')throw voucherError('VOUCHER_EVO_EXIGE_UMA_RECOMPENSA_POR_META');

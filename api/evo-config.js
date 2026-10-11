@@ -52,6 +52,10 @@ export default async function handler(req,res){
    const t=await r.text();res.status(r.status);res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t);
   }catch{return res.status(502).json({ok:false,error:"FALHA_MODELOS_D1"})}
  }
+ if(req.query.route==="voucher-run-now"){
+  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  try{const r=await fetch(WORKER+"/admin/voucher-run-now",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify(req.body||{}),cache:"no-store"});res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(await r.text());}catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}
+ }
  if(req.query.route==="voucher-create"){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   try{
