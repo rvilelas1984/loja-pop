@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/checkout/coins/:path*",
+      "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/checkout/coins/:path*"
+    },
+    {
       "source": "/checkout/mixed/:path*",
       "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/checkout/mixed/:path*"
     },
