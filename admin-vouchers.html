@@ -84,7 +84,20 @@ $("generate").onclick=async()=>{
  const btn=$("generate");btn.disabled=true;btn.textContent="Gerando voucher...";
  try{
   const r=await fetch("/api/evo-config?route=voucher-create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({unit:unit(),modelId:Number(m.id),quantity:qty})}),d=await r.json();
-  if(!r.ok||!d.ok)throw Error((d.error||"FALHA_EMISSAO")+(d.detail?" · "+d.detail:"")+(d.batchId?" · lote "+d.batchId:""));
+  if(!r.ok||!d.ok){
+    if(d.error==="EMISSAO_PENDENTE_CONFERENCIA"){
+      const statusResponse=await fetch("/api/evo-config?route=voucher-status&unit="+unit(),{cache:"no-store"});
+      const status=await statusResponse.json();
+      const pending=(status.manualPending||[]).find(x=>Number(x.model_id)===Number(m.id));
+      if(pending){
+        const check=await fetch("/api/evo-config?route=voucher-create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({unit:unit(),modelId:Number(m.id),resumeBatchId:pending.id})});
+        const cd=await check.json();
+        if(check.ok&&cd.status==="completed"&&cd.codes?.length===Number(pending.requested_quantity)){showVoucherSuccess(cd,cd.codes.length);return;}
+        notify("Lote "+pending.id+" já enviado à EVO e aguardando códigos. Nenhum novo voucher foi solicitado.");return;
+      }
+    }
+    throw Error((d.error||"FALHA_EMISSAO")+(d.detail?" · "+d.detail:"")+(d.batchId?" · lote "+d.batchId:""));
+  }
   if(d.status==="completed"&&Array.isArray(d.codes)&&d.codes.length===qty){showVoucherSuccess(d,qty)}else{notify("Lote "+d.batchId+" enviado à EVO. Códigos ainda pendentes. Não gere novamente; consulte o lote.");const again=confirm("Lote criado na EVO, mas os códigos ainda estão pendentes. Consultar agora sem gerar outro lote?");if(again){const check=await fetch("/api/evo-config?route=voucher-create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({unit:unit(),modelId:Number(m.id),resumeBatchId:d.batchId})});const cd=await check.json();if(check.ok&&cd.status==="completed"&&cd.codes?.length===qty)showVoucherSuccess(cd,qty);else notify("Lote "+d.batchId+" permanece aguardando códigos. Não repita a emissão.");}}
  }catch(e){notify("Atenção: "+e.message+". Confira a EVO antes de tentar novamente.");}
  finally{btn.disabled=false;btn.textContent="Gerar voucher na EVO";loadRequests();loadVoucherStatus()}

@@ -221,11 +221,12 @@ export default {
         const vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit=String(url.searchParams.get("unit")||"").toLowerCase(),voucherType=String(url.searchParams.get("type")||"contract").toLowerCase();
         if(!["bike","gym"].includes(unit)||!["contract","service"].includes(voucherType))return json({ok:false,error:"UNIDADE_OU_TIPO_INVALIDO"},400);
+        if(voucherType==="service")await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_voucher_service_automation (unit TEXT PRIMARY KEY CHECK(unit IN (\'bike\',\'gym\')),value TEXT NOT NULL)").run();
         if(request.method==="PUT"){
           const b=await request.json().catch(()=>({})),dailyLimit=Number(b.dailyLimit),times=b.times;
           if(!Number.isInteger(dailyLimit)||dailyLimit<0||dailyLimit>(voucherType==="service"?1000:100)||typeof b.enabled!=="boolean"||!Array.isArray(times)||times.length>24||times.some(t=>typeof t!=="string"||!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)))return json({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
           const clean=[...new Set(times)].sort();
-          await env.DB.prepare("INSERT INTO club_voucher_automation(unit,value) VALUES(?,?) ON CONFLICT(unit) DO UPDATE SET value=excluded.value").bind(voucherType==="service"?unit+":service":unit,JSON.stringify({enabled:b.enabled,dailyLimit,times:clean,batchTime:clean[0]||'22:00'})).run();
+          await env.DB.prepare("INSERT INTO "+(voucherType==="service"?"club_voucher_service_automation":"club_voucher_automation")+"(unit,value) VALUES(?,?) ON CONFLICT(unit) DO UPDATE SET value=excluded.value").bind(unit,JSON.stringify({enabled:b.enabled,dailyLimit,times:clean,batchTime:clean[0]||'22:00'})).run();
         }
         const config=await voucherSettings(env,unit,voucherType),stats=await env.DB.prepare("SELECT delivery_mode,status,COUNT(*) total FROM club_voucher_requests WHERE unit=? GROUP BY delivery_mode,status").bind(unit).all();
         const history=await env.DB.prepare("SELECT id,model_id,requested_quantity,evo_voucher_id,status,created_at,completed_at FROM club_voucher_batches WHERE unit=? ORDER BY id DESC LIMIT 30").bind(unit).all();
@@ -297,7 +298,8 @@ export default {
           env.DB.prepare("SELECT status,COUNT(*) n FROM club_voucher_batches WHERE unit=? GROUP BY status").bind(unit).all()
         ]);
         const requests=rq.results||[],codes=cq.results||[],batches=bq.results||[];
-        return json({ok:true,unit,requests,codes,batches,counts:{requests:requests.length,waiting:requests.filter(x=>x.status==="pending").length,issued:requests.filter(x=>x.evoVoucherId).length}});
+        const manualPending=await env.DB.prepare("SELECT id,model_id,requested_quantity,evo_voucher_id,status FROM club_voucher_batches WHERE unit=? AND status='awaiting_codes' AND evo_voucher_id IS NOT NULL ORDER BY id DESC LIMIT 20").bind(unit).all();
+        return json({ok:true,unit,requests,codes,batches,manualPending:manualPending.results||[],counts:{requests:requests.length,waiting:requests.filter(x=>x.status==="pending").length,issued:requests.filter(x=>x.evoVoucherId).length}});
       }
       if (url.pathname === "/admin/club-voucher-models" && ["GET","POST","PUT"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
@@ -2748,8 +2750,10 @@ async function deliverMissionVoucher(env,member,mission,goal,request,dedupe){
 
 const voucherLocal=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date()).replace(' ','T');
 async function voucherSettings(env,unit,type='contract'){
- const row=await env.DB.prepare("SELECT value FROM club_voucher_automation WHERE unit=?").bind(type==='service'?unit+':service':unit).first();
- try{return {...{enabled:false,dailyLimit:5,batchTime:'22:00',times:['22:00'],times:['22:00']},...JSON.parse(row?.value||'{}')}}catch{return {enabled:false,dailyLimit:5,batchTime:'22:00'}}
+ if(type==='service')await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_voucher_service_automation (unit TEXT PRIMARY KEY CHECK(unit IN ('bike','gym')),value TEXT NOT NULL)").run();
+ const table=type==='service'?'club_voucher_service_automation':'club_voucher_automation';
+ const row=await env.DB.prepare("SELECT value FROM "+table+" WHERE unit=?").bind(unit).first();
+ try{return {enabled:false,dailyLimit:5,batchTime:'22:00',times:['22:00'],...JSON.parse(row?.value||'{}')}}catch{return {enabled:false,dailyLimit:5,batchTime:'22:00',times:['22:00']}}
 }
 function voucherName(unit,name,id){const slug=String(name||'voucher').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]/g,'').toLowerCase()||'voucher';return (unit==='gym'?'Gp':'Bp')+slug.slice(0,80)+String(id).padStart(2,'0')}
 async function voucherDeliverBatch(env,request){
