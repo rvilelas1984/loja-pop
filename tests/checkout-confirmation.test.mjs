@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {Script} from 'node:vm';
+import {getBalance,verifiedDebitBalance} from '../lib/checkout-fitcoins.mjs';
+import {customerOrderStatus} from '../lib/checkout.mjs';
+let calls=0;
+const evo=async(path,method)=>{calls++;assert.equal(method,'GET');assert.equal(path,'/api/v1/members/fitcoins?idMember=965062');return Response.json({totalFitcoins:295});};
+assert.equal(await getBalance(evo,'965062'),295);
+assert.equal(await verifiedDebitBalance(evo,{external_member_id:'965062',currency_quantity:27},322),295);
+assert.equal(calls,2); // one exact-balance read confirms immediately, no PUT or profile read
+await assert.rejects(()=>getBalance(async()=>Response.json({}),965062),/SALDO_FITCOINS_NAO_CONFIRMADO/);
+const now=Date.parse('2026-10-11T18:31:00Z'),selected={status:'selected',external_state:'none',provider_order_id:null,choice_expires_at:'2026-10-11T18:24:01.382Z'};
+assert.equal(customerOrderStatus(selected,now),'expired');assert.equal(selected.status,'selected');
+assert.equal(customerOrderStatus({...selected,choice_expires_at:'2026-10-11T18:40:00Z'},now),'selected');
+assert.equal(customerOrderStatus({...selected,status:'creating',external_state:'review',choice_expires_at:null},now),'coins_review');
+assert.equal(customerOrderStatus({...selected,status:'creating',external_state:'running'},now),'coins_review');
+assert.equal(customerOrderStatus({...selected,status:'approved',external_state:'confirmed'},now),'approved');
+assert.equal(customerOrderStatus({...selected,provider_order_id:'provider'},now),'selected');
+const html=readFileSync('minhas-compras.html','utf8');for(const m of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))if(m[1].trim())new Script(m[1]);
+assert.match(html,/EXPIRADO/);assert.match(html,/Nenhuma moeda foi debitada neste pedido/);assert.match(html,/EM CONFERÊNCIA/);
+console.log('PASS: dedicated Fitcoins balance endpoint, immediate exact confirmation, invalid balance rejection, safe expiry projection, review distinct from pending, browser script syntax. No real EVO call or D1 mutation.');

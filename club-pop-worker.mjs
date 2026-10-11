@@ -1,12 +1,12 @@
 import {settleFitcoins,receptionRecord,receptionAction} from './lib/checkout-fitcoins.mjs';
-import { options as checkoutOptions, quote as checkoutQuote, validateChoice, checkoutError } from './lib/checkout.mjs';
+import { options as checkoutOptions, quote as checkoutQuote, validateChoice, checkoutError, customerOrderStatus } from './lib/checkout.mjs';
 import { currencyAdmin, currencyStudent, currencyRewardTick, currencyMissionProgress, activeCurrency, ledgerStatements, localToday } from './lib/currency-ledger.mjs';
 
 // Same unit credentials, endpoint and request accounting as the existing Fitcoins transport.
 async function checkoutEvo(env,unit){
  const cfg=await getEvoConfig(env,unit);
  return async(path,method)=>{
-  const response=await fetch("https://evo-integracao-api.w12app.com.br"+path,{method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"},signal:AbortSignal.timeout(15000)});
+  const response=await fetch("https://evo-integracao-api.w12app.com.br"+path,{method,headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json",...(method==="GET"?{"Cache-Control":"no-cache"}:{})},cache:"no-store",signal:AbortSignal.timeout(15000)});
   try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,?,?)").bind(unit,"fitcoins",method,path.split("?")[0],response.status,response.ok?1:0).run()}catch{}
   return response;
  };
@@ -1608,10 +1608,10 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const id=String(url.searchParams.get("orderId")||"");
         if(!/^[0-9a-f-]{36}$/.test(id))return json({ok:false,error:"PEDIDO_INVALIDO"},400);
-        const order=await env.DB.prepare("SELECT id,status,external_state,payment_mode,amount_cents,currency_quantity FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
+        const order=await env.DB.prepare("SELECT id,status,external_state,payment_mode,amount_cents,currency_quantity,choice_expires_at,provider_order_id FROM club_pix_orders WHERE id=? AND member_id=? LIMIT 1").bind(id,member.id).first();
         if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
         if(order.payment_mode!=="coins"||Number(order.amount_cents)!==0||Number(order.currency_quantity)<1)return json({ok:false,error:"PAGAMENTO_NAO_E_MOEDAS"},409);
-        return json({ok:true,orderId:id,status:order.status,externalState:order.external_state});
+        return json({ok:true,orderId:id,status:customerOrderStatus(order),externalState:order.external_state});
       }
 
       // Webhook signature is required. Notification only reconciles, never fulfills.
@@ -1678,8 +1678,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if (!member) return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit = String(url.searchParams.get("unit")||"bike");
         if (!["bike","gym"].includes(unit)) return json({ok:false,error:"UNIDADE_INVALIDA"},400);
-        const rows = await env.DB.prepare("SELECT o.id,o.unit,o.item_type,o.item_id,o.amount_cents,o.status,o.created_at,o.updated_at,f.delivery_state FROM club_pix_orders o LEFT JOIN club_pix_fulfillment f ON f.order_id=o.id WHERE o.member_id=? AND o.unit=? ORDER BY created_at DESC LIMIT 30").bind(member.id,unit).all();
-        return json({ok:true,orders:rows.results||[]});
+        const rows = await env.DB.prepare("SELECT o.id,o.unit,o.item_type,o.item_id,o.amount_cents,o.status,o.external_state,o.currency_quantity,o.payment_mode,o.choice_expires_at,o.provider_order_id,o.created_at,o.updated_at,f.delivery_state FROM club_pix_orders o LEFT JOIN club_pix_fulfillment f ON f.order_id=o.id WHERE o.member_id=? AND o.unit=? ORDER BY created_at DESC LIMIT 30").bind(member.id,unit).all();
+        return json({ok:true,orders:(rows.results||[]).map(o=>({...o,status:customerOrderStatus(o)}))});
       }
 
       

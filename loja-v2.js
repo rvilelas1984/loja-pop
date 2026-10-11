@@ -48,31 +48,34 @@ function openDetails(type,id){
  const choice=saved,btn=el("cpPay"),scope=unit()==="gym"?"Gym Pop":"Bike Pop";
  btn.disabled=true;btn.textContent="PROCESSANDO PAGAMENTO...";
  const show=(title,subtitle,body)=>{sheet.innerHTML=checkoutView(item,type,scope,Number(choice.quantity),0,title,subtitle,body)};
- const waiting=()=>show("Aguardando confirmação","Estamos verificando seu pagamento com Fitcoins.",'<div class="cx-state"><span class="cx-pulse"></span>Consultando a confirmação da EVO...</div><p class="cx-note">Não realize outro pagamento. Esta tela será atualizada automaticamente.</p>');
+ const waiting=()=>show("Aguardando confirmação","Estamos verificando seu pagamento com Fitcoins.",'<div class="cx-state"><span class="cx-pulse"></span>Confirmando suas Fitcoins...</div><p class="cx-note">Não realize outro pagamento. Esta tela será atualizada automaticamente.</p>');
  const success=()=>{show("Compra confirmada!","Seu pagamento com Fitcoins foi concluído.",'<div class="cx-success">✓</div><div class="cx-state">✓ '+(type==="product"?"Seu produto está disponível para retirada na recepção do "+scope+".":"Seu serviço foi comprado. Consulte seus vouchers no aplicativo.")+'</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails;render()};
+ const expired=()=>{show("Escolha expirada","O prazo para confirmar esta escolha terminou.",'<div class="cx-state">Nenhuma moeda foi debitada neste pedido. Volte à loja e salve uma nova escolha.</div><button id="cxClose" class="cx-btn">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails};
  const review=()=>{show("Compra em conferência","Ainda não recebemos a confirmação final das suas moedas.",'<div class="cx-state">Não tente pagar novamente. A recepção pode conferir esta transação com segurança.</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails};
  try{
   waiting();
   const token=sessionStorage.getItem("clubpop_token"),headers={"Content-Type":"application/json",Authorization:"Bearer "+token};
-  let confirmed=false,terminal=false;
+  let confirmed=false,terminal=false,wasExpired=false;
   try{
    const response=await fetch(WORKER_PIX+"/checkout/coins/confirm",{method:"POST",headers,body:JSON.stringify({orderId:choice.orderId})});
    const result=await response.json().catch(()=>({}));
+   wasExpired=result.error==="ESCOLHA_EXPIRADA_SALVE_NOVAMENTE";
    if(response.ok&&result.ok&&result.status==="approved")confirmed=true;
    else if(["ESCOLHA_EXPIRADA_SALVE_NOVAMENTE","SALDO_INSUFICIENTE","PAGAMENTO_NAO_E_MOEDAS","PEDIDO_NAO_ENCONTRADO"].includes(result.error))terminal=true;
   }catch{}
   if(confirmed){success();return}
-  if(terminal){review();return}
+  if(terminal){if(wasExpired)expired();else review();return}
   for(let attempt=0;attempt<15;attempt++){
    await new Promise(resolve=>setTimeout(resolve,2000));
    try{
     const r=await fetch(WORKER_PIX+"/checkout/coins/status?orderId="+encodeURIComponent(choice.orderId),{headers:{Authorization:"Bearer "+token},cache:"no-store"});
     const d=await r.json().catch(()=>({}));
     if(r.ok&&d.ok&&d.status==="approved"){confirmed=true;break}
-    if(r.ok&&d.ok&&["refunded","cancelled","expired"].includes(d.status)){terminal=true;break}
+    if(r.ok&&d.ok&&d.status==="coins_review"){terminal=true;break}
+    if(r.ok&&d.ok&&["refunded","cancelled","expired"].includes(d.status)){terminal=true;wasExpired=d.status==="expired";break}
    }catch{}
   }
-  if(confirmed)success();else review();
+  if(confirmed)success();else if(wasExpired)expired();else review();
  }finally{busy=false;if(btn.isConnected){btn.disabled=false;btn.textContent="CONFIRMAR COM MOEDAS"}}
 };
  el("modalClose").onclick=closeDetails;
