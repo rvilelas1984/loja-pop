@@ -238,8 +238,8 @@ export default {
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const b=await request.json().catch(()=>({})),unit=String(b.unit||"").toLowerCase(),modelId=Number(b.modelId);
-        if(!["bike","gym"].includes(unit)||!Number.isSafeInteger(modelId)||modelId<1||!Number.isInteger(b.quantity)||![1,5,10,50].includes(b.quantity))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||"").toLowerCase(),modelId=Number(b.modelId),resumeBatchId=Number(b.resumeBatchId||0);
+        if(!["bike","gym"].includes(unit)||!Number.isSafeInteger(modelId)||modelId<1||(!resumeBatchId&&(!Number.isInteger(b.quantity)||![1,5,10,50].includes(b.quantity))))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
         const model=await env.DB.prepare("SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1").bind(modelId,unit).first();
         if(!model)return json({ok:false,error:"MODELO_NAO_ENCONTRADO"},404);
         const selection=voucherSelection(model.contract_ids_json),fields=voucherPayloadSelection(selection);
@@ -247,22 +247,40 @@ export default {
         const allowed=new Set((catalog.results||[]).map(x=>Number(x.id)));
         if(selection.ids.some(x=>!allowed.has(x)))return json({ok:false,error:"ITEM_NAO_ENCONTRADO_NO_D1"},400);
         const cfg=await getEvoConfig(env,unit);
-        const lock=await env.DB.prepare("INSERT INTO club_voucher_batches(unit,model_id,requested_quantity,status) SELECT ?,?,?,'creating' WHERE NOT EXISTS(SELECT 1 FROM club_voucher_batches WHERE unit=? AND model_id=? AND status IN ('creating','awaiting_codes','review_required'))").bind(unit,modelId,b.quantity,unit,modelId).run();
-        if(!lock.meta.changes)return json({ok:false,error:"EMISSAO_PENDENTE_CONFERENCIA",evoRequestsMade:0},409);
-        const batchId=lock.meta.last_row_id,now=new Date(),until=new Date(now.getTime()+Number(model.validity_days)*86400000);
-        const payload={nome:voucherName(unit,model.name,batchId)+"M",qtde:b.quantity,flUtilizarSite:true,flCodigoUnico:b.quantity===1,flIlimitado:false,inicio:now.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,...fields};
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_voucher_manual_codes(batch_id INTEGER NOT NULL,unit TEXT NOT NULL,code TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(batch_id,code))").run();
+        let batchId,voucherId,quantity,createdNow=false;
+        if(resumeBatchId){
+          const existing=await env.DB.prepare("SELECT id,evo_voucher_id,requested_quantity,status FROM club_voucher_batches WHERE id=? AND unit=? AND model_id=?").bind(resumeBatchId,unit,modelId).first();
+          if(!existing||!existing.evo_voucher_id||!["awaiting_codes","completed"].includes(existing.status))return json({ok:false,error:"LOTE_NAO_DISPONIVEL_PARA_CONSULTA"},409);
+          batchId=existing.id;voucherId=Number(existing.evo_voucher_id);quantity=Number(existing.requested_quantity);
+        }else{
+          const lock=await env.DB.prepare("INSERT INTO club_voucher_batches(unit,model_id,requested_quantity,status) SELECT ?,?,?,'creating' WHERE NOT EXISTS(SELECT 1 FROM club_voucher_batches WHERE unit=? AND model_id=? AND status IN ('creating','awaiting_codes','review_required'))").bind(unit,modelId,b.quantity,unit,modelId).run();
+          if(!lock.meta.changes)return json({ok:false,error:"EMISSAO_PENDENTE_CONFERENCIA",evoRequestsMade:0},409);
+          batchId=lock.meta.last_row_id;quantity=b.quantity;
+          const now=new Date(),until=new Date(now.getTime()+Number(model.validity_days)*86400000);
+          const payload={nome:voucherName(unit,model.name,batchId)+"M",qtde:quantity,flUtilizarSite:true,flCodigoUnico:quantity===1,flIlimitado:false,inicio:now.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,...fields};
+          try{
+            const created=await voucherEvoCall(env,cfg,"/api/v2/voucher","POST",payload);
+            voucherId=Number(created?.voucherId);
+            if(!Number.isSafeInteger(voucherId)||voucherId<1)throw voucherError("EVO_NAO_RETORNOU_ID");
+            await env.DB.prepare("UPDATE club_voucher_batches SET evo_voucher_id=?,status='awaiting_codes' WHERE id=?").bind(voucherId,batchId).run();
+            createdNow=true;
+          }catch(e){
+            await env.DB.prepare("UPDATE club_voucher_batches SET status='review_required' WHERE id=?").bind(batchId).run();
+            return json({ok:false,error:"EMISSAO_EXIGE_CONFERENCIA_NA_EVO",batchId,detail:String(e?.message||e),evoRequestsMade:1},502);
+          }
+        }
         try{
-          const created=await voucherEvoCall(env,cfg,"/api/v2/voucher","POST",payload),voucherId=Number(created?.voucherId);
-          if(!Number.isSafeInteger(voucherId)||voucherId<1)throw voucherError("EVO_NAO_RETORNOU_ID");
-          await env.DB.prepare("UPDATE club_voucher_batches SET evo_voucher_id=?,status='awaiting_codes' WHERE id=?").bind(voucherId,batchId).run();
-          const codes=await voucherEvoCall(env,cfg,"/api/v1/voucher/get-codes-by-voucher-id/"+voucherId+"?take="+b.quantity+"&skip=0","GET");
-          const allCodes=(codes?.list||[]).filter(x=>Number(x.voucherId)===voucherId&&typeof x.voucherCode==="string"&&x.voucherCode.trim()).map(x=>x.voucherCode.trim());
-          if(allCodes.length!==b.quantity||new Set(allCodes).size!==b.quantity)return json({ok:true,voucherId,batchId,status:"awaiting_codes",warning:"CODIGOS_PENDENTES_CONFERENCIA",evoRequestsMade:2});
+          const data=await voucherEvoCall(env,cfg,"/api/v1/voucher/get-codes-by-voucher-id/"+voucherId+"?take="+quantity+"&skip=0","GET");
+          const allCodes=(data?.list||[]).filter(x=>Number(x.voucherId)===voucherId&&typeof x.voucherCode==="string"&&x.voucherCode.trim()).map(x=>x.voucherCode.trim());
+          if(allCodes.length!==quantity||new Set(allCodes).size!==quantity)return json({ok:true,voucherId,batchId,status:"awaiting_codes",warning:"CODIGOS_PENDENTES_CONFERENCIA",evoRequestsMade:createdNow?2:1});
+          for(const code of allCodes)await env.DB.prepare("INSERT OR IGNORE INTO club_voucher_manual_codes(batch_id,unit,code) VALUES(?,?,?)").bind(batchId,unit,code).run();
+          const persisted=await env.DB.prepare("SELECT COUNT(*) n FROM club_voucher_manual_codes WHERE batch_id=? AND unit=?").bind(batchId,unit).first();
+          if(Number(persisted?.n)!==quantity)return json({ok:false,error:"CODIGOS_D1_INCOMPLETOS",batchId,voucherId},409);
           await env.DB.prepare("UPDATE club_voucher_batches SET status='completed',completed_at=CURRENT_TIMESTAMP WHERE id=?").bind(batchId).run();
-          return json({ok:true,voucherId,batchId,code:allCodes[0],codes:allCodes,status:"completed",evoRequestsMade:2});
+          return json({ok:true,voucherId,batchId,code:allCodes[0],codes:allCodes,status:"completed",evoRequestsMade:createdNow?2:1});
         }catch(e){
-          await env.DB.prepare("UPDATE club_voucher_batches SET status='review_required' WHERE id=?").bind(batchId).run();
-          return json({ok:false,error:"EMISSAO_EXIGE_CONFERENCIA_NA_EVO",batchId,detail:String(e?.message||e),evoRequestsMade:1},502);
+          return json({ok:true,voucherId,batchId,status:"awaiting_codes",warning:"CONSULTA_CODIGOS_PENDENTE",detail:String(e?.message||e),evoRequestsMade:createdNow?2:1});
         }
       }
       if (url.pathname === "/admin/club-voucher-status" && request.method === "GET") {

@@ -73,6 +73,7 @@ $("saveModel").onclick=async()=>{const selectionType=$("selectionType").value,na
 $("issueModel").onchange=()=>{const m=current();preview()};
 for(const id of ["quantity","issueMode","studentName"])$(id).addEventListener("input",preview);
 $("refresh").onclick=preview;
+function showVoucherSuccess(d,qty){const old=document.getElementById("voucherSuccessOverlay");if(old)old.remove();const overlay=document.createElement("div");overlay.id="voucherSuccessOverlay";overlay.style.cssText="position:fixed;inset:0;background:rgba(9,18,30,.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px";const card=document.createElement("div");card.style.cssText="background:white;border-radius:18px;padding:25px;max-width:430px;width:100%;box-shadow:0 15px 60px #0004";const title=document.createElement("h2");title.textContent="✓ Vouchers gerados com sucesso";title.style.color="#14805a";const msg=document.createElement("p");msg.textContent=qty+" voucher(s) gerado(s) na EVO. ID "+d.voucherId+" · Lote D1 "+d.batchId+" · "+d.codes.length+" código(s) confirmado(s).";const close=document.createElement("button");close.className="btn green";close.textContent="Fechar";close.onclick=()=>overlay.remove();card.append(title,msg,close);overlay.append(card);document.body.append(overlay);close.focus();}
 $("generate").onclick=async()=>{
  if(loading)return notify("Aguarde o carregamento dos modelos.");
  const m=current();if(!m)return notify("Selecione um modelo.");
@@ -83,8 +84,8 @@ $("generate").onclick=async()=>{
  const btn=$("generate");btn.disabled=true;btn.textContent="Gerando voucher...";
  try{
   const r=await fetch("/api/evo-config?route=voucher-create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({unit:unit(),modelId:Number(m.id),quantity:qty})}),d=await r.json();
-  if(!r.ok||!d.ok)throw Error((d.error||"FALHA_EMISSAO")+(d.batchId?" · lote "+d.batchId:""));
-  notify("Voucher EVO "+d.voucherId+" criado. "+(d.codes?.length?d.codes.length+" código(s) recuperado(s).": "Códigos pendentes de conferência na EVO.")+" · Lote D1 "+d.batchId);
+  if(!r.ok||!d.ok)throw Error((d.error||"FALHA_EMISSAO")+(d.detail?" · "+d.detail:"")+(d.batchId?" · lote "+d.batchId:""));
+  if(d.status==="completed"&&Array.isArray(d.codes)&&d.codes.length===qty){showVoucherSuccess(d,qty)}else{notify("Lote "+d.batchId+" enviado à EVO. Códigos ainda pendentes. Não gere novamente; consulte o lote.");const again=confirm("Lote criado na EVO, mas os códigos ainda estão pendentes. Consultar agora sem gerar outro lote?");if(again){const check=await fetch("/api/evo-config?route=voucher-create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({unit:unit(),modelId:Number(m.id),resumeBatchId:d.batchId})});const cd=await check.json();if(check.ok&&cd.status==="completed"&&cd.codes?.length===qty)showVoucherSuccess(cd,qty);else notify("Lote "+d.batchId+" permanece aguardando códigos. Não repita a emissão.");}}
  }catch(e){notify("Atenção: "+e.message+". Confira a EVO antes de tentar novamente.");}
  finally{btn.disabled=false;btn.textContent="Gerar voucher na EVO";loadRequests();loadVoucherStatus()}
 };
