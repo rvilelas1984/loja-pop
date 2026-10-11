@@ -179,6 +179,19 @@ export default {
 
 
 
+      if(url.pathname==="/admin/currencies"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        let auth;
+        try{const a=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});auth=await a.json();if(!a.ok||auth.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403)}
+        catch{return json({ok:false,error:"AUTENTICACAO_INDISPONIVEL"},502)}
+        const unit=url.searchParams.get("unit");
+        if(!["bike","gym","club"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const currencies=await env.DB.prepare("SELECT c.id,c.code,c.name,c.symbol,c.brl_value,c.source,c.status FROM club_currencies c JOIN club_currency_units u ON u.currency_id=c.id WHERE u.unit=? AND u.enabled=1 ORDER BY c.id").bind(unit).all();
+        const rules=await env.DB.prepare("SELECT r.id,r.currency_id,r.rule_type,r.target_count,r.reward_amount,r.enabled FROM club_currency_reward_rules r WHERE r.unit=? ORDER BY r.id").bind(unit).all();
+        return json({ok:true,unit,currencies:currencies.results||[],rules:rules.results||[],evoRequestsMade:0});
+      }
+
       if (url.pathname === "/admin/voucher-automation" && ["GET","PUT"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
