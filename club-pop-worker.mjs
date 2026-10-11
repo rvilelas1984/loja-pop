@@ -246,13 +246,15 @@ export default {
         const selection=voucherSelection(model.contract_ids_json),fields=voucherPayloadSelection(selection);
         const catalog=selection.kind==="service"?await env.DB.prepare("SELECT evo_service_id id FROM evo_service_catalog WHERE unit=? AND is_active=1").bind(unit).all():await env.DB.prepare("SELECT DISTINCT id_membership id FROM evo_member_contracts WHERE unit=? AND id_membership IS NOT NULL").bind(unit).all();
         const allowed=new Set((catalog.results||[]).map(x=>Number(x.id)));
-        if(selection.ids.some(x=>!allowed.has(x)))return json({ok:false,error:"ITEM_NAO_ENCONTRADO_NO_D1"},400);
+        if(!resumeBatchId&&selection.ids.some(x=>!allowed.has(x)))return json({ok:false,error:"ITEM_NAO_ENCONTRADO_NO_D1"},400);
         const cfg=await getEvoConfig(env,unit);
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_voucher_manual_codes(batch_id INTEGER NOT NULL,unit TEXT NOT NULL,code TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(batch_id,code))").run();
         let batchId,voucherId,quantity,createdNow=false;
         if(resumeBatchId){
           const existing=await env.DB.prepare("SELECT id,evo_voucher_id,requested_quantity,status FROM club_voucher_batches WHERE id=? AND unit=? AND model_id=?").bind(resumeBatchId,unit,modelId).first();
           if(!existing||!existing.evo_voucher_id||!["awaiting_codes","completed"].includes(existing.status))return json({ok:false,error:"LOTE_NAO_DISPONIVEL_PARA_CONSULTA"},409);
+          const linked=await env.DB.prepare("SELECT COUNT(*) n FROM club_voucher_requests WHERE batch_id=?").bind(resumeBatchId).first();
+          if(Number(linked?.n)>0)return json({ok:false,error:"LOTE_AUTOMATICO_NAO_PODE_SER_RECUPERADO_COMO_MANUAL"},409);
           batchId=existing.id;voucherId=Number(existing.evo_voucher_id);quantity=Number(existing.requested_quantity);
         }else{
           const lock=await env.DB.prepare("INSERT INTO club_voucher_batches(unit,model_id,requested_quantity,status) SELECT ?,?,?,'creating' WHERE NOT EXISTS(SELECT 1 FROM club_voucher_batches WHERE unit=? AND model_id=? AND status IN ('creating','awaiting_codes','review_required'))").bind(unit,modelId,b.quantity,unit,modelId).run();
@@ -273,8 +275,9 @@ export default {
         }
         try{
           const data=await voucherEvoCall(env,cfg,"/api/v1/voucher/get-codes-by-voucher-id/"+voucherId+"?take="+quantity+"&skip=0","GET");
-          const allCodes=(data?.list||[]).filter(x=>Number(x.voucherId)===voucherId&&typeof x.voucherCode==="string"&&x.voucherCode.trim()).map(x=>x.voucherCode.trim());
-          if(allCodes.length!==quantity||new Set(allCodes).size!==quantity)return json({ok:true,voucherId,batchId,status:"awaiting_codes",warning:"CODIGOS_PENDENTES_CONFERENCIA",evoRequestsMade:createdNow?2:1});
+          const rows=Array.isArray(data?.list)?data.list:[];const allCodes=rows.filter(x=>Number(x.voucherId)===voucherId&&typeof x.voucherCode==="string"&&x.voucherCode.trim()).map(x=>x.voucherCode.trim());
+          const codeDiagnostics={returnedRows:rows.length,matchingCodes:allCodes.length,reportedQuantity:Number(data?.quantity??-1)};
+          if(allCodes.length!==quantity||new Set(allCodes).size!==quantity)return json({ok:true,voucherId,batchId,status:"awaiting_codes",warning:"CODIGOS_PENDENTES_CONFERENCIA",codeDiagnostics,evoRequestsMade:createdNow?2:1});
           for(const code of allCodes)await env.DB.prepare("INSERT OR IGNORE INTO club_voucher_manual_codes(batch_id,unit,code) VALUES(?,?,?)").bind(batchId,unit,code).run();
           const persisted=await env.DB.prepare("SELECT COUNT(*) n FROM club_voucher_manual_codes WHERE batch_id=? AND unit=?").bind(batchId,unit).first();
           if(Number(persisted?.n)!==quantity)return json({ok:false,error:"CODIGOS_D1_INCOMPLETOS",batchId,voucherId},409);
@@ -298,7 +301,7 @@ export default {
           env.DB.prepare("SELECT status,COUNT(*) n FROM club_voucher_batches WHERE unit=? GROUP BY status").bind(unit).all()
         ]);
         const requests=rq.results||[],codes=cq.results||[],batches=bq.results||[];
-        const manualPending=await env.DB.prepare("SELECT id,model_id,requested_quantity,evo_voucher_id,status FROM club_voucher_batches WHERE unit=? AND status='awaiting_codes' AND evo_voucher_id IS NOT NULL ORDER BY id DESC LIMIT 20").bind(unit).all();
+        const manualPending=await env.DB.prepare("SELECT b.id,b.model_id,b.requested_quantity,b.evo_voucher_id,b.status FROM club_voucher_batches b WHERE b.unit=? AND b.status='awaiting_codes' AND b.evo_voucher_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM club_voucher_requests r WHERE r.batch_id=b.id AND r.unit=b.unit) ORDER BY b.id DESC LIMIT 20").bind(unit).all();
         return json({ok:true,unit,requests,codes,batches,manualPending:manualPending.results||[],counts:{requests:requests.length,waiting:requests.filter(x=>x.status==="pending").length,issued:requests.filter(x=>x.evoVoucherId).length}});
       }
       if (url.pathname === "/admin/club-voucher-models" && ["GET","POST","PUT"].includes(request.method)) {
@@ -2798,7 +2801,7 @@ async function voucherBatchTick(env){
     await env.DB.prepare("UPDATE club_voucher_batches SET evo_voucher_id=?,status='awaiting_codes' WHERE id=?").bind(id,batchId).run();
    }catch(e){await env.DB.prepare("UPDATE club_voucher_batches SET status='review_required' WHERE id=?").bind(batchId).run();}
   }
-  const batches=await env.DB.prepare("SELECT * FROM club_voucher_batches WHERE unit=? AND status='awaiting_codes'").bind(unit).all();
+  const batches=await env.DB.prepare("SELECT b.* FROM club_voucher_batches b WHERE b.unit=? AND b.status='awaiting_codes' AND EXISTS (SELECT 1 FROM club_voucher_requests r WHERE r.batch_id=b.id AND r.unit=b.unit AND r.delivery_mode='batch')").bind(unit).all();
   for(const batch of batches.results||[]){
    try{
     const cfg=await getEvoConfig(env,unit);
