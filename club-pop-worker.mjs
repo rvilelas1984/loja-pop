@@ -260,20 +260,21 @@ export default {
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
         if(request.method==="GET"){
           const q=await env.DB.prepare("SELECT id,unit,name,discount_type discountType,discount_value discountValue,validity_days validityDays,contract_ids_json contractIdsJson,enabled,created_at createdAt FROM club_voucher_models WHERE unit=? ORDER BY id DESC").bind(unit).all();
-          return json({ok:true,unit,models:(q.results||[]).map(x=>({...x,contractIds:JSON.parse(x.contractIdsJson||"[]")}))});
+          return json({ok:true,unit,models:(q.results||[]).map(x=>{const selection=voucherSelection(x.contractIdsJson);return {...x,selectionType:selection.kind,contractIds:selection.kind==="contract"?selection.ids:[],serviceIds:selection.kind==="service"?selection.ids:[]}})});
         }
-        const name=String(b.name||"").trim(),type=Number(b.discountType),value=Number(b.discountValue),days=Number(b.validityDays),ids=Array.isArray(b.contractIds)?[...new Set(b.contractIds.map(Number))]:[];
-        if(name.length<3||name.length>100||![1,2].includes(type)||!Number.isFinite(value)||value<=0||(type===1&&value>100)||!Number.isInteger(days)||days<1||days>365||!ids.length||ids.length>100||ids.some(x=>!Number.isSafeInteger(x)||x<=0))return json({ok:false,error:"MODELO_INVALIDO"},400);
-        const known=await env.DB.prepare("SELECT DISTINCT id_membership FROM evo_member_contracts WHERE unit=? AND id_membership IS NOT NULL").bind(unit).all();
-        const allowed=new Set((known.results||[]).map(x=>String(x.id_membership)));
-        if(ids.some(x=>!allowed.has(String(x))))return json({ok:false,error:"CONTRATO_NAO_ENCONTRADO_NO_D1"},400);
+        const name=String(b.name||"").trim(),type=Number(b.discountType),value=Number(b.discountValue),days=Number(b.validityDays),selectionType=String(b.selectionType||"contract").toLowerCase(),ids=Array.isArray(selectionType==="service"?b.serviceIds:b.contractIds)?[...new Set((selectionType==="service"?b.serviceIds:b.contractIds).map(Number))]:[];
+        if(!["contract","service"].includes(selectionType)||name.length<3||name.length>100||![1,2].includes(type)||!Number.isFinite(value)||value<=0||(type===1&&value>100)||!Number.isInteger(days)||days<1||days>365||!ids.length||ids.length>100||ids.some(x=>!Number.isSafeInteger(x)||x<=0))return json({ok:false,error:"MODELO_INVALIDO"},400);
+        const known=selectionType==="service"?await env.DB.prepare("SELECT evo_service_id id FROM evo_service_catalog WHERE unit=? AND is_active=1").bind(unit).all():await env.DB.prepare("SELECT DISTINCT id_membership id FROM evo_member_contracts WHERE unit=? AND id_membership IS NOT NULL").bind(unit).all();
+        const allowed=new Set((known.results||[]).map(x=>String(x.id)));
+        if(ids.some(x=>!allowed.has(String(x))))return json({ok:false,error:selectionType==="service"?"SERVICO_NAO_ENCONTRADO_NO_D1":"CONTRATO_NAO_ENCONTRADO_NO_D1"},400);
+        const storedIds=JSON.stringify(selectionType==="service"?{kind:"service",ids}:ids);
         if(request.method==="POST"){
-          const q=await env.DB.prepare("INSERT INTO club_voucher_models(unit,name,discount_type,discount_value,validity_days,contract_ids_json) VALUES(?,?,?,?,?,?)").bind(unit,name,type,value,days,JSON.stringify(ids)).run();
+          const q=await env.DB.prepare("INSERT INTO club_voucher_models(unit,name,discount_type,discount_value,validity_days,contract_ids_json) VALUES(?,?,?,?,?,?)").bind(unit,name,type,value,days,storedIds).run();
           return json({ok:true,id:q.meta.last_row_id,unit});
         }
         const id=Number(b.id);
         if(!Number.isSafeInteger(id)||id<=0)return json({ok:false,error:"ID_INVALIDO"},400);
-        const q=await env.DB.prepare("UPDATE club_voucher_models SET name=?,discount_type=?,discount_value=?,validity_days=?,contract_ids_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND unit=?").bind(name,type,value,days,JSON.stringify(ids),id,unit).run();
+        const q=await env.DB.prepare("UPDATE club_voucher_models SET name=?,discount_type=?,discount_value=?,validity_days=?,contract_ids_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND unit=?").bind(name,type,value,days,storedIds,id,unit).run();
         return json({ok:!!q.meta.changes,id,unit,error:q.meta.changes?undefined:"MODELO_NAO_ENCONTRADO"},q.meta.changes?200:404);
       }
       // Authenticated server-to-server transport: credentials remain inside this Worker.
@@ -291,10 +292,11 @@ export default {
         const isVoucherCreate=target.pathname==="/api/v2/voucher"&&operation.method==="POST";
         if(isVoucherCreate){
           const v=operation.payload;
-          if(!v||typeof v!=="object"||Array.isArray(v)||!Array.isArray(v.idsContratos)||!v.idsContratos.length||v.idsContratos.some(x=>!Number.isSafeInteger(x)||x<=0)||!/^.{3,100}$/.test(String(v.nome||""))||!Number.isFinite(v.valor)||v.valor<=0||![1,2].includes(v.tipoDesconto)||v.tipoDesconto===1&&v.valor>100||!v.inicio||!v.validade||!Number.isInteger(v.qtde)||v.qtde<1||v.qtde>50||v.flContrato!==true||v.flIlimitado!==false)return json({ok:false,error:"VOUCHER_INVALIDO"},400);
-          const known=await env.DB.prepare("SELECT DISTINCT id_membership FROM evo_member_contracts WHERE unit=? AND id_membership IS NOT NULL").bind(requestedUnit).all();
-          const allowed=new Set((known.results||[]).map(x=>String(x.id_membership)));
-          if(v.idsContratos.some(x=>!allowed.has(String(x))))return json({ok:false,error:"CONTRATO_NAO_ENCONTRADO_NO_D1"},400);
+          const service=v?.flContrato===false, ids=service?v?.idsServicos:v?.idsContratos;
+          if(!v||typeof v!=="object"||Array.isArray(v)||typeof v.flContrato!=="boolean"||!Array.isArray(ids)||!ids.length||ids.some(x=>!Number.isSafeInteger(x)||x<=0)||!/^.{3,100}$/.test(String(v.nome||""))||!Number.isFinite(v.valor)||v.valor<=0||![1,2].includes(v.tipoDesconto)||v.tipoDesconto===1&&v.valor>100||!v.inicio||!v.validade||!Number.isInteger(v.qtde)||v.qtde<1||v.qtde>50||v.flIlimitado!==false)return json({ok:false,error:"VOUCHER_INVALIDO"},400);
+          const known=service?await env.DB.prepare("SELECT evo_service_id id FROM evo_service_catalog WHERE unit=? AND is_active=1").bind(requestedUnit).all():await env.DB.prepare("SELECT DISTINCT id_membership id FROM evo_member_contracts WHERE unit=? AND id_membership IS NOT NULL").bind(requestedUnit).all();
+          const allowed=new Set((known.results||[]).map(x=>String(x.id)));
+          if(ids.some(x=>!allowed.has(String(x))))return json({ok:false,error:service?"SERVICO_NAO_ENCONTRADO_NO_D1":"CONTRATO_NAO_ENCONTRADO_NO_D1"},400);
         }
         if(target.pathname==="/api/v1/members/fitcoins"&&operation.method==="PUT"){
           const held=await env.DB.prepare("SELECT id FROM club_pix_orders WHERE unit=? AND external_member_id=? AND ((reservation_state='held' AND (choice_expires_at IS NULL OR datetime(choice_expires_at)>datetime('now'))) OR external_state IN ('running','review','refunding')) LIMIT 1").bind(requestedUnit,target.searchParams.get("idMember")||"").first();
@@ -1942,7 +1944,7 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
         const member=await authenticatedMember(request,env);if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const rows=await env.DB.prepare("SELECT v.id,v.code,v.type,v.description,v.status,v.title,v.redemption_id,v.source_type,v.source_id,v.metadata_json,r.requested_at,r.unit,r.status AS redemption_status,v.issued_at,v.expires_at FROM vouchers v LEFT JOIN redemptions r ON r.id=v.redemption_id WHERE v.member_id=? ORDER BY v.id DESC LIMIT 100").bind(member.id).all();
         const pending=await env.DB.prepare("SELECT q.source_id,q.status,q.evo_voucher_id evoVoucherId,m.name title,q.model_id FROM club_voucher_requests q JOIN club_voucher_models m ON m.id=q.model_id WHERE q.member_id=? AND q.source_type='MISSION' AND q.status IN ('pending','creating','code_pending','review_required') ORDER BY q.id DESC LIMIT 100").bind(member.id).all();
-        const models={};const entries=[...(rows.results||[]),...(pending.results||[])];for(const item of entries){let id=Number(item.model_id||0);if(!id){try{id=Number(JSON.parse(item.metadata_json||'{}').modelId||0)}catch{}}if(!id||models[id])continue;const m=await env.DB.prepare("SELECT unit,contract_ids_json,validity_days FROM club_voucher_models WHERE id=?").bind(id).first();if(!m)continue;let ids=[];try{ids=JSON.parse(m.contract_ids_json||'[]')}catch{}const cat=await env.DB.prepare("SELECT evo_contract_id,contract_name FROM evo_contract_catalog WHERE tenant_key='club-pop' AND unit=?").bind(m.unit).all();const names=new Map((cat.results||[]).map(x=>[String(x.evo_contract_id),x.contract_name]));models[id]={plans:ids.map(x=>({id:x,name:names.get(String(x))||null})),validityDays:Number(m.validity_days)||0};}const plans=x=>{let id=Number(x.model_id||0);if(!id){try{id=Number(JSON.parse(x.metadata_json||'{}').modelId||0)}catch{}}return models[id]||{plans:[],validityDays:0}};const decorate=x=>{const m=plans(x);const issued=x.issued_at||x.requested_at;const expires=x.expires_at||(issued&&m.validityDays?new Date(new Date(String(issued).replace(' ','T')+'Z').getTime()+m.validityDays*86400000).toISOString():null);return {...x,eligiblePlans:m.plans,expires_at:expires}};return json({ok:true,vouchers:(rows.results||[]).map(decorate),pending:(pending.results||[]).map(decorate)});
+        const models={};const entries=[...(rows.results||[]),...(pending.results||[])];for(const item of entries){let id=Number(item.model_id||0);if(!id){try{id=Number(JSON.parse(item.metadata_json||'{}').modelId||0)}catch{}}if(!id||models[id])continue;const m=await env.DB.prepare("SELECT unit,contract_ids_json,validity_days FROM club_voucher_models WHERE id=?").bind(id).first();if(!m)continue;const selection=voucherSelection(m.contract_ids_json),ids=selection.ids;const cat=selection.kind==='service'?await env.DB.prepare("SELECT evo_service_id id,service_name name FROM evo_service_catalog WHERE unit=?").bind(m.unit).all():await env.DB.prepare("SELECT evo_contract_id id,contract_name name FROM evo_contract_catalog WHERE tenant_key='club-pop' AND unit=?").bind(m.unit).all();const names=new Map((cat.results||[]).map(x=>[String(x.id),x.name]));models[id]={plans:ids.map(x=>({id:x,name:names.get(String(x))||null,type:selection.kind})),validityDays:Number(m.validity_days)||0};}const plans=x=>{let id=Number(x.model_id||0);if(!id){try{id=Number(JSON.parse(x.metadata_json||'{}').modelId||0)}catch{}}return models[id]||{plans:[],validityDays:0}};const decorate=x=>{const m=plans(x);const issued=x.issued_at||x.requested_at;const expires=x.expires_at||(issued&&m.validityDays?new Date(new Date(String(issued).replace(' ','T')+'Z').getTime()+m.validityDays*86400000).toISOString():null);return {...x,eligiblePlans:m.plans,expires_at:expires}};return json({ok:true,vouchers:(rows.results||[]).map(decorate),pending:(pending.results||[]).map(decorate)});
       }
       if (url.pathname === "/mission-redemptions/mine" && request.method === "GET") {
         const member=await authenticatedMember(request,env); if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -2659,6 +2661,16 @@ async function voucherMissionProgress(env,member,mission){
   if(mission.type==='consistency'){const weeks={};for(const x of rows){const day=String(x.attendance_date).slice(0,10),d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);const key=d.toISOString().slice(0,10);(weeks[key]??=new Set()).add(day)}return Object.values(weeks).filter(x=>x.size>=Number(mission.requirements?.[0]?.quantity||1)).length;}
   return count(rows,mission.requireDistinctDays===true);
 }
+function voucherSelection(raw){
+ let parsed;try{parsed=JSON.parse(raw||'[]')}catch{return {kind:'invalid',ids:[]}}
+ if(Array.isArray(parsed))return {kind:'contract',ids:parsed};
+ if(parsed&&parsed.kind==='service'&&Array.isArray(parsed.ids))return {kind:'service',ids:parsed.ids};
+ return {kind:'invalid',ids:[]};
+}
+function voucherPayloadSelection(selection){
+ if(!['contract','service'].includes(selection.kind)||!selection.ids.length||selection.ids.some(x=>!Number.isSafeInteger(x)||x<=0))throw voucherError('MODELO_VOUCHER_INVALIDO');
+ return selection.kind==='service'?{flContrato:false,idsServicos:selection.ids}:{flContrato:true,idsContratos:selection.ids};
+}
 async function voucherEvoCall(env,cfg,path,method,payload){
   const logged=await env.DB.prepare('INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,0,0)').bind(cfg.unit,method==='POST'?'voucher_create':'voucher_codes',method,path.split('?')[0]).run();
   let response;
@@ -2720,8 +2732,8 @@ async function voucherBatchTick(env){
    if(Number(reserved.meta.changes)!==Number(group.n)){await env.DB.prepare("UPDATE club_voucher_batches SET status='review_required' WHERE id=?").bind(batchId).run();continue;}
 
    try{
-    const ids=JSON.parse(model.contract_ids_json||'[]'),cfg=await getEvoConfig(env,unit);
-    const payload={nome:voucherName(unit,model.name,batchId)+'L',qtde:group.n,flUtilizarSite:true,flCodigoUnico:false,flIlimitado:false,inicio:nowDate.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,flContrato:true,idsContratos:ids};
+    const selection=voucherSelection(model.contract_ids_json),cfg=await getEvoConfig(env,unit);
+    const payload={nome:voucherName(unit,model.name,batchId)+'L',qtde:group.n,flUtilizarSite:true,flCodigoUnico:false,flIlimitado:false,inicio:nowDate.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,...voucherPayloadSelection(selection)};
     const result=await voucherEvoCall(env,cfg,'/api/v2/voucher','POST',payload),id=Number(result?.voucherId);
     if(!Number.isSafeInteger(id)||id<1)throw Error('EVO_SEM_ID');
     await env.DB.prepare("UPDATE club_voucher_batches SET evo_voucher_id=?,status='awaiting_codes' WHERE id=?").bind(id,batchId).run();
@@ -2787,7 +2799,7 @@ export async function claimEvoMissionVoucher(env,member,mission,goal,rewards){
   const cfg=await getEvoConfig(env,unit);
   if(!q.evo_voucher_id){
     const model=await env.DB.prepare('SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1').bind(q.model_id,unit).first();
-    let ids;try{ids=JSON.parse(model?.contract_ids_json||'[]')}catch{ids=[]}
+    const selection=voucherSelection(model?.contract_ids_json),ids=selection.ids;
     if(!model||![1,2].includes(model.discount_type)||!Number.isFinite(model.discount_value)||model.discount_value<=0||model.discount_type===1&&model.discount_value>100||!Number.isInteger(model.validity_days)||model.validity_days<1||model.validity_days>365||!Array.isArray(ids)||!ids.length||ids.some(x=>!Number.isSafeInteger(x)||x<=0))throw voucherError('MODELO_VOUCHER_INVALIDO');
     const config=await voucherSettings(env,unit);
     const day=voucherLocal().slice(0,10);
@@ -2800,7 +2812,7 @@ export async function claimEvoMissionVoucher(env,member,mission,goal,rewards){
     if(!locked.meta.changes){const state=await read();if(state?.status==='pending'){await env.DB.prepare("UPDATE club_voucher_requests SET delivery_mode='batch' WHERE id=? AND status='pending'").bind(q.id).run();return {ok:true,rewardType:'voucher',requiresReview:true,warning:'AGUARDANDO_LOTE',evoRequestsMade:0};}return {ok:true,rewardType:'voucher',requiresReview:true,warning:'EMISSAO_EVO_EM_PROCESSAMENTO',evoRequestsMade:0};}
     const now=new Date(),until=new Date(now.getTime()+model.validity_days*86400000);
     const label=voucherName(unit,model.name,q.id);
-    const payload={nome:label,qtde:1,flUtilizarSite:true,flCodigoUnico:true,flIlimitado:false,inicio:now.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,flContrato:true,idsContratos:ids};
+    const payload={nome:label,qtde:1,flUtilizarSite:true,flCodigoUnico:true,flIlimitado:false,inicio:now.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,...voucherPayloadSelection(selection)};
     try{requests++;const result=await voucherEvoCall(env,cfg,'/api/v2/voucher','POST',payload),id=Number(result?.voucherId);if(!Number.isSafeInteger(id)||id<1)throw voucherError('EVO_NAO_RETORNOU_ID');
       await env.DB.prepare("UPDATE club_voucher_requests SET evo_voucher_id=?,status='code_pending',assigned_code=?,error=NULL,processed_at=CURRENT_TIMESTAMP WHERE id=?").bind(id,label,q.id).run();q.evo_voucher_id=id;q.assigned_code=label;
     }catch{await env.DB.prepare("UPDATE club_voucher_requests SET status='review_required',error='EMISSAO_NAO_CONFIRMADA_NAO_REEMITIR',processed_at=CURRENT_TIMESTAMP WHERE id=?").bind(q.id).run();return {ok:true,rewardType:'voucher',requiresReview:true,warning:'EMISSAO_EVO_EM_CONFERENCIA',evoRequestsMade:requests};}
