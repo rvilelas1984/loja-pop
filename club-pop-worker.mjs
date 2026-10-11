@@ -343,7 +343,8 @@ export default {
           const data=parse(cache?.payload_json),personal=parse(master?.personal_json),financial=parse(master?.financial_json);
           data.member={idMember:evoId,firstName:personal.firstName||base?.first_name||"Aluno",lastName:personal.lastName||base?.last_name||"",branchName:"Studio Bike Pop",memberships:parse(master?.memberships_json),...(data.member||{})};
           if(!Array.isArray(data.member.memberships))data.member.memberships=[];
-          const coin=[data.fitcoins,financial.totalFitCoins,financial.totalFitcoins].find(v=>v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)));data.fitcoins=coin===undefined?null:Number(coin);
+          const studentBalance=await env.DB.prepare("SELECT fitcoins FROM evo_students WHERE unit='bike' AND evo_member_id=? AND is_current=1 LIMIT 1").bind(String(evoId)).first();
+          const coin=[studentBalance?.fitcoins,data.fitcoins,financial.totalFitCoins,financial.totalFitcoins].find(v=>v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)));data.fitcoins=coin===undefined?null:Number(coin);
           const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()),part=t=>parts.find(p=>p.type===t).value,month=part("year")+"-"+part("month"),today=month+"-"+part("day");
           const q=await env.DB.prepare("SELECT attendance_date,start_time,activity_name,id_activity_session FROM evo_member_attendance WHERE unit='bike' AND evo_member_id=? AND substr(attendance_date,1,7)=? ORDER BY attendance_date,start_time,id_activity_session").bind(String(evoId),month).all();
           const rows=(q.results||[]).map(a=>({date:a.attendance_date,startTime:a.start_time,activity:a.activity_name,idActivitySession:a.id_activity_session,presenca:true,isFinalized:true})),times={},acts={},days=new Set();
