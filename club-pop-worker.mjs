@@ -1457,6 +1457,31 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       }
 
       // =====================================================
+      // Authoritative currency options for the shared product/service checkout. D1 only.
+      if(url.pathname==="/checkout/mixed/options"&&request.method==="GET"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=url.searchParams.get("unit"),kind=url.searchParams.get("itemType"),id=url.searchParams.get("itemId");
+        if(!["bike","gym"].includes(unit)||!["product","service"].includes(kind)||!id)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const data=await clubContent(env),item=(kind==="product"?data.products:data.services||[])?.find(x=>String(x.id)===id&&String(x.unit||"bike")===unit&&x.status==="Ativo");
+        if(!item)return json({ok:false,error:"ITEM_INDISPONIVEL"},404);
+        const cfg=item.currencyPayment;
+        if(!cfg?.enabled)return json({ok:true,offers:[],evoRequestsMade:0});
+        const c=await env.DB.prepare("SELECT c.* FROM club_currencies c JOIN club_currency_units u ON u.currency_id=c.id WHERE c.code=? AND c.status='active' AND u.unit=? AND u.enabled=1").bind(String(cfg.currency||""),unit).first();
+        if(!c)return json({ok:true,offers:[],evoRequestsMade:0});
+        const rate=Number(c.brl_value),pct=Number(cfg.maxDiscountPercent),price=Math.round(Number(item.price)*100);
+        if(!Number.isFinite(rate)||rate<=0||!Number.isInteger(pct)||pct<1||pct>100||!Number.isSafeInteger(price)||price<=0)return json({ok:false,error:"CONFIGURACAO_INVALIDA"},409);
+        let balance=0;
+        if(c.source==="external"){
+          const extId=unit==="gym"?member.gym_client_id:member.evo_member_id;
+          if(extId!=null){const row=await env.DB.prepare("SELECT fitcoins FROM evo_students WHERE unit=? AND evo_member_id=? AND is_current=1 LIMIT 1").bind(unit,String(extId)).first();balance=Math.max(0,Math.floor(Number(row?.fitcoins)||0));}
+        }else{
+          const row=await env.DB.prepare("SELECT balance FROM club_currency_wallets WHERE member_id=? AND unit=? AND currency_id=? LIMIT 1").bind(member.id,unit,c.id).first();balance=Math.max(0,Math.floor(Number(row?.balance)||0));
+        }
+        const maxCoins=Math.min(balance,Math.floor(Math.floor(price*pct/100)/(rate*100)+1e-8));
+        return json({ok:true,offers:[{currency_id:c.id,currency_code:c.code,currency_name:c.name,source:c.source,brl_value:rate,balance,maxCoins,max_discount_percent:pct}],evoRequestsMade:0});
+      }
+
       // Server-authoritative quote for a mixed payment; never creates a discounted Pix without a debit ledger.
       if(url.pathname==="/checkout/mixed/quote"&&request.method==="POST"){
         const member=await authenticatedMember(request,env);
@@ -1468,14 +1493,14 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const originalCents=Math.round(Number(item.price)*100),quantity=Number(b.quantity||0),config=item.currencyPayment;
         if(!Number.isSafeInteger(originalCents)||originalCents<=0||!Number.isSafeInteger(quantity)||quantity<0)return json({ok:false,error:"VALOR_INVALIDO"},400);
         if(quantity===0)return json({ok:true,originalCents,discountCents:0,pixCents:originalCents,quantity:0,canPay:true});
-        if(!config?.enabled||!["mixed","both","pix"].includes(String(item.paymentMethod||"")))return json({ok:false,error:"MOEDA_NAO_PERMITIDA"},409);
+        if(!config?.enabled||!["mixed","both","fitcoins"].includes(String(item.paymentMethod||"")))return json({ok:false,error:"MOEDA_NAO_PERMITIDA"},409);
         const currency=await env.DB.prepare("SELECT c.* FROM club_currencies c JOIN club_currency_units u ON u.currency_id=c.id WHERE c.code=? AND c.status='active' AND u.unit=? AND u.enabled=1").bind(String(config.currency||""),unit).first();
-        if(!currency)return json({ok:false,error:"MOEDA_INDISPONIVEL"},409);
+        if(!currency||String(b.currencyId||"")!==String(currency.id))return json({ok:false,error:"MOEDA_INDISPONIVEL"},409);
         const percent=Number(config.maxDiscountPercent),rate=Number(currency.brl_value);
         if(!Number.isInteger(percent)||percent<1||percent>100||!Number.isFinite(rate)||rate<=0)return json({ok:false,error:"CONFIGURACAO_INVALIDA"},409);
         let balance=0;
         if(currency.source==="local"){balance=Number((await env.DB.prepare("SELECT balance FROM club_currency_wallets WHERE member_id=? AND unit=? AND currency_id=?").bind(member.id,unit,currency.id).first())?.balance||0)}
-        else {const row=await env.DB.prepare("SELECT fitcoins FROM members WHERE id=?").bind(member.id).first();balance=Number(row?.fitcoins||0)}
+        else {const extId=unit==="gym"?member.gym_client_id:member.evo_member_id;if(extId!=null){const row=await env.DB.prepare("SELECT fitcoins FROM evo_students WHERE unit=? AND evo_member_id=? AND is_current=1 LIMIT 1").bind(unit,String(extId)).first();balance=Math.max(0,Math.floor(Number(row?.fitcoins)||0))}}
         if(quantity>balance)return json({ok:false,error:"SALDO_INSUFICIENTE"},409);
         const capCents=Math.floor(originalCents*percent/100),discountCents=Math.round(quantity*rate*100);
         if(discountCents<=0||discountCents>capCents)return json({ok:false,error:"LIMITE_DESCONTO_EXCEDIDO"},409);
