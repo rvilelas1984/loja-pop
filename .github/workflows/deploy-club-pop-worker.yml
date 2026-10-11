@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - "club-pop-worker.mjs"
+      - "lib/currency-ledger.mjs"
       - "wrangler.jsonc"
       - ".github/workflows/deploy-club-pop-worker.yml"
   workflow_dispatch:

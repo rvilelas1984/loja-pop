@@ -8,6 +8,7 @@ import proxy from './api/admin-auth.js';
 function fixture(){
  const db=new DatabaseSync(':memory:');
  db.exec(`CREATE TABLE members(id INTEGER PRIMARY KEY,first_name TEXT,last_name TEXT,evo_member_id INTEGER,gym_client_id TEXT);
+ CREATE TABLE club_currency_transactions(id INTEGER PRIMARY KEY,member_id INTEGER,unit TEXT,amount INTEGER,created_at TEXT);
  CREATE TABLE audit_log(id INTEGER PRIMARY KEY,actor_type TEXT,actor_id TEXT,action TEXT,entity_type TEXT,entity_id TEXT,metadata_json TEXT,created_at TEXT);
  CREATE TABLE app_content(content_key TEXT,content_json TEXT);
  CREATE TABLE pop_fit_manual_activities(id INTEGER PRIMARY KEY,member_id INTEGER,created_at TEXT);
@@ -37,9 +38,9 @@ test('validates calendar, interval, unit, page, status and category',()=>{
  for(const x of [{start:'2026-02-30'},{start:'2024-01-01'},{unit:'other'},{page:'-1'},{page:'1.2'},{status:'pending'},{category:'whatever'},{origin:'EVO'}])assert.throws(()=>params(x));
  assert.equal(params().page,1);
 });
-test('all 11 types; missing sources remain unavailable; UTC bounds, dedup and refunds',async()=>{
+test('all 12 types; missing sources remain unavailable; UTC bounds, dedup and refunds',async()=>{
  const {env,db}=fixture();const r=await readActivityCenter(env,params());const count=k=>r.metrics.find(x=>x.key===k);
- assert.equal(r.metrics.length,11);for(const k of ['reservation','cancellation','referral'])assert.equal(count(k).count,null);
+ assert.equal(r.metrics.length,12);for(const k of ['reservation','cancellation','referral'])assert.equal(count(k).count,null);
  assert.equal(count('image_generated').count,2);assert.equal(count('workout_created').count,1);assert.equal(count('workout_edited').count,2);assert.equal(count('share_clicked').count,1);assert.equal(count('failure').count,1);assert.equal(count('reward_requested').count,2);assert.equal(count('reward_completed').count,2);assert.equal(count('fitcoins_granted').amount,90);assert.equal(r.attendance,2);assert.equal(r.classes,1);assert.equal(r.evoRequestsMade,0);db.close();
 });
 test('Bike/Gym isolation including equal EVO IDs; personal records only Club',async()=>{

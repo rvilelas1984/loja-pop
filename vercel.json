@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/currency-store",
+      "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/currency-store"
+    },
+    {
       "source": "/minhas-compras",
       "has": [
         {

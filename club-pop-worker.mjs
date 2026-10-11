@@ -1,3 +1,4 @@
+import { currencyAdmin, currencyStudent, currencyRewardTick, currencyMissionProgress, activeCurrency, ledgerStatements, localToday } from './lib/currency-ledger.mjs';
 
 // Production Mercado Pago credentials are encrypted per unit in D1.
 async function clubPixCredentials(env,unit){
@@ -146,7 +147,7 @@ async function runScheduledAttendanceSync(env) {
 }
 
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),voucherBatchTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),voucherBatchTick(env),currencyRewardTick(env)])); },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
@@ -179,17 +180,14 @@ export default {
 
 
 
-      if(url.pathname==="/admin/currencies"&&request.method==="GET"){
+      if(url.pathname==="/currency-store")return currencyStudent(request,env,await authenticatedMember(request,env),json);
+      if(url.pathname==="/admin/currencies"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        let auth;
-        try{const a=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});auth=await a.json();if(!a.ok||auth.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403)}
-        catch{return json({ok:false,error:"AUTENTICACAO_INDISPONIVEL"},502)}
-        const unit=url.searchParams.get("unit");
-        if(!["bike","gym","club"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
-        const currencies=await env.DB.prepare("SELECT c.id,c.code,c.name,c.symbol,c.brl_value,c.source,c.status FROM club_currencies c JOIN club_currency_units u ON u.currency_id=c.id WHERE u.unit=? AND u.enabled=1 ORDER BY c.id").bind(unit).all();
-        const rules=await env.DB.prepare("SELECT r.id,r.currency_id,r.rule_type,r.target_count,r.reward_amount,r.enabled FROM club_currency_reward_rules r WHERE r.unit=? ORDER BY r.id").bind(unit).all();
-        return json({ok:true,unit,currencies:currencies.results||[],rules:rules.results||[],evoRequestsMade:0});
+        const response=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const auth=await response.json().catch(()=>({}));
+        if(!response.ok)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        return currencyAdmin(request,env,auth,json);
       }
 
       if (url.pathname === "/admin/voucher-automation" && ["GET","PUT"].includes(request.method)) {
@@ -1818,6 +1816,25 @@ if(url.pathname==="/admin/pix-orders"&&request.method==="GET"){const ck=request.
         const mission=await clubContentItem(env,"mission",missionKey); if(!mission)return json({ok:false,error:"MISSAO_NAO_ENCONTRADA"},404);
         const goal=(mission.goals||[]).find(x=>String(x.id)===goalKey); if(!goal)return json({ok:false,error:"META_NAO_ENCONTRADA"},404);
         const rewards=Array.isArray(goal.rewards)?goal.rewards.filter(x=>x&&x.type):[];
+        if(goal.rewardType==="currency"||rewards.some(x=>x.type==="currency")){
+          const unit=String(mission.unit||"bike"),today=localToday();
+          if(!["bike","gym","club"].includes(unit)||mission.status!=="Ativo"||!mission.start||!mission.end||today<mission.start||today>mission.end)return json({ok:false,error:"MISSAO_FORA_DO_PERIODO"},409);
+          if(unit==="bike"&&!member.evo_member_id||unit==="gym"&&!member.gym_client_id)return json({ok:false,error:"ALUNO_NAO_VINCULADO"},403);
+          const localRewards=rewards.length?rewards:[{type:"currency",rewardId:goal.rewardId,amount:goal.rewardValue}];
+          if(localRewards.some(x=>x.type!=="currency"))return json({ok:false,error:"SEPARE_MOEDAS_PROPRIAS_EM_OUTRA_META"},409);
+          if(mission.eligibility==="selected"){
+            const id=unit==="gym"?member.gym_client_id:member.evo_member_id;
+            const contracts=await env.DB.prepare("SELECT id_membership FROM evo_member_contracts WHERE unit=? AND evo_member_id=? AND (cancel_date IS NULL OR cancel_date='') AND (start_date IS NULL OR start_date='' OR substr(start_date,1,10)<=?) AND (end_date IS NULL OR end_date='' OR substr(end_date,1,10)>=?) AND lower(COALESCE(membership_status,'')) IN ('1','active','ativo')").bind(unit,String(id||''),today,today).all();
+            const allowed=new Set((mission.contracts||[]).map(String));if(!(contracts.results||[]).some(x=>allowed.has(unit+':'+x.id_membership)||allowed.has(String(x.id_membership))))return json({ok:false,error:"ALUNO_NAO_ELEGIVEL"},403);
+          }
+          if(!Number.isFinite(Number(goal.value))||Number(goal.value)<=0||await currencyMissionProgress(env.DB,member,mission)<Number(goal.value))return json({ok:false,error:"META_AINDA_NAO_ATINGIDA"},409);
+          const dedupe="CURRENCY-MISSION:"+unit+":"+member.id+":"+missionKey+":"+goalKey+":"+mission.start+":"+mission.end;
+          const old=await env.DB.prepare("SELECT id,title,status FROM redemptions WHERE dedupe_key=?").bind(dedupe).first();if(old)return json({ok:true,alreadyClaimed:true,rewardType:"currency",redemption:old,evoRequestsMade:0});
+          const stm=[];
+          try{for(let i=0;i<localRewards.length;i++){const rw=localRewards[i],currency=await activeCurrency(env.DB,Number(rw.rewardId),unit,true),amount=Number(rw.amount);if(!Number.isSafeInteger(amount)||amount<1||amount>1000000000)throw Error("QUANTIDADE_INVALIDA");stm.push(...ledgerStatements(env.DB,{memberId:member.id,currencyId:currency.id,unit,amount,origin:"mission",reference:missionKey+":"+goalKey,key:dedupe+":"+i}));}}catch(e){return json({ok:false,error:e.message},400);}
+          stm.push(env.DB.prepare("INSERT INTO redemptions(member_id,redemption_type,reference_id,status,source_type,source_id,title,details,unit,dedupe_key,completed_at) SELECT ?,'currency',?,'COMPLETED','MISSION',?,?,?,?,?,CURRENT_TIMESTAMP WHERE NOT EXISTS(SELECT 1 FROM redemptions WHERE dedupe_key=?)").bind(member.id,missionKey,goalKey,goal.rewardName||"Moedas",mission.name||"",unit,dedupe,dedupe));
+          await env.DB.batch(stm);return json({ok:true,claimed:true,rewardType:"currency",evoRequestsMade:0});
+        }
         const voucherRewards=rewards.length?rewards:((goal.rewardType==="voucher"||(goal.rewardType==="manual"&&/^(bike|gym):\d+$/.test(String(goal.rewardId||""))))?[{type:"voucher",rewardId:goal.rewardId}]:[]);
         if(voucherRewards.some(x=>x.type==="voucher")){
           try{return json(await claimEvoMissionVoucher(env,member,mission,goal,voucherRewards));}
@@ -2427,6 +2444,7 @@ export const activityTypes = [
   ['image_generated','Imagens geradas','partial','Histórico anterior limitado às imagens ainda armazenadas. Novas gerações são auditadas.'],
   ['share_clicked','Cliques em compartilhar','partial','Cliques capturados a partir desta publicação; não comprovam envio.'],
   ['referral','Indicações','unavailable','Não há fonte de indicações no D1.'],
+  ['currency_movement','Movimentações de moedas','complete','Créditos e débitos de moedas próprias confirmados no D1.'],
   ['fitcoins_granted','Fitcoins concedidos','partial','Créditos concluídos de missões/promoções no D1; estornos excluídos.'],
   ['reward_requested','Recompensas solicitadas','partial','Resgates do D1 e cópia do conteúdo. Operações legadas salvas apenas no GitHub não estão incluídas em tempo real.'],
   ['reward_completed','Recompensas concluídas','partial','Conclusões com data no D1; operações legadas do GitHub podem estar ausentes.'],
@@ -2458,7 +2476,7 @@ event_group_1(id,at,member_id,unit,category,origin,status,amount) AS MATERIALIZE
 event_group_2(id,at,member_id,unit,category,origin,status,amount) AS MATERIALIZED (SELECT 'content-complete:'||json_extract(v,'$.id'),json_extract(v,'$.completedAt'),(SELECT id FROM members WHERE (json_extract(v,'$.unit')='bike' AND CAST(evo_member_id AS TEXT)=CAST(json_extract(v,'$.memberId') AS TEXT)) OR (json_extract(v,'$.unit')='gym' AND CAST(gym_client_id AS TEXT)=CAST(json_extract(v,'$.memberId') AS TEXT)) LIMIT 1),COALESCE(json_extract(v,'$.unit'),'club'),'reward_completed','Conteúdo D1','confirmed',1 FROM content_redemptions WHERE json_extract(v,'$.completedAt') IS NOT NULL
  UNION ALL SELECT 'transaction:'||json_extract(v,'$.id'),json_extract(v,'$.createdAt'),(SELECT id FROM members WHERE (json_extract(v,'$.unit')='bike' AND CAST(evo_member_id AS TEXT)=CAST(json_extract(v,'$.memberId') AS TEXT)) OR (json_extract(v,'$.unit')='gym' AND CAST(gym_client_id AS TEXT)=CAST(json_extract(v,'$.memberId') AS TEXT)) LIMIT 1),COALESCE(json_extract(v,'$.unit'),'club'),'fitcoins_granted','Conteúdo D1','confirmed',CAST(json_extract(v,'$.fitcoins') AS REAL) FROM content_transactions WHERE json_extract(v,'$.status')='COMPLETED' AND json_extract(v,'$.direction')='credit' AND json_extract(v,'$.origin') IN ('mission','promotion') AND CAST(json_extract(v,'$.fitcoins') AS REAL)>0
 ),
-events(id,at,member_id,unit,category,origin,status,amount) AS (SELECT * FROM event_group_0 UNION ALL SELECT * FROM event_group_1 UNION ALL SELECT * FROM event_group_2), named AS (SELECT e.*,trim(COALESCE(m.first_name,'')||' '||COALESCE(m.last_name,'')) name FROM events e LEFT JOIN members m ON m.id=e.member_id), filtered AS (SELECT * FROM named WHERE datetime(at)>=datetime(?) AND datetime(at)<datetime(?) AND (?='club' OR unit=?) AND (?='' OR category=?) AND (?='' OR status=?) AND (?='' OR origin=?) AND (?='' OR instr(lower(name),lower(?))>0 OR CAST(member_id AS TEXT)=?)) `;
+events(id,at,member_id,unit,category,origin,status,amount) AS (SELECT 'currency:'||id,created_at,member_id,unit,'currency_movement','Conteúdo D1','confirmed',amount FROM club_currency_transactions UNION ALL SELECT * FROM event_group_0 UNION ALL SELECT * FROM event_group_1 UNION ALL SELECT * FROM event_group_2), named AS (SELECT e.*,trim(COALESCE(m.first_name,'')||' '||COALESCE(m.last_name,'')) name FROM events e LEFT JOIN members m ON m.id=e.member_id), filtered AS (SELECT * FROM named WHERE datetime(at)>=datetime(?) AND datetime(at)<datetime(?) AND (?='club' OR unit=?) AND (?='' OR category=?) AND (?='' OR status=?) AND (?='' OR origin=?) AND (?='' OR instr(lower(name),lower(?))>0 OR CAST(member_id AS TEXT)=?)) `;
 export async function readActivityCenter(env,p) {
  const args=[p.from,p.until,p.unit,p.unit,p.category,p.category,p.status,p.status,p.origin,p.origin,p.search,p.search,p.search];
  const result=await env.DB.batch([
