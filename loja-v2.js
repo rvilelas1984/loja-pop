@@ -57,7 +57,7 @@ function openDetails(type,id){
    if(result.status==="issued"&&result.code){
     const block=document.createElement("div");block.className="cx-state";block.innerHTML='<strong>Seu voucher:</strong><div class="cx-code cx-voucher-code">'+esc(result.code)+'</div><button class="cx-btn" id="cxCopyVoucher">COPIAR CÓDIGO</button>';
     sheet.querySelector(".cx-success")?.after(block);
-    if(scope==="Bike Pop"){
+    if(scope==="Bike Pop"||scope==="Gym Pop"){
      const next=document.createElement("section");next.className="cx-state cx-next-step";
      next.innerHTML='<h3>Próximo passo</h3><img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f0/33/92/f0339285-8ca8-6868-3ad9-a93ea5f9aad6/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/512x512bb.jpg" alt="Aplicativo Bike Pop" width="72" height="72"><p>Acesse o aplicativo do Bike Pop, clique em <strong>Compras</strong> e finalize seu pedido colando o código do seu voucher.</p><div class="cx-app-links"><a href="https://apps.apple.com/us/app/bike-pop/id6744976326" target="_blank" rel="noopener noreferrer">iPhone · App Store</a><a href="https://play.google.com/store/apps/details?id=br.com.w12.bikepop" target="_blank" rel="noopener noreferrer">Android · Google Play</a></div>';
      block.after(next);
