@@ -18,4 +18,4 @@ box.className="";window.cpVouchers=vouchers;window.cpShown=5;window.cpRenderVouc
 }catch(e){box.className="empty error";box.textContent="Não foi possível carregar seus vouchers: "+e.message}}
 document.addEventListener("click",async e=>{const b=e.target.closest(".copy-voucher");if(!b)return;try{await navigator.clipboard.writeText(b.dataset.code);b.textContent="Código copiado ✓"}catch(err){const range=document.createRange();range.selectNodeContents(b.previousElementSibling);getSelection().removeAllRanges();getSelection().addRange(range);b.textContent="Selecione e copie o código acima"}});
 document.getElementById("cpSearch").oninput=()=>{window.cpShown=5;window.cpRenderVouchers?.()};document.querySelectorAll(".cp-filter").forEach(b=>b.onclick=()=>{window.cpFilter=b.dataset.filter;window.cpShown=5;document.querySelectorAll(".cp-filter").forEach(x=>x.classList.toggle("selected",x===b));window.cpRenderVouchers?.()});document.getElementById("cpMore").onclick=()=>{window.cpShown+=5;window.cpRenderVouchers?.()};load();
-</script></body></html>
+</script><script src="/beneficios-resgate.js"></script></body></html>

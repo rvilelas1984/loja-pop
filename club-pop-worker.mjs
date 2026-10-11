@@ -1,3 +1,4 @@
+import {benefitVouchers} from './lib/benefit-vouchers.mjs';
 import {settleFitcoins,receptionRecord,receptionAction} from './lib/checkout-fitcoins.mjs';
 import { options as checkoutOptions, quote as checkoutQuote, validateChoice, checkoutError, customerOrderStatus } from './lib/checkout.mjs';
 import { currencyAdmin, currencyStudent, currencyRewardTick, currencyMissionProgress, activeCurrency, ledgerStatements, localToday } from './lib/currency-ledger.mjs';
@@ -204,6 +205,7 @@ export default {
 
 
 
+      if(url.pathname==="/benefit-vouchers" || url.pathname==="/admin/benefit-vouchers")return benefitVouchers(request,env,url.pathname.startsWith("/admin/")?null:await authenticatedMember(request,env),json);
       if(url.pathname==="/currency-store")return currencyStudent(request,env,await authenticatedMember(request,env),json);
       if(url.pathname==="/admin/currencies"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
