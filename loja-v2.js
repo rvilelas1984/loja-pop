@@ -6,9 +6,9 @@ function openDetails(type,id){
  const sheet=document.getElementById("storeSheet"),modal=document.getElementById("storeModal"),stock=type==="product"?Number(item.stock??1):1;
  const method=String(item.paymentMethod||"fitcoins"),config=item.currencyPayment||{};
  const allowPix=["pix","both","mixed"].includes(method);
- const allowCoins=method!=="pix"||config.enabled===true;
- const allowMixed=allowPix&&config.enabled===true;
- const choices=[...(allowPix?[{id:"pix",label:"Só Pix"}]:[]),...(allowMixed?[{id:"mixed",label:"Moedas + Pix"}]:[]),...(allowCoins&&method!=="pix"?[{id:"coins",label:"Só moedas"}]:[])];
+ const allowCoins=method!=="pix"&&config.enabled===true;
+ const allowMixed=allowPix&&config.enabled===true&&method!=="pix";
+ const choices=[...(allowPix?[{id:"pix",label:"Só Pix"}]:[]),...(allowMixed?[{id:"mixed",label:"Moedas + Pix"}]:[]),...(allowCoins&&method!=="mixed"&&Number(config.maxDiscountPercent)===100?[{id:"coins",label:"Só moedas"}]:[])];
  const priceCents=Math.round(Number(item.price||0)*100),cost=Math.floor(Number(item.fitcoins||0)),bal=balance();
  const css='<style>.cp-pay-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;margin:14px 0}.cp-pay-choices button{border:1px solid #ddd;border-radius:12px;padding:12px 6px;background:white;color:#222;font-weight:700}.cp-pay-choices button.active{border:2px solid #198754;background:#edf9f1}.cp-pay-summary{padding:14px;background:#f5f7f8;border-radius:14px;margin:12px 0}.cp-pay-actions{display:grid;gap:10px}.cp-pay-actions button:disabled{opacity:.5;cursor:not-allowed}.cp-pay-field{display:grid;gap:8px;margin:14px 0}.cp-pay-field input,.cp-pay-field select{width:100%;padding:12px;border:1px solid #ddd;border-radius:10px}</style>';
  sheet.dataset.theme=item.cardTheme||"green";
@@ -33,7 +33,7 @@ function openDetails(type,id){
   selectedOffer=null;quantity=0;
   if(selected==="pix"){inputBox.innerHTML="";draw();return}
   if(selected==="coins"&&!config.enabled){inputBox.innerHTML="";draw();return}
-  const list=offers.filter(o=>Number(o.maxCoins)>0&&(!config.currency||o.currency_code===config.currency||o.currency_name?.toLowerCase()===String(config.currency).toLowerCase()));
+  const list=offers.filter(o=>Number(o.maxCoins)>0&&(!config.currency||String(o.currency_code||"").toLowerCase()===String(config.currency).toLowerCase()||o.currency_name?.toLowerCase()===String(config.currency).toLowerCase()));
   if(!list.length){inputBox.innerHTML='<p>Não há moedas disponíveis para esta forma de pagamento.</p>';draw();return}
   selectedOffer=list[0];
   inputBox.innerHTML='<div class="cp-pay-field"><label>Qual moeda deseja usar?</label><select id="cpCoinType">'+list.map((o,i)=>'<option value="'+i+'">'+esc(o.currency_name)+'</option>').join("")+'</select><label>Quantas moedas deseja utilizar?</label><input id="cpCoinQuantity" type="number" min="1" step="1" max="'+selectedOffer.maxCoins+'" value="1"><input id="cpCoinRange" type="range" min="1" max="'+selectedOffer.maxCoins+'" value="1"></div>';
