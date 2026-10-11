@@ -1907,12 +1907,12 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
    const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='refund_pending' WHERE id=? AND status IN ('paid_pending_coins','pending','approved') AND external_state IN ('none','failed')").bind(id).run();
    if(claim.meta.changes!==1)return json({ok:false,error:"ESTORNO_EM_PROCESSAMENTO"},409);
   }
-  let response;try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id)+"/refund",{method:"POST",headers:{...headers,"X-Idempotency-Key":id,"Content-Type":"application/json"}})}catch{return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA"},502)}
+  let response;try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id)+"/refund",{method:"POST",headers:{...headers,"X-Idempotency-Key":id+"-refund-v2","Content-Type":"application/json"}})}catch{return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA"},502)}
   const result=await response.json().catch(()=>({}));
-  if(!response.ok)return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||"").slice(0,80)},409);
+  if(!response.ok)return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||result.cause?.[0]?.code||"").slice(0,80),providerMessage:String(result.message||result.cause?.[0]?.description||"").slice(0,160)},409);
   refunded=result.status==="refunded"||result.transactions?.refunds?.some(x=>x.status==="processed");
  }
- if(!refunded)return json({ok:true,status:"refund_pending",message:"Mercado Pago está processando o estorno."});
+ if(!refunded)return json({ok:true,status:"refund_pending",message:"Mercado Pago está processando o estorno; aguarde a confirmação."});
  await env.DB.batch([env.DB.prepare("UPDATE club_pix_orders SET status='refunded',reservation_state='released',updated_at=CURRENT_TIMESTAMP WHERE id=? AND external_state IN ('none','failed')").bind(id),env.DB.prepare("UPDATE club_pix_fulfillment SET delivery_state='blocked',updated_at=CURRENT_TIMESTAMP WHERE order_id=?").bind(id)]);
  return json({ok:true,status:"refunded",amountCents:order.amount_cents});
 }
