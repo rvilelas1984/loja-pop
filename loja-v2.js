@@ -49,7 +49,19 @@ function openDetails(type,id){
  btn.disabled=true;btn.textContent="PROCESSANDO PAGAMENTO...";
  const show=(title,subtitle,body)=>{sheet.innerHTML=checkoutView(item,type,scope,Number(choice.quantity),0,title,subtitle,body)};
  const waiting=()=>show("Aguardando confirmação","Estamos verificando seu pagamento com Fitcoins.",'<div class="cx-state"><span class="cx-pulse"></span>Confirmando suas Fitcoins...</div><p class="cx-note">Não realize outro pagamento. Esta tela será atualizada automaticamente.</p>');
- const success=()=>{show("Compra confirmada!","Seu pagamento com Fitcoins foi concluído.",'<div class="cx-success">✓</div><div class="cx-state">✓ '+(type==="product"?"Seu produto está disponível para retirada na recepção do "+scope+".":"Seu serviço foi comprado. Consulte seus vouchers no aplicativo.")+'</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails;render()};
+ const success=async()=>{show("Compra confirmada!","Seu pagamento com Fitcoins foi concluído.",'<div class="cx-success">✓</div><div class="cx-state">✓ '+(type==="product"?"Seu produto está disponível para retirada na recepção do "+scope+".":"Seu serviço foi comprado. Consulte seus vouchers no aplicativo.")+'</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails;render();
+ if(type==="service"){
+  try{
+   const response=await fetch(WORKER_PIX+"/checkout/service-voucher",{method:"POST",headers,body:JSON.stringify({orderId:choice.orderId})});
+   const result=await response.json();
+   if(result.status==="issued"&&result.code){
+    const block=document.createElement("div");block.className="cx-state";block.innerHTML='<strong>Seu voucher:</strong><div class="cx-code">'+esc(result.code)+'</div><button class="cx-btn" id="cxCopyVoucher">COPIAR CÓDIGO</button>';
+    sheet.querySelector(".cx-success")?.after(block);
+    block.querySelector("#cxCopyVoucher").onclick=async()=>{await navigator.clipboard.writeText(result.code);notify("Código copiado!")};
+   }else{const block=document.createElement("p");block.className="cx-note";block.textContent="Voucher em emissão. Consulte Meus Vouchers.";sheet.querySelector(".cx-success")?.after(block)}
+  }catch{notify("Compra confirmada. Consulte Meus Vouchers para acompanhar a emissão.")}
+ }
+ };
  const expired=()=>{show("Escolha expirada","O prazo para confirmar esta escolha terminou.",'<div class="cx-state">Nenhuma moeda foi debitada neste pedido. Volte à loja e salve uma nova escolha.</div><button id="cxClose" class="cx-btn">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails};
  const review=()=>{show("Compra em conferência","Ainda não recebemos a confirmação final das suas moedas.",'<div class="cx-state">Não tente pagar novamente. A recepção pode conferir esta transação com segurança.</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails};
  try{

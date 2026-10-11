@@ -1573,6 +1573,21 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         try{return json(await receptionAction(env.DB,o,String(b.action||''),['refund','coins_check','coins_retry'].includes(String(b.action||''))?await checkoutEvo(env,o.unit):null,{...b,actor:String(auth.id||auth.email||auth.name||'recepcao')}));}catch(e){return json({ok:false,error:e.checkoutError?e.message:"FITCOINS_REQUER_CONFERENCIA"},409)}
       }
 
+      if(url.pathname==="/checkout/service-voucher"&&["GET","POST"].includes(request.method)){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=request.method==="POST"?await request.json().catch(()=>({})):{orderId:url.searchParams.get("orderId")};
+        const id=String(b.orderId||"");
+        if(!/^[0-9a-f-]{36}$/.test(id))return json({ok:false,error:"PEDIDO_INVALIDO"},400);
+        const order=await env.DB.prepare("SELECT * FROM club_pix_orders WHERE id=? AND member_id=? AND item_type='service'").bind(id,member.id).first();
+        if(!order)return json({ok:false,error:"PEDIDO_NAO_ENCONTRADO"},404);
+        if(order.status!=="approved"||!["confirmed","alternate_paid"].includes(order.external_state))return json({ok:false,error:"PAGAMENTO_NAO_CONFIRMADO"},409);
+        const fulfillment=await env.DB.prepare("SELECT delivery_state FROM club_pix_fulfillment WHERE order_id=?").bind(id).first();
+        if(fulfillment?.delivery_state==="cancelled"||fulfillment?.delivery_state==="blocked")return json({ok:false,error:"ENTREGA_BLOQUEADA"},409);
+        try{return json(await checkoutServiceVoucher(env,order,request.method==="POST"))}
+        catch(e){return json({ok:false,error:e.message||"VOUCHER_INDISPONIVEL"},409)}
+      }
+
       // Shared checkout: D1 balances, authoritative amounts and durable choices.
       if((url.pathname==="/checkout/mixed/options"&&request.method==="GET")||(["/checkout/mixed/quote","/checkout/pix/draft"].includes(url.pathname)&&request.method==="POST")){
         const member=await authenticatedMember(request,env);
@@ -2895,4 +2910,50 @@ export async function claimEvoMissionVoucher(env,member,mission,goal,rewards){
     }catch{await env.DB.prepare("UPDATE club_voucher_requests SET status='review_required',error='EMISSAO_NAO_CONFIRMADA_NAO_REEMITIR',processed_at=CURRENT_TIMESTAMP WHERE id=?").bind(q.id).run();return {ok:true,rewardType:'voucher',requiresReview:true,warning:'EMISSAO_EVO_EM_CONFERENCIA',evoRequestsMade:requests};}
   }
   return {...await deliverMissionVoucher(env,member,mission,goal,q,dedupe),evoRequestsMade:requests};
+}
+
+async function checkoutServiceVoucher(env,order,create){
+ const db=env.DB,key="SHOP:"+order.id+":EVO";
+ const read=()=>db.prepare("SELECT q.*,m.name model_name FROM club_voucher_requests q JOIN club_voucher_models m ON m.id=q.model_id WHERE q.idempotency_key=?").bind(key).first();
+ let q=await read();
+ if(!q&&create){
+  const content=await db.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop'").first();
+  const items=JSON.parse(content?.content_json||'{}').services||[];
+  const item=items.find(x=>String(x.id)===String(order.item_id)&&String(x.unit||'bike')===order.unit);
+  const serviceId=Number(item?.evoServiceId);
+  if(!Number.isSafeInteger(serviceId)||serviceId<1)throw new Error("SERVICO_EVO_NAO_CONFIGURADO");
+  const models=(await db.prepare("SELECT * FROM club_voucher_models WHERE unit=? AND enabled=1").bind(order.unit).all()).results||[];
+  const model=models.find(m=>{const sel=voucherSelection(m.contract_ids_json);return sel.kind==="service"&&sel.ids.includes(serviceId)});
+  if(!model)throw new Error("MODELO_VOUCHER_SERVICO_NAO_ENCONTRADO");
+  const settings=await voucherSettings(env,order.unit,"service");
+  await db.prepare("INSERT INTO club_voucher_requests(unit,model_id,member_id,source_type,source_id,idempotency_key,delivery_mode,status) VALUES(?,?,?,'SHOP',?,? ,?,'pending') ON CONFLICT(idempotency_key) DO NOTHING").bind(order.unit,model.id,order.member_id,order.id,key,settings.enabled?'batch':'immediate').run();
+  q=await read();
+ }
+ if(!q)return {ok:true,status:"not_requested"};
+ if(q.status==="issued"&&q.assigned_code)return {ok:true,status:"issued",code:q.assigned_code};
+ if(!create)return {ok:true,status:q.status};
+ if(q.delivery_mode==="batch")return {ok:true,status:"pending",message:"Voucher aguardando lote"};
+ if(q.status!=="pending")return {ok:true,status:q.status,message:"Emissão em processamento ou conferência"};
+ const locked=await db.prepare("UPDATE club_voucher_requests SET status='creating',attempts=attempts+1,processed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending' AND attempts=0").bind(q.id).run();
+ if(locked.meta.changes!==1)return {ok:true,status:"creating"};
+ const model=await db.prepare("SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1").bind(q.model_id,order.unit).first();
+ if(!model)throw new Error("MODELO_INDISPONIVEL");
+ const selection=voucherSelection(model.contract_ids_json),now=new Date(),until=new Date(now.getTime()*1+model.validity_days*86400000);
+ const code=voucherName(order.unit,model.name,q.id);
+ try{
+  const cfg=await getEvoConfig(env,order.unit);
+  const result=await voucherEvoCall(env,cfg,"/api/v2/voucher","POST",{nome:code,qtde:1,flUtilizarSite:true,flCodigoUnico:true,flIlimitado:false,inicio:now.toISOString(),validade:until.toISOString(),tipoDesconto:model.discount_type,valor:model.discount_value,...voucherPayloadSelection(selection)});
+  const evoId=Number(result?.voucherId);
+  if(!Number.isSafeInteger(evoId)||evoId<1)throw new Error("EVO_NAO_RETORNOU_ID");
+  const meta=JSON.stringify({provider:"EVO",evoVoucherId:evoId,modelId:model.id,unit:order.unit,orderId:order.id});
+  await db.batch([
+   db.prepare("UPDATE club_voucher_requests SET status='issued',assigned_code=?,evo_voucher_id=?,error=NULL,processed_at=CURRENT_TIMESTAMP WHERE id=? AND status='creating'").bind(code,evoId,q.id),
+   db.prepare("INSERT INTO vouchers(member_id,code,type,description,status,source_type,source_id,title,metadata_json) SELECT ?,?,'voucher',?,'ACTIVE','SHOP',?,?,? WHERE NOT EXISTS(SELECT 1 FROM vouchers WHERE source_type='SHOP' AND source_id=? AND member_id=?)").bind(order.member_id,code,model.name,order.id,order.item_name,meta,order.id,order.member_id),
+   db.prepare("UPDATE club_pix_fulfillment SET delivery_reference=?,updated_at=CURRENT_TIMESTAMP WHERE order_id=? AND delivery_state='ready'").bind(code,order.id)
+  ]);
+  return {ok:true,status:"issued",code};
+ }catch(e){
+  await db.prepare("UPDATE club_voucher_requests SET status='review_required',error='EMISSAO_NAO_CONFIRMADA_NAO_REEMITIR',processed_at=CURRENT_TIMESTAMP WHERE id=? AND status='creating'").bind(q.id).run();
+  return {ok:true,status:"review_required",message:"Emissão requer conferência; nenhuma nova tentativa automática"};
+ }
 }
