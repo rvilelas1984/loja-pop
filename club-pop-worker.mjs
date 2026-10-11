@@ -1457,6 +1457,31 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       }
 
       // =====================================================
+      // Server-authoritative quote for a mixed payment; never creates a discounted Pix without a debit ledger.
+      if(url.pathname==="/checkout/mixed/quote"&&request.method==="POST"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||""),kind=String(b.itemType||""),id=String(b.itemId||"");
+        if(!["bike","gym"].includes(unit)||!["product","service"].includes(kind)||!id)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const catalog=await clubContent(env),item=(kind==="product"?catalog.products:catalog.services||[])?.find(x=>String(x.id)===id&&String(x.unit||"bike")===unit&&x.status==="Ativo");
+        if(!item)return json({ok:false,error:"ITEM_INDISPONIVEL"},404);
+        const originalCents=Math.round(Number(item.price)*100),quantity=Number(b.quantity||0),config=item.currencyPayment;
+        if(!Number.isSafeInteger(originalCents)||originalCents<=0||!Number.isSafeInteger(quantity)||quantity<0)return json({ok:false,error:"VALOR_INVALIDO"},400);
+        if(quantity===0)return json({ok:true,originalCents,discountCents:0,pixCents:originalCents,quantity:0,canPay:true});
+        if(!config?.enabled||!["mixed","both","pix"].includes(String(item.paymentMethod||"")))return json({ok:false,error:"MOEDA_NAO_PERMITIDA"},409);
+        const currency=await env.DB.prepare("SELECT c.* FROM club_currencies c JOIN club_currency_units u ON u.currency_id=c.id WHERE c.code=? AND c.status='active' AND u.unit=? AND u.enabled=1").bind(String(config.currency||""),unit).first();
+        if(!currency)return json({ok:false,error:"MOEDA_INDISPONIVEL"},409);
+        const percent=Number(config.maxDiscountPercent),rate=Number(currency.brl_value);
+        if(!Number.isInteger(percent)||percent<1||percent>100||!Number.isFinite(rate)||rate<=0)return json({ok:false,error:"CONFIGURACAO_INVALIDA"},409);
+        let balance=0;
+        if(currency.source==="local"){balance=Number((await env.DB.prepare("SELECT balance FROM club_currency_wallets WHERE member_id=? AND unit=? AND currency_id=?").bind(member.id,unit,currency.id).first())?.balance||0)}
+        else {const row=await env.DB.prepare("SELECT fitcoins FROM members WHERE id=?").bind(member.id).first();balance=Number(row?.fitcoins||0)}
+        if(quantity>balance)return json({ok:false,error:"SALDO_INSUFICIENTE"},409);
+        const capCents=Math.floor(originalCents*percent/100),discountCents=Math.round(quantity*rate*100);
+        if(discountCents<=0||discountCents>capCents)return json({ok:false,error:"LIMITE_DESCONTO_EXCEDIDO"},409);
+        return json({ok:true,originalCents,discountCents,pixCents:originalCents-discountCents,quantity,currencyName:currency.name,canPay:false,reason:"DEBITO_MOEDA_PENDENTE",evoRequestsMade:0});
+      }
+
       // Sandbox order registration. This route never calls a payment provider.
       if (url.pathname === "/checkout/pix/draft" && request.method === "POST") {
         if(env.CLUB_PIX_PRODUCTION_ENABLED!=="true")return json({ok:false,error:"PIX_PRODUCTION_DISABLED"},503);
