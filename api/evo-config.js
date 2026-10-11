@@ -4,6 +4,16 @@ import { parseActiveReport } from "../lib/evo-active-report.js";
 import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 export default async function handler(req,res){
+ if(req.query.route==="benefit-vouchers"){
+  if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const unit=String(req.query.unit||"bike"),admin=req.query.admin==="1";
+  if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
+  try{
+   const response=await fetch(WORKER+(admin?"/admin/benefit-vouchers":"/benefit-vouchers")+"?unit="+unit,{method:req.method,headers:{"Content-Type":"application/json",...(admin?{"x-clubpop-admin-cookie":String(req.headers.cookie||"")}:{Authorization:String(req.headers.authorization||"")})},body:req.method==="POST"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});
+   res.status(response.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(await response.text());
+  }catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ }
+
  if(req.query.route==="mercadopago-config"){
   res.setHeader("Cache-Control","no-store");
   if(!["GET","PUT","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});

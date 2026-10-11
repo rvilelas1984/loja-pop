@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/benefit-vouchers",
+      "destination": "/api/evo-config?route=benefit-vouchers"
+    },
+    {
       "source": "/checkout/coins/:path*",
       "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/checkout/coins/:path*"
     },
