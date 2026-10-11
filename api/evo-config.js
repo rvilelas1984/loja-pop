@@ -28,7 +28,8 @@ export default async function handler(req,res){
   const unit=String(req.query.unit||"").toLowerCase();
   if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
   try{
-   const response=await fetch(WORKER+"/admin/voucher-automation?unit="+unit,{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="PUT"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});
+   const voucherType=String(req.query.type||"contract").toLowerCase();if(!["contract","service"].includes(voucherType))return res.status(400).json({ok:false,error:"TIPO_INVALIDO"});
+   const response=await fetch(WORKER+"/admin/voucher-automation?unit="+unit+"&type="+voucherType,{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="PUT"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});
    const body=await response.text();res.status(response.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(body);
   }catch{return res.status(502).json({ok:false,error:"FALHA_AUTOMACAO_VOUCHERS"})}
  }
