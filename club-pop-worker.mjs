@@ -1570,7 +1570,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const b=await request.json(),id=String(b.redemptionId||'').replace(/^checkout:/,'');
         const o=await env.DB.prepare("SELECT o.*,trim(coalesce(m.first_name,'')||' '||coalesce(m.last_name,'')) member_name FROM club_pix_orders o JOIN members m ON m.id=o.member_id WHERE o.id=? AND o.external_member_id IS NOT NULL").bind(id).first();
         if(!o||!scopes.includes(o.unit))return json({ok:false,error:"RESGATE_NAO_ENCONTRADO"},404);
-        try{return json(await receptionAction(env.DB,o,String(b.action||''),await checkoutEvo(env,o.unit),{...b,actor:String(auth.id||auth.email||auth.name||'recepcao')}));}catch(e){return json({ok:false,error:e.checkoutError?e.message:"FITCOINS_REQUER_CONFERENCIA"},409)}
+        try{return json(await receptionAction(env.DB,o,String(b.action||''),['refund','coins_check','coins_retry'].includes(String(b.action||''))?await checkoutEvo(env,o.unit):null,{...b,actor:String(auth.id||auth.email||auth.name||'recepcao')}));}catch(e){return json({ok:false,error:e.checkoutError?e.message:"FITCOINS_REQUER_CONFERENCIA"},409)}
       }
 
       // Shared checkout: D1 balances, authoritative amounts and durable choices.
