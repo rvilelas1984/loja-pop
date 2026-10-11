@@ -22,8 +22,8 @@ function openDetails(type,id){
   let n=coinMode?Number(el("cpQty").value):0;if(!Number.isSafeInteger(n))n=0;n=Math.max(0,Math.min(max,n));el("cpQty").value=n;el("cpRange").max=max;el("cpRange").value=n;el("cpMax").textContent="Até "+max;el("cpBalance").textContent=o?(o.balance===null?"Saldo não informado":"Seu saldo: "+o.balance+" "+o.currency_name):"Sem moeda disponível";
   el("cpSaved").textContent=loading?"Consultando saldo e moedas...":coinMode&&!o?"Moeda indisponível: verifique a configuração do administrador.":"Validando valores no servidor...";
   el("cpDiscount").textContent="—";el("cpTotal").textContent="—";
-  if(stock===0||loading||(coinMode&&(!o||n<1)))return;
-  const body={quantity:n,currencyId:coinMode?o.currency_id:null,mode:selected,previousChoice};
+  if(stock===0||loading||(coinMode&&!o)||(coinMode&&n===0&&!['pix','both','mixed'].includes(String(item.paymentMethod||''))))return;
+  const pixZero=n===0&&coinMode;const body={quantity:pixZero?0:n,currencyId:pixZero?null:coinMode?o.currency_id:null,mode:pixZero?"pix":selected,previousChoice};
   timer=setTimeout(async()=>{try{const q=await callQuote(body);if(version!==requestVersion)return;quote={...q,body};paint(q);el("cpSave").disabled=saving;el("cpSaved").textContent="Prévia atualizada · salve sua escolha para continuar";}catch(e){if(version===requestVersion)el("cpSaved").textContent=e.message;}},180);
  };
  const choose=()=>{el("cpCurrency").innerHTML=offers.map(o=>'<option value="'+esc(o.currency_id)+'">'+esc(o.currency_name)+' · '+(o.balance===null?'saldo não informado':o.balance+' disponíveis')+'</option>').join("");el("cpQty").value=Math.min(100,maxCoins(offer()));refresh()};
