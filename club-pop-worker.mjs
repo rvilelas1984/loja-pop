@@ -1951,7 +1951,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             if(!Number.isSafeInteger(imageId)||imageId<1)return json({ok:false,error:"IMAGEM_INVALIDA"},400);
             const owned=await env.DB.prepare("SELECT id FROM pop_fit_images WHERE id=? AND member_id=? AND scope=?").bind(imageId,base.id,scope).first();
             if(!owned)return json({ok:false,error:"IMAGEM_NAO_ENCONTRADA"},404);
-            await audit(env,"MEMBER",String(base.id),"POP_FIT_SHARE_CLICKED","POP_FIT_IMAGE",String(imageId),{unit:scope});
+            await audit(env,"MEMBER",String(base.id),"POP_FIT_SHARE_CLICKED","POP_FIT_IMAGE",String(imageId),{unit:scope});\n            await clubMissionWhatsappEvent(env,base,scope,"share_clicked");
             return json({ok:true,source:"d1",evoRequestsMade:0});
           }
           if(String(b.action||"")==="save-profile"){const num=(v,min,max)=>v===null||v===undefined||v===""?null:(Number.isFinite(Number(v))&&Number(v)>=min&&Number(v)<=max?Number(v):NaN),height=num(b.height,0.8,2.5),initialWeight=num(b.initialWeight,20,350);if([height,initialWeight].some(Number.isNaN))return json({ok:false,error:"VALOR_INVALIDO"},400);await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=excluded.height,initial_weight=COALESCE(pop_fit_profile.initial_weight,excluded.initial_weight),updated_at=CURRENT_TIMESTAMP").bind(base.id,height,initialWeight).run();const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,saved:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
@@ -1966,7 +1966,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             const image=String(b.imageData||"");
             if(!/^data:image\/jpeg;base64,/.test(image)||image.length>1600000)return json({ok:false,error:"IMAGEM_INVALIDA_OU_GRANDE"},400);
             const inserted=await env.DB.prepare("INSERT INTO pop_fit_images(member_id,scope,image_data,period_label,created_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)").bind(base.id,scope,image,String(b.periodLabel||"").slice(0,80)).run();
-            await audit(env,"MEMBER",String(base.id),"POP_FIT_IMAGE_GENERATED","POP_FIT_IMAGE",String(inserted.meta.last_row_id),{unit:scope});
+            await audit(env,"MEMBER",String(base.id),"POP_FIT_IMAGE_GENERATED","POP_FIT_IMAGE",String(inserted.meta.last_row_id),{unit:scope});\n            await clubMissionWhatsappEvent(env,base,scope,"image_generated");
             await env.DB.prepare("DELETE FROM pop_fit_images WHERE member_id=? AND scope=? AND id NOT IN (SELECT id FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3)").bind(base.id,scope,base.id,scope).run();
             const q=await env.DB.prepare("SELECT id,scope,image_data,period_label,created_at FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3").bind(base.id,scope).all();
             return json({ok:true,saved:true,imageId:inserted.meta.last_row_id,kept:3,images:q.results||[],source:"d1",evoRequestsMade:0});
@@ -2222,6 +2222,64 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
 // =========================================================
 // CLUB POP CAMPAIGNS / MISSIONS
 // =========================================================
+// WhatsApp mission events: D1-only, opt-in test allowlist, no EVO calls.
+async function clubMissionWhatsappEvent(env,member,unit,event){
+ try{
+  if(!["bike","gym","club"].includes(unit)||!["image_generated","share_clicked"].includes(event))return;
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_test_members(member_id INTEGER PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,updated_at TEXT DEFAULT CURRENT_TIMESTAMP)").run();
+  const allowed=await env.DB.prepare("SELECT enabled FROM club_whatsapp_test_members WHERE member_id=?").bind(member.id).first();
+  if(!allowed?.enabled)return;
+  const content=await clubContent(env);
+  const now=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
+  const missions=(content.missionList||[]).filter(m=>m.type==="challenge"&&m.status==="Ativo"&&m.start<=now&&m.end>=now&&(m.unit===unit||m.unit==="club")&&Array.isArray(m.tasks)&&Array.isArray(m.whatsappRules));
+  if(!missions.length)return;
+  const evoId=unit==="gym"?member.gym_client_id:member.evo_member_id;
+  if(!evoId)return;
+  const master=await env.DB.prepare("SELECT contacts_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,String(evoId)).first();
+  const contacts=JSON.parse(master?.contacts_json||"[]");
+  const numbers=[...new Set(contacts.filter(c=>String(c.contactType).toLowerCase()==="cellphone").map(c=>{
+   const raw=String(c.description||"").replace(/\D/g,""),ddi=String(c.ddi||"").replace(/\D/g,"");
+   let n=raw.startsWith("55")?raw:(ddi==="55"?"55"+raw:"55"+raw);
+   return /^55\d{10,11}$/.test(n)?n:null;
+  }).filter(Boolean))];
+  if(numbers.length!==1)return;
+  const config=await env.DB.prepare("SELECT api_key_cipher,base_url,enabled FROM club_chatpro_config WHERE id=1").first();
+  if(!config?.enabled||!config.api_key_cipher||!chatproSafeApiUrl(config.base_url)||!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)return;
+  const keyBytes=Uint8Array.from(atob(env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY),c=>c.charCodeAt(0));
+  if(keyBytes.length!==32)return;
+  const cryptoKey=await crypto.subtle.importKey("raw",keyBytes,"AES-GCM",false,["decrypt"]);
+  const [iv,body]=config.api_key_cipher.split(".");
+  const key=new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:Uint8Array.from(atob(iv),c=>c.charCodeAt(0)),additionalData:new TextEncoder().encode("chatpro:config")},cryptoKey,Uint8Array.from(atob(body),c=>c.charCodeAt(0))));
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_mission_dispatch(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,mission_id TEXT NOT NULL,rule_key TEXT NOT NULL,flow_id INTEGER NOT NULL,state TEXT NOT NULL DEFAULT 'reserved',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(member_id,mission_id,rule_key))").run();
+  for(const m of missions){
+   for(let i=0;i<m.tasks.length;i++){
+    const task=m.tasks[i];if(task.type!==event)continue;
+    const action=event==="image_generated"?"POP_FIT_IMAGE_GENERATED":"POP_FIT_SHARE_CLICKED";
+    const count=await env.DB.prepare("SELECT COUNT(*) n FROM audit_log WHERE actor_type='MEMBER' AND actor_id=? AND action=? AND date(datetime(created_at,'-3 hours')) BETWEEN ? AND ? AND json_valid(metadata_json) AND json_extract(metadata_json,'$.unit')=?").bind(String(member.id),action,m.start,m.end,unit).first();
+    for(const [ri,r] of m.whatsappRules.entries()){
+     if(r.enabled!==true||r.event!=="task:"+i+":"+event)continue;
+     const threshold=Number(r.threshold||task.quantity||1),flow=Number(r.flowId);
+     if(!Number.isSafeInteger(threshold)||threshold<1||Number(count?.n||0)<threshold||!Number.isSafeInteger(flow)||flow<1)continue;
+     const ruleKey=String(ri)+":"+r.event+":"+threshold;
+     const reserved=await env.DB.prepare("INSERT OR IGNORE INTO club_whatsapp_mission_dispatch(member_id,mission_id,rule_key,flow_id) VALUES(?,?,?,?)").bind(member.id,String(m.id),ruleKey,flow).run();
+     if(!reserved.meta?.changes)continue;
+     let state="uncertain";
+     try{
+      const base=config.base_url.replace(/\/$/,"");
+      const headers={"API-KEY":key,"Accept":"application/json","Content-Type":"application/json"};
+      const lookup=await fetch(base+"/subscriber/get_by_phone/"+encodeURIComponent(numbers[0])+"/",{headers,redirect:"manual",signal:AbortSignal.timeout(10000)});
+      if(!lookup.ok){state="lookup_failed";continue}
+      const sub=await lookup.json();const sid=String(sub.id||"");
+      if(!/^[a-zA-Z0-9_-]{1,80}$/.test(sid)){state="contact_missing";continue}
+      const send=await fetch(base+"/subscriber/"+encodeURIComponent(sid)+"/send_flow/",{method:"POST",headers,body:JSON.stringify({flow}),redirect:"manual",signal:AbortSignal.timeout(10000)});
+      state=send.ok?"sent":"send_uncertain";
+     }catch{state="send_uncertain"}
+     finally{await env.DB.prepare("UPDATE club_whatsapp_mission_dispatch SET state=?,updated_at=CURRENT_TIMESTAMP WHERE member_id=? AND mission_id=? AND rule_key=?").bind(state,member.id,String(m.id),ruleKey).run()}
+    }
+   }
+  }
+ }catch(e){console.error("CLUB_WHATSAPP_EVENT",String(e?.message||e))}
+}
 async function clubContent(env){
   try{await env.DB.prepare("CREATE TABLE IF NOT EXISTS app_content(content_key TEXT PRIMARY KEY,content_json TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();const row=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key=\'club-pop\' LIMIT 1").first();if(row?.content_json){const d=JSON.parse(row.content_json);if(d&&typeof d==="object")return d}}catch{}
   return {promotions:[{id:"promo-1790872798501",unit:"bike",status:"Ativo",name:"Iphone sorteio",start:"2026-09-01",end:"2026-10-31",promotionType:"lucky_number",numbersPerAttendance:1,reset:"monthly",luckyNumber:{enabled:true,numbersPerAttendance:1,reset:"monthly",maxNumbers:27,milestones:[{attendance:8,bonus:5},{attendance:12,bonus:10}]},dashboardText:"",rules:"",bannerUrl:"",requirements:[{unit:"bike",activityId:"*",activity:"Qualquer atividade",quantity:1}],eligibility:{mode:"active_contract",acceptedContracts:["78686","78687","78852"]}}],missionList:[]};
