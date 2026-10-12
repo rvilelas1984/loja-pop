@@ -83,9 +83,20 @@ async function chatproAdminConfig(request,env,url,json){
  const encrypt=async value=>{const iv=crypto.getRandomValues(new Uint8Array(12));const cipher=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:new TextEncoder().encode("chatpro:config")},key,new TextEncoder().encode(value)));return enc(iv)+"."+enc(cipher)};
  const decrypt=async value=>{const [iv,cipher]=value.split(".");return new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:dec(iv),additionalData:new TextEncoder().encode("chatpro:config")},key,dec(cipher)))};
  await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_chatpro_config(id INTEGER PRIMARY KEY CHECK(id=1),api_key_cipher TEXT NOT NULL,base_url TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+ const columns=await env.DB.prepare("PRAGMA table_info(club_chatpro_config)").all();
+ if(!(columns.results||[]).some(c=>c.name==="enabled_units"))await env.DB.prepare("ALTER TABLE club_chatpro_config ADD COLUMN enabled_units TEXT NOT NULL DEFAULT '["bike"]'").run();
  const record=await env.DB.prepare("SELECT * FROM club_chatpro_config WHERE id=1").first();
+ const enabledUnits=(()=>{try{const a=JSON.parse(record?.enabled_units||'["bike"]');return Array.isArray(a)?a.filter(x=>["bike","gym","club"].includes(x)):["bike"]}catch{return ["bike"]}})();
  const action=url.searchParams.get("action")||"status";
- if(request.method==="GET"&&action==="status")return respond({ok:true,configured:!!record?.api_key_cipher,enabled:!!record?.enabled,baseUrl:record?.base_url||"https://conectawebhook.com.br/api/v1/webhook",updatedAt:record?.updated_at||null});
+ if(request.method==="GET"&&action==="status")return respond({ok:true,configured:!!record?.api_key_cipher,enabled:!!record?.enabled,baseUrl:record?.base_url||"https://conectawebhook.com.br/api/v1/webhook",updatedAt:record?.updated_at||null,enabledUnits});
+ if(request.method==="PUT"&&action==="units"){
+  const b=await request.json().catch(()=>({}));
+  if(!Array.isArray(b.units)||!b.units.length||b.units.some(x=>!["bike","gym","club"].includes(x)))return respond({ok:false,error:"UNIDADES_INVALIDAS"},400);
+  if(!record)return respond({ok:false,error:"CONFIGURACAO_AUSENTE"},404);
+  const units=[...new Set(b.units)];
+  await env.DB.prepare("UPDATE club_chatpro_config SET enabled_units=?,updated_at=CURRENT_TIMESTAMP WHERE id=1").bind(JSON.stringify(units)).run();
+  return respond({ok:true,enabledUnits:units,message:"Unidades autorizadas atualizadas sem alterar a conexão."});
+ }
  if(request.method==="PUT"&&action==="save"){
   const b=await request.json().catch(()=>({}));
   const token=String(b.apiKey||"").trim();
@@ -2256,7 +2267,9 @@ async function clubMissionWhatsappEvent(env,member,unit,event){
    return /^55\d{10,11}$/.test(n)?n:null;
   }).filter(Boolean))];
   if(numbers.length!==1)return;
-  const config=await env.DB.prepare("SELECT api_key_cipher,base_url,enabled FROM club_chatpro_config WHERE id=1").first();
+  const config=await env.DB.prepare("SELECT api_key_cipher,base_url,enabled,enabled_units FROM club_chatpro_config WHERE id=1").first();
+  let allowedUnits=["bike"];try{allowedUnits=JSON.parse(config?.enabled_units||'["bike"]')}catch{}
+  if(!Array.isArray(allowedUnits)||!allowedUnits.includes(unit))return;
   if(!config?.enabled||!config.api_key_cipher||!chatproSafeApiUrl(config.base_url)||!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)return;
   const keyBytes=Uint8Array.from(atob(env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY),c=>c.charCodeAt(0));
   if(keyBytes.length!==32)return;
