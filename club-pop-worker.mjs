@@ -104,21 +104,21 @@ async function chatproAdminConfig(request,env,url,json){
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_birthday_config(unit TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,flow_id TEXT NOT NULL DEFAULT '',times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_birthday_dispatch(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,send_date TEXT NOT NULL,member_id INTEGER NOT NULL,scheduled_time TEXT NOT NULL,flow_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'reserved',sent_at TEXT,error TEXT,UNIQUE(unit,send_date,member_id))").run();
   const cfg=await env.DB.prepare("SELECT enabled,flow_id,times_json FROM club_whatsapp_birthday_config WHERE unit=?").bind(unit).first();
-  const active=await env.DB.prepare("SELECT COUNT(DISTINCT evo_member_id) n FROM evo_member_contracts WHERE unit=? AND lower(membership_status) IN ('active','1') AND (end_date IS NULL OR date(end_date)>=date('now','-3 hours'))").bind(unit).first();
-  const birthdaySql="FROM members m WHERE m.birth_date IS NOT NULL AND strftime('%m-%d',m.birth_date)=strftime('%m-%d',date('now','-3 hours')) AND m.status='ACTIVE' AND EXISTS (SELECT 1 FROM evo_member_contracts c WHERE c.unit=? AND c.evo_member_id=CAST(m.evo_member_id AS TEXT) AND lower(c.membership_status) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours')))";
-  const birthdays=await env.DB.prepare("SELECT COUNT(DISTINCT m.id) n "+birthdaySql).bind(unit).first();
-  const people=await env.DB.prepare("SELECT DISTINCT m.id,m.first_name,m.last_name "+birthdaySql+" ORDER BY m.first_name,m.last_name LIMIT 500").bind(unit).all();
+  const active=await env.DB.prepare("SELECT COUNT(DISTINCT c.evo_member_id) n FROM evo_member_contracts c JOIN evo_member_master mm ON mm.unit=c.unit AND CAST(mm.evo_member_id AS TEXT)=CAST(c.evo_member_id AS TEXT) AND mm.is_current=1 WHERE c.unit=? AND lower(c.membership_status) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))").bind(unit).first();
+  const birthdaySql="FROM members m WHERE m.birth_date IS NOT NULL AND strftime('%m-%d',m.birth_date)=strftime('%m-%d',date('now','-3 hours')) AND m.status='ACTIVE' AND EXISTS (SELECT 1 FROM evo_member_master mm WHERE mm.unit=? AND mm.is_current=1 AND CAST(mm.evo_member_id AS TEXT)=CAST(m.evo_member_id AS TEXT)) AND EXISTS (SELECT 1 FROM evo_member_contracts c WHERE c.unit=? AND c.evo_member_id=CAST(m.evo_member_id AS TEXT) AND lower(c.membership_status) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours')))";
+  const birthdays=await env.DB.prepare("SELECT COUNT(DISTINCT m.id) n "+birthdaySql).bind(unit,unit).first();
+  const people=await env.DB.prepare("SELECT DISTINCT m.id,m.first_name,m.last_name "+birthdaySql+" ORDER BY m.first_name,m.last_name LIMIT 500").bind(unit,unit).all();
   const logs=await env.DB.prepare("SELECT scheduled_time,COUNT(*) total,SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) sent,SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) failed FROM club_whatsapp_birthday_dispatch WHERE unit=? AND send_date=date('now','-3 hours') GROUP BY scheduled_time ORDER BY scheduled_time").bind(unit).all();
-  return respond({ok:true,unit,activeMembers:Number(active?.n||0),birthdays:Number(birthdays?.n||0),birthdayNames:(people.results||[]).map(m=>({id:m.id,name:[m.first_name,m.last_name].filter(Boolean).join(" ").trim()||"Aluno sem nome"})),flowId:cfg?.flow_id||"",times:JSON.parse(cfg?.times_json||"[]"),logs:logs.results||[],dispatchEngineActive:false,preview:(JSON.parse(cfg?.times_json||"[]")).map((time,i,arr)=>({time,planned:Math.floor(Number(birthdays?.n||0)/arr.length)+(i<Number(birthdays?.n||0)%arr.length?1:0),sent:0})),enabledUnits});
+  return respond({ok:true,unit,activeMembers:Number(active?.n||0),birthdays:Number(birthdays?.n||0),birthdayNames:(people.results||[]).map(m=>({id:m.id,name:[m.first_name,m.last_name].filter(Boolean).join(" ").trim()||"Aluno sem nome"})),flowId:cfg?.flow_id||"",enabled:!!cfg?.enabled,times:JSON.parse(cfg?.times_json||"[]"),logs:logs.results||[],dispatchEngineActive:true,preview:(JSON.parse(cfg?.times_json||"[]")).map((time,i,arr)=>({time,planned:Math.floor(Number(birthdays?.n||0)/arr.length)+(i<Number(birthdays?.n||0)%arr.length?1:0),sent:0})),enabledUnits});
  }
  if(action==="birthday-save"&&request.method==="PUT"){
   const b=await request.json().catch(()=>({}));
   if(!["bike","gym","club"].includes(b.unit)||!Array.isArray(b.times)||b.times.length>12||b.times.some(t=>typeof t!=="string"||!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)))return respond({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
   const times=[...new Set(b.times)].sort(),flow=String(b.flowId||"").trim();
-  if(flow.length>100)return respond({ok:false,error:"FLUXO_INVALIDO"},400);
+  if(flow.length>100|| (b.enabled===true&&!/^\d+$/.test(flow)))return respond({ok:false,error:"FLUXO_INVALIDO"},400);
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_birthday_config(unit TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,flow_id TEXT NOT NULL DEFAULT '',times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
-  await env.DB.prepare("INSERT INTO club_whatsapp_birthday_config(unit,enabled,flow_id,times_json,updated_at) VALUES(?,0,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET enabled=0,flow_id=excluded.flow_id,times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(b.unit,flow,JSON.stringify(times)).run();
-  return respond({ok:true,message:"Horários salvos. Disparos desativados até a validação dos contatos e do agendador.",times,dispatchEngineActive:false});
+  await env.DB.prepare("INSERT INTO club_whatsapp_birthday_config(unit,enabled,flow_id,times_json,updated_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET enabled=excluded.enabled,flow_id=excluded.flow_id,times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(b.unit,b.enabled===true?1:0,flow,JSON.stringify(times)).run();
+  return respond({ok:true,message:b.enabled===true?"Automação ativada para os próximos horários.":"Automação desativada.",times,enabled:b.enabled===true,dispatchEngineActive:true});
  }
  if(request.method==="PUT"&&action==="save"){
   const b=await request.json().catch(()=>({}));
@@ -292,8 +292,40 @@ async function runScheduledAttendanceSync(env) {
   }
 }
 
+
+async function whatsappBirthdayTick(env){
+ if(!env.DB||!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)return;
+ const now=new Date(),parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now);
+ const get=k=>parts.find(x=>x.type===k)?.value||"",date=get("year")+"-"+get("month")+"-"+get("day"),time=get("hour")+":"+get("minute");
+ const configs=(await env.DB.prepare("SELECT unit,flow_id,times_json FROM club_whatsapp_birthday_config WHERE enabled=1").all()).results||[];
+ if(!configs.length)return;
+ const config=await env.DB.prepare("SELECT api_key_cipher,base_url,enabled,enabled_units FROM club_chatpro_config WHERE id=1").first();
+ if(!config?.enabled||!config.api_key_cipher||!chatproSafeApiUrl(config.base_url))return;
+ const allowed=JSON.parse(config.enabled_units||'["bike"]');
+ const bytes=Uint8Array.from(atob(env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY),x=>x.charCodeAt(0));
+ const key=await crypto.subtle.importKey("raw",bytes,"AES-GCM",false,["decrypt"]);
+ const [iv,cipher]=config.api_key_cipher.split(".");
+ const dec=x=>Uint8Array.from(atob(x),c=>c.charCodeAt(0));
+ const token=new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:dec(iv),additionalData:new TextEncoder().encode("chatpro:config")},key,dec(cipher)));
+ const call=async(path,method="GET",body)=>{const r=await fetch(config.base_url.replace(/\/$/,"")+path,{method,redirect:"manual",headers:{"API-KEY":token,Accept:"application/json","Content-Type":"application/json"},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error("CHATPRO_HTTP_"+r.status);return r.json()};
+ for(const cfg of configs){
+  if(!allowed.includes(cfg.unit)||!/^\d+$/.test(cfg.flow_id))continue;
+  let times;try{times=JSON.parse(cfg.times_json)}catch{continue}
+  if(!Array.isArray(times)||!times.includes(time))continue;
+  const people=(await env.DB.prepare("SELECT DISTINCT m.id,mm.contacts_json FROM members m JOIN evo_member_master mm ON mm.unit=? AND mm.is_current=1 AND CAST(mm.evo_member_id AS TEXT)=CAST(m.evo_member_id AS TEXT) WHERE m.status='ACTIVE' AND m.birth_date IS NOT NULL AND strftime('%m-%d',m.birth_date)=substr(?,6,5) AND EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=? AND CAST(c.evo_member_id AS TEXT)=CAST(m.evo_member_id AS TEXT) AND lower(c.membership_status) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=?)) ORDER BY m.id").bind(cfg.unit,date,cfg.unit,date).all()).results||[];
+  const index=times.indexOf(time),slice=people.filter((_,i)=>i%times.length===index);
+  for(const p of slice){
+   let phone="";try{const contacts=JSON.parse(p.contacts_json||"[]");const cell=contacts.find(x=>String(x.contactType||"").toLowerCase()==="cellphone");phone=String(cell?.ddi||"55")+String(cell?.description||"").replace(/\D/g,"");phone=phone.replace(/\D/g,"");if(phone.length<12||phone.length>13)phone=""}catch{}
+   if(!phone)continue;
+   const claim=await env.DB.prepare("INSERT OR IGNORE INTO club_whatsapp_birthday_dispatch(unit,send_date,member_id,scheduled_time,flow_id,status) VALUES(?,?,?,?,?,'reserved')").bind(cfg.unit,date,p.id,time,cfg.flow_id).run();
+   if(!claim.meta?.changes)continue;
+   try{const sub=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/");if(!sub?.id)throw Error("CONTATO_NAO_ENCONTRADO");await call("/subscriber/"+encodeURIComponent(String(sub.id))+"/send_flow/","POST",{flow:Number(cfg.flow_id)});await env.DB.prepare("UPDATE club_whatsapp_birthday_dispatch SET status='sent',sent_at=CURRENT_TIMESTAMP WHERE unit=? AND send_date=? AND member_id=?").bind(cfg.unit,date,p.id).run()}
+   catch(e){await env.DB.prepare("UPDATE club_whatsapp_birthday_dispatch SET status='failed',error=? WHERE unit=? AND send_date=? AND member_id=?").bind(String(e.message||e).slice(0,300),cfg.unit,date,p.id).run()}
+  }
+ }
+}
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),voucherBatchTick(env),currencyRewardTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env)])); },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
