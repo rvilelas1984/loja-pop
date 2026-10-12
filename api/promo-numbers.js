@@ -15,7 +15,7 @@ export default async function handler(req,res){
   try{
    const action=String(req.query.action||"status");
    if(!["status","save","test","units","birthday-status","birthday-save"].includes(action))return res.status(400).json({ok:false,error:"ACAO_INVALIDA"});
-   const upstream=await fetch(WORKER+"/admin/chatpro-config?action="+encodeURIComponent(action),{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="GET"?undefined:JSON.stringify(req.body||{}),cache:"no-store"});
+   const selectedUnit=String(req.query.unit||req.body?.unit||"").toLowerCase();if(["birthday-status","birthday-save"].includes(action)&&!["bike","gym","club"].includes(selectedUnit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});const upstream=await fetch(WORKER+"/admin/chatpro-config?action="+encodeURIComponent(action)+(selectedUnit?"&unit="+encodeURIComponent(selectedUnit):""),{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="GET"?undefined:JSON.stringify(req.body||{}),cache:"no-store"});
    res.setHeader("Cache-Control","no-store");
    return res.status(upstream.status).send(await upstream.text());
   }catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
