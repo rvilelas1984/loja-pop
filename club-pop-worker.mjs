@@ -84,7 +84,7 @@ async function chatproAdminConfig(request,env,url,json){
  const decrypt=async value=>{const [iv,cipher]=value.split(".");return new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:dec(iv),additionalData:new TextEncoder().encode("chatpro:config")},key,dec(cipher)))};
  await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_chatpro_config(id INTEGER PRIMARY KEY CHECK(id=1),api_key_cipher TEXT NOT NULL,base_url TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
  const columns=await env.DB.prepare("PRAGMA table_info(club_chatpro_config)").all();
- if(!(columns.results||[]).some(c=>c.name==="enabled_units"))await env.DB.prepare("ALTER TABLE club_chatpro_config ADD COLUMN enabled_units TEXT NOT NULL DEFAULT '["bike"]'").run();
+ if(!(columns.results||[]).some(c=>c.name==="enabled_units"))await env.DB.prepare("ALTER TABLE club_chatpro_config ADD COLUMN enabled_units TEXT NOT NULL DEFAULT '[\"bike\"]'").run();
  const record=await env.DB.prepare("SELECT * FROM club_chatpro_config WHERE id=1").first();
  const enabledUnits=(()=>{try{const a=JSON.parse(record?.enabled_units||'["bike"]');return Array.isArray(a)?a.filter(x=>["bike","gym","club"].includes(x)):["bike"]}catch{return ["bike"]}})();
  const action=url.searchParams.get("action")||"status";
