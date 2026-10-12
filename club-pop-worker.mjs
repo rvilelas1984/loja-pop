@@ -57,6 +57,46 @@ async function clubPixReconcile(env,order,result){
 }
 
 // Encrypted Mercado Pago configuration. No secret is ever returned to the browser.
+
+async function chatproAdminConfig(request,env,url,json){
+ const respond=(data,status=200)=>json(data,status);
+ const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+ if(!ck)return respond({ok:false,error:"NAO_AUTORIZADO"},401);
+ let vr;try{vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}})}catch{return respond({ok:false,error:"FALHA_AUTENTICACAO"},502)}
+ const vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return respond({ok:false,error:"NAO_AUTORIZADO"},403);
+ if(!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)return respond({ok:false,error:"CHAVE_CRIPTOGRAFIA_NAO_CONFIGURADA"},503);
+ const bytes=Uint8Array.from(atob(env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY),x=>x.charCodeAt(0));
+ if(bytes.length!==32)return respond({ok:false,error:"CHAVE_CRIPTOGRAFIA_INVALIDA"},503);
+ const key=await crypto.subtle.importKey("raw",bytes,"AES-GCM",false,["encrypt","decrypt"]);
+ const enc=x=>btoa(String.fromCharCode(...x)),dec=x=>Uint8Array.from(atob(x),c=>c.charCodeAt(0));
+ const encrypt=async value=>{const iv=crypto.getRandomValues(new Uint8Array(12));const cipher=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:new TextEncoder().encode("chatpro:config")},key,new TextEncoder().encode(value)));return enc(iv)+"."+enc(cipher)};
+ const decrypt=async value=>{const [iv,cipher]=value.split(".");return new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:dec(iv),additionalData:new TextEncoder().encode("chatpro:config")},key,dec(cipher)))};
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_chatpro_config(id INTEGER PRIMARY KEY CHECK(id=1),api_key_cipher TEXT NOT NULL,base_url TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+ const record=await env.DB.prepare("SELECT * FROM club_chatpro_config WHERE id=1").first();
+ const action=url.searchParams.get("action")||"status";
+ if(request.method==="GET"&&action==="status")return respond({ok:true,configured:!!record?.api_key_cipher,enabled:!!record?.enabled,baseUrl:record?.base_url||"https://conectawebhook.com.br",updatedAt:record?.updated_at||null});
+ if(request.method==="PUT"&&action==="save"){
+  const b=await request.json().catch(()=>({}));
+  const token=String(b.apiKey||"").trim();
+  const baseUrl=String(b.baseUrl||record?.base_url||"https://conectawebhook.com.br").trim().replace(/\\/$/,"");
+  if(baseUrl!=="https://conectawebhook.com.br")return respond({ok:false,error:"URL_API_NAO_PERMITIDA"},400);
+  if(token.length>1024)return respond({ok:false,error:"CHAVE_INVALIDA"},400);
+  if(!token&&!record?.api_key_cipher)return respond({ok:false,error:"INFORME_API_KEY"},400);
+  const cipher=token?await encrypt(token):record.api_key_cipher;
+  await env.DB.prepare("INSERT INTO club_chatpro_config(id,api_key_cipher,base_url,enabled) VALUES(1,?,?,0) ON CONFLICT(id) DO UPDATE SET api_key_cipher=excluded.api_key_cipher,base_url=excluded.base_url,enabled=0,updated_at=CURRENT_TIMESTAMP").bind(cipher,baseUrl).run();
+  return respond({ok:true,configured:true,enabled:false,message:"Credenciais salvas. Teste a conexão antes de ativar."});
+ }
+ if(request.method==="POST"&&action==="test"){
+  if(!record?.api_key_cipher)return respond({ok:false,error:"CREDENCIAIS_AUSENTES"},400);
+  let keyText;try{keyText=await decrypt(record.api_key_cipher)}catch{return respond({ok:false,error:"FALHA_DESCRIPTOGRAFIA"},500)}
+  let r;try{r=await fetch(record.base_url+"/flows/",{headers:{"API-KEY":keyText,Accept:"application/json"},signal:AbortSignal.timeout(10000)})}catch{return respond({ok:false,error:"SERVICO_INDISPONIVEL"},502)}
+  if(!r.ok)return respond({ok:false,error:"CHATPRO_HTTP_"+r.status},502);
+  await env.DB.prepare("UPDATE club_chatpro_config SET enabled=1,updated_at=CURRENT_TIMESTAMP WHERE id=1").run();
+  return respond({ok:true,configured:true,enabled:true,message:"Conexão validada. Integração ativada."});
+ }
+ return respond({ok:false,error:"ACAO_INVALIDA"},400);
+}
+
 async function mpAdminConfig(request,env,url,json){
  const respond=(data,status=200)=>json(data,status);
  const ck=request.headers.get("x-clubpop-admin-cookie")||"";
@@ -1777,6 +1817,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
       
       if(url.pathname==="/admin/mercadopago-config")return await mpAdminConfig(request,env,url,json);
+      if(url.pathname==="/admin/chatpro-config")return await chatproAdminConfig(request,env,url,json);
 
             // ADMIN - CONFIGURACAO EVO POR UNIDADE (FASE 0)
       // =====================================================

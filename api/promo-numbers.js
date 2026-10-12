@@ -4,10 +4,23 @@ const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 function adminRole(req){const key=process.env.ADMIN_KEY;if(!key)return null;const raw=String(req.headers.cookie||"").split(";").map(x=>x.trim()).find(x=>x.startsWith("clubpop_admin="));if(!raw)return null;const p=raw.slice(14).split(".");const eq=(a,b)=>{try{return a.length===b.length&&crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b))}catch{return false}};const sig=v=>crypto.createHmac("sha256",key).update(v).digest("hex");if(p.length===2){const [e,s]=p;return Number(e)>=Date.now()&&eq(s,sig(e))?"admin":null}if(p.length!==3)return null;const [a,e,s]=p;if(Number(e)<Date.now()||!eq(s,sig(a+"."+e)))return null;if(["admin","reception"].includes(a))return a;try{const u=JSON.parse(Buffer.from(a,"base64url").toString());return ["admin","reception"].includes(u?.role)?u.role:null}catch{return null}}
 function adminValid(req){return !!adminRole(req)}
 export default async function handler(req,res){
- const route=String(req.query.route||"").trim(),isAdmin=route.startsWith("admin-")||route==="whatsapp";
- const allowed=new Set(["sync","mine","fitcoins","whatsapp","admin-list","admin-winner","admin-export","admin-review-status","admin-review","admin-early-close","admin-early-close-status","admin-sync-batch","admin-generate-batch","review-request","admin-review-list","admin-review-update","review-status"]);
+ const route=String(req.query.route||"").trim(),isAdmin=route.startsWith("admin-")||route==="whatsapp"||route==="whatsapp-config";
+ const allowed=new Set(["sync","mine","fitcoins","whatsapp","whatsapp-config","admin-list","admin-winner","admin-export","admin-review-status","admin-review","admin-early-close","admin-early-close-status","admin-sync-batch","admin-generate-batch","review-request","admin-review-list","admin-review-update","review-status"]);
  if(!allowed.has(route))return res.status(404).json({ok:false,error:"ROTA_NAO_ENCONTRADA"});
  const role=adminRole(req);if(isAdmin&&!role)return res.status(401).json({ok:false,error:"Sessão administrativa inválida"});if(role==="reception"&&isAdmin&&route!=="admin-list")return res.status(403).json({ok:false,error:"Acesso restrito à consulta"});
+ 
+ if(route==="whatsapp-config"){
+  if(!["GET","PUT","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});
+  if(role!=="admin")return res.status(403).json({ok:false,error:"ACESSO_RESTRITO"});
+  try{
+   const action=String(req.query.action||"status");
+   if(!["status","save","test"].includes(action))return res.status(400).json({ok:false,error:"ACAO_INVALIDA"});
+   const upstream=await fetch(WORKER+"/admin/chatpro-config?action="+encodeURIComponent(action),{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="GET"?undefined:JSON.stringify(req.body||{}),cache:"no-store"});
+   res.setHeader("Cache-Control","no-store");
+   return res.status(upstream.status).send(await upstream.text());
+  }catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ }
+
  if(route==="whatsapp")return whatsappHandler(req,res);
  if(route==="fitcoins"){if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});try{const r=await executeFitcoinReward({bearer:req.headers.authorization,source:"promotion",sourceId:req.body?.promotionId});return res.status(200).json(r)}catch(e){return res.status(e.status||500).json({ok:false,error:e.message,detail:e.detail||null})}}
  if(route==="review-status"){if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});const headers={"Content-Type":"application/json"};if(req.headers.authorization)headers.Authorization=req.headers.authorization;const promotion=String(req.query.promotion||"");try{const r=await fetch(WORKER+"/promotion-review/status?promotion="+encodeURIComponent(promotion),{headers});return res.status(r.status).send(await r.text())}catch(e){return res.status(502).json({ok:false,error:"Falha ao consultar análise"})}} if(route==="review-request"){if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});const headers={"Content-Type":"application/json"};if(req.headers.authorization)headers.Authorization=req.headers.authorization;try{const r=await fetch(WORKER+"/promotion-review/request",{method:"POST",headers,body:JSON.stringify(req.body||{})});return res.status(r.status).send(await r.text())}catch(e){return res.status(502).json({ok:false,error:"Falha ao registrar análise"})}}
