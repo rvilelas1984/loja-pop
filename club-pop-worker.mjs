@@ -111,7 +111,7 @@ async function chatproAdminConfig(request,env,url,json){
  }
  if(action==="birthday-save"&&request.method==="PUT"){
   const b=await request.json().catch(()=>({}));
-  if(!["bike","gym","club"].includes(b.unit)||!Array.isArray(b.times)||b.times.length>12||b.times.some(t=>typeof t!=="string"||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(t)))return respond({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
+  if(!["bike","gym","club"].includes(b.unit)||!Array.isArray(b.times)||b.times.length>12||b.times.some(t=>typeof t!=="string"||!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)))return respond({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
   const times=[...new Set(b.times)].sort(),flow=String(b.flowId||"").trim();
   if(flow.length>100)return respond({ok:false,error:"FLUXO_INVALIDO"},400);
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_birthday_config(unit TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,flow_id TEXT NOT NULL DEFAULT '',times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
