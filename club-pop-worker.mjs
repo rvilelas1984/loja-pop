@@ -97,13 +97,13 @@ async function chatproAdminConfig(request,env,url,json){
   await env.DB.prepare("INSERT INTO club_chatpro_config(id,api_key_cipher,base_url,enabled) VALUES(1,?,?,0) ON CONFLICT(id) DO UPDATE SET api_key_cipher=excluded.api_key_cipher,base_url=excluded.base_url,enabled=0,updated_at=CURRENT_TIMESTAMP").bind(cipher,baseUrl).run();
   return respond({ok:true,configured:true,enabled:false,message:"Credenciais salvas. Teste a conexão antes de ativar."});
  }
- if(request.method==="POST"&&(action==="find"||action==="send")){
+ if(request.method==="POST"&&(action==="find"||action==="send"||action==="flows")){
   if(!record?.enabled||!record?.api_key_cipher)return respond({ok:false,error:"CHATPRO_NAO_ATIVADO"},409);
   if(!chatproSafeApiUrl(record.base_url))return respond({ok:false,error:"URL_API_INVALIDA"},400);
   const b=await request.json().catch(()=>({}));
   const phone=String(b.phone||"").replace(/\D/g,"");
   let sid=String(b.subscriber_id||"").trim();
-  if((action==="find"||!sid)&&(phone.length<10||phone.length>15))return respond({ok:false,error:"TELEFONE_INVALIDO"},400);
+  if((action==="find"||(action==="send"&&!sid))&&(phone.length<10||phone.length>15))return respond({ok:false,error:"TELEFONE_INVALIDO"},400);
   if(sid&&!/^[a-zA-Z0-9_-]{1,80}$/.test(sid))return respond({ok:false,error:"SUBSCRIBER_ID_INVALIDO"},400);
   if(action==="send"&&b.confirm!==true)return respond({ok:false,error:"CONFIRMACAO_ENVIO_OBRIGATORIA"},400);
   const flow=Number(b.flow);
@@ -117,6 +117,7 @@ async function chatproAdminConfig(request,env,url,json){
    return await r.json();
   };
   try{
+   if(action==="flows"){const flows=await call("/flows/");return respond({ok:true,flows})}
    if(action==="find"){const subscriber=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/");return respond({ok:true,subscriber})}
    if(!sid){const sub=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/");sid=String(sub.id||"")}
    if(!sid)return respond({ok:false,error:"CONTATO_NAO_ENCONTRADO"},404);

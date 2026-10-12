@@ -5,12 +5,23 @@
 <body><main><div class="ey">INTEGRAÇÃO CONECTAWEBHOOK</div><h1>Teste de WhatsApp</h1>
 <p class="note">Área de testes integrada ao administrativo. A chave da API fica somente no backend do Club Pop e não é exibida no navegador.</p>
 <section class="card"><div class="grid"><div class="field"><label>Telefone</label><input id="phone" placeholder="5511999999999" inputmode="tel"></div><div class="field"><label>ID do fluxo</label><input id="flow" placeholder="Ex.: 123" inputmode="numeric"></div></div>
+<div class="field"><label>Fluxos disponíveis</label><div class="actions"><button class="btn secondary" type="button" id="loadFlows">Consultar fluxos</button></div><select id="flowSelect" style="width:100%;padding:12px;margin-top:10px;border:1px solid #d9dde3;border-radius:10px;background:#fff"><option value="">Selecione um fluxo após consultar</option></select><p class="note" id="flowHelp">Consulta apenas a lista, sem enviar mensagens.</p></div>
 <div class="field"><label style="font-size:13px;font-weight:600"><input type="checkbox" id="confirm" style="width:auto;margin-right:8px">Autorizo o envio real do fluxo para este contato</label></div><div class="actions"><button class="btn secondary" id="find">1. Buscar cliente</button><button class="btn" id="send">2. Disparar fluxo</button></div>
 <div class="field"><label>Subscriber ID</label><input id="subscriber" placeholder="Preenchido automaticamente após a busca"></div>
 <div class="field"><label>Resultado</label><div class="status" id="status">Aguardando teste...</div></div></section></main>
 <script>
 const $=id=>document.getElementById(id); const status=$("status");
 async function call(payload){status.textContent="Consultando...";const r=await fetch("/api/promo-numbers?route=whatsapp",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});let d;try{d=await r.json()}catch{d={error:await r.text()}}status.textContent=JSON.stringify(d,null,2);if(!r.ok)throw new Error(d.error||d.detail||"Falha");return d}
+$("loadFlows").onclick=async()=>{try{
+ const d=await call({action:"flows"});
+ const data=d.flows;
+ const list=Array.isArray(data)?data:Array.isArray(data?.results)?data.results:Array.isArray(data?.data)?data.data:Array.isArray(data?.flows)?data.flows:[];
+ const select=$("flowSelect");select.replaceChildren(new Option("Selecione um fluxo",""));
+ for(const f of list){const id=f?.id??f?.flow_id;const name=f?.name??f?.title??f?.label??("Fluxo "+id);if(id==null)continue;select.add(new Option(String(name)+" (ID "+id+")",String(id)))}
+ $("flowHelp").textContent=list.length?list.length+" fluxo(s) encontrado(s). Selecione para preencher o ID.":"Nenhum fluxo encontrado. Verifique o resultado da consulta.";
+ }catch(e){$("flowHelp").textContent="Não foi possível consultar os fluxos: "+e.message}
+};
+$("flowSelect").onchange=()=>{if($("flowSelect").value)$("flow").value=$("flowSelect").value};
 $("find").onclick=async()=>{try{const d=await call({action:"find",phone:$("phone").value});if(d.subscriber?.id!=null)$("subscriber").value=d.subscriber.id}catch(e){}};
 $("send").onclick=async()=>{if(!$("confirm").checked){status.textContent="Confirme o envio real antes de continuar.";return}try{await call({action:"send",phone:$("phone").value,subscriber_id:$("subscriber").value,flow:$("flow").value,confirm:$("confirm").checked})}catch(e){}};
 </script></body></html>

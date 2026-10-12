@@ -25,7 +25,7 @@ export default async function handler(req,res){
  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});
  if(role!=="admin")return res.status(403).json({ok:false,error:"ACESSO_RESTRITO"});
  const action=String(req.body?.action||"");
- if(!["find","send"].includes(action))return res.status(400).json({ok:false,error:"ACAO_INVALIDA"});
+ if(!["find","send","flows"].includes(action))return res.status(400).json({ok:false,error:"ACAO_INVALIDA"});
  if(action==="send"&&req.body?.confirm!==true)return res.status(400).json({ok:false,error:"CONFIRMACAO_ENVIO_OBRIGATORIA"});
  try{
   const upstream=await fetch(WORKER+"/admin/chatpro-config?action="+encodeURIComponent(action),{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify(req.body||{}),cache:"no-store"});
