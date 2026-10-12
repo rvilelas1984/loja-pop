@@ -2932,6 +2932,10 @@ async function challengeFitcoinClaim(env,member,mission,goal,json){
   // Respostas ambíguas ou falhas permanecem em REVIEW e nunca são reenviadas automaticamente.
   const after=null;
   const tx={id:"mission-fitcoins:"+key,reference:key,fitcoinReference:key,unit,memberId:String(memberEvoId),origin:"mission",sourceId:String(mission.id),goalId:String(goal.id),description:mission.name,direction:"credit",fitcoins:amount,balanceBefore:before,balanceAfter:after,status:"COMPLETED",createdAt:new Date().toISOString(),evoVerified:true,evoAcknowledged:true};
+  // Atualize o espelho D1 somente após HTTP 200 da EVO. A leitura do dashboard
+  // continua sem requisições EVO e usa o saldo consolidado mais recente.
+  const nextBalance=before+amount;
+  await env.DB.prepare("UPDATE evo_students SET fitcoins=? WHERE unit=? AND evo_member_id=? AND is_current=1 AND (fitcoins IS NULL OR fitcoins<=?)").bind(nextBalance,unit,String(memberEvoId),before).run();
   await env.DB.batch([
    env.DB.prepare("UPDATE redemptions SET status='COMPLETED',completed_at=CURRENT_TIMESTAMP WHERE dedupe_key=? AND status='PROCESSING'").bind(key),
    env.DB.prepare("UPDATE app_content SET content_json=json_insert(json_set(content_json,'$.transactions',json(COALESCE(json_extract(content_json,'$.transactions'),'[]'))),'$.transactions[#]',json(?)),updated_at=CURRENT_TIMESTAMP WHERE content_key='club-pop' AND NOT EXISTS(SELECT 1 FROM json_each(json_extract(content_json,'$.transactions')) WHERE json_extract(value,'$.fitcoinReference')=?)").bind(JSON.stringify(tx),key)
