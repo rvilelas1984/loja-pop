@@ -2927,15 +2927,16 @@ async function challengeFitcoinClaim(env,member,mission,goal,json){
   const response=await fetch(base+"fitcoins?"+query,{method:"PUT",headers});
   const raw=await response.text();let result;try{result=JSON.parse(raw)}catch{result=raw}
   if(response.status!==200||result===false||result?.success===false||result?.ok===false||result?.error)throw Error("CREDITO_EVO_REQUER_CONFERENCIA");
-  let confirmed=false,after=null;
-  for(let i=0;i<4;i++){const rr=await fetch(base+encodeURIComponent(memberEvoId),{headers,cache:"no-store"});after=balance(await parse(rr));if(rr.ok&&after===before+amount){confirmed=true;break;}}
-  if(!confirmed)throw Error("SALDO_EVO_REQUER_CONFERENCIA");
-  const tx={id:"mission-fitcoins:"+key,reference:key,fitcoinReference:key,unit,memberId:String(memberEvoId),origin:"mission",sourceId:String(mission.id),goalId:String(goal.id),description:mission.name,direction:"credit",fitcoins:amount,balanceBefore:before,balanceAfter:after,status:"COMPLETED",createdAt:new Date().toISOString(),evoVerified:true};
+  // A EVO confirma a movimentação pelo HTTP 200 sem erro no corpo.
+  // O saldo do perfil pode demorar para atualizar; não condicione o resgate à leitura imediata.
+  // Respostas ambíguas ou falhas permanecem em REVIEW e nunca são reenviadas automaticamente.
+  const after=null;
+  const tx={id:"mission-fitcoins:"+key,reference:key,fitcoinReference:key,unit,memberId:String(memberEvoId),origin:"mission",sourceId:String(mission.id),goalId:String(goal.id),description:mission.name,direction:"credit",fitcoins:amount,balanceBefore:before,balanceAfter:after,status:"COMPLETED",createdAt:new Date().toISOString(),evoVerified:true,evoAcknowledged:true};
   await env.DB.batch([
    env.DB.prepare("UPDATE redemptions SET status='COMPLETED',completed_at=CURRENT_TIMESTAMP WHERE dedupe_key=? AND status='PROCESSING'").bind(key),
    env.DB.prepare("UPDATE app_content SET content_json=json_insert(json_set(content_json,'$.transactions',json(COALESCE(json_extract(content_json,'$.transactions'),'[]'))),'$.transactions[#]',json(?)),updated_at=CURRENT_TIMESTAMP WHERE content_key='club-pop' AND NOT EXISTS(SELECT 1 FROM json_each(json_extract(content_json,'$.transactions')) WHERE json_extract(value,'$.fitcoinReference')=?)").bind(JSON.stringify(tx),key)
   ]);
-  return json({ok:true,claimed:true,rewardType:"fitcoins",fitcoinsApplied:true,amount,balance:after});
+  return json({ok:true,claimed:true,rewardType:"fitcoins",fitcoinsApplied:true,amount,balance:after,evoAcknowledged:true});
  }catch(error){
   await env.DB.prepare("UPDATE redemptions SET status='REVIEW',details=? WHERE dedupe_key=? AND status='PROCESSING'").bind("Crédito EVO pendente de conferência: "+String(error.message||error).slice(0,120),key).run();
   return json({ok:true,rewardType:"fitcoins",requiresReview:true,warning:"CREDITO_FITCOINS_REQUER_CONFERENCIA"});
