@@ -62,9 +62,9 @@ function chatproSafeApiUrl(value){
  try{
   const u=new URL(value);
   if(u.protocol!=="https:"||u.username||u.password||u.search||u.hash||u.port||u.href.length>2048)return false;
-  const host=u.hostname.toLowerCase().replace(/\\.$/,"");
+  const host=u.hostname.toLowerCase().replace(/\.$/,"");
   if(!host||host==="localhost"||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal")||host.endsWith(".test")||host.endsWith(".invalid")||host.endsWith(".example")||host.endsWith(".onion"))return false;
-  if(host.includes(":")||/^\\d+(?:\\.\\d+){0,3}$/.test(host)||!host.includes("."))return false;
+  if(host.includes(":")||/^\d+(?:\.\d+){0,3}$/.test(host)||!host.includes("."))return false;
   if(!/^[a-z0-9.-]+$/.test(host)||host.split(".").some(part=>!part||part.startsWith("-")||part.endsWith("-")))return false;
   return true;
  }catch{return false}
@@ -101,7 +101,7 @@ function chatproSafeApiUrl(value){
   if(!record?.api_key_cipher)return respond({ok:false,error:"CREDENCIAIS_AUSENTES"},400);
   let keyText;try{keyText=await decrypt(record.api_key_cipher)}catch{return respond({ok:false,error:"FALHA_DESCRIPTOGRAFIA"},500)}
   if(!chatproSafeApiUrl(record.base_url))return respond({ok:false,error:"URL_API_INVALIDA_OU_NAO_SEGURA"},400);
-  let r;try{r=await fetch(record.base_url.replace(/\\/$/,"")+"/flows/",{redirect:"manual",headers:{"API-KEY":keyText,Accept:"application/json"},signal:AbortSignal.timeout(10000)})}catch{return respond({ok:false,error:"SERVICO_INDISPONIVEL"},502)}
+  let r;try{r=await fetch(record.base_url.replace(/\/$/,"")+"/flows/",{redirect:"manual",headers:{"API-KEY":keyText,Accept:"application/json"},signal:AbortSignal.timeout(10000)})}catch{return respond({ok:false,error:"SERVICO_INDISPONIVEL"},502)}
   if(r.status>=300&&r.status<400)return respond({ok:false,error:"CHATPRO_REDIRECIONAMENTO_BLOQUEADO"},502);
   if(!r.ok)return respond({ok:false,error:"CHATPRO_HTTP_"+r.status},502);
   await env.DB.prepare("UPDATE club_chatpro_config SET enabled=1,updated_at=CURRENT_TIMESTAMP WHERE id=1").run();
