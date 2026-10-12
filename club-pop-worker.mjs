@@ -69,7 +69,7 @@ function chatproSafeApiUrl(value){
   return true;
  }catch{return false}
 }
-\nasync function chatproAdminConfig(request,env,url,json){
+async function chatproAdminConfig(request,env,url,json){
  const respond=(data,status=200)=>json(data,status);
  const ck=request.headers.get("x-clubpop-admin-cookie")||"";
  if(!ck)return respond({ok:false,error:"NAO_AUTORIZADO"},401);
