@@ -1951,7 +1951,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             if(!Number.isSafeInteger(imageId)||imageId<1)return json({ok:false,error:"IMAGEM_INVALIDA"},400);
             const owned=await env.DB.prepare("SELECT id FROM pop_fit_images WHERE id=? AND member_id=? AND scope=?").bind(imageId,base.id,scope).first();
             if(!owned)return json({ok:false,error:"IMAGEM_NAO_ENCONTRADA"},404);
-            await audit(env,"MEMBER",String(base.id),"POP_FIT_SHARE_CLICKED","POP_FIT_IMAGE",String(imageId),{unit:scope});\n            await clubMissionWhatsappEvent(env,base,scope,"share_clicked");
+            await audit(env,"MEMBER",String(base.id),"POP_FIT_SHARE_CLICKED","POP_FIT_IMAGE",String(imageId),{unit:scope});
+            await clubMissionWhatsappEvent(env,base,scope,"share_clicked");
             return json({ok:true,source:"d1",evoRequestsMade:0});
           }
           if(String(b.action||"")==="save-profile"){const num=(v,min,max)=>v===null||v===undefined||v===""?null:(Number.isFinite(Number(v))&&Number(v)>=min&&Number(v)<=max?Number(v):NaN),height=num(b.height,0.8,2.5),initialWeight=num(b.initialWeight,20,350);if([height,initialWeight].some(Number.isNaN))return json({ok:false,error:"VALOR_INVALIDO"},400);await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=excluded.height,initial_weight=COALESCE(pop_fit_profile.initial_weight,excluded.initial_weight),updated_at=CURRENT_TIMESTAMP").bind(base.id,height,initialWeight).run();const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,saved:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
@@ -1966,7 +1967,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             const image=String(b.imageData||"");
             if(!/^data:image\/jpeg;base64,/.test(image)||image.length>1600000)return json({ok:false,error:"IMAGEM_INVALIDA_OU_GRANDE"},400);
             const inserted=await env.DB.prepare("INSERT INTO pop_fit_images(member_id,scope,image_data,period_label,created_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)").bind(base.id,scope,image,String(b.periodLabel||"").slice(0,80)).run();
-            await audit(env,"MEMBER",String(base.id),"POP_FIT_IMAGE_GENERATED","POP_FIT_IMAGE",String(inserted.meta.last_row_id),{unit:scope});\n            await clubMissionWhatsappEvent(env,base,scope,"image_generated");
+            await audit(env,"MEMBER",String(base.id),"POP_FIT_IMAGE_GENERATED","POP_FIT_IMAGE",String(inserted.meta.last_row_id),{unit:scope});
+            await clubMissionWhatsappEvent(env,base,scope,"image_generated");
             await env.DB.prepare("DELETE FROM pop_fit_images WHERE member_id=? AND scope=? AND id NOT IN (SELECT id FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3)").bind(base.id,scope,base.id,scope).run();
             const q=await env.DB.prepare("SELECT id,scope,image_data,period_label,created_at FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3").bind(base.id,scope).all();
             return json({ok:true,saved:true,imageId:inserted.meta.last_row_id,kept:3,images:q.results||[],source:"d1",evoRequestsMade:0});
