@@ -109,7 +109,7 @@ async function chatproAdminConfig(request,env,url,json){
   const birthdays=await env.DB.prepare("SELECT COUNT(DISTINCT m.id) n "+birthdaySql).bind(unit).first();
   const people=await env.DB.prepare("SELECT DISTINCT m.id,m.first_name,m.last_name "+birthdaySql+" ORDER BY m.first_name,m.last_name LIMIT 500").bind(unit).all();
   const logs=await env.DB.prepare("SELECT scheduled_time,COUNT(*) total,SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) sent,SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) failed FROM club_whatsapp_birthday_dispatch WHERE unit=? AND send_date=date('now','-3 hours') GROUP BY scheduled_time ORDER BY scheduled_time").bind(unit).all();
-  return respond({ok:true,unit,activeMembers:Number(active?.n||0),birthdays:Number(birthdays?.n||0),birthdayNames:(people.results||[]).map(m=>({id:m.id,name:[m.first_name,m.last_name].filter(Boolean).join(" ").trim()||"Aluno sem nome"})),flowId:cfg?.flow_id||"",times:JSON.parse(cfg?.times_json||"[]"),logs:logs.results||[],dispatchEngineActive:false,enabledUnits});
+  return respond({ok:true,unit,activeMembers:Number(active?.n||0),birthdays:Number(birthdays?.n||0),birthdayNames:(people.results||[]).map(m=>({id:m.id,name:[m.first_name,m.last_name].filter(Boolean).join(" ").trim()||"Aluno sem nome"})),flowId:cfg?.flow_id||"",times:JSON.parse(cfg?.times_json||"[]"),logs:logs.results||[],dispatchEngineActive:false,preview:(JSON.parse(cfg?.times_json||"[]")).map((time,i,arr)=>({time,planned:Math.floor(Number(birthdays?.n||0)/arr.length)+(i<Number(birthdays?.n||0)%arr.length?1:0),sent:0})),enabledUnits});
  }
  if(action==="birthday-save"&&request.method==="PUT"){
   const b=await request.json().catch(()=>({}));
