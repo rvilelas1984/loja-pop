@@ -95,7 +95,7 @@ const taskTypes={presencas:"presence",imagens:"image_generated",compartilhamento
 const reverseTasks=Object.fromEntries(Object.entries(taskTypes).map(([k,v])=>[v,k]));
 let stored={missionList:[]},selected={};
 const cpWhatsMission=document.createElement("div");cpWhatsMission.id="cpWhatsappMissionRules";document.getElementById("form").append(cpWhatsMission);
-function cpRenderWhatsappMission(){window.cpWhatsappRules.mount(cpWhatsMission,stored.missionList.find(x=>x.id===selected[active])?.whatsappRules||[])}
+function cpRenderWhatsappMission(){const form=document.getElementById("form");form.append(cpWhatsMission);window.cpWhatsappRules.mount(cpWhatsMission,stored.missionList.find(x=>x.id===selected[active])?.whatsappRules||[])}
 const cpOriginalRender=render;
 render=function(){cpOriginalRender();cpRenderWhatsappMission()};
 
