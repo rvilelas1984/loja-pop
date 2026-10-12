@@ -231,10 +231,10 @@ export default {
         if(!["bike","gym"].includes(unit)||!["contract","service"].includes(voucherType))return json({ok:false,error:"UNIDADE_OU_TIPO_INVALIDO"},400);
         if(voucherType==="service")await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_voucher_service_automation (unit TEXT PRIMARY KEY CHECK(unit IN (\'bike\',\'gym\')),value TEXT NOT NULL)").run();
         if(request.method==="PUT"){
-          const b=await request.json().catch(()=>({})),dailyLimit=Number(b.dailyLimit),times=b.times;
+          const b=await request.json().catch(()=>({})),dailyLimit=Number(b.dailyLimit),times=b.times,days=b.days===undefined?null:b.days;if(days!==null&&(!Array.isArray(days)||!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)))return json({ok:false,error:'DIAS_INVALIDOS'},400);
           if(!Number.isInteger(dailyLimit)||dailyLimit<0||dailyLimit>(voucherType==="service"?1000:100)||typeof b.enabled!=="boolean"||!Array.isArray(times)||times.length>24||times.some(t=>typeof t!=="string"||!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)))return json({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
           const clean=[...new Set(times)].sort();
-          await env.DB.prepare("INSERT INTO "+(voucherType==="service"?"club_voucher_service_automation":"club_voucher_automation")+"(unit,value) VALUES(?,?) ON CONFLICT(unit) DO UPDATE SET value=excluded.value").bind(unit,JSON.stringify({enabled:b.enabled,dailyLimit,times:clean,batchTime:clean[0]||'22:00'})).run();
+          await env.DB.prepare("INSERT INTO "+(voucherType==="service"?"club_voucher_service_automation":"club_voucher_automation")+"(unit,value) VALUES(?,?) ON CONFLICT(unit) DO UPDATE SET value=excluded.value").bind(unit,JSON.stringify({...(await voucherSettings(env,unit,voucherType)),enabled:b.enabled,dailyLimit,times:clean,batchTime:clean[0]||'22:00',...(days!==null?{days}:{})})).run();
         }
         const config=await voucherSettings(env,unit,voucherType),stats=await env.DB.prepare("SELECT delivery_mode,status,COUNT(*) total FROM club_voucher_requests WHERE unit=? GROUP BY delivery_mode,status").bind(unit).all();
         const history=await env.DB.prepare("SELECT b.id,b.model_id,b.requested_quantity,b.evo_voucher_id,b.status,b.created_at,b.completed_at FROM club_voucher_batches b JOIN club_voucher_models m ON m.id=b.model_id AND m.unit=b.unit WHERE b.unit=? AND (CASE WHEN substr(m.contract_ids_json,1,1)='{' THEN 'service' ELSE 'contract' END)=? ORDER BY b.id DESC LIMIT 30").bind(unit,voucherType).all();
@@ -2795,7 +2795,7 @@ async function voucherSettings(env,unit,type='contract'){
  if(type==='service')await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_voucher_service_automation (unit TEXT PRIMARY KEY CHECK(unit IN ('bike','gym')),value TEXT NOT NULL)").run();
  const table=type==='service'?'club_voucher_service_automation':'club_voucher_automation';
  const row=await env.DB.prepare("SELECT value FROM "+table+" WHERE unit=?").bind(unit).first();
- try{return {enabled:false,dailyLimit:5,batchTime:'22:00',times:['22:00'],...JSON.parse(row?.value||'{}')}}catch{return {enabled:false,dailyLimit:5,batchTime:'22:00',times:['22:00']}}
+ try{return {enabled:false,dailyLimit:5,batchTime:'22:00',times:['22:00'],days:[1,2,3,4,5,6],...JSON.parse(row?.value||'{}')}}catch{return {enabled:false,dailyLimit:5,batchTime:'22:00',times:['22:00'],days:[1,2,3,4,5,6]}}
 }
 function voucherName(unit,name,id){const slug=String(name||'voucher').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]/g,'').toLowerCase()||'voucher';return (unit==='gym'?'Gp':'Bp')+slug.slice(0,80)+String(id).padStart(2,'0')}
 async function voucherDeliverBatch(env,request){
@@ -2817,9 +2817,9 @@ async function voucherBatchTick(env,options={}){
  for(const unit of (options.unit?[options.unit]:['bike','gym'])){
   const settings=await voucherSettings(env,unit);
   const serviceSettings=await voucherSettings(env,unit,'service');
-  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];const currentMinute=Number(hh.slice(0,2))*60+Number(hh.slice(3));const isScheduled=(options.force&&options.type==="contract")||(!options.force&&settings.enabled&&schedule.some(t=>{const minute=Number(t.slice(0,2))*60+Number(t.slice(3));return currentMinute===minute}));
+  const schedule=Array.isArray(settings.times)?settings.times:[settings.batchTime||'22:00'];const currentMinute=Number(hh.slice(0,2))*60+Number(hh.slice(3));const isScheduled=(options.force&&options.type==="contract")||(!options.force&&settings.enabled&&scheduledDaysAllowed(settings.days||[1,2,3,4,5,6])&&schedule.some(t=>{const minute=Number(t.slice(0,2))*60+Number(t.slice(3));return currentMinute===minute}));
   // New EVO POSTs run only at configured times; existing EVO IDs are polled safely each minute.
-  const serviceSchedule=Array.isArray(serviceSettings.times)?serviceSettings.times:[serviceSettings.batchTime||'22:00'];const isServiceScheduled=(options.force&&options.type==="service")||(!options.force&&serviceSettings.enabled&&serviceSchedule.some(t=>currentMinute===Number(t.slice(0,2))*60+Number(t.slice(3))));
+  const serviceSchedule=Array.isArray(serviceSettings.times)?serviceSettings.times:[serviceSettings.batchTime||'22:00'];const isServiceScheduled=(options.force&&options.type==="service")||(!options.force&&serviceSettings.enabled&&scheduledDaysAllowed(serviceSettings.days||[1,2,3,4,5,6])&&serviceSchedule.some(t=>currentMinute===Number(t.slice(0,2))*60+Number(t.slice(3))));
   const groups=(isScheduled||isServiceScheduled)?await env.DB.prepare("SELECT r.model_id,COUNT(*) n,m.contract_ids_json FROM club_voucher_requests r JOIN club_voucher_models m ON m.id=r.model_id AND m.unit=r.unit WHERE r.unit=? AND r.delivery_mode='batch' AND r.status='pending' AND r.batch_id IS NULL GROUP BY r.model_id").bind(unit).all():{results:[]};
   let queued=0,created=0,blocked=0;
   for(const group of groups.results||[]){
