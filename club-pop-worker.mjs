@@ -2228,12 +2228,12 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
 async function clubMissionWhatsappEvent(env,member,unit,event){
  try{
   if(!["bike","gym","club"].includes(unit)||!["image_generated","share_clicked"].includes(event))return;
-  await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_test_members(member_id INTEGER PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,updated_at TEXT DEFAULT CURRENT_TIMESTAMP)").run();
-  const allowed=await env.DB.prepare("SELECT enabled FROM club_whatsapp_test_members WHERE member_id=?").bind(member.id).first();
-  if(!allowed?.enabled)return;
+  // Active configured mission rules apply to every authenticated eligible member.
   const content=await clubContent(env);
-  const now=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
-  const missions=(content.missionList||[]).filter(m=>m.type==="challenge"&&m.status==="Ativo"&&m.start<=now&&m.end>=now&&(m.unit===unit||m.unit==="club")&&Array.isArray(m.tasks)&&Array.isArray(m.whatsappRules));
+  const dateParts=new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+  const getPart=t=>dateParts.find(p=>p.type===t)?.value||"";
+  const now=getPart("year")+"-"+getPart("month")+"-"+getPart("day");
+  const missions=(content.missionList||[]).filter(m=>m.type==="challenge"&&m.status==="Ativo"&&(!m.start||m.start<=now)&&(!m.end||m.end>=now)&&(m.unit===unit||m.unit==="club")&&Array.isArray(m.tasks)&&Array.isArray(m.whatsappRules));
   if(!missions.length)return;
   const evoId=unit==="gym"?member.gym_client_id:member.evo_member_id;
   if(!evoId)return;
