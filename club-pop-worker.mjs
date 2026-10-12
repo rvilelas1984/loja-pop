@@ -58,7 +58,18 @@ async function clubPixReconcile(env,order,result){
 
 // Encrypted Mercado Pago configuration. No secret is ever returned to the browser.
 
-async function chatproAdminConfig(request,env,url,json){
+function chatproSafeApiUrl(value){
+ try{
+  const u=new URL(value);
+  if(u.protocol!=="https:"||u.username||u.password||u.search||u.hash||u.port||u.href.length>2048)return false;
+  const host=u.hostname.toLowerCase().replace(/\\.$/,"");
+  if(!host||host==="localhost"||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal")||host.endsWith(".test")||host.endsWith(".invalid")||host.endsWith(".example")||host.endsWith(".onion"))return false;
+  if(host.includes(":")||/^\\d+(?:\\.\\d+){0,3}$/.test(host)||!host.includes("."))return false;
+  if(!/^[a-z0-9.-]+$/.test(host)||host.split(".").some(part=>!part||part.startsWith("-")||part.endsWith("-")))return false;
+  return true;
+ }catch{return false}
+}
+\nasync function chatproAdminConfig(request,env,url,json){
  const respond=(data,status=200)=>json(data,status);
  const ck=request.headers.get("x-clubpop-admin-cookie")||"";
  if(!ck)return respond({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -74,12 +85,12 @@ async function chatproAdminConfig(request,env,url,json){
  await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_chatpro_config(id INTEGER PRIMARY KEY CHECK(id=1),api_key_cipher TEXT NOT NULL,base_url TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
  const record=await env.DB.prepare("SELECT * FROM club_chatpro_config WHERE id=1").first();
  const action=url.searchParams.get("action")||"status";
- if(request.method==="GET"&&action==="status")return respond({ok:true,configured:!!record?.api_key_cipher,enabled:!!record?.enabled,baseUrl:record?.base_url||"https://conectawebhook.com.br",updatedAt:record?.updated_at||null});
+ if(request.method==="GET"&&action==="status")return respond({ok:true,configured:!!record?.api_key_cipher,enabled:!!record?.enabled,baseUrl:record?.base_url||"https://conectawebhook.com.br/api/v1/webhook",updatedAt:record?.updated_at||null});
  if(request.method==="PUT"&&action==="save"){
   const b=await request.json().catch(()=>({}));
   const token=String(b.apiKey||"").trim();
-  const baseUrl=String(b.baseUrl||record?.base_url||"https://conectawebhook.com.br").trim().replace(/\/$/,"");
-  if(baseUrl!=="https://conectawebhook.com.br")return respond({ok:false,error:"URL_API_NAO_PERMITIDA"},400);
+  const baseUrl=String(b.baseUrl||record?.base_url||"https://conectawebhook.com.br/api/v1/webhook").trim().replace(/\/$/,"");
+  if(!chatproSafeApiUrl(baseUrl))return respond({ok:false,error:"URL_API_INVALIDA_OU_NAO_SEGURA"},400);
   if(token.length>1024)return respond({ok:false,error:"CHAVE_INVALIDA"},400);
   if(!token&&!record?.api_key_cipher)return respond({ok:false,error:"INFORME_API_KEY"},400);
   const cipher=token?await encrypt(token):record.api_key_cipher;
@@ -89,7 +100,9 @@ async function chatproAdminConfig(request,env,url,json){
  if(request.method==="POST"&&action==="test"){
   if(!record?.api_key_cipher)return respond({ok:false,error:"CREDENCIAIS_AUSENTES"},400);
   let keyText;try{keyText=await decrypt(record.api_key_cipher)}catch{return respond({ok:false,error:"FALHA_DESCRIPTOGRAFIA"},500)}
-  let r;try{r=await fetch(record.base_url+"/flows/",{headers:{"API-KEY":keyText,Accept:"application/json"},signal:AbortSignal.timeout(10000)})}catch{return respond({ok:false,error:"SERVICO_INDISPONIVEL"},502)}
+  if(!chatproSafeApiUrl(record.base_url))return respond({ok:false,error:"URL_API_INVALIDA_OU_NAO_SEGURA"},400);
+  let r;try{r=await fetch(record.base_url.replace(/\\/$/,"")+"/flows/",{redirect:"manual",headers:{"API-KEY":keyText,Accept:"application/json"},signal:AbortSignal.timeout(10000)})}catch{return respond({ok:false,error:"SERVICO_INDISPONIVEL"},502)}
+  if(r.status>=300&&r.status<400)return respond({ok:false,error:"CHATPRO_REDIRECIONAMENTO_BLOQUEADO"},502);
   if(!r.ok)return respond({ok:false,error:"CHATPRO_HTTP_"+r.status},502);
   await env.DB.prepare("UPDATE club_chatpro_config SET enabled=1,updated_at=CURRENT_TIMESTAMP WHERE id=1").run();
   return respond({ok:true,configured:true,enabled:true,message:"Conexão validada. Integração ativada."});
