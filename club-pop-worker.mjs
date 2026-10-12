@@ -2123,6 +2123,16 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
         const pending=await env.DB.prepare("SELECT q.source_id,q.status,q.evo_voucher_id evoVoucherId,m.name title,q.model_id FROM club_voucher_requests q JOIN club_voucher_models m ON m.id=q.model_id WHERE q.member_id=? AND q.source_type='MISSION' AND q.status IN ('pending','creating','code_pending','review_required') ORDER BY q.id DESC LIMIT 100").bind(member.id).all();
         const models={};const entries=[...(rows.results||[]),...(pending.results||[])];for(const item of entries){let id=Number(item.model_id||0);if(!id){try{id=Number(JSON.parse(item.metadata_json||'{}').modelId||0)}catch{}}if(!id||models[id])continue;const m=await env.DB.prepare("SELECT unit,contract_ids_json,validity_days FROM club_voucher_models WHERE id=?").bind(id).first();if(!m)continue;const selection=voucherSelection(m.contract_ids_json),ids=selection.ids;const cat=selection.kind==='service'?await env.DB.prepare("SELECT evo_service_id id,service_name name FROM evo_service_catalog WHERE unit=?").bind(m.unit).all():await env.DB.prepare("SELECT evo_contract_id id,contract_name name FROM evo_contract_catalog WHERE tenant_key='club-pop' AND unit=?").bind(m.unit).all();const names=new Map((cat.results||[]).map(x=>[String(x.id),x.name]));models[id]={plans:ids.map(x=>({id:x,name:names.get(String(x))||null,type:selection.kind})),validityDays:Number(m.validity_days)||0};}const plans=x=>{let id=Number(x.model_id||0);if(!id){try{id=Number(JSON.parse(x.metadata_json||'{}').modelId||0)}catch{}}return models[id]||{plans:[],validityDays:0}};const decorate=x=>{const m=plans(x);const issued=x.issued_at||x.requested_at;const expires=x.expires_at||(issued&&m.validityDays?new Date(new Date(String(issued).replace(' ','T')+'Z').getTime()+m.validityDays*86400000).toISOString():null);return {...x,eligiblePlans:m.plans,expires_at:expires}};return json({ok:true,vouchers:(rows.results||[]).map(decorate),pending:(pending.results||[]).map(decorate)});
       }
+      if(url.pathname==="/mission-redemptions/progress"&&request.method==="GET"){
+        const member=await authenticatedMember(request,env);if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const mission=await clubContentItem(env,"mission",String(url.searchParams.get("mission")||""));
+        if(!mission||mission.type!=="challenge")return json({ok:false,error:"DESAFIO_NAO_ENCONTRADO"},404);
+        const tasks=await challengeTaskProgress(env,member,mission);
+        const goal=(mission.goals||[])[0],unit=String(mission.unit||"bike");
+        const key="CHALLENGE-FITCOINS:"+unit+":"+member.id+":"+mission.id+":"+String(goal?.id||"")+":"+mission.start+":"+mission.end;
+        const redemption=await env.DB.prepare("SELECT id,status FROM redemptions WHERE dedupe_key=?").bind(key).first();
+        return json({ok:true,tasks,completed:tasks.length>0&&tasks.every(x=>x.done),redemption: redemption||null});
+      }
       if (url.pathname === "/mission-redemptions/mine" && request.method === "GET") {
         const member=await authenticatedMember(request,env); if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const mission=String(url.searchParams.get("mission")||"");
@@ -2136,6 +2146,7 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
         const mission=await clubContentItem(env,"mission",missionKey); if(!mission)return json({ok:false,error:"MISSAO_NAO_ENCONTRADA"},404);
         const goal=(mission.goals||[]).find(x=>String(x.id)===goalKey); if(!goal)return json({ok:false,error:"META_NAO_ENCONTRADA"},404);
         const rewards=Array.isArray(goal.rewards)?goal.rewards.filter(x=>x&&x.type):[];
+        if(mission.type==="challenge"&&goal.rewardType==="fitcoins")return await challengeFitcoinClaim(env,member,mission,goal,json);
         if(goal.rewardType==="currency"||rewards.some(x=>x.type==="currency")){
           const unit=String(mission.unit||"bike"),today=localToday();
           if(!["bike","gym","club"].includes(unit)||mission.status!=="Ativo"||!mission.start||!mission.end||today<mission.start||today>mission.end)return json({ok:false,error:"MISSAO_FORA_DO_PERIODO"},409);
@@ -2876,6 +2887,60 @@ export async function readActivityCenter(env,p) {
 // A timeout after POST is never retried automatically: the external outcome is unknown.
 function voucherError(code,status=409){return Object.assign(new Error(code),{voucherError:true,status});}
 function voucherToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+
+async function challengeTaskProgress(env,member,mission){
+ const out=[];
+ for(const task of mission.tasks||[]){
+  const need=Number(task.quantity||1);let n=0;
+  if(task.type==="image_generated"||task.type==="share_clicked"){
+   const action=task.type==="image_generated"?"POP_FIT_IMAGE_GENERATED":"POP_FIT_SHARE_CLICKED";
+   const r=await env.DB.prepare("SELECT COUNT(*) n FROM audit_log WHERE actor_type='MEMBER' AND actor_id=? AND action=? AND date(datetime(created_at,'-3 hours')) BETWEEN ? AND ? AND json_valid(metadata_json) AND (?='club' OR json_extract(metadata_json,'$.unit')=?)").bind(String(member.id),action,mission.start,mission.end,mission.unit,mission.unit).first();n=Number(r?.n||0);
+  }else {const copy={...mission,tasks:[task]};n=(await voucherMissionProgress(env,member,copy))?need:0;}
+  out.push({id:String(task.id),current:Math.min(n,need),required:need,done:n>=need});
+ }
+ return out;
+}
+async function challengeFitcoinClaim(env,member,mission,goal,json){
+ const unit=String(mission.unit||"bike"),today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+ if(!["bike","gym"].includes(unit)||mission.type!=="challenge"||mission.status!=="Ativo"||today<mission.start||today>mission.end)return json({ok:false,error:"DESAFIO_FORA_DO_PERIODO"},409);
+ const memberEvoId=unit==="gym"?member.gym_client_id:member.evo_member_id;
+ if(!memberEvoId)return json({ok:false,error:"ALUNO_NAO_VINCULADO"},403);
+ const rewards=Array.isArray(goal.rewards)?goal.rewards:[];
+ if(rewards.length!==1||rewards[0].type!=="fitcoins")return json({ok:false,error:"RECOMPENSA_INVALIDA"},409);
+ const amount=Number(rewards[0].amount);if(!Number.isSafeInteger(amount)||amount<1||amount>100000)return json({ok:false,error:"VALOR_INVALIDO"},400);
+ if(mission.eligibility==="selected"){const allowed=new Set((mission.contracts||[]).map(String));const r=await env.DB.prepare("SELECT id_membership FROM evo_member_contracts WHERE unit=? AND evo_member_id=? AND (cancel_date IS NULL OR cancel_date='') AND (end_date IS NULL OR substr(end_date,1,10)>=?)").bind(unit,String(memberEvoId),today).all();if(!(r.results||[]).some(x=>allowed.has(unit+":"+x.id_membership)||allowed.has(String(x.id_membership))))return json({ok:false,error:"ALUNO_NAO_ELEGIVEL"},403);}
+ const tasks=await challengeTaskProgress(env,member,mission);
+ if(!tasks.length||tasks.some(x=>!x.done))return json({ok:false,error:"META_AINDA_NAO_ATINGIDA",tasks},409);
+ const key="CHALLENGE-FITCOINS:"+unit+":"+member.id+":"+mission.id+":"+goal.id+":"+mission.start+":"+mission.end;
+ const existing=await env.DB.prepare("SELECT id,status FROM redemptions WHERE dedupe_key=?").bind(key).first();
+ if(existing)return json({ok:true,alreadyClaimed:true,rewardType:"fitcoins",redemption:existing,fitcoinsApplied:existing.status==="COMPLETED",requiresReview:existing.status!=="COMPLETED"});
+ const inserted=await env.DB.prepare("INSERT INTO redemptions(member_id,redemption_type,reference_id,fitcoins,status,source_type,source_id,title,details,unit,dedupe_key) SELECT ?,'fitcoins',?,?,'PROCESSING','MISSION',?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM redemptions WHERE dedupe_key=?)").bind(member.id,String(mission.id),amount,String(goal.id),goal.rewardName||amount+" Fitcoins",mission.name||"",unit,key,key).run();
+ if(Number(inserted.meta?.changes||0)!==1)return json({ok:true,alreadyClaimed:true,rewardType:"fitcoins",requiresReview:true});
+ const cfg=await getEvoConfig(env,unit),headers={Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"};
+ const base="https://evo-integracao-api.w12app.com.br/api/v1/members/";
+ const parse=async r=>{try{return await r.json()}catch{return null}};
+ const balance=d=>{const x=Array.isArray(d)?d[0]:d;const v=x?.totalFitCoins??x?.totalFitcoins;return Number.isFinite(Number(v))?Number(v):null};
+ try{
+  const beforeResponse=await fetch(base+encodeURIComponent(memberEvoId),{headers}),before=balance(await parse(beforeResponse));
+  if(!beforeResponse.ok||before===null)throw Error("SALDO_EVO_NAO_CONFIRMADO");
+  const query=new URLSearchParams({idMember:String(memberEvoId),type:"1",fitcoin:String(amount),reason:("Club Pop - Desafio - "+mission.name+" - "+key).slice(0,120)});
+  const response=await fetch(base+"fitcoins?"+query,{method:"PUT",headers});
+  const raw=await response.text();let result;try{result=JSON.parse(raw)}catch{result=raw}
+  if(response.status!==200||result===false||result?.success===false||result?.ok===false||result?.error)throw Error("CREDITO_EVO_REQUER_CONFERENCIA");
+  let confirmed=false,after=null;
+  for(let i=0;i<4;i++){const rr=await fetch(base+encodeURIComponent(memberEvoId),{headers,cache:"no-store"});after=balance(await parse(rr));if(rr.ok&&after===before+amount){confirmed=true;break;}}
+  if(!confirmed)throw Error("SALDO_EVO_REQUER_CONFERENCIA");
+  const tx={id:"mission-fitcoins:"+key,reference:key,fitcoinReference:key,unit,memberId:String(memberEvoId),origin:"mission",sourceId:String(mission.id),goalId:String(goal.id),description:mission.name,direction:"credit",fitcoins:amount,balanceBefore:before,balanceAfter:after,status:"COMPLETED",createdAt:new Date().toISOString(),evoVerified:true};
+  await env.DB.batch([
+   env.DB.prepare("UPDATE redemptions SET status='COMPLETED',completed_at=CURRENT_TIMESTAMP WHERE dedupe_key=? AND status='PROCESSING'").bind(key),
+   env.DB.prepare("UPDATE app_content SET content_json=json_insert(json_set(content_json,'$.transactions',json(COALESCE(json_extract(content_json,'$.transactions'),'[]'))),'$.transactions[#]',json(?)),updated_at=CURRENT_TIMESTAMP WHERE content_key='club-pop' AND NOT EXISTS(SELECT 1 FROM json_each(json_extract(content_json,'$.transactions')) WHERE json_extract(value,'$.fitcoinReference')=?)").bind(JSON.stringify(tx),key)
+  ]);
+  return json({ok:true,claimed:true,rewardType:"fitcoins",fitcoinsApplied:true,amount,balance:after});
+ }catch(error){
+  await env.DB.prepare("UPDATE redemptions SET status='REVIEW',details=? WHERE dedupe_key=? AND status='PROCESSING'").bind("Crédito EVO pendente de conferência: "+String(error.message||error).slice(0,120),key).run();
+  return json({ok:true,rewardType:"fitcoins",requiresReview:true,warning:"CREDITO_FITCOINS_REQUER_CONFERENCIA"});
+ }
+}
 async function voucherMissionProgress(env,member,mission){
   const units=mission.unit==='club'?['bike','gym']:[mission.unit||'bike'],rows=[];
   for(const unit of units){const id=unit==='gym'?member.gym_client_id:member.evo_member_id;if(!id)continue;

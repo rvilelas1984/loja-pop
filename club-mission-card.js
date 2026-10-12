@@ -7,12 +7,15 @@ const rewardLabels=(g,c)=>{const rr=Array.isArray(g?.rewards)?g.rewards:[];retur
 const style=m=>{const p={...(palettes[m.cardPalette]||palettes["Premium Noturno"]),...(m.cardColors||{})};return Object.entries(p).filter(([k,v])=>/^[a-z]+$/.test(k)&&/^#[0-9a-f]{6}$/i.test(v)).map(([k,v])=>"--mc-"+k+":"+v).join(";")};
 function render(m,state={},catalog={},options={}){
 if(m.type==="challenge"){
- const tasks=Array.isArray(m.tasks)?m.tasks:[];
+ const tasks=Array.isArray(m.tasks)?m.tasks:[],progress=state.challengeProgress?.[m.id],goals=m.goals||[],goal=goals[0],reward=goal?rewardLabels(goal,catalog).join(" + "):"Recompensa";
  const names={image_generated:"Gerar imagem",share_clicked:"Compartilhar imagem",workout_created:"Criar treino",presence:"Presenças",activity:"Presença na modalidade"};
+ const done=progress?.completed===true,claimed=progress?.redemption?.status==="COMPLETED",pending=progress?.redemption&&!claimed;
  let html='<section class="club-mission-card" style="'+style(m)+'"><div class="mc-kicker">⚡ DESAFIO POP · '+esc(String(m.unit||"bike").toUpperCase())+'</div><h2>'+esc(m.name)+'</h2><p>'+esc(m.description||"Complete as atividades do desafio para conquistar sua recompensa.")+'</p>';
- html+='<div class="mc-rewards">'+tasks.map((t,i)=>'<div class="mc-reward"><b>OBJETIVO '+(i+1)+'</b><strong>'+esc(t.studentText||names[t.type]||"Atividade do desafio")+'</strong><small>Meta: '+esc(Number(t.quantity)||1)+(t.type==="activity"&&t.activity?' · '+esc(t.activity):'')+'</small></div>').join("")+'</div>';
- html+='<div class="mc-status">ACOMPANHE SEUS OBJETIVOS</div><a class="mc-action" href="/missoes.html">VER MEU DESAFIO</a></section>';
- return html;
+ html+='<div class="mc-rewards">'+tasks.map((t,i)=>{const p=progress?.tasks?.find(x=>x.id===String(t.id)),completed=p?.done===true;return '<div class="mc-reward"><b>OBJETIVO '+(i+1)+(completed?' ✓':'')+'</b><strong>'+esc(t.studentText||names[t.type]||"Atividade do desafio")+'</strong><small>'+(p?esc(p.current)+' de '+esc(p.required):'Meta: '+esc(Number(t.quantity)||1))+(completed?' · CONCLUÍDO':'')+'</small></div>'}).join("")+'</div>';
+ html+='<div class="mc-status">'+(claimed?'PRÊMIO RESGATADO ✓':pending?'RESGATE EM CONFERÊNCIA':done?'🏆 DESAFIO CONCLUÍDO':'DESAFIO EM ANDAMENTO')+'</div>';
+ if(done&&goal){html+='<p>'+esc(reward)+'</p>';if(!claimed&&!pending&&options.allowClaim)html+='<button class="mc-claim" data-mission="'+esc(m.id)+'" data-goal="'+esc(goal.id)+'">RESGATAR '+esc(reward).toUpperCase()+'</button>';}
+ if(!options.allowClaim)html+='<a class="mc-action" href="/missoes.html">VER MEU DESAFIO</a>';
+ html+='</section>';return html;
 }
 const n=Math.max(0,Number(state.attendanceCount)||0),week=Math.max(0,Number(state.weekDays)||0),done=Math.max(0,Number(state.completedWeeks)||0);
 const gs=[...(m.goals||[])].sort((a,b)=>Number(a.value)-Number(b.value)),req=(m.requirements||[])[0]||{};
