@@ -78,7 +78,7 @@ async function chatproAdminConfig(request,env,url,json){
  if(request.method==="PUT"&&action==="save"){
   const b=await request.json().catch(()=>({}));
   const token=String(b.apiKey||"").trim();
-  const baseUrl=String(b.baseUrl||record?.base_url||"https://conectawebhook.com.br").trim().replace(/\\/$/,"");
+  const baseUrl=String(b.baseUrl||record?.base_url||"https://conectawebhook.com.br").trim().replace(/\/$/,"");
   if(baseUrl!=="https://conectawebhook.com.br")return respond({ok:false,error:"URL_API_NAO_PERMITIDA"},400);
   if(token.length>1024)return respond({ok:false,error:"CHAVE_INVALIDA"},400);
   if(!token&&!record?.api_key_cipher)return respond({ok:false,error:"INFORME_API_KEY"},400);
