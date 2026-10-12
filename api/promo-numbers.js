@@ -5,7 +5,7 @@ function adminRole(req){const key=process.env.ADMIN_KEY;if(!key)return null;cons
 function adminValid(req){return !!adminRole(req)}
 export default async function handler(req,res){
  const route=String(req.query.route||"").trim(),isAdmin=route.startsWith("admin-")||route==="whatsapp";
- const allowed=new Set(["sync","mine","fitcoins","whatsapp","admin-list","admin-winner","admin-export","admin-review-status","admin-review","admin-sync-batch","admin-generate-batch","review-request","admin-review-list","admin-review-update","review-status"]);
+ const allowed=new Set(["sync","mine","fitcoins","whatsapp","admin-list","admin-winner","admin-export","admin-review-status","admin-review","admin-early-close","admin-early-close-status","admin-sync-batch","admin-generate-batch","review-request","admin-review-list","admin-review-update","review-status"]);
  if(!allowed.has(route))return res.status(404).json({ok:false,error:"ROTA_NAO_ENCONTRADA"});
  const role=adminRole(req);if(isAdmin&&!role)return res.status(401).json({ok:false,error:"Sessão administrativa inválida"});if(role==="reception"&&isAdmin&&route!=="admin-list")return res.status(403).json({ok:false,error:"Acesso restrito à consulta"});
  if(route==="whatsapp")return whatsappHandler(req,res);
@@ -17,7 +17,7 @@ export default async function handler(req,res){
  const headers={"Content-Type":"application/json"};
  if(isAdmin)headers["x-clubpop-admin-cookie"]=String(req.headers.cookie||"");else if(req.headers.authorization)headers.Authorization=req.headers.authorization;
  const qs=new URLSearchParams();const promotion=String(req.query.promotion||req.body?.promotionId||"");if(promotion)qs.set("promotion",promotion);if(req.query.period)qs.set("period",String(req.query.period));if(req.query.number)qs.set("code",String(req.query.number));if(isAdmin&&!["admin-review-list","admin-review-update"].includes(route)&&!promotion)return res.status(400).json({ok:false,error:"Informe a promoção"});
- if(isAdmin&&!["admin-sync-batch","admin-generate-batch","admin-review"].includes(route)&&req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});if(["admin-sync-batch","admin-generate-batch","admin-review"].includes(route)&&req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});const workerRoute=isAdmin?"/promotion-numbers/admin/"+route.slice(6):"/promotion-numbers/"+route;
+ if(isAdmin&&!["admin-sync-batch","admin-generate-batch","admin-review","admin-early-close"].includes(route)&&req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});if(["admin-sync-batch","admin-generate-batch","admin-review"].includes(route)&&req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});const workerRoute=isAdmin?"/promotion-numbers/admin/"+route.slice(6):"/promotion-numbers/"+route;
  try{const r=await fetch(WORKER+workerRoute+(qs.size?"?"+qs:""),{method:req.method,headers,body:req.method==="POST"?JSON.stringify(req.body||{}):undefined});const text=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type",r.headers.get("content-type")||"application/json; charset=utf-8");return res.send(text)}
  catch(e){return res.status(502).json({ok:false,error:"Falha de comunicação com números da sorte",detail:String(e.message||e)})}
 }
