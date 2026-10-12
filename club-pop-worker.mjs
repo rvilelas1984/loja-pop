@@ -98,6 +98,41 @@ async function chatproAdminConfig(request,env,url,json){
   return respond({ok:true,enabledUnits:units,message:"Unidades autorizadas atualizadas sem alterar a conexão."});
  }
 
+
+ if(["new-students-status","new-students-save","movement-status"].includes(action)){
+  const unit=url.searchParams.get("unit")||"bike";
+  if(!["bike","gym"].includes(unit))return respond({ok:false,error:"UNIDADE_INVALIDA"},400);
+  if(action==="movement-status"){
+   const month=url.searchParams.get("month")||new Date().toISOString().slice(0,7);
+   if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month))return respond({ok:false,error:"MES_INVALIDO"},400);
+   const people=(await env.DB.prepare("SELECT mm.evo_member_id id,COALESCE(json_extract(mm.raw_json,'$.registerDate'),'') registered,CASE WHEN EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=mm.unit AND c.evo_member_id=mm.evo_member_id AND (c.category_id='5' OR upper(c.membership_name) LIKE '%TOTALPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) THEN 'totalpass' WHEN EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=mm.unit AND c.evo_member_id=mm.evo_member_id AND (c.category_id='4' OR upper(c.membership_name) LIKE '%WELLHUB%' OR upper(c.membership_name) LIKE '%GYMPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) THEN 'wellhub' ELSE 'common' END category,COALESCE(m.first_name,'') first_name,COALESCE(m.last_name,'') last_name,mm.contacts_json contacts FROM evo_member_master mm LEFT JOIN members m ON CAST(m.evo_member_id AS TEXT)=CAST(mm.evo_member_id AS TEXT) WHERE mm.unit=? AND mm.is_current=1 AND EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=mm.unit AND c.evo_member_id=mm.evo_member_id AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours')))").bind(unit).all()).results||[];
+   const result={new:{wellhub:0,totalpass:0,common:0},returned:{wellhub:0,totalpass:0,common:0},unverified:0};
+   for(const p of people){const reg=String(p.registered||"").slice(0,7);if(reg===month)result.new[p.category]++;else if(reg&&reg<month){
+     const contracts=(await env.DB.prepare("SELECT date(COALESCE(NULLIF(sale_date,''),NULLIF(start_date,''))) start,date(end_date) end FROM evo_member_contracts WHERE unit=? AND evo_member_id=? AND COALESCE(sale_date,start_date) IS NOT NULL ORDER BY start").bind(unit,p.id).all()).results||[];
+     const start=contracts.filter(c=>c.start&&c.start.slice(0,7)===month);
+     const previous=contracts.filter(c=>c.end&&c.end<month+"-01");
+     if(start.length&&previous.length&&previous.every(c=>c.end<month+"-01"))result.returned[p.category]++;
+   }else if(!reg)result.unverified++}
+   return respond({ok:true,unit,month,...result,source:"D1",note:"Retornos exigem contrato anterior encerrado e novo contrato no mês; histórico incompleto pode subestimar."});
+  }
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_new_config(unit TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,flows_json TEXT NOT NULL DEFAULT '{}',times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_new_dispatch(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,send_date TEXT NOT NULL,evo_member_id TEXT NOT NULL,category TEXT NOT NULL,scheduled_time TEXT NOT NULL,flow_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'reserved',sent_at TEXT,error TEXT,UNIQUE(unit,evo_member_id))").run();
+  if(action==="new-students-save"&&request.method==="PUT"){
+   const b=await request.json().catch(()=>({})),times=Array.isArray(b.times)?[...new Set(b.times)].sort():[],flows=b.flows||{};
+   if(times.length>12||times.some(t=>!/^([01]\d|2[0-3]):[0-5]\d$/.test(t))||["wellhub","totalpass","common"].some(k=>String(flows[k]||"").length>100)||b.enabled===true&&(!times.length||["wellhub","totalpass","common"].some(k=>!/^\d+$/.test(String(flows[k]||"")))))return respond({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
+   await env.DB.prepare("INSERT INTO club_whatsapp_new_config(unit,enabled,flows_json,times_json,updated_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET enabled=excluded.enabled,flows_json=excluded.flows_json,times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,b.enabled===true?1:0,JSON.stringify({wellhub:String(flows.wellhub||""),totalpass:String(flows.totalpass||""),common:String(flows.common||"")}),JSON.stringify(times)).run();
+   return respond({ok:true,enabled:b.enabled===true,message:"Configuração salva."});
+  }
+  if(action==="new-students-status"&&request.method==="GET"){
+   const cfg=await env.DB.prepare("SELECT * FROM club_whatsapp_new_config WHERE unit=?").bind(unit).first();
+   const date=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Sao_Paulo"}).format(new Date());
+   const people=(await env.DB.prepare("SELECT mm.evo_member_id id,COALESCE(json_extract(mm.raw_json,'$.registerDate'),'') registered,CASE WHEN EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=mm.unit AND c.evo_member_id=mm.evo_member_id AND (c.category_id='5' OR upper(c.membership_name) LIKE '%TOTALPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) THEN 'totalpass' WHEN EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=mm.unit AND c.evo_member_id=mm.evo_member_id AND (c.category_id='4' OR upper(c.membership_name) LIKE '%WELLHUB%' OR upper(c.membership_name) LIKE '%GYMPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) THEN 'wellhub' ELSE 'common' END category,COALESCE(m.first_name,'') first_name,COALESCE(m.last_name,'') last_name,mm.contacts_json contacts FROM evo_member_master mm LEFT JOIN members m ON CAST(m.evo_member_id AS TEXT)=CAST(mm.evo_member_id AS TEXT) WHERE mm.unit=? AND mm.is_current=1 AND EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=mm.unit AND c.evo_member_id=mm.evo_member_id AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours')))").bind(unit).all()).results||[];
+   const today=people.filter(p=>String(p.registered||"").slice(0,10)===date);
+   const logs=(await env.DB.prepare("SELECT scheduled_time,category,COUNT(*) total,SUM(status='sent') sent,SUM(status='failed') failed FROM club_whatsapp_new_dispatch WHERE unit=? AND send_date=? GROUP BY scheduled_time,category ORDER BY scheduled_time,category").bind(unit,date).all()).results||[];
+   return respond({ok:true,unit,date,total:today.length,groups:{wellhub:today.filter(p=>p.category==="wellhub").length,totalpass:today.filter(p=>p.category==="totalpass").length,common:today.filter(p=>p.category==="common").length},names:today.slice(0,100).map(p=>({name:[p.first_name,p.last_name].filter(Boolean).join(" ")||"Aluno",category:p.category})),enabled:!!cfg?.enabled,flows:JSON.parse(cfg?.flows_json||"{}"),times:JSON.parse(cfg?.times_json||"[]"),logs});
+  }
+  return respond({ok:false,error:"METODO_INVALIDO"},405);
+ }
  if(action==="birthday-status"&&request.method==="GET"){
   const unit=url.searchParams.get("unit")||"bike";
   if(!["bike","gym","club"].includes(unit))return respond({ok:false,error:"UNIDADE_INVALIDA"},400);
@@ -293,6 +328,32 @@ async function runScheduledAttendanceSync(env) {
 }
 
 
+
+async function whatsappNewStudentsTick(env){
+ if(!env.DB||!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)return;
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_new_config(unit TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,flows_json TEXT NOT NULL DEFAULT '{}',times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_whatsapp_new_dispatch(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,send_date TEXT NOT NULL,evo_member_id TEXT NOT NULL,category TEXT NOT NULL,scheduled_time TEXT NOT NULL,flow_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'reserved',sent_at TEXT,error TEXT,UNIQUE(unit,evo_member_id))").run();
+ const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date()),g=k=>parts.find(p=>p.type===k)?.value||"",date=g("year")+"-"+g("month")+"-"+g("day"),time=g("hour")+":"+g("minute");
+ const configs=(await env.DB.prepare("SELECT * FROM club_whatsapp_new_config WHERE enabled=1").all()).results||[];
+ if(!configs.length)return;
+ const chat=await env.DB.prepare("SELECT * FROM club_chatpro_config WHERE id=1").first();
+ if(!chat?.enabled||!chat.api_key_cipher||!chatproSafeApiUrl(chat.base_url))return;
+ const allowed=JSON.parse(chat.enabled_units||'["bike"]');
+ const bytes=Uint8Array.from(atob(env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY),c=>c.charCodeAt(0)),key=await crypto.subtle.importKey("raw",bytes,"AES-GCM",false,["decrypt"]);
+ const [iv,cipher]=chat.api_key_cipher.split("."),dec=x=>Uint8Array.from(atob(x),c=>c.charCodeAt(0));
+ const token=new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:dec(iv),additionalData:new TextEncoder().encode("chatpro:config")},key,dec(cipher)));
+ const call=async(path,method="GET",body)=>{const r=await fetch(chat.base_url.replace(/\/$/,"")+path,{method,redirect:"manual",headers:{"API-KEY":token,Accept:"application/json","Content-Type":"application/json"},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error("CHATPRO_HTTP_"+r.status);return r.json()};
+ for(const cfg of configs){if(!allowed.includes(cfg.unit))continue;const times=JSON.parse(cfg.times_json||"[]"),flows=JSON.parse(cfg.flows_json||"{}");if(!times.includes(time))continue;
+  const all=(await env.DB.prepare("SELECT mm.evo_member_id id,COALESCE(json_extract(mm.raw_json,'$.registerDate'),'') registered,CASE WHEN EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=mm.unit AND c.evo_member_id=mm.evo_member_id AND (c.category_id='5' OR upper(c.membership_name) LIKE '%TOTALPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) THEN 'totalpass' WHEN EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=mm.unit AND c.evo_member_id=mm.evo_member_id AND (c.category_id='4' OR upper(c.membership_name) LIKE '%WELLHUB%' OR upper(c.membership_name) LIKE '%GYMPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) THEN 'wellhub' ELSE 'common' END category,COALESCE(m.first_name,'') first_name,COALESCE(m.last_name,'') last_name,mm.contacts_json contacts FROM evo_member_master mm LEFT JOIN members m ON CAST(m.evo_member_id AS TEXT)=CAST(mm.evo_member_id AS TEXT) WHERE mm.unit=? AND mm.is_current=1 AND EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=mm.unit AND c.evo_member_id=mm.evo_member_id AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours')))").bind(cfg.unit).all()).results||[],today=all.filter(p=>String(p.registered||"").slice(0,10)===date),slot=times.indexOf(time);
+  for(let i=0;i<today.length;i++){if(i%times.length!==slot)continue;const p=today[i],flow=String(flows[p.category]||"");if(!/^\d+$/.test(flow))continue;
+   let phone="";try{const contacts=JSON.parse(p.contacts||"[]"),cell=contacts.find(x=>String(x.contactType||"").toLowerCase()==="cellphone");phone=(String(cell?.ddi||"55")+String(cell?.description||"")).replace(/\D/g,"");if(phone.length<12||phone.length>13)phone=""}catch{}
+   if(!phone)continue;
+   const claim=await env.DB.prepare("INSERT OR IGNORE INTO club_whatsapp_new_dispatch(unit,send_date,evo_member_id,category,scheduled_time,flow_id,status) VALUES(?,?,?,?,?,?,'reserved')").bind(cfg.unit,date,String(p.id),p.category,time,flow).run();if(!claim.meta?.changes)continue;
+   try{const sub=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/");if(!sub?.id)throw Error("CONTATO_NAO_ENCONTRADO");await call("/subscriber/"+encodeURIComponent(String(sub.id))+"/send_flow/","POST",{flow:Number(flow)});await env.DB.prepare("UPDATE club_whatsapp_new_dispatch SET status='sent',sent_at=CURRENT_TIMESTAMP WHERE unit=? AND evo_member_id=?").bind(cfg.unit,String(p.id)).run()}
+   catch(e){await env.DB.prepare("UPDATE club_whatsapp_new_dispatch SET status='failed',error=? WHERE unit=? AND evo_member_id=?").bind(String(e.message||e).slice(0,300),cfg.unit,String(p.id)).run()}
+  }
+ }
+}
 async function whatsappBirthdayTick(env){
  if(!env.DB||!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)return;
  const now=new Date(),parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now);
@@ -325,7 +386,7 @@ async function whatsappBirthdayTick(env){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env)])); },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
@@ -1924,6 +1985,14 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
       
       if(url.pathname==="/admin/mercadopago-config")return await mpAdminConfig(request,env,url,json);
+
+      if(url.pathname==="/checkin-birthday-flags"&&request.method==="POST"){
+       const b=await request.json().catch(()=>({})),unit=b.unit;
+       if(!["bike","gym"].includes(unit)||!Array.isArray(b.ids)||b.ids.length>200)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+       const ids=[...new Set(b.ids.map(x=>String(x)).filter(x=>/^\d+$/.test(x)))],found=[];
+       for(const id of ids){const p=await env.DB.prepare("SELECT 1 ok FROM evo_member_master WHERE unit=? AND evo_member_id=? AND strftime('%m-%d',COALESCE(json_extract(personal_json,'$.birthDate'),json_extract(personal_json,'$.dateBirth'),json_extract(raw_json,'$.birthDate')))=strftime('%m-%d',date('now','-3 hours')) LIMIT 1").bind(unit,id).first();if(p)found.push(id)}
+       return json({ok:true,ids:found});
+      }
       if(url.pathname==="/admin/chatpro-config")return await chatproAdminConfig(request,env,url,json);
 
             // ADMIN - CONFIGURACAO EVO POR UNIDADE (FASE 0)
