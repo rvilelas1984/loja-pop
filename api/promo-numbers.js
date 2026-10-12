@@ -21,7 +21,17 @@ export default async function handler(req,res){
   }catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
  }
 
- if(route==="whatsapp")return whatsappHandler(req,res);
+ if(route==="whatsapp"){
+ if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});
+ if(role!=="admin")return res.status(403).json({ok:false,error:"ACESSO_RESTRITO"});
+ const action=String(req.body?.action||"");
+ if(!["find","send"].includes(action))return res.status(400).json({ok:false,error:"ACAO_INVALIDA"});
+ if(action==="send"&&req.body?.confirm!==true)return res.status(400).json({ok:false,error:"CONFIRMACAO_ENVIO_OBRIGATORIA"});
+ try{
+  const upstream=await fetch(WORKER+"/admin/chatpro-config?action="+encodeURIComponent(action),{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify(req.body||{}),cache:"no-store"});
+  res.setHeader("Cache-Control","no-store");return res.status(upstream.status).send(await upstream.text());
+ }catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+}
  if(route==="fitcoins"){if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});try{const r=await executeFitcoinReward({bearer:req.headers.authorization,source:"promotion",sourceId:req.body?.promotionId});return res.status(200).json(r)}catch(e){return res.status(e.status||500).json({ok:false,error:e.message,detail:e.detail||null})}}
  if(route==="review-status"){if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});const headers={"Content-Type":"application/json"};if(req.headers.authorization)headers.Authorization=req.headers.authorization;const promotion=String(req.query.promotion||"");try{const r=await fetch(WORKER+"/promotion-review/status?promotion="+encodeURIComponent(promotion),{headers});return res.status(r.status).send(await r.text())}catch(e){return res.status(502).json({ok:false,error:"Falha ao consultar análise"})}} if(route==="review-request"){if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});const headers={"Content-Type":"application/json"};if(req.headers.authorization)headers.Authorization=req.headers.authorization;try{const r=await fetch(WORKER+"/promotion-review/request",{method:"POST",headers,body:JSON.stringify(req.body||{})});return res.status(r.status).send(await r.text())}catch(e){return res.status(502).json({ok:false,error:"Falha ao registrar análise"})}}
  if(route==="admin-review-list"||route==="admin-review-update"){const method=route==="admin-review-list"?"GET":"POST";if(req.method!==method)return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});const headers={"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")};const path=route==="admin-review-list"?"/promotion-review/admin/list":"/promotion-review/admin/update";try{const r=await fetch(WORKER+path,{method,headers,body:method==="POST"?JSON.stringify(req.body||{}):undefined});return res.status(r.status).send(await r.text())}catch(e){return res.status(502).json({ok:false,error:"Falha ao consultar análises"})}}
