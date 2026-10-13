@@ -9,7 +9,7 @@ export default async function handler(req,res){const route=String(req.query.rout
  const sess=session(req);if(!sess||sess.role!=="admin")return send(res,401,{ok:false,error:"NAO_AUTORIZADO"});
  if(!["GET","POST"].includes(req.method))return send(res,405,{ok:false,error:"METODO_INVALIDO"});
  const unit=String(req.query.unit||"club"),month=String(req.query.month||"");
- if(!["bike","gym","club"].includes(unit)||!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month))return send(res,400,{ok:false,error:"PARAMETROS_INVALIDOS"});
+ if(!["bike","gym","club"].includes(unit)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return send(res,400,{ok:false,error:"PARAMETROS_INVALIDOS"});
  if(!sess.units?.includes(unit)&&unit!=="club")return send(res,403,{ok:false,error:"UNIDADE_SEM_ACESSO"});
  try{const q=new URLSearchParams({unit,month});const r=await fetch(WORKER+"/admin/teachers?"+q,{method:req.method,headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),"content-type":"application/json"},...(req.method==="POST"?{body:JSON.stringify(typeof req.body==="string"?JSON.parse(req.body):req.body||{})}:{}),cache:"no-store"});return send(res,r.status,await r.json())}catch{return send(res,502,{ok:false,error:"FALHA_D1"})}
 }if(route==="activity-center"){
