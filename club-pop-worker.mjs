@@ -1006,12 +1006,18 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(request.method==="PUT"){
           const preview=await request.clone().json().catch(()=>({}));
           if(preview.id==="legacy-reception"){
-            const units=Array.isArray(preview.units)?preview.units.filter(x=>["bike","gym","club"].includes(x)):[];
-            const permissions=Array.isArray(preview.permissions)?preview.permissions.map(String).filter(Boolean):[];
-            if(!units.length||!permissions.length)return json({ok:false,error:"SELECIONE_UNIDADE_E_PERMISSAO"},400);
+            const name=String(preview.name||"").trim(),email=String(preview.email||"").trim().toLowerCase(),pin=String(preview.pin||"").trim();
+            const units=Array.isArray(preview.units)?[...new Set(preview.units.filter(x=>["bike","gym","club"].includes(x)))]:[];
+            const permissions=Array.isArray(preview.permissions)?[...new Set(preview.permissions.map(String).filter(Boolean))]:[];
+            if(!name||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||!units.length||!permissions.length)return json({ok:false,error:"DADOS_INVALIDOS"},400);
+            if(!/^\\d{4,8}$/.test(pin))return json({ok:false,error:"PIN_OBRIGATORIO_4_A_8_DIGITOS"},400);
+            const enc=new TextEncoder(),salt=crypto.randomUUID().replaceAll("-",""),key=await crypto.subtle.importKey("raw",enc.encode(pin),"PBKDF2",false,["deriveBits"]),bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:enc.encode(salt),iterations:120000},key,256),hx=Array.from(new Uint8Array(bits)).map(x=>x.toString(16).padStart(2,"0")).join(""),hash="pbkdf2$120000$"+salt+"$"+hx;
+            let created;
+            try{created=await env.DB.prepare("INSERT INTO staff_users(name,email,pin_hash,role,units_json,permissions_json,enabled) VALUES(?,?,?,'reception',?,?,1) RETURNING id").bind(name,email,hash,JSON.stringify(units),JSON.stringify(permissions)).first();}
+            catch(e){const msg=String(e?.message||e);return json({ok:false,error:/unique/i.test(msg)?"EMAIL_JA_CADASTRADO":"FALHA_AO_MIGRAR_RECEPCAO",detail:msg.slice(0,160)},/unique/i.test(msg)?409:500)}
             await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_reception_access(id INTEGER PRIMARY KEY CHECK(id=1),units_json TEXT NOT NULL,permissions_json TEXT NOT NULL,updated_at TEXT DEFAULT CURRENT_TIMESTAMP)").run();
             await env.DB.prepare("INSERT INTO club_reception_access(id,units_json,permissions_json) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET units_json=excluded.units_json,permissions_json=excluded.permissions_json,updated_at=CURRENT_TIMESTAMP").bind(JSON.stringify(units),JSON.stringify(permissions)).run();
-            return json({ok:true,id:"legacy-reception"});
+            return json({ok:true,id:created?.id,migrated:true});
           }
         }
         const b=await request.json().catch(()=>({})),name=String(b.name||"").trim(),email=String(b.email||"").trim().toLowerCase(),pin=String(b.pin||"").trim(),role=b.role==="admin"?"admin":"reception",units=Array.isArray(b.units)?[...new Set(b.units.filter(x=>["bike","gym","club"].includes(x)))]:["bike"],permissions=Array.isArray(b.permissions)?[...new Set(b.permissions.map(String).filter(Boolean))]:[];
