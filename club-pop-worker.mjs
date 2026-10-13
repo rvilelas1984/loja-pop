@@ -396,13 +396,22 @@ async function whatsappBirthdayTick(env){
  for(const cfg of configs){
   if(!allowed.includes(cfg.unit)||!/^\d+$/.test(cfg.flow_id))continue;
   let times;try{times=JSON.parse(cfg.times_json)}catch{continue}
-  if(!Array.isArray(times)||!times.includes(time))continue;
+  if(!Array.isArray(times)||!times.length)continue;
+  times=[...new Set(times.filter(x=>/^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(x))))].sort();
+  const due=times.filter(x=>x<=time);
+  if(!due.length)continue;
   const people=(await env.DB.prepare("SELECT DISTINCT m.id,mm.contacts_json FROM members m JOIN evo_member_master mm ON mm.unit=? AND mm.is_current=1 AND CAST(mm.evo_member_id AS TEXT)=CAST(m.evo_member_id AS TEXT) WHERE m.status='ACTIVE' AND strftime('%m-%d',COALESCE(json_extract(mm.personal_json,'$.birthDate'),json_extract(mm.personal_json,'$.dateBirth'),json_extract(mm.raw_json,'$.birthDate')))=substr(?,6,5) AND EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=? AND CAST(c.evo_member_id AS TEXT)=CAST(m.evo_member_id AS TEXT) AND lower(c.membership_status) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=?)) ORDER BY m.id").bind(cfg.unit,date,cfg.unit,date).all()).results||[];
-  const index=times.indexOf(time),slice=people.filter((_,i)=>i%times.length===index);
-  for(const p of slice){
+  const pending=[];
+  for(let index=0;index<times.length;index++){
+   const scheduledTime=times[index];
+   if(scheduledTime>time)continue;
+   for(let i=index;i<people.length;i+=times.length)pending.push({person:people[i],scheduledTime});
+  }
+  for(const job of pending){
+   const p=job.person,scheduledTime=job.scheduledTime;
    let phone="";try{const contacts=JSON.parse(p.contacts_json||"[]");const cell=contacts.find(x=>String(x.contactType||"").toLowerCase()==="cellphone");phone=String(cell?.ddi||"55")+String(cell?.description||"").replace(/\D/g,"");phone=phone.replace(/\D/g,"");if(phone.length<12||phone.length>13)phone=""}catch{}
    if(!phone)continue;
-   const claim=await env.DB.prepare("INSERT OR IGNORE INTO club_whatsapp_birthday_dispatch(unit,send_date,member_id,scheduled_time,flow_id,status) VALUES(?,?,?,?,?,'reserved')").bind(cfg.unit,date,p.id,time,cfg.flow_id).run();
+   const claim=await env.DB.prepare("INSERT OR IGNORE INTO club_whatsapp_birthday_dispatch(unit,send_date,member_id,scheduled_time,flow_id,status) VALUES(?,?,?,?,?,'reserved')").bind(cfg.unit,date,p.id,scheduledTime,cfg.flow_id).run();
    if(!claim.meta?.changes)continue;
    try{const sub=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/");if(!sub?.id)throw Error("CONTATO_NAO_ENCONTRADO");await call("/subscriber/"+encodeURIComponent(String(sub.id))+"/send_flow/","POST",{flow:Number(cfg.flow_id)});await env.DB.prepare("UPDATE club_whatsapp_birthday_dispatch SET status='sent',sent_at=CURRENT_TIMESTAMP WHERE unit=? AND send_date=? AND member_id=?").bind(cfg.unit,date,p.id).run()}
    catch(e){await env.DB.prepare("UPDATE club_whatsapp_birthday_dispatch SET status='failed',error=? WHERE unit=? AND send_date=? AND member_id=?").bind(String(e.message||e).slice(0,300),cfg.unit,date,p.id).run()}
