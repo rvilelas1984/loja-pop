@@ -125,27 +125,6 @@ async function loadNextClassCard(unit){
  }catch(e){if(unit!==currentUnit)return;box.textContent="Não foi possível consultar a próxima aula agora.";hint.textContent="Tente atualizar novamente.";status.textContent="Indisponível"}
  finally{if(refresh)refresh.disabled=false}
 }
-document.getElementById("nextClassRefreshButton");
- if(!box)return;
- box.textContent="Consultando reservas...";
- if(refresh)refresh.disabled=true;
- if(hint)hint.textContent="Consulta ao Club Pop, sem chamadas adicionais à EVO.";
- try{
-  const d=await authFetch("/auth/student-next-class?unit="+encodeURIComponent(unit));
-  if(unit!==currentUnit)return;
-  const x=d.reservation;
-  if(!x){
-   box.textContent="Nenhuma próxima aula encontrada nas reservas sincronizadas.";
-   if(hint)hint.textContent="Reservou agora? Aguarde a atualização das presenças pela recepção e toque em Atualizar.";
-   return;
-  }
-  const date=String(x.activity_date||"").split("-").reverse().join("/");
-  const slot=x.slot_number?(unit==="bike"?"Bike B":"Posição ")+x.slot_number:"Posição não informada";
-  box.textContent=[x.activity_name||(unit==="bike"?"Bike Pop":"Gym Pop"),date+" às "+String(x.start_time||"").slice(0,5),slot].join(" · ");
-  if(hint)hint.textContent="Reserva identificada no Club Pop. Chat da Aula disponível após validação de segurança.";
- }catch(e){box.textContent="Não foi possível consultar a próxima aula agora.";if(hint)hint.textContent="Tente novamente em alguns instantes."}
- finally{if(refresh)refresh.disabled=false}
-}
 document.getElementById("nextClassRefreshButton")?.addEventListener("click",()=>loadNextClassCard(currentUnit));
 async function loadAuthenticated(){if(!sessionStorage.getItem("clubpop_token")){show(false);loginMode(false);return}try{const me=await authFetch("/auth/me");linkedGymId=me.member?.gymMemberId||null;const sw=document.querySelector("#unitSwitch");sw.classList.toggle("show",!!linkedGymId);document.querySelectorAll(".unit-btn").forEach(b=>b.onclick=()=>applyUnit(b.dataset.unit));const evoId=me.member?.evoMemberId||null;window.clubBikeEvoId=evoId;const initialUnit=(currentUnit==="gym"&&linkedGymId)?"gym":"bike";currentUnit=initialUnit;loadNextClassCard(initialUnit);let d=null;try{d=await fetchUnitData(initialUnit)}catch{}if(d){if(initialUnit==="gym")gymSnapshot=d;else bikeSnapshot=d;fill(d)}else{const m=me.member||{};fill({member:{firstName:m.first_name||m.firstName||"Aluno",lastName:m.last_name||m.lastName||"",branchName:initialUnit==="gym"?"Studio Gym Pop":"Studio Bike Pop",memberships:[]},fitcoins:null,attendance:{ok:false}})}document.documentElement.dataset.clubUnit=initialUnit;$("#dashboard").classList.toggle("gym-view",initialUnit==="gym");$("#dashboard").classList.toggle("bike-view",initialUnit==="bike");document.querySelectorAll(".unit-btn").forEach(b=>b.classList.toggle("active",b.dataset.unit===initialUnit));["promoUnit","missionUnit","monthUnit"].forEach(id=>document.getElementById(id).textContent=initialUnit==="gym"?"GYM POP":"BIKE POP");const dub=document.getElementById("dashUnitBrand");if(dub)dub.textContent=initialUnit==="gym"?"GYM POP":"BIKE POP";localStorage.setItem("clubpop_active_unit",initialUnit);window.clubPopRefreshHeader?.()}catch(e){show(false);loginMode(false)}}
 async function logout(){try{await authFetch("/auth/logout",{method:"POST",body:"{}"})}catch{}sessionStorage.removeItem("clubpop");sessionStorage.removeItem("clubpop_token");location.reload()}
