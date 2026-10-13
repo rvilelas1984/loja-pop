@@ -81,6 +81,14 @@ export default async function handler(req,res){
   const valid=body.length<=8192&&verifyServiceRequest(body,String(req.headers["x-evo-timestamp"]||""),String(req.headers["x-evo-signature"]||""),process.env.ADMIN_KEY);
   return res.status(valid?200:401).json({ok:valid,serviceVerified:valid});
  }
+ if(req.query.route==="manual-activation"){
+  if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const unit=String(req.method==="GET"?req.query.unit:req.body?.unit||"bike");
+  if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
+  const cookie=String(req.headers.cookie||"");
+  if(!cookie)return res.status(401).json({ok:false,error:"SESSAO_NECESSARIA"});
+  try{const r=await fetch(WORKER+"/admin/manual-student-activation"+(req.method==="GET"?"?unit="+encodeURIComponent(unit):""),{method:req.method,headers:{"x-clubpop-admin-cookie":cookie,"content-type":"application/json"},body:req.method==="POST"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(await r.text())}catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}
+ }
  if(req.query.route==="students"){if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike";try{const r=await fetch(WORKER+"/admin/evo-students?unit="+unit,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao consultar alunos EVO"})}}
  if(req.query.route==="active-count"){
   res.setHeader("Cache-Control","no-store");

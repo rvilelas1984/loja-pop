@@ -419,6 +419,84 @@ export default {
 
 
 
+
+      // Ativação pontual: pesquisa D1 antes de qualquer chamada EVO.
+      if(url.pathname==="/admin/manual-student-activation" && ["GET","POST"].includes(request.method)){
+        const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        let ar;try{ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"})}catch{return json({ok:false,error:"AUTENTICACAO_INDISPONIVEL"},502)}
+        const admin=await ar.json().catch(()=>({}));
+        if(!ar.ok||!["admin","reception"].includes(admin.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const input=request.method==="POST"?await readJson(request):{};
+        const unit=String(input.unit||url.searchParams.get("unit")||"bike");
+        if(!["bike","gym"].includes(unit)||!(admin.units||[]).includes(unit))return json({ok:false,error:"UNIDADE_NAO_PERMITIDA"},403);
+        const permissions=admin.permissions||[];
+        if(admin.role!=="admin"&&!permissions.some(p=>["*","/admin-alunos-evo.html"].includes(p)))return json({ok:false,error:"SEM_PERMISSAO_ALUNOS"},403);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_manual_activations(unit TEXT NOT NULL,evo_member_id TEXT NOT NULL,member_id INTEGER,actor TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,evo_member_id))").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_manual_activation_pending(token TEXT PRIMARY KEY,unit TEXT NOT NULL,evo_member_id TEXT NOT NULL,profile_json TEXT NOT NULL,source TEXT NOT NULL,expires_at TEXT NOT NULL)").run();
+        const statusSQL="EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=a.unit AND c.evo_member_id=a.evo_member_id AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours')))";
+        if(request.method==="GET"){
+          const r=await env.DB.prepare("SELECT COUNT(*) total,SUM(CASE WHEN "+statusSQL+" THEN 1 ELSE 0 END) active FROM club_manual_activations a WHERE a.unit=?").bind(unit).first();
+          return json({ok:true,total:Number(r?.total||0),active:Number(r?.active||0),inactive:Number(r?.total||0)-Number(r?.active||0)});
+        }
+        if(input.action==="lookup"){
+          const mode=String(input.mode||"cpf"),value=String(input.value||"").replace(/\D/g,"");
+          if(!["cpf","id"].includes(mode)||(mode==="cpf"?!/^\d{11}$/.test(value):!/^[1-9]\d{0,11}$/.test(value)))return json({ok:false,error:"CPF_OU_ID_INVALIDO"},400);
+          let row=mode==="id"?await env.DB.prepare("SELECT * FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,value).first():await env.DB.prepare("SELECT * FROM evo_member_master WHERE unit=? AND replace(replace(json_extract(personal_json,'$.document'),'.',''),'-','')=? LIMIT 1").bind(unit,value).first();
+          let source="D1",profile;
+          if(row){profile=JSON.parse(row.raw_json||"{}");profile={...JSON.parse(row.personal_json||"{}"),...profile,idMember:row.evo_member_id};}
+          else{
+            source="EVO";
+            const cfg=await getEvoConfig(env,unit);
+            const auth="Basic "+btoa(cfg.dns+":"+cfg.token);
+            const path=mode==="cpf"?"/api/v1/members/basic?document="+encodeURIComponent(value):"/api/v2/members/"+encodeURIComponent(value);
+            const evo=await fetch("https://evo-integracao.w12app.com.br"+path,{headers:{Authorization:auth,Accept:"application/json"}});
+            if(!evo.ok)return json({ok:false,error:"EVO_CONSULTA_"+evo.status},502);
+            const raw=await evo.json(),obj=Array.isArray(raw)?raw[0]:raw;
+            profile=obj?.member||obj?.data||obj;
+            if(!profile?.idMember)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
+          }
+          const id=String(profile.idMember||row?.evo_member_id||"");
+          const personal=row?JSON.parse(row.personal_json||"{}"):profile;
+          const cpf=normalizeCpf(personal.document||profile.document||profile.cpf||"");
+          const firstName=String(personal.firstName||profile.firstName||profile.name||"");
+          const lastName=String(personal.lastName||profile.lastName||"");
+          if(!id||!firstName||!(cpf.length===11))return json({ok:false,error:"CADASTRO_INCOMPLETO_NA_EVO"},422);
+          if(mode==="cpf"&&cpf!==value||mode==="id"&&id!==value)return json({ok:false,error:"DADOS_DIVERGENTES"},409);
+          const token=crypto.randomUUID(),expiry=new Date(Date.now()+10*60*1000).toISOString();
+          await env.DB.prepare("INSERT INTO club_manual_activation_pending(token,unit,evo_member_id,profile_json,source,expires_at) VALUES(?,?,?,?,?,?)").bind(token,unit,id,JSON.stringify({...profile,...personal,idMember:id,document:cpf}),source,expiry).run();
+          const already=await env.DB.prepare("SELECT id,pin_hash FROM members WHERE cpf_hash=? LIMIT 1").bind(await sha256(cpf)).first();
+          const linked=await env.DB.prepare("SELECT 1 found FROM club_manual_activations WHERE unit=? AND evo_member_id=?").bind(unit,id).first();
+          const contract=await env.DB.prepare("SELECT 1 found FROM evo_member_contracts WHERE unit=? AND evo_member_id=? AND lower(COALESCE(membership_status,'')) IN ('active','1') AND (end_date IS NULL OR date(end_date)>=date('now','-3 hours')) LIMIT 1").bind(unit,id).first();
+          return json({ok:true,token,student:{name:(firstName+" "+lastName).trim(),id,cpfMasked:"***.***."+cpf.slice(6,9)+"-**",unit,source,status:contract?"Ativo":"Inativo",alreadyActivated:!!linked,hasPin:!!already?.pin_hash}});
+        }
+        if(input.action==="confirm"){
+          const token=String(input.token||"");
+          if(!/^[a-f0-9-]{36}$/i.test(token))return json({ok:false,error:"CONFIRMACAO_INVALIDA"},400);
+          const pending=await env.DB.prepare("SELECT * FROM club_manual_activation_pending WHERE token=? AND unit=? AND expires_at>CURRENT_TIMESTAMP LIMIT 1").bind(token,unit).first();
+          if(!pending)return json({ok:false,error:"BUSCA_EXPIRADA_REFAZER"},409);
+          const p=JSON.parse(pending.profile_json),cpf=normalizeCpf(p.document||p.cpf),id=pending.evo_member_id;
+          if(!/^\d{11}$/.test(cpf))return json({ok:false,error:"CPF_NAO_DISPONIVEL"},422);
+          const hash=await sha256(cpf),existing=await env.DB.prepare("SELECT id,pin_hash,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first();
+          const collision=await env.DB.prepare("SELECT id,cpf_hash FROM members WHERE "+(unit==="bike"?"evo_member_id":"gym_client_id")+"=? LIMIT 1").bind(unit==="bike"?Number(id):id).first();
+          if(collision&&collision.cpf_hash!==hash)return json({ok:false,error:"CADASTRO_JA_VINCULADO_A_OUTRO_CPF"},409);
+          const name=String(p.firstName||p.name||""),last=String(p.lastName||"");
+          if(existing){
+            const linked=unit==="bike"?existing.evo_member_id:existing.gym_client_id;
+            if(linked&&String(linked)!==id)return json({ok:false,error:"CPF_JA_VINCULADO_A_OUTRO_ID"},409);
+            await env.DB.prepare("UPDATE members SET "+(unit==="bike"?"evo_member_id":"gym_client_id")+"=?,first_name=?,last_name=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(unit==="bike"?Number(id):id,name,last,existing.id).run();
+          }else{
+            await env.DB.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date) VALUES(?,?,?,?,?,?,?,?)").bind(unit==="bike"?Number(id):null,unit==="gym"?id:null,hash,cpf.slice(-4),name,last,normalizeEmail(p.email||p.emailAddress||""),normalizeDate(p.birthDate||"")).run();
+          }
+          const member=await env.DB.prepare("SELECT id,pin_hash FROM members WHERE cpf_hash=?").bind(hash).first();
+          await env.DB.prepare("INSERT OR IGNORE INTO club_manual_activations(unit,evo_member_id,member_id,actor) VALUES(?,?,?,?)").bind(unit,id,member.id,String(admin.name||admin.role)).run();
+          await env.DB.prepare("DELETE FROM club_manual_activation_pending WHERE token=?").bind(token).run();
+          await audit(env,"ADMIN",String(admin.name||admin.role),"MANUAL_STUDENT_ACTIVATED","MEMBER",String(member.id),JSON.stringify({unit,evoMemberId:id,source:pending.source}));
+          return json({ok:true,hasPin:!!member.pin_hash,message:member.pin_hash?"Aluno já possui PIN e pode entrar.":"Aluno liberado para primeiro acesso. Informe CPF, e-mail e nascimento no aplicativo."});
+        }
+        return json({ok:false,error:"ACAO_INVALIDA"},400);
+      }
+
       if(url.pathname==="/benefit-vouchers" || url.pathname==="/admin/benefit-vouchers")return benefitVouchers(request,env,url.pathname.startsWith("/admin/")?null:await authenticatedMember(request,env),json);
       if(url.pathname==="/currency-store")return currencyStudent(request,env,await authenticatedMember(request,env),json);
       if(url.pathname==="/admin/currencies"){
@@ -729,7 +807,7 @@ export default {
       if (url.pathname === "/admin/evo-dashboard-diagnostic" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
-        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        if(!vr.ok||!["admin","reception"].includes(vd.role)||vd.role==="reception"&&!(vd.permissions||[]).includes("/admin-alunos-evo.html"))return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
         if(unit!=="bike")return json({ok:false,error:"DIAGNOSTICO_GYM_BLOQUEADO"},423);
         const now=new Date(),month=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit"}).format(now).slice(0,7),start=month+"-01",today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo"}).format(now);
