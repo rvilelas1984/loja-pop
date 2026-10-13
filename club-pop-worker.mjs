@@ -2187,6 +2187,19 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       if(url.pathname==="/admin/mercadopago-config")return await mpAdminConfig(request,env,url,json);
 
 
+      // Próxima reserva do aluno autenticado, exclusivamente a partir do D1.
+      if (url.pathname === "/student-next-class" && request.method === "GET") {
+        const member = await authenticatedMember(request, env);
+        if (!member) return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit = url.searchParams.get("unit") === "gym" ? "gym" : "bike";
+        const evoId = String(unit === "gym" ? (member.gym_client_id || "") : (member.evo_member_id || ""));
+        if (!evoId) return json({ok:true,reservation:null,source:"d1",evoRequestsMade:0});
+        const reservation = await env.DB.prepare(
+          "SELECT unit,session_id,activity_date,start_time,activity_name,slot_number,updated_at FROM checkin_reservation_snapshots WHERE unit=? AND evo_member_id=? AND removed=0 AND (status IS NULL OR lower(status) NOT IN ('cancelled','canceled','cancelado','cancelada')) AND (activity_date || 'T' || start_time) >= ? ORDER BY activity_date ASC,start_time ASC LIMIT 1"
+        ).bind(unit,evoId,new Date(Date.now()-3*60*60*1000).toISOString().slice(0,16)).first();
+        return json({ok:true,reservation:reservation||null,source:"d1",evoRequestsMade:0});
+      }
+
       // Snapshot de reservas já obtidas pela Tela de Check-in. Nunca consulta a EVO.
       if(url.pathname==="/checkin-snapshot"&&["GET","POST"].includes(request.method)){
         const secret=String(env.CLUBPOP_CHECKIN_SYNC_TOKEN||"");
