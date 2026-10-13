@@ -490,9 +490,9 @@ export default {
             await env.DB.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date) VALUES(?,?,?,?,?,?,?,?)").bind(unit==="bike"?Number(id):null,unit==="gym"?id:null,hash,cpf.slice(-4),name,last,normalizeEmail(p.email||p.emailAddress||""),normalizeDate(p.birthDate||"")).run();
           }
           const member=await env.DB.prepare("SELECT id,pin_hash FROM members WHERE cpf_hash=?").bind(hash).first();
-          await env.DB.prepare("INSERT OR IGNORE INTO club_manual_activations(unit,evo_member_id,member_id,actor) VALUES(?,?,?,?)").bind(unit,id,member.id,String(admin.name||admin.role)).run();
+          if(!existing || !(unit==="bike"?existing.evo_member_id:existing.gym_client_id))await env.DB.prepare("INSERT OR IGNORE INTO club_manual_activations(unit,evo_member_id,member_id,actor) VALUES(?,?,?,?)").bind(unit,id,member.id,String(admin.name||admin.role)).run();
           await env.DB.prepare("DELETE FROM club_manual_activation_pending WHERE token=?").bind(token).run();
-          await audit(env,"ADMIN",String(admin.name||admin.role),"MANUAL_STUDENT_ACTIVATED","MEMBER",String(member.id),JSON.stringify({unit,evoMemberId:id,source:pending.source}));
+          await audit(env,"ADMIN",String(admin.name||admin.role),"MANUAL_STUDENT_CONFIRMED","MEMBER",String(member.id),JSON.stringify({unit,evoMemberId:id,source:pending.source}));
           return json({ok:true,hasPin:!!member.pin_hash,message:member.pin_hash?"Aluno já possui PIN e pode entrar.":"Aluno liberado para primeiro acesso. Informe CPF, e-mail e nascimento no aplicativo."});
         }
         return json({ok:false,error:"ACAO_INVALIDA"},400);
@@ -902,6 +902,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       }
 
       // Usuários internos do Club Pop: e-mail + PIN + permissões. D1 é a fonte persistente.
+      if(url.pathname==="/staff/legacy-access"&&request.method==="GET"){
+        const settings=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='club_reception_access'").first();
+        const row=settings?await env.DB.prepare("SELECT units_json,permissions_json FROM club_reception_access WHERE id=1").first():null;
+        return json({ok:true,units:row?JSON.parse(row.units_json):["bike"],permissions:row?JSON.parse(row.permissions_json):["/tela-checkin.html","/admin-resgates.html","/admin-transacoes.html","/admin-numeros-sorte.html","/admin-alunos-evo.html"]});
+      }
       if (url.pathname === "/staff/login" && request.method === "POST") {
         const b=await request.json().catch(()=>({})),email=String(b.email||"").trim().toLowerCase(),pin=String(b.pin||"").trim();
         if(!email||!/^\d{4,8}$/.test(pin))return json({ok:false,error:"CREDENCIAIS_INVALIDAS"},400);
@@ -919,9 +924,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS staff_users (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,email TEXT NOT NULL UNIQUE,pin_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'reception',units_json TEXT NOT NULL DEFAULT '[\"bike\"]',permissions_json TEXT NOT NULL DEFAULT '[]',enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const parse=v=>{try{return JSON.parse(v||"[]")}catch{return []}},safe=u=>({id:u.id,name:u.name,email:u.email,role:u.role,units:parse(u.units_json),permissions:parse(u.permissions_json),enabled:Boolean(u.enabled),createdAt:u.created_at,updatedAt:u.updated_at});
-        if(request.method==="GET"){const q=await env.DB.prepare("SELECT id,name,email,role,units_json,permissions_json,enabled,created_at,updated_at FROM staff_users ORDER BY enabled DESC,name").all();return json({ok:true,users:(q.results||[]).map(safe)});}
-        const b=await request.json().catch(()=>({})),name=String(b.name||"").trim(),email=String(b.email||"").trim().toLowerCase(),pin=String(b.pin||"").trim(),role=b.role==="admin"?"admin":"reception",units=Array.isArray(b.units)?b.units.filter(x=>["bike","gym","club"].includes(x)):["bike"],permissions=Array.isArray(b.permissions)?b.permissions.map(String):[];
-        if(!name||!/^\\S+@\\S+\\.\\S+$/.test(email))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        if(request.method==="GET"){const q=await env.DB.prepare("SELECT id,name,email,role,units_json,permissions_json,enabled,created_at,updated_at FROM staff_users ORDER BY enabled DESC,name").all();const settings=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='club_reception_access'").first();const legacy=settings?await env.DB.prepare("SELECT units_json,permissions_json FROM club_reception_access WHERE id=1").first():null;return json({ok:true,users:(q.results||[]).map(safe),legacyAccess:legacy?{units:parse(legacy.units_json),permissions:parse(legacy.permissions_json)}:null});}
+                const b=await request.json().catch(()=>({})),name=String(b.name||"").trim(),email=String(b.email||"").trim().toLowerCase(),pin=String(b.pin||"").trim(),role=b.role==="admin"?"admin":"reception",units=Array.isArray(b.units)?b.units.filter(x=>["bike","gym","club"].includes(x)):["bike"],permissions=Array.isArray(b.permissions)?b.permissions.map(String):[];
+        if(!name||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))return json({ok:false,error:"DADOS_INVALIDOS"},400);
         let hash=null;if(pin){if(!/^\d{4,8}$/.test(pin))return json({ok:false,error:"PIN_DEVE_TER_4_A_8_DIGITOS"},400);const enc=new TextEncoder(),salt=crypto.randomUUID().replaceAll("-",""),key=await crypto.subtle.importKey("raw",enc.encode(pin),"PBKDF2",false,["deriveBits"]),bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:enc.encode(salt),iterations:120000},key,256),hx=Array.from(new Uint8Array(bits)).map(x=>x.toString(16).padStart(2,"0")).join("");hash="pbkdf2$120000$"+salt+"$"+hx;}
         if(request.method==="POST"){if(!hash)return json({ok:false,error:"PIN_OBRIGATORIO"},400);try{const q=await env.DB.prepare("INSERT INTO staff_users(name,email,pin_hash,role,units_json,permissions_json,enabled) VALUES(?,?,?,?,?,?,1) RETURNING id").bind(name,email,hash,role,JSON.stringify(units),JSON.stringify(permissions)).first();return json({ok:true,id:q?.id});}catch(e){return json({ok:false,error:String(e.message||e).includes("UNIQUE")?"EMAIL_JA_CADASTRADO":"FALHA_AO_SALVAR"},409)}}
         const id=Number(b.id);if(!Number.isInteger(id)||id<1)return json({ok:false,error:"USUARIO_INVALIDO"},400);const enabled=b.enabled===false?0:1;
