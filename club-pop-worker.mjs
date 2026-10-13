@@ -805,6 +805,50 @@ export default {
         const q=await env.DB.prepare("SELECT activity_date AS date,SUM(COALESCE(attendance_count,0)) AS count,COUNT(*) AS sessions FROM evo_attendance_sessions WHERE unit=? AND status='done' AND substr(activity_date,1,7)=? GROUP BY activity_date ORDER BY activity_date DESC").bind(unit,month).all();
         return json({ok:true,source:"d1",evoRequestsMade:0,unit,month,days:(q.results||[]).map(r=>({date:r.date,count:Number(r.count||0),sessions:Number(r.sessions||0)}))});
       }
+      if(url.pathname==="/admin/teachers"){
+        if(!["GET","POST"].includes(request.method))return json({ok:false,error:"METHOD"},405);
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"UNAUTHORIZED"},401);
+        const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck},cache:"no-store"});
+        const user=await auth.json().catch(()=>({}));
+        if(!auth.ok||user.role!=="admin")return json({ok:false,error:"FORBIDDEN"},403);
+        const p=url.searchParams,unit=p.get("unit")||"club",month=p.get("month")||"";
+        if(!["bike","gym","club"].includes(unit)||!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month))return json({ok:false,error:"PARAMS"},400);
+        const units=unit==="club"?["bike","gym"]:[unit],start=month+"-01",end=month+"-31";
+        if(request.method==="POST"){
+          const body=await request.json().catch(()=>({}));const u=String(body.unit||"");
+          if(!units.includes(u))return json({ok:false,error:"UNIT"},400);
+          if(body.action==="paid"){
+            const weekStart=String(body.weekStart||""),weekEnd=String(body.weekEnd||""),name=String(body.teacher||"").trim();
+            if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(weekStart)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(weekEnd)||weekStart.slice(0,7)!==month||weekEnd.slice(0,7)!==month||!name||name.length>120)return json({ok:false,error:"PARAMS"},400);
+            const key=name.toLocaleLowerCase("pt-BR"),paid=body.paid===true?1:0;
+            await env.DB.prepare("INSERT INTO teacher_weekly_payments(unit,month,week_start,week_end,teacher_key,teacher_name,paid,paid_at,updated_at) VALUES(?,?,?,?,?,?,?,CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END,CURRENT_TIMESTAMP) ON CONFLICT(unit,month,week_start,teacher_key) DO UPDATE SET paid=excluded.paid,paid_at=excluded.paid_at,updated_at=CURRENT_TIMESTAMP").bind(u,month,weekStart,weekEnd,key,name,paid,paid).run();
+            return json({ok:true});
+          }
+          if(body.action==="override"){
+            const id=String(body.id||""),name=body.teacher===null?null:String(body.teacher||"").trim();
+            if(!id||id.length>100||(name!==null&&name.length>120))return json({ok:false,error:"PARAMS"},400);
+            const row=await env.DB.prepare("SELECT id_activity_session FROM evo_attendance_sessions WHERE unit=? AND id_activity_session=? AND substr(activity_date,1,7)=?").bind(u,id,month).first();
+            if(!row)return json({ok:false,error:"CLASS_NOT_FOUND"},404);
+            const attendance=body.attendance===null?null:Number(body.attendance),capacity=body.capacity===null?null:Number(body.capacity);
+            if((attendance!==null&&(!Number.isInteger(attendance)||attendance<0||attendance>1000))||(capacity!==null&&(!Number.isInteger(capacity)||capacity<1||capacity>1000)))return json({ok:false,error:"NUMBERS"},400);
+            await env.DB.prepare("INSERT INTO teacher_payment_overrides(unit,id_activity_session,teacher_name,attendance_count,capacity,teacher_absent,updated_at) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET teacher_name=excluded.teacher_name,attendance_count=excluded.attendance_count,capacity=excluded.capacity,teacher_absent=excluded.teacher_absent,updated_at=CURRENT_TIMESTAMP").bind(u,id,name,attendance,capacity,body.absent===true?1:0).run();
+            return json({ok:true});
+          }
+          if(body.action==="settings"){
+            const category=String(body.category||"Geral").trim(),capacity=Number(body.capacity),ticket=Number(body.ticketCents),bands=body.bands;
+            if(!category||category.length>100||!Number.isInteger(capacity)||capacity<1||capacity>1000||!Number.isInteger(ticket)||ticket<0||ticket>100000||!Array.isArray(bands)||bands.length<1||bands.length>12||bands.some(b=>!Number.isFinite(Number(b.pct))||Number(b.pct)<0||Number(b.pct)>100||!Number.isInteger(Number(b.cents))||Number(b.cents)<0))return json({ok:false,error:"SETTINGS"},400);
+            await env.DB.prepare("INSERT INTO teacher_payment_settings(unit,category,capacity,ticket_cents,bands_json,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,category) DO UPDATE SET capacity=excluded.capacity,ticket_cents=excluded.ticket_cents,bands_json=excluded.bands_json,updated_at=CURRENT_TIMESTAMP").bind(u,category,capacity,ticket,JSON.stringify(bands)).run();return json({ok:true});
+          }
+          return json({ok:false,error:"ACTION"},400);
+        }
+        const placeholders=units.map(()=>"?").join(",");
+        const sessions=await env.DB.prepare("SELECT s.unit,s.id_activity_session AS id,s.activity_date AS date,s.start_time AS time,s.activity_name AS activity,s.status,COALESCE(o.attendance_count,s.attendance_count) AS attendance,COALESCE(o.teacher_name,s.instructor_name) AS teacher,o.capacity,o.teacher_absent AS absent FROM evo_attendance_sessions s LEFT JOIN teacher_payment_overrides o ON o.unit=s.unit AND o.id_activity_session=s.id_activity_session WHERE s.unit IN ("+placeholders+") AND s.activity_date>=? AND s.activity_date<=? ORDER BY s.activity_date,s.start_time").bind(...units,start,end).all();
+        const settings=await env.DB.prepare("SELECT unit,category,capacity,ticket_cents,bands_json FROM teacher_payment_settings WHERE unit IN ("+placeholders+")").bind(...units).all();
+        const payments=await env.DB.prepare("SELECT unit,month,week_start,week_end,teacher_name,paid,paid_at,paid_amount_cents FROM teacher_weekly_payments WHERE unit IN ("+placeholders+") AND month=?").bind(...units,month).all();
+        const names=await env.DB.prepare("SELECT unit,instructor_name AS name,COUNT(*) AS classes FROM evo_attendance_sessions WHERE unit IN ("+placeholders+") AND instructor_name IS NOT NULL AND trim(instructor_name)<>'' GROUP BY unit,instructor_name ORDER BY unit,name").bind(...units).all();
+        return json({ok:true,source:"d1",evoRequestsMade:0,unit,month,sessions:sessions.results||[],settings:settings.results||[],payments:payments.results||[],teachers:names.results||[]});
+      }
       if(url.pathname==="/admin/activity-center"){
         if(request.method!=="GET")return json({ok:false,error:"METODO_INVALIDO"},405);
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
