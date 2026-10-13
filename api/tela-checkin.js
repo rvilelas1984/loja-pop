@@ -8,9 +8,9 @@ async function birthdayFlags(unit,enrollments){const ids=[...new Set(enrollments
 // Reaproveita a resposta EVO já obtida pela tela, sem realizar outra consulta EVO.
 async function persistCheckinSnapshot(unit,date,detail,enrollments){
  const token=process.env.CLUBPOP_CHECKIN_SYNC_TOKEN;
- if(!token||!detail?.idActivitySession)return;
+ if(!token||!detail?.idActivitySession){console.warn("Check-in snapshot ignorado:",!token?"TOKEN_NAO_CONFIGURADO":"SESSAO_SEM_ID");return;}
  try{const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),2500);
-  try{await fetch("https://club-pop-api.renato-vilelas-personal.workers.dev/checkin-snapshot",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+token},body:JSON.stringify({unit,date,session:{idActivitySession:String(detail.idActivitySession),startTime:detail.startTime||"",name:detail.name||""},enrollments:enrollments.map(e=>({idMember:e.idMember,slotNumber:e.slotNumber,name:e.name,removed:e.removed,status:e.status,checkedIn:e.checkedIn}))}),signal:controller.signal})}finally{clearTimeout(timeout)}
+  try{const response=await fetch("https://club-pop-api.renato-vilelas-personal.workers.dev/checkin-snapshot",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+token},body:JSON.stringify({unit,date,session:{idActivitySession:String(detail.idActivitySession),startTime:detail.startTime||"",name:detail.name||""},enrollments:enrollments.map(e=>({idMember:e.idMember,slotNumber:e.slotNumber,name:e.name,removed:e.removed,status:e.status,checkedIn:e.checkedIn}))}),signal:controller.signal});if(!response.ok){console.warn("Check-in snapshot rejeitado:",response.status);return;}const result=await response.json().catch(()=>({}));if(!result.ok)console.warn("Check-in snapshot resposta inválida");}finally{clearTimeout(timeout)}
  }catch(e){console.warn("Check-in snapshot não persistido:",String(e?.message||e))}
 }
 const displayName=n=>{const p=String(n||"").trim().split(/\s+/).filter(Boolean);if(!p.length)return "ALUNO";if(p.length===1)return p[0];if(p.length===2)return p.join(" ");return p[0]+" "+p[1]+" "+p.slice(2).map(x=>x[0]+".").join(" ")};
