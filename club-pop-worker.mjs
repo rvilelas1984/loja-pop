@@ -397,7 +397,7 @@ async function whatsappBirthdayTick(env){
   if(!allowed.includes(cfg.unit)||!/^\d+$/.test(cfg.flow_id))continue;
   let times;try{times=JSON.parse(cfg.times_json)}catch{continue}
   if(!Array.isArray(times)||!times.length)continue;
-  times=[...new Set(times.filter(x=>/^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(x))))].sort();
+  times=[...new Set(times.filter(x=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(x))))].sort();
   const due=times.filter(x=>x<=time);
   if(!due.length)continue;
   const people=(await env.DB.prepare("SELECT DISTINCT m.id,mm.contacts_json FROM members m JOIN evo_member_master mm ON mm.unit=? AND mm.is_current=1 AND CAST(mm.evo_member_id AS TEXT)=CAST(m.evo_member_id AS TEXT) WHERE m.status='ACTIVE' AND strftime('%m-%d',COALESCE(json_extract(mm.personal_json,'$.birthDate'),json_extract(mm.personal_json,'$.dateBirth'),json_extract(mm.raw_json,'$.birthDate')))=substr(?,6,5) AND EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=? AND CAST(c.evo_member_id AS TEXT)=CAST(m.evo_member_id AS TEXT) AND lower(c.membership_status) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=?)) ORDER BY m.id").bind(cfg.unit,date,cfg.unit,date).all()).results||[];
