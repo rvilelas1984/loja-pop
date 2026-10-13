@@ -443,13 +443,14 @@ export default {
           const mode=String(input.mode||"cpf"),value=String(input.value||"").replace(/\D/g,"");
           if(!["cpf","id"].includes(mode)||(mode==="cpf"?!/^\d{11}$/.test(value):!/^[1-9]\d{0,11}$/.test(value)))return json({ok:false,error:"CPF_OU_ID_INVALIDO"},400);
           let row=mode==="id"?await env.DB.prepare("SELECT * FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,value).first():await env.DB.prepare("SELECT * FROM evo_member_master WHERE unit=? AND replace(replace(json_extract(personal_json,'$.document'),'.',''),'-','')=? LIMIT 1").bind(unit,value).first();
-          let source="D1",profile;
+          let source="D1",profile,evoRequests=0;
           if(row){profile=JSON.parse(row.raw_json||"{}");profile={...JSON.parse(row.personal_json||"{}"),...profile,idMember:row.evo_member_id};}
           else{
             source="EVO";
             const cfg=await getEvoConfig(env,unit);
             const auth="Basic "+btoa(cfg.dns+":"+cfg.token);
             const path=mode==="cpf"?"/api/v1/members/basic?document="+encodeURIComponent(value):"/api/v2/members/"+encodeURIComponent(value);
+            evoRequests++;
             const evo=await fetch("https://evo-integracao.w12app.com.br"+path,{headers:{Authorization:auth,Accept:"application/json"}});
             if(!evo.ok)return json({ok:false,error:"EVO_CONSULTA_"+evo.status},502);
             const raw=await evo.json(),obj=Array.isArray(raw)?raw[0]:raw;
@@ -468,7 +469,7 @@ export default {
           const already=await env.DB.prepare("SELECT id,pin_hash FROM members WHERE cpf_hash=? LIMIT 1").bind(await sha256(cpf)).first();
           const linked=await env.DB.prepare("SELECT 1 found FROM club_manual_activations WHERE unit=? AND evo_member_id=?").bind(unit,id).first();
           const contract=await env.DB.prepare("SELECT 1 found FROM evo_member_contracts WHERE unit=? AND evo_member_id=? AND lower(COALESCE(membership_status,'')) IN ('active','1') AND (end_date IS NULL OR date(end_date)>=date('now','-3 hours')) LIMIT 1").bind(unit,id).first();
-          return json({ok:true,token,student:{name:(firstName+" "+lastName).trim(),id,cpfMasked:"***.***."+cpf.slice(6,9)+"-**",unit,source,status:contract?"Ativo":"Inativo",alreadyActivated:!!linked,hasPin:!!already?.pin_hash}});
+          return json({ok:true,token,student:{name:(firstName+" "+lastName).trim(),id,cpfMasked:"***.***."+cpf.slice(6,9)+"-**",unit,source:source==="D1"?"Club Pop":"EVO",evoRequests,status:contract?"Ativo":"Inativo",alreadyActivated:!!linked,hasAccount:!!already,hasPin:!!already?.pin_hash}});
         }
         if(input.action==="confirm"){
           const token=String(input.token||"");
