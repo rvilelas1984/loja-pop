@@ -814,6 +814,19 @@ export default {
         const q=await env.DB.prepare("SELECT activity_date AS date,SUM(COALESCE(attendance_count,0)) AS count,COUNT(*) AS sessions FROM evo_attendance_sessions WHERE unit=? AND status='done' AND substr(activity_date,1,7)=? GROUP BY activity_date ORDER BY activity_date DESC").bind(unit,month).all();
         return json({ok:true,source:"d1",evoRequestsMade:0,unit,month,days:(q.results||[]).map(r=>({date:r.date,count:Number(r.count||0),sessions:Number(r.sessions||0)}))});
       }
+      if(url.pathname==="/admin/evo-student-sync-one"&&request.method==="POST"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck},cache:"no-store"}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||""),x=b.member||{},evoId=Number(x.idMember||b.idMember);
+        if(!["bike","gym"].includes(unit)||!Number.isSafeInteger(evoId)||evoId<=0)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const before=await env.DB.prepare("SELECT id,email,birth_date FROM members WHERE evo_member_id=? LIMIT 1").bind(evoId).first();
+        const email=String(x.email||x.emailAddress||x.mail||"").trim().toLowerCase()||null,birth=String(x.birthDate||x.dateBirth||x.birthdate||x.birthday||"").slice(0,10)||null,first=String(x.firstName||x.name||"").trim(),last=String(x.lastName||"").trim(),cpf=String(x.document||x.cpf||"").replace(/\D/g,"");
+        let memberId=before?.id||null;
+        if(memberId){await env.DB.prepare("UPDATE members SET first_name=?,last_name=?,email=?,birth_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(first,last,email,birth,memberId).run();}
+        else{const ins=await env.DB.prepare("INSERT INTO members(evo_member_id,cpf_last4,first_name,last_name,email,birth_date,status,updated_at) VALUES(?,?,?,?,?,?,'ACTIVE',CURRENT_TIMESTAMP) RETURNING id").bind(evoId,cpf?cpf.slice(-4):null,first,last,email,birth).first();memberId=ins?.id||null}
+        const now=new Date().toISOString();await env.DB.prepare("UPDATE evo_member_master SET raw_json=?,synced_at=?,is_current=1 WHERE unit=? AND CAST(evo_member_id AS TEXT)=?").bind(JSON.stringify(x),now,unit,String(evoId)).run();
+        return json({ok:true,unit,idMember:evoId,memberId,name:[first,last].filter(Boolean).join(" "),before:{email:before?.email||null,birthDate:before?.birth_date||null},after:{email,birthDate:birth},updatedAt:now});
+      }
       if(url.pathname==="/admin/teachers"){
         if(!["GET","POST"].includes(request.method))return json({ok:false,error:"METHOD"},405);
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
