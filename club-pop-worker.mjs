@@ -2200,6 +2200,23 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({ok:true,reservation:reservation||null,source:"d1",evoRequestsMade:0});
       }
 
+      // Chat da aula: acesso restrito a reserva atual, com consentimento explícito.
+      if(url.pathname==="/class-chat"&&["GET","POST"].includes(request.method)){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const body=request.method==="POST"?await request.json().catch(()=>({})):{};
+        const unit=String(request.method==="GET"?url.searchParams.get("unit"):body.unit||"");
+        const sid=String(request.method==="GET"?url.searchParams.get("session_id"):body.session_id||"");
+        const id=String(unit==="gym"?member.gym_client_id||"":member.evo_member_id||"");
+        if(!["bike","gym"].includes(unit)||!sid||!id)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const reservation=await env.DB.prepare("SELECT session_id,slot_number,activity_date,start_time,member_name FROM checkin_reservation_snapshots WHERE unit=? AND session_id=? AND evo_member_id=? AND removed=0 AND (status IS NULL OR lower(status) NOT IN ('cancelled','canceled','cancelado','cancelada')) LIMIT 1").bind(unit,sid,id).first();
+        if(!reservation)return json({ok:false,error:"RESERVA_NAO_ENCONTRADA"},403);
+        const now=new Date().toLocaleString("sv-SE",{timeZone:"America/Sao_Paulo"}).replace(" ","T");
+        if(reservation.activity_date+"T"+reservation.start_time>now)return json({ok:false,error:"CHAT_AINDA_NAO_ABERTO"},403);
+        // Sem horário de término validado, o chat permanece fechado por segurança.
+        return json({ok:false,error:"CHAT_AGUARDANDO_HORARIO_TERMINO",reservation:{slot_number:reservation.slot_number}},403);
+      }
+
       // Snapshot de reservas já obtidas pela Tela de Check-in. Nunca consulta a EVO.
       if(url.pathname==="/checkin-snapshot"&&["GET","POST"].includes(request.method)){
         const secret=String(env.CLUBPOP_CHECKIN_SYNC_TOKEN||"");
