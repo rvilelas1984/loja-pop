@@ -2212,13 +2212,13 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(request.method==="GET"){
           const unit=String(url.searchParams.get("unit")||""),date=String(url.searchParams.get("date")||""),time=String(url.searchParams.get("time")||"");
           const slot=Number(url.searchParams.get("slot"));
-          if(!["bike","gym"].includes(unit)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!/^\\d{2}:\\d{2}$/.test(time)||!Number.isInteger(slot)||slot<1||slot>200)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+          if(!["bike","gym"].includes(unit)||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!/^\d{2}:\d{2}$/.test(time)||!Number.isInteger(slot)||slot<1||slot>200)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
           const result=await env.DB.prepare("SELECT unit,session_id,activity_date,start_time,slot_number,evo_member_id,member_name,removed,status,checked_in,updated_at FROM checkin_reservation_snapshots WHERE unit=? AND activity_date=? AND substr(start_time,1,5)=? AND slot_number=? ORDER BY updated_at DESC LIMIT 1").bind(unit,date,time,slot).first();
           return json({ok:true,source:"d1",evoRequestsMade:0,reservation:result||null});
         }
         const body=await request.json().catch(()=>null),unit=body?.unit,date=body?.date,session=body?.session,rows=body?.enrollments;
         const sid=String(session?.idActivitySession||""),time=String(session?.startTime||"").slice(0,5);
-        if(!["bike","gym"].includes(unit)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(date||""))||!sid||sid.length>100||!/^\\d{2}:\\d{2}$/.test(time)||!Array.isArray(rows)||rows.length>200)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        if(!["bike","gym"].includes(unit)||!/^\d{4}-\d{2}-\d{2}$/.test(String(date||""))||!sid||sid.length>100||!/^\d{2}:\d{2}$/.test(time)||!Array.isArray(rows)||rows.length>200)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
         const valid=rows.map(x=>({slot:Number(x.slotNumber),id:String(x.idMember??"").slice(0,100),name:String(x.name||"").slice(0,160),removed:x.removed?1:0,status:String(x.status??"").slice(0,40),checked:x.checkedIn?1:0})).filter(x=>Number.isInteger(x.slot)&&x.slot>=1&&x.slot<=200);
         const stm=[env.DB.prepare("DELETE FROM checkin_reservation_snapshots WHERE unit=? AND session_id=?").bind(unit,sid)];
         for(const x of valid)stm.push(env.DB.prepare("INSERT INTO checkin_reservation_snapshots(unit,session_id,activity_date,start_time,activity_name,slot_number,evo_member_id,member_name,removed,status,checked_in) VALUES(?,?,?,?,?,?,?,?,?,?,?)").bind(unit,sid,date,time,String(session.name||"").slice(0,160),x.slot,x.id,x.name,x.removed,x.status,x.checked));
