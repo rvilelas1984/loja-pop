@@ -837,7 +837,7 @@ export default {
           }
           if(body.action==="settings"){
             const category=String(body.category||'').trim(),capacity=Number(body.capacity),ticket=Number(body.ticketCents),bands=body.bands,margin=Number(body.margin);
-            if(!category||category.length>100||!Number.isFinite(margin)||margin<0||margin>100||!Number.isInteger(capacity)||capacity<1||capacity>1000||!Number.isInteger(ticket)||ticket<0||ticket>100000||!Array.isArray(bands)||bands.length<1||bands.length>12||bands.some(b=>!Number.isFinite(Number(b.pct))||Number(b.pct)<0||Number(b.pct)>999||!Number.isInteger(Number(b.cents))||Number(b.cents)<0))return json({ok:false,error:"SETTINGS"},400);
+            if(!category||category.length>100||!Number.isFinite(margin)||margin<0||margin>100||!Number.isInteger(capacity)||capacity<1||capacity>1000||!Number.isInteger(ticket)||ticket<0||ticket>100000||!Array.isArray(bands)||bands.length>12||bands.some(b=>!Number.isFinite(Number(b.pct))||Number(b.pct)<0||Number(b.pct)>999||!Number.isInteger(Number(b.cents))||Number(b.cents)<0))return json({ok:false,error:"SETTINGS"},400);
             await env.DB.prepare("INSERT INTO teacher_payment_settings(unit,category,capacity,ticket_cents,bands_json,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,category) DO UPDATE SET capacity=excluded.capacity,ticket_cents=excluded.ticket_cents,bands_json=excluded.bands_json,updated_at=CURRENT_TIMESTAMP").bind(u,category,capacity,ticket,JSON.stringify({bands,margin})).run();return json({ok:true});
           }
           return json({ok:false,error:"ACTION"},400);
