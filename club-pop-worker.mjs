@@ -2167,6 +2167,33 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       
       if(url.pathname==="/admin/mercadopago-config")return await mpAdminConfig(request,env,url,json);
 
+
+      // Snapshot de reservas já obtidas pela Tela de Check-in. Nunca consulta a EVO.
+      if(url.pathname==="/checkin-snapshot"&&["GET","POST"].includes(request.method)){
+        const secret=String(env.CLUBPOP_CHECKIN_SYNC_TOKEN||"");
+        const provided=String(request.headers.get("Authorization")||"").replace(/^Bearer /i,"");
+        if(!secret||!provided||secret.length!==provided.length)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const enc=new TextEncoder(),aa=enc.encode(secret),bb=enc.encode(provided);
+        let mismatch=0;for(let i=0;i<aa.length;i++)mismatch|=aa[i]^(bb[i]||0);
+        if(mismatch)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS checkin_reservation_snapshots (unit TEXT NOT NULL,session_id TEXT NOT NULL,activity_date TEXT NOT NULL,start_time TEXT NOT NULL,activity_name TEXT,slot_number INTEGER NOT NULL,evo_member_id TEXT,member_name TEXT,removed INTEGER NOT NULL DEFAULT 0,status TEXT,checked_in INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,session_id,slot_number))").run();
+        if(request.method==="GET"){
+          const unit=String(url.searchParams.get("unit")||""),date=String(url.searchParams.get("date")||""),time=String(url.searchParams.get("time")||"");
+          const slot=Number(url.searchParams.get("slot"));
+          if(!["bike","gym"].includes(unit)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!/^\\d{2}:\\d{2}$/.test(time)||!Number.isInteger(slot)||slot<1||slot>200)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+          const result=await env.DB.prepare("SELECT unit,session_id,activity_date,start_time,slot_number,evo_member_id,member_name,removed,status,checked_in,updated_at FROM checkin_reservation_snapshots WHERE unit=? AND activity_date=? AND substr(start_time,1,5)=? AND slot_number=? ORDER BY updated_at DESC LIMIT 1").bind(unit,date,time,slot).first();
+          return json({ok:true,source:"d1",evoRequestsMade:0,reservation:result||null});
+        }
+        const body=await request.json().catch(()=>null),unit=body?.unit,date=body?.date,session=body?.session,rows=body?.enrollments;
+        const sid=String(session?.idActivitySession||""),time=String(session?.startTime||"").slice(0,5);
+        if(!["bike","gym"].includes(unit)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(date||""))||!sid||sid.length>100||!/^\\d{2}:\\d{2}$/.test(time)||!Array.isArray(rows)||rows.length>200)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const valid=rows.map(x=>({slot:Number(x.slotNumber),id:String(x.idMember??"").slice(0,100),name:String(x.name||"").slice(0,160),removed:x.removed?1:0,status:String(x.status??"").slice(0,40),checked:x.checkedIn?1:0})).filter(x=>Number.isInteger(x.slot)&&x.slot>=1&&x.slot<=200);
+        const stm=[env.DB.prepare("DELETE FROM checkin_reservation_snapshots WHERE unit=? AND session_id=?").bind(unit,sid)];
+        for(const x of valid)stm.push(env.DB.prepare("INSERT INTO checkin_reservation_snapshots(unit,session_id,activity_date,start_time,activity_name,slot_number,evo_member_id,member_name,removed,status,checked_in) VALUES(?,?,?,?,?,?,?,?,?,?,?)").bind(unit,sid,date,time,String(session.name||"").slice(0,160),x.slot,x.id,x.name,x.removed,x.status,x.checked));
+        await env.DB.batch(stm);
+        return json({ok:true,source:"d1",saved:valid.length,evoRequestsMade:0});
+      }
+
       if(url.pathname==="/checkin-birthday-flags"&&request.method==="POST"){
        const b=await request.json().catch(()=>({})),unit=b.unit;
        if(!["bike","gym"].includes(unit)||!Array.isArray(b.ids)||b.ids.length>200)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
