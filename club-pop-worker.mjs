@@ -300,6 +300,29 @@ async function runScheduledStudentSync(env) {
 }
 
 
+async function backfillMissingAttendanceInstructors(env){
+  if(!env.DB)return;
+  const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_instructor_backfill_attempts(unit TEXT NOT NULL,id_activity_session TEXT NOT NULL,attempted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL,detail TEXT,PRIMARY KEY(unit,id_activity_session))").run();
+  const rows=(await env.DB.prepare("SELECT s.unit,s.id_activity_session,s.activity_date FROM evo_attendance_sessions s LEFT JOIN evo_instructor_backfill_attempts a ON a.unit=s.unit AND a.id_activity_session=s.id_activity_session WHERE s.unit='bike' AND s.activity_date>='2026-10-01' AND s.activity_date<=? AND (s.instructor_name IS NULL OR trim(s.instructor_name)='') AND a.id_activity_session IS NULL ORDER BY s.activity_date,s.id_activity_session LIMIT 2").bind(today).all()).results||[];
+  if(!rows.length)return;
+  const cfg=await getEvoConfig(env,"bike");
+  for(const row of rows){
+    const endpoint="/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(row.id_activity_session);
+    try{
+      const response=await fetch("https://evo-integracao-api.w12app.com.br"+endpoint,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});
+      await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,'instructor_backfill','GET',?,?,?)").bind(row.unit,"/api/v1/activities/schedule/detail",response.status,response.ok?1:0).run();
+      if(!response.ok)throw Error("EVO_HTTP_"+response.status);
+      const payload=await response.json(),d=Array.isArray(payload)&&payload.length===1?payload[0]:payload;
+      if(String(d?.idActivitySession??d?.idActivitieSession??"")!==String(row.id_activity_session))throw Error("SESSION_ID_MISMATCH");
+      const instructor=attendanceInstructorName(d);
+      if(instructor)await env.DB.prepare("UPDATE evo_attendance_sessions SET instructor_name=? WHERE unit=? AND id_activity_session=? AND (instructor_name IS NULL OR trim(instructor_name)='')").bind(instructor,row.unit,row.id_activity_session).run();
+      await env.DB.prepare("INSERT OR REPLACE INTO evo_instructor_backfill_attempts(unit,id_activity_session,status,detail) VALUES(?,?,?,?)").bind(row.unit,row.id_activity_session,instructor?"found":"missing",instructor||"Professor ausente no detalhe").run();
+    }catch(error){
+      await env.DB.prepare("INSERT OR REPLACE INTO evo_instructor_backfill_attempts(unit,id_activity_session,status,detail) VALUES(?,?,'error',?)").bind(row.unit,row.id_activity_session,String(error?.message||error).slice(0,200)).run();
+    }
+  }
+}
 async function runScheduledAttendanceSync(env) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
   const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
@@ -387,7 +410,7 @@ async function whatsappBirthdayTick(env){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env)])); },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
