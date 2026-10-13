@@ -89,6 +89,19 @@ export default async function handler(req,res){
   if(!cookie)return res.status(401).json({ok:false,error:"SESSAO_NECESSARIA"});
   try{const r=await fetch(WORKER+"/admin/manual-student-activation"+(req.method==="GET"?"?unit="+encodeURIComponent(unit):""),{method:req.method,headers:{"x-clubpop-admin-cookie":cookie,"content-type":"application/json"},body:req.method==="POST"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(await r.text())}catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}
  }
+ if(req.query.route==="student-sync-one"){
+  res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const cookie=String(req.headers.cookie||""),unit=String(req.body?.unit||"bike").toLowerCase()==="gym"?"gym":"bike",id=String(req.body?.idMember||"").replace(/\D/g,"");
+  if(!id)return res.status(400).json({ok:false,error:"ID_EVO_INVALIDO"});
+  try{
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
+   const evo=getEvoTransport(unit),rr=await evo.fetch("https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(id));if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_ALUNO_HTTP_"+rr.status,requests:1});
+   const raw=await rr.json(),x=Array.isArray(raw)?raw[0]:raw;if(!x)return res.status(404).json({ok:false,error:"ALUNO_NAO_ENCONTRADO",requests:1});
+   const payload={unit,idMember:Number(x.idMember||id),member:x};
+   const wr=await fetch(WORKER+"/admin/evo-student-sync-one",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify(payload),cache:"no-store"}),wd=await wr.json().catch(()=>({}));if(!wr.ok||!wd.ok)return res.status(wr.status||502).json({ok:false,error:wd.error||"FALHA_ATUALIZAR_D1",requests:1});
+   return res.json({...wd,ok:true,requests:1});
+  }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_SINCRONIZAR_ALUNO"});}
+ }
  if(req.query.route==="students"){if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike";try{const r=await fetch(WORKER+"/admin/evo-students?unit="+unit,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao consultar alunos EVO"})}}
  if(req.query.route==="active-count"){
   res.setHeader("Cache-Control","no-store");
