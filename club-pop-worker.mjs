@@ -2210,7 +2210,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_consents(unit TEXT NOT NULL,session_id TEXT NOT NULL,member_id TEXT NOT NULL,accepted_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,session_id,member_id))"),
           env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_messages(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,session_id TEXT NOT NULL,member_id TEXT NOT NULL,slot_number INTEGER NOT NULL,content TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,deleted INTEGER NOT NULL DEFAULT 0)"),
           env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_reports(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,session_id TEXT NOT NULL,message_id INTEGER NOT NULL,reporter_id TEXT NOT NULL,reason TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TEXT DEFAULT CURRENT_TIMESTAMP)"),
-          env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_bans(unit TEXT NOT NULL,member_id TEXT NOT NULL,expires_at TEXT NOT NULL,reason TEXT,PRIMARY KEY(unit,member_id))")
+          env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_bans(unit TEXT NOT NULL,member_id TEXT NOT NULL,expires_at TEXT NOT NULL,reason TEXT,PRIMARY KEY(unit,member_id))"),
+          env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_name_preferences(unit TEXT NOT NULL,member_id TEXT NOT NULL,show_name INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(unit,member_id))")
         ]);
         const config=(await env.DB.prepare("SELECT * FROM class_chat_settings WHERE unit=?").bind(unit).first())||{enabled:0,test_member_id:null,open_before:30,close_after:120,duration_minutes:50,reveal_names:0,ban_days:3};
         const body=request.method==="GET"?{}:await request.json().catch(()=>({}));
@@ -2267,10 +2268,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const ban=await env.DB.prepare("SELECT expires_at FROM class_chat_bans WHERE unit=? AND member_id=?").bind(unit,id).first();
         if(ban&&Date.parse(ban.expires_at)>now)return json({ok:false,error:"ACESSO_SUSPENSO"},403);
         const consent=await env.DB.prepare("SELECT accepted_at FROM class_chat_consents WHERE unit=? AND session_id=? AND member_id=?").bind(unit,sid,id).first();
-        const base={ok:true,unit,session_id:sid,slot_number:reservation.slot_number,accepted:!!consent,expires_at:new Date(startMs+(Number(config.duration_minutes)+Number(config.close_after))*60000).toISOString(),evoRequestsMade:0};
+        const namePref=await env.DB.prepare("SELECT show_name FROM class_chat_name_preferences WHERE unit=? AND member_id=?").bind(unit,id).first();
+        const base={ok:true,unit,session_id:sid,slot_number:reservation.slot_number,show_name:!!namePref?.show_name,accepted:!!consent,expires_at:new Date(startMs+(Number(config.duration_minutes)+Number(config.close_after))*60000).toISOString(),evoRequestsMade:0};
         if(request.method==="GET"){
           if(!consent)return json({...base,messages:[]});
-          const messages=await env.DB.prepare("SELECT m.id,m.slot_number,m.content,m.created_at,m.member_id,CASE WHEN ?=1 THEN s.member_name ELSE NULL END AS display_name FROM class_chat_messages m LEFT JOIN checkin_reservation_snapshots s ON s.unit=m.unit AND s.session_id=m.session_id AND s.evo_member_id=m.member_id AND s.removed=0 WHERE m.unit=? AND m.session_id=? AND m.deleted=0 ORDER BY m.id DESC LIMIT 60").bind(Number(config.reveal_names),unit,sid).all();
+          const messages=await env.DB.prepare("SELECT m.id,m.slot_number,m.content,m.created_at,m.member_id,CASE WHEN p.show_name=1 THEN s.member_name ELSE NULL END AS display_name FROM class_chat_messages m LEFT JOIN checkin_reservation_snapshots s ON s.unit=m.unit AND s.session_id=m.session_id AND s.evo_member_id=m.member_id AND s.removed=0 LEFT JOIN class_chat_name_preferences p ON p.unit=m.unit AND p.member_id=m.member_id WHERE m.unit=? AND m.session_id=? AND m.deleted=0 ORDER BY m.id DESC LIMIT 60").bind(unit,sid).all();
           return json({...base,messages:(messages.results||[]).reverse().map(x=>({id:x.id,slot_number:x.slot_number,content:x.content,created_at:x.created_at,mine:x.member_id===id,display_name:x.display_name}))});
         }
         if(body.action==="accept"){
@@ -2279,6 +2281,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           return json({...base,accepted:true});
         }
         if(!consent)return json({ok:false,error:"ACEITE_OBRIGATORIO"},403);
+        if(body.action==="name-preference"){
+          if(typeof body.show_name!=="boolean")return json({ok:false,error:"PREFERENCIA_INVALIDA"},400);
+          await env.DB.prepare("INSERT INTO class_chat_name_preferences(unit,member_id,show_name) VALUES(?,?,?) ON CONFLICT(unit,member_id) DO UPDATE SET show_name=excluded.show_name").bind(unit,id,body.show_name?1:0).run();
+          return json({ok:true,show_name:body.show_name});
+        }
         if(body.action==="send"){
           const content=String(body.content||"").trim();
           if(!content||content.length>500)return json({ok:false,error:"MENSAGEM_INVALIDA"},400);
