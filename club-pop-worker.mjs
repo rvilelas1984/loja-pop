@@ -2200,21 +2200,101 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({ok:true,reservation:reservation||null,source:"d1",evoRequestsMade:0});
       }
 
-      // Chat da aula: acesso restrito a reserva atual, com consentimento explícito.
-      if(url.pathname==="/class-chat"&&["GET","POST"].includes(request.method)){
+      // Chat da Aula — sem chamadas à EVO. A reserva e a autorização são validadas a cada ação.
+      if(url.pathname==="/class-chat"||url.pathname==="/admin/class-chat"){
+        const admin=url.pathname.startsWith("/admin/");
+        const unit=String(url.searchParams.get("unit")||"bike");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        await env.DB.batch([
+          env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_settings(unit TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,test_member_id TEXT,open_before INTEGER NOT NULL DEFAULT 30,close_after INTEGER NOT NULL DEFAULT 120,duration_minutes INTEGER NOT NULL DEFAULT 50,reveal_names INTEGER NOT NULL DEFAULT 0,ban_days INTEGER NOT NULL DEFAULT 3)"),
+          env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_consents(unit TEXT NOT NULL,session_id TEXT NOT NULL,member_id TEXT NOT NULL,accepted_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,session_id,member_id))"),
+          env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_messages(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,session_id TEXT NOT NULL,member_id TEXT NOT NULL,slot_number INTEGER NOT NULL,content TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,deleted INTEGER NOT NULL DEFAULT 0)"),
+          env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_reports(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,session_id TEXT NOT NULL,message_id INTEGER NOT NULL,reporter_id TEXT NOT NULL,reason TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TEXT DEFAULT CURRENT_TIMESTAMP)"),
+          env.DB.prepare("CREATE TABLE IF NOT EXISTS class_chat_bans(unit TEXT NOT NULL,member_id TEXT NOT NULL,expires_at TEXT NOT NULL,reason TEXT,PRIMARY KEY(unit,member_id))")
+        ]);
+        const config=(await env.DB.prepare("SELECT * FROM class_chat_settings WHERE unit=?").bind(unit).first())||{enabled:0,test_member_id:null,open_before:30,close_after:120,duration_minutes:50,reveal_names:0,ban_days:3};
+        const body=request.method==="GET"?{}:await request.json().catch(()=>({}));
+        if(admin){
+          const cookie=String(request.headers.get("x-clubpop-admin-cookie")||"");
+          if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+          const ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie,Accept:"application/json"},cache:"no-store"});
+          const auth=await ar.json().catch(()=>({}));
+          if(!ar.ok||auth.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+          if(request.method==="GET"){
+            const reports=await env.DB.prepare("SELECT r.id,r.session_id,r.message_id,r.reason,r.status,r.created_at,m.content,m.slot_number FROM class_chat_reports r LEFT JOIN class_chat_messages m ON m.id=r.message_id WHERE r.unit=? ORDER BY r.id DESC LIMIT 50").bind(unit).all();
+            return json({ok:true,config,reports:reports.results||[],evoRequestsMade:0});
+          }
+          if(request.method!=="POST")return json({ok:false,error:"METODO_INVALIDO"},405);
+          if(body.action==="settings"){
+            const flag=x=>x===true||x===1?1:0;
+            const int=(x,min,max,fallback)=>Number.isInteger(Number(x))&&Number(x)>=min&&Number(x)<=max?Number(x):fallback;
+            await env.DB.prepare("INSERT INTO class_chat_settings(unit,enabled,test_member_id,open_before,close_after,duration_minutes,reveal_names,ban_days) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(unit) DO UPDATE SET enabled=excluded.enabled,test_member_id=excluded.test_member_id,open_before=excluded.open_before,close_after=excluded.close_after,duration_minutes=excluded.duration_minutes,reveal_names=excluded.reveal_names,ban_days=excluded.ban_days").bind(unit,flag(body.enabled),String(body.test_member_id||"").trim().slice(0,50),int(body.open_before,0,120,30),int(body.close_after,0,360,120),int(body.duration_minutes,15,180,50),flag(body.reveal_names),int(body.ban_days,1,30,3)).run();
+            return json({ok:true,saved:true});
+          }
+          if(body.action==="moderate"){
+            const report=await env.DB.prepare("SELECT * FROM class_chat_reports WHERE id=? AND unit=?").bind(Number(body.report_id),unit).first();
+            if(!report)return json({ok:false,error:"DENUNCIA_NAO_ENCONTRADA"},404);
+            if(!["dismiss","delete","ban"].includes(body.decision))return json({ok:false,error:"ACAO_INVALIDA"},400);
+            if(body.decision!=="dismiss"){
+              const msg=await env.DB.prepare("SELECT member_id FROM class_chat_messages WHERE id=? AND unit=?").bind(report.message_id,unit).first();
+              if(!msg)return json({ok:false,error:"MENSAGEM_NAO_ENCONTRADA"},404);
+              await env.DB.prepare("UPDATE class_chat_messages SET deleted=1 WHERE id=? AND unit=?").bind(report.message_id,unit).run();
+              if(body.decision==="ban"){
+                const until=new Date(Date.now()+Number(config.ban_days)*86400000).toISOString();
+                await env.DB.prepare("INSERT INTO class_chat_bans(unit,member_id,expires_at,reason) VALUES(?,?,?,?) ON CONFLICT(unit,member_id) DO UPDATE SET expires_at=excluded.expires_at,reason=excluded.reason").bind(unit,msg.member_id,until,"Infração confirmada").run();
+              }
+            }
+            await env.DB.prepare("UPDATE class_chat_reports SET status=? WHERE id=? AND unit=?").bind(body.decision,report.id,unit).run();
+            return json({ok:true});
+          }
+          return json({ok:false,error:"ACAO_INVALIDA"},400);
+        }
+        if(!["GET","POST"].includes(request.method))return json({ok:false,error:"METODO_INVALIDO"},405);
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const body=request.method==="POST"?await request.json().catch(()=>({})):{};
-        const unit=String(request.method==="GET"?url.searchParams.get("unit"):body.unit||"");
-        const sid=String(request.method==="GET"?url.searchParams.get("session_id"):body.session_id||"");
         const id=String(unit==="gym"?member.gym_client_id||"":member.evo_member_id||"");
-        if(!["bike","gym"].includes(unit)||!sid||!id)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const sid=String(request.method==="GET"?url.searchParams.get("session_id"):body.session_id||"");
+        if(!id||!sid||sid.length>100)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
         const reservation=await env.DB.prepare("SELECT session_id,slot_number,activity_date,start_time,member_name FROM checkin_reservation_snapshots WHERE unit=? AND session_id=? AND evo_member_id=? AND removed=0 AND (status IS NULL OR lower(status) NOT IN ('cancelled','canceled','cancelado','cancelada')) LIMIT 1").bind(unit,sid,id).first();
         if(!reservation)return json({ok:false,error:"RESERVA_NAO_ENCONTRADA"},403);
-        const now=new Date().toLocaleString("sv-SE",{timeZone:"America/Sao_Paulo"}).replace(" ","T");
-        if(reservation.activity_date+"T"+reservation.start_time>now)return json({ok:false,error:"CHAT_AINDA_NAO_ABERTO"},403);
-        // Sem horário de término validado, o chat permanece fechado por segurança.
-        return json({ok:false,error:"CHAT_AGUARDANDO_HORARIO_TERMINO",reservation:{slot_number:reservation.slot_number}},403);
+        const isTester=!!config.test_member_id&&String(config.test_member_id)===id;
+        if(!config.enabled&&!isTester)return json({ok:false,error:"CHAT_DESATIVADO"},403);
+        const startMs=Date.parse(reservation.activity_date+"T"+reservation.start_time+":00-03:00");
+        if(!Number.isFinite(startMs))return json({ok:false,error:"HORARIO_INVALIDO"},400);
+        const now=Date.now();
+        if(now>startMs+(Number(config.duration_minutes)+Number(config.close_after))*60000)return json({ok:false,error:"CHAT_ENCERRADO"},403);
+        if(!isTester&&now<startMs-Number(config.open_before)*60000)return json({ok:false,error:"CHAT_AINDA_NAO_ABERTO"},403);
+        const ban=await env.DB.prepare("SELECT expires_at FROM class_chat_bans WHERE unit=? AND member_id=?").bind(unit,id).first();
+        if(ban&&Date.parse(ban.expires_at)>now)return json({ok:false,error:"ACESSO_SUSPENSO"},403);
+        const consent=await env.DB.prepare("SELECT accepted_at FROM class_chat_consents WHERE unit=? AND session_id=? AND member_id=?").bind(unit,sid,id).first();
+        const base={ok:true,unit,session_id:sid,slot_number:reservation.slot_number,accepted:!!consent,expires_at:new Date(startMs+(Number(config.duration_minutes)+Number(config.close_after))*60000).toISOString(),evoRequestsMade:0};
+        if(request.method==="GET"){
+          if(!consent)return json({...base,messages:[]});
+          const messages=await env.DB.prepare("SELECT m.id,m.slot_number,m.content,m.created_at,m.member_id,CASE WHEN ?=1 THEN s.member_name ELSE NULL END AS display_name FROM class_chat_messages m LEFT JOIN checkin_reservation_snapshots s ON s.unit=m.unit AND s.session_id=m.session_id AND s.evo_member_id=m.member_id AND s.removed=0 WHERE m.unit=? AND m.session_id=? AND m.deleted=0 ORDER BY m.id DESC LIMIT 60").bind(Number(config.reveal_names),unit,sid).all();
+          return json({...base,messages:(messages.results||[]).reverse().map(x=>({id:x.id,slot_number:x.slot_number,content:x.content,created_at:x.created_at,mine:x.member_id===id,display_name:x.display_name}))});
+        }
+        if(body.action==="accept"){
+          if(body.accepted!==true)return json({ok:false,error:"ACEITE_OBRIGATORIO"},400);
+          await env.DB.prepare("INSERT OR IGNORE INTO class_chat_consents(unit,session_id,member_id) VALUES(?,?,?)").bind(unit,sid,id).run();
+          return json({...base,accepted:true});
+        }
+        if(!consent)return json({ok:false,error:"ACEITE_OBRIGATORIO"},403);
+        if(body.action==="send"){
+          const content=String(body.content||"").trim();
+          if(!content||content.length>500)return json({ok:false,error:"MENSAGEM_INVALIDA"},400);
+          const last=await env.DB.prepare("SELECT created_at FROM class_chat_messages WHERE unit=? AND session_id=? AND member_id=? ORDER BY id DESC LIMIT 1").bind(unit,sid,id).first();
+          if(last&&now-Date.parse(String(last.created_at).replace(" ","T")+"Z")<3000)return json({ok:false,error:"AGUARDE_ANTES_DE_ENVIAR"},429);
+          await env.DB.prepare("INSERT INTO class_chat_messages(unit,session_id,member_id,slot_number,content) VALUES(?,?,?,?,?)").bind(unit,sid,id,reservation.slot_number,content).run();
+          return json({ok:true,sent:true});
+        }
+        if(body.action==="report"){
+          const msg=await env.DB.prepare("SELECT id,member_id FROM class_chat_messages WHERE id=? AND unit=? AND session_id=? AND deleted=0").bind(Number(body.message_id),unit,sid).first();
+          if(!msg||msg.member_id===id)return json({ok:false,error:"MENSAGEM_INVALIDA"},400);
+          const reason=String(body.reason||"Conduta inadequada").trim().slice(0,250);
+          await env.DB.prepare("INSERT INTO class_chat_reports(unit,session_id,message_id,reporter_id,reason) VALUES(?,?,?,?,?)").bind(unit,sid,msg.id,id,reason).run();
+          return json({ok:true,reported:true});
+        }
+        return json({ok:false,error:"ACAO_INVALIDA"},400);
       }
 
       // Snapshot de reservas já obtidas pela Tela de Check-in. Nunca consulta a EVO.
