@@ -128,6 +128,11 @@ export default async function handler(req,res){if(String(req.query.route||"")===
    return res.json({...wd,ok:true,found:true,requests:2});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_BUSCAR_ALUNO"});}
  }
+ if(req.query.route==="student-merge-one"){
+  res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"SESSAO_NECESSARIA"});
+  try{const r=await fetch(WORKER+"/admin/evo-student-merge",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify(req.body||{}),cache:"no-store"}),d=await r.json().catch(()=>({}));return res.status(r.status).json(d)}catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}
+ }
  if(req.query.route==="student-sync-one"){
   res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const cookie=String(req.headers.cookie||""),unit=String(req.body?.unit||"bike").toLowerCase()==="gym"?"gym":"bike",id=String(req.body?.idMember||"").replace(/\D/g,"");

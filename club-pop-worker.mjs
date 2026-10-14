@@ -931,7 +931,27 @@ export default {
         }else{
           await env.DB.prepare("INSERT INTO evo_member_master(unit,evo_member_id,is_current,personal_json,raw_json,synced_at) VALUES(?,?,1,?,?,?)").bind(unit,String(evoId),JSON.stringify(personal),JSON.stringify(x),now).run();
         }
-        return json({ok:true,unit,idMember:evoId,memberId,name:[first,last].filter(Boolean).join(" "),hasCpf:/^\d{11}$/.test(cpf),createdInMaster:!master,before:{email:before?.email||null,birthDate:before?.birth_date||null},after:{email,birthDate:birth,cpfUpdated:/^\d{11}$/.test(cpf)},updatedAt:now});
+        const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+        const peers=(await env.DB.prepare("SELECT evo_member_id,is_current,personal_json FROM evo_member_master WHERE unit=? AND CAST(evo_member_id AS TEXT)<>?").bind(unit,String(evoId)).all()).results||[];
+        const currentName=norm([first,last].filter(Boolean).join(" ")),matches=[];
+        for(const row of peers){let p={};try{p=JSON.parse(row.personal_json||"{}")}catch{}const pc=String(p.document||p.cpf||"").replace(/\D/g,""),pn=String(p.name||[p.firstName,p.lastName].filter(Boolean).join(" ")).trim(),sameCpf=/^\d{11}$/.test(cpf)&&pc===cpf,sameName=currentName&&norm(pn)===currentName;if(sameCpf||sameName)matches.push({evoMemberId:String(row.evo_member_id),name:pn||"Aluno",cpf:pc||null,isCurrent:Number(row.is_current)===1,reasons:[sameCpf?"CPF":"",sameName?"nome":""].filter(Boolean)})}
+        return json({ok:true,unit,idMember:evoId,memberId,name:[first,last].filter(Boolean).join(" "),cpf:cpf||null,hasCpf:/^\d{11}$/.test(cpf),createdInMaster:!master,before:{email:before?.email||null,birthDate:before?.birth_date||null},after:{email,birthDate:birth,cpfUpdated:/^\d{11}$/.test(cpf)},matches:matches.slice(0,10),updatedAt:now});
+      }
+      if(url.pathname==="/admin/evo-student-merge"&&request.method==="POST"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck},cache:"no-store"}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||""),principal=String(b.principalId||"").replace(/\D/g,""),legacy=String(b.legacyId||"").replace(/\D/g,"");
+        if(!["bike","gym"].includes(unit)||!principal||!legacy||principal===legacy)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const rows=(await env.DB.prepare("SELECT evo_member_id,personal_json FROM evo_member_master WHERE unit=? AND CAST(evo_member_id AS TEXT) IN (?,?)").bind(unit,principal,legacy).all()).results||[];if(rows.length!==2)return json({ok:false,error:"PERFIL_D1_NAO_ENCONTRADO"},404);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_member_identity_aliases(unit TEXT NOT NULL,legacy_evo_member_id TEXT NOT NULL,principal_evo_member_id TEXT NOT NULL,merged_by TEXT,merged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,legacy_evo_member_id))").run();
+        const statements=[
+          env.DB.prepare("INSERT INTO evo_member_identity_aliases(unit,legacy_evo_member_id,principal_evo_member_id,merged_by,merged_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,legacy_evo_member_id) DO UPDATE SET principal_evo_member_id=excluded.principal_evo_member_id,merged_by=excluded.merged_by,merged_at=CURRENT_TIMESTAMP").bind(unit,legacy,principal,String(vd.email||vd.name||"admin")),
+          env.DB.prepare("UPDATE evo_member_master SET is_current=CASE WHEN CAST(evo_member_id AS TEXT)=? THEN 1 ELSE 0 END WHERE unit=? AND CAST(evo_member_id AS TEXT) IN (?,?)").bind(principal,unit,principal,legacy),
+          env.DB.prepare("UPDATE aggregator_member_links SET evo_member_id=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND CAST(evo_member_id AS TEXT)=?").bind(principal,unit,legacy),
+          env.DB.prepare("UPDATE club_tasks SET evo_member_id=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND CAST(evo_member_id AS TEXT)=?").bind(principal,unit,legacy)
+        ];
+        await env.DB.batch(statements);
+        return json({ok:true,unit,principalId:principal,legacyId:legacy,evoRequests:0});
       }
       if(url.pathname==="/admin/teachers"){
         if(!["GET","POST"].includes(request.method))return json({ok:false,error:"METHOD"},405);
