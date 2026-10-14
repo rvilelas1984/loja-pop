@@ -295,8 +295,23 @@ async function runScheduledStudentSync(env) {
   const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='student'").all()).results||[];const weekdays=await loadScheduledWeekdays(env.DB,"student");
   for(const row of rows){if(!scheduledDaysAllowed(weekdays.get(row.unit)||[1,2,3,4,5,6],now))continue;let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=dueScheduledMinute(times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
     const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'student',?,'pending')").bind(unit,dueKey).run();if(!ins.meta?.changes)continue;
-    try{const r=await fetch("https://loja-pop-green.vercel.app/api/evo-config?route=auto-sync-students&unit="+unit,{method:"POST",headers:{"x-auto-sync-secret":String(env.AUTO_SYNC_SECRET||""),"Content-Type":"application/json"}}),d=await r.json().catch(()=>({}));await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status=?,detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(r.ok&&d.ok?"done":"failed",JSON.stringify({http:r.status,error:d.error||null,total:d.total||null,requests:d.requests||null}).slice(0,1000),unit,dueKey).run();}
-    catch(e){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(String(e.message||e).slice(0,500),unit,dueKey).run();}
+    try{
+      const before=await env.DB.prepare("SELECT last_sync_at,last_sync_status,last_sync_requests FROM evo_sync_config WHERE unit=?").bind(unit).first();
+      const r=await fetch("https://loja-pop-green.vercel.app/api/evo-config?route=auto-sync-students&unit="+unit,{method:"POST",headers:{"x-auto-sync-secret":String(env.AUTO_SYNC_SECRET||""),"Content-Type":"application/json"}});
+      const d=await r.json().catch(()=>({}));
+      let success=r.ok&&d.ok,total=d.total??null,requests=d.requests??null,recovered=false;
+      if(!success){
+        const after=await env.DB.prepare("SELECT last_sync_at,last_sync_status,last_sync_requests FROM evo_sync_config WHERE unit=?").bind(unit).first();
+        const advanced=after?.last_sync_at&&String(after.last_sync_at)!==String(before?.last_sync_at||"");
+        if(advanced&&String(after.last_sync_status||"").toLowerCase()==="ok"){success=true;requests=Number(after.last_sync_requests||0);recovered=true}
+      }
+      await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status=?,detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(success?"done":"failed",JSON.stringify({http:r.status,error:success?null:(d.error||null),total,requests,recoveredFromSyncState:recovered}).slice(0,1000),unit,dueKey).run();
+    }catch(e){
+      const after=await env.DB.prepare("SELECT last_sync_at,last_sync_status,last_sync_requests FROM evo_sync_config WHERE unit=?").bind(unit).first();
+      if(after?.last_sync_at&&String(after.last_sync_status||"").toLowerCase()==="ok"){
+        await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='done',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(JSON.stringify({http:null,error:null,total:null,requests:Number(after.last_sync_requests||0),recoveredFromSyncState:true,transportError:String(e.message||e).slice(0,180)}),unit,dueKey).run();
+      }else await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=?").bind(String(e.message||e).slice(0,500),unit,dueKey).run();
+    }
   }
 }
 
