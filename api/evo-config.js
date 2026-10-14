@@ -4,6 +4,12 @@ import { parseActiveReport } from "../lib/evo-active-report.js";
 import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 export default async function handler(req,res){
+ if(req.query.route==="teacher-view"){
+  if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false});
+  const q=new URLSearchParams();for(const k of ["unit","month","teacher","action","session_id"])if(typeof req.query[k]==="string")q.set(k,req.query[k]);
+  try{const r=await fetch(WORKER+"/staff/teacher-view?"+q,{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="POST"?JSON.stringify(typeof req.body==="string"?JSON.parse(req.body):req.body||{}):undefined,cache:"no-store"});res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"FALHA_AO_CARREGAR_PROFESSOR"})}
+ }
+
  if(req.query.route==="benefit-vouchers"){
   if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=String(req.query.unit||"bike"),admin=req.query.admin==="1";

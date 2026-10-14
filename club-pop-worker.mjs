@@ -1,3 +1,4 @@
+import { ensureTeacherLinks, validateTeacherLinks, teacherView } from "./lib/teacher-view.mjs";
 function favoriteEquipmentFromRows(rows,unit,activity){const type=unit==="bike"?"B":/step/i.test(activity||"")?"S":/jump/i.test(activity||"")?"J":null;if(!type)return "Livre";const selected=rows.filter(r=>unit==="bike"||(type==="S"?/step/i.test(r.activity||""):/jump/i.test(r.activity||"")));const nums=selected.map(r=>Number(r.slotNumber)).filter(n=>Number.isInteger(n)&&n>0);if(!nums.length)return "—";const counts={};for(const n of nums)counts[n]=(counts[n]||0)+1;const [num,count]=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];return count/nums.length>=0.55?type+num:"—"}
 import {benefitVouchers} from './lib/benefit-vouchers.mjs';
 import {settleFitcoins,receptionRecord,receptionAction} from './lib/checkout-fitcoins.mjs';
@@ -999,6 +1000,13 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const row=settings?await env.DB.prepare("SELECT units_json,permissions_json FROM club_reception_access WHERE id=1").first():null;
         return json({ok:true,units:row?JSON.parse(row.units_json):["bike"],permissions:row?JSON.parse(row.permissions_json):["/tela-checkin.html","/admin-resgates.html","/admin-transacoes.html","/admin-numeros-sorte.html","/admin-alunos-evo.html"]});
       }
+      if(url.pathname==="/staff/teacher-view"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me&includeTeacher=1",{headers:{Cookie:ck},cache:"no-store"}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        return teacherView(request,env,vd);
+      }
       if (url.pathname === "/staff/login" && request.method === "POST") {
         const b=await request.json().catch(()=>({})),email=String(b.email||"").trim().toLowerCase(),pin=String(b.pin||"").trim();
         if(!email||!/^\d{4,8}$/.test(pin))return json({ok:false,error:"CREDENCIAIS_INVALIDAS"},400);
@@ -1013,10 +1021,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       }
       if (url.pathname === "/admin/staff-users" && ["GET","POST","PUT"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"",trustedRole=request.headers.get("x-clubpop-admin-role")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        if(trustedRole!=="admin"){const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);}
+        {const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);}
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS staff_users (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,email TEXT NOT NULL UNIQUE,pin_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'reception',units_json TEXT NOT NULL DEFAULT '[\"bike\"]',permissions_json TEXT NOT NULL DEFAULT '[]',enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
-        const parse=v=>{try{return JSON.parse(v||"[]")}catch{return []}},safe=u=>({id:u.id,name:u.name,email:u.email,role:u.role,units:parse(u.units_json),permissions:parse(u.permissions_json),enabled:Boolean(u.enabled),createdAt:u.created_at,updatedAt:u.updated_at});
-        if(request.method==="GET"){const q=await env.DB.prepare("SELECT id,name,email,role,units_json,permissions_json,enabled,created_at,updated_at FROM staff_users ORDER BY enabled DESC,name").all();const settings=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='club_reception_access'").first();const legacy=settings?await env.DB.prepare("SELECT units_json,permissions_json FROM club_reception_access WHERE id=1").first():null;return json({ok:true,users:(q.results||[]).map(safe),legacyAccess:legacy?{units:parse(legacy.units_json),permissions:parse(legacy.permissions_json)}:null});}
+        await ensureTeacherLinks(env.DB);
+        const parse=v=>{try{return JSON.parse(v||"[]")}catch{return []}},safe=u=>({id:u.id,name:u.name,email:u.email,role:u.role,teacherLinks:JSON.parse(u.teacher_links_json||"{}"),units:parse(u.units_json),permissions:parse(u.permissions_json),enabled:Boolean(u.enabled),createdAt:u.created_at,updatedAt:u.updated_at});
+        if(request.method==="GET"){const q=await env.DB.prepare("SELECT id,name,email,role,teacher_links_json,units_json,permissions_json,enabled,created_at,updated_at FROM staff_users ORDER BY enabled DESC,name").all();const settings=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='club_reception_access'").first();const legacy=settings?await env.DB.prepare("SELECT units_json,permissions_json FROM club_reception_access WHERE id=1").first():null;return json({ok:true,users:(q.results||[]).map(safe),legacyAccess:legacy?{units:parse(legacy.units_json),permissions:parse(legacy.permissions_json)}:null});}
         if(request.method==="PUT"){
           const preview=await request.clone().json().catch(()=>({}));
           if(preview.id==="legacy-reception"){
@@ -1034,20 +1043,22 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             return json({ok:true,id:created?.id,migrated:true});
           }
         }
-        const b=await request.json().catch(()=>({})),name=String(b.name||"").trim(),email=String(b.email||"").trim().toLowerCase(),pin=String(b.pin||"").trim(),role=b.role==="admin"?"admin":"reception",units=Array.isArray(b.units)?[...new Set(b.units.filter(x=>["bike","gym","club"].includes(x)))]:["bike"],permissions=Array.isArray(b.permissions)?[...new Set(b.permissions.map(String).filter(Boolean))]:[];
+        const b=await request.json().catch(()=>({})),name=String(b.name||"").trim(),email=String(b.email||"").trim().toLowerCase(),pin=String(b.pin||"").trim(),role=b.role==="admin"?"admin":b.role==="teacher"?"teacher":"reception",units=Array.isArray(b.units)?[...new Set(b.units.filter(x=>["bike","gym","club"].includes(x)))]:["bike"],permissions=role==="teacher"?["/visao-professores.html"]:Array.isArray(b.permissions)?[...new Set(b.permissions.map(String).filter(Boolean))]:[];
         if(!name||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!units.length||!permissions.length)return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const teacherLinks=role==="teacher"?await validateTeacherLinks(env.DB,units,b.teacherLinks):{};
+        if(!teacherLinks)return json({ok:false,error:"VINCULE_UM_PROFESSOR_VALIDO_EM_CADA_UNIDADE"},400);
         const makeHash=async value=>{const enc=new TextEncoder(),salt=crypto.randomUUID().replaceAll("-",""),key=await crypto.subtle.importKey("raw",enc.encode(value),"PBKDF2",false,["deriveBits"]),bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:enc.encode(salt),iterations:100000},key,256),hx=Array.from(new Uint8Array(bits)).map(x=>x.toString(16).padStart(2,"0")).join("");return "pbkdf2$100000$"+salt+"$"+hx};
         let hash=null;if(pin){if(!/^\d{4,8}$/.test(pin))return json({ok:false,error:"PIN_DEVE_TER_4_A_8_DIGITOS"},400);hash=await makeHash(pin);}
         if(request.method==="POST"){
           if(!hash)return json({ok:false,error:"PIN_OBRIGATORIO"},400);
-          try{const q=await env.DB.prepare("INSERT INTO staff_users(name,email,pin_hash,role,units_json,permissions_json,enabled) VALUES(?,?,?,?,?,?,1) RETURNING id").bind(name,email,hash,role,JSON.stringify(units),JSON.stringify(permissions)).first();return json({ok:true,id:q?.id});}
+          try{const q=await env.DB.prepare("INSERT INTO staff_users(name,email,pin_hash,role,units_json,permissions_json,teacher_links_json,enabled) VALUES(?,?,?,?,?,?,?,1) RETURNING id").bind(name,email,hash,role,JSON.stringify(units),JSON.stringify(permissions),JSON.stringify(teacherLinks)).first();return json({ok:true,id:q?.id});}
           catch(e){const msg=String(e?.message||e);return json({ok:false,error:/unique/i.test(msg)?"EMAIL_JA_CADASTRADO":"FALHA_AO_SALVAR",detail:msg.slice(0,160)},/unique/i.test(msg)?409:500)}
         }
         const id=Number(b.id);if(!Number.isInteger(id)||id<1)return json({ok:false,error:"USUARIO_INVALIDO"},400);const enabled=b.enabled===false?0:1;
         const exists=await env.DB.prepare("SELECT id FROM staff_users WHERE id=?").bind(id).first();if(!exists)return json({ok:false,error:"USUARIO_NAO_ENCONTRADO"},404);
         try{
-          if(hash)await env.DB.prepare("UPDATE staff_users SET name=?,email=?,pin_hash=?,role=?,units_json=?,permissions_json=?,enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,email,hash,role,JSON.stringify(units),JSON.stringify(permissions),enabled,id).run();
-          else await env.DB.prepare("UPDATE staff_users SET name=?,email=?,role=?,units_json=?,permissions_json=?,enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,email,role,JSON.stringify(units),JSON.stringify(permissions),enabled,id).run();
+          if(hash)await env.DB.prepare("UPDATE staff_users SET name=?,email=?,pin_hash=?,role=?,units_json=?,permissions_json=?,teacher_links_json=?,enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,email,hash,role,JSON.stringify(units),JSON.stringify(permissions),JSON.stringify(teacherLinks),enabled,id).run();
+          else await env.DB.prepare("UPDATE staff_users SET name=?,email=?,role=?,units_json=?,permissions_json=?,teacher_links_json=?,enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,email,role,JSON.stringify(units),JSON.stringify(permissions),JSON.stringify(teacherLinks),enabled,id).run();
           return json({ok:true,id});
         }catch(e){const msg=String(e?.message||e);return json({ok:false,error:/unique/i.test(msg)?"EMAIL_JA_CADASTRADO":"FALHA_AO_SALVAR",detail:msg.slice(0,160)},/unique/i.test(msg)?409:500)}
       }
@@ -2276,7 +2287,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           if(consent)await env.DB.prepare("INSERT INTO class_chat_presence(unit,session_id,member_id,last_seen_at) VALUES(?,?,?,?) ON CONFLICT(unit,session_id,member_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").bind(unit,sid,id,now).run();
           const presence=await env.DB.prepare("SELECT COUNT(*) total FROM class_chat_presence WHERE unit=? AND session_id=? AND last_seen_at>=?").bind(unit,sid,now-25000).first();
           if(!consent)return json({...base,online_count:Number(presence?.total||0),messages:[]});
-          const messages=await env.DB.prepare("SELECT m.id,m.slot_number,m.content,m.created_at,m.member_id,CASE WHEN p.show_name=1 THEN s.member_name ELSE NULL END AS display_name FROM class_chat_messages m LEFT JOIN checkin_reservation_snapshots s ON s.unit=m.unit AND s.session_id=m.session_id AND s.evo_member_id=m.member_id AND s.removed=0 LEFT JOIN class_chat_name_preferences p ON p.unit=m.unit AND p.member_id=m.member_id WHERE m.unit=? AND m.session_id=? AND m.deleted=0 ORDER BY m.id DESC LIMIT 60").bind(unit,sid).all();
+          const messages=await env.DB.prepare("SELECT m.id,m.slot_number,m.content,m.created_at,m.member_id,CASE WHEN m.member_id='staff:admin' THEN 'Administrador' WHEN m.member_id LIKE 'staff:%' THEN 'Professor' WHEN p.show_name=1 THEN s.member_name ELSE NULL END AS display_name FROM class_chat_messages m LEFT JOIN checkin_reservation_snapshots s ON s.unit=m.unit AND s.session_id=m.session_id AND s.evo_member_id=m.member_id AND s.removed=0 LEFT JOIN class_chat_name_preferences p ON p.unit=m.unit AND p.member_id=m.member_id WHERE m.unit=? AND m.session_id=? AND m.deleted=0 ORDER BY m.id DESC LIMIT 60").bind(unit,sid).all();
           return json({...base,online_count:Number(presence?.total||0),messages:(messages.results||[]).reverse().map(x=>({id:x.id,slot_number:x.slot_number,content:x.content,created_at:x.created_at,mine:x.member_id===id,display_name:x.display_name}))});
         }
         if(body.action==="leave"){
