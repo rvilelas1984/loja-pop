@@ -472,6 +472,24 @@ export default {
 
 
 
+      // Central de Vendas dos Agregadores: auditoria somente no D1, sem chamadas EVO.
+      if(url.pathname==="/admin/aggregator-sales-match" && request.method==="POST"){
+        const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        let ar;try{ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"})}catch{return json({ok:false,error:"AUTENTICACAO_INDISPONIVEL"},502)}
+        const admin=await ar.json().catch(()=>({}));if(!ar.ok||admin.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const input=await readJson(request),unit=String(input.unit||"bike").toLowerCase();
+        if(!["bike","gym"].includes(unit)||!(admin.units||[]).includes(unit))return json({ok:false,error:"UNIDADE_NAO_PERMITIDA"},403);
+        const rows=Array.isArray(input.rows)?input.rows.slice(0,2500):[];if(!rows.length)return json({ok:false,error:"SEM_REGISTROS"},400);
+        const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim(),digits=v=>String(v||"").replace(/\D/g,"");
+        const master=(await env.DB.prepare("SELECT mm.evo_member_id,mm.personal_json,mm.raw_json,COALESCE(m.first_name,'') first_name,COALESCE(m.last_name,'') last_name FROM evo_member_master mm LEFT JOIN members m ON CAST(m.evo_member_id AS TEXT)=CAST(mm.evo_member_id AS TEXT) WHERE mm.unit=? AND mm.is_current=1").bind(unit).all()).results||[];
+        const people=master.map(x=>{let p={},r={};try{p=JSON.parse(x.personal_json||"{}")}catch{}try{r=JSON.parse(x.raw_json||"{}")}catch{}const name=String(p.name||[p.firstName||x.first_name,p.lastName||x.last_name].filter(Boolean).join(" ")||r.name||r.firstName||"").trim(),cpf=digits(p.document||p.cpf||r.document||r.cpf||"");return {evoMemberId:String(x.evo_member_id),name,cpf,nameKey:norm(name)}}),byCpf=new Map(),byName=new Map();
+        for(const p of people){if(p.cpf.length===11)byCpf.set(p.cpf,p);if(p.nameKey){const a=byName.get(p.nameKey)||[];a.push(p);byName.set(p.nameKey,a)}}
+        const result=rows.map((r,i)=>{const name=String(r.name||"").trim(),cpf=digits(r.cpf),nameKey=norm(name);let p=null,match="none";if(cpf.length===11&&byCpf.has(cpf)){p=byCpf.get(cpf);match="cpf"}else if(nameKey){const a=byName.get(nameKey)||[];if(a.length===1){p=a[0];match="name"}}return {index:i,name,cpf,aggregatorId:String(r.aggregatorId||""),origin:String(r.origin||""),value:Number(r.value||0),checkins:Number(r.checkins||0),status:p?"ready":(nameKey&&(byName.get(nameKey)||[]).length>1?"ambiguous":"not_found"),match,evoMemberId:p?.evoMemberId||null,d1Name:p?.name||null,d1Cpf:p?.cpf||null}});
+        const counts={total:result.length,ready:result.filter(x=>x.status==="ready").length,ambiguous:result.filter(x=>x.status==="ambiguous").length,notFound:result.filter(x=>x.status==="not_found").length};
+        return json({ok:true,unit,source:"D1",evoRequests:0,counts,rows:result});
+      }
+
       // Ativação pontual: pesquisa D1 antes de qualquer chamada EVO.
       if(url.pathname==="/admin/manual-student-activation" && ["GET","POST"].includes(request.method)){
         const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
