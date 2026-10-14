@@ -347,7 +347,7 @@ async function runScheduledAttendanceSync(env) {
         if(day!==date||!Number.isSafeInteger(Number(sid))||Number(sid)<=0||[4,6].includes(Number(item?.status)))continue;
         const instructor=attendanceInstructorName(item);
         const rawTime=String(item?.startTime||item?.time||item?.activityStartTime||"").trim();
-        const match=rawTime.match(/^(\\d{1,2}):(\\d{2})(?::\\d{2})?\\s*(AM|PM)?$/i);
+        const match=rawTime.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
         if(!instructor||!match)continue;
         let hour=Number(match[1]);if(match[3])hour=hour%12+(match[3].toUpperCase()==="PM"?12:0);
         if(hour>23||Number(match[2])>59)continue;
