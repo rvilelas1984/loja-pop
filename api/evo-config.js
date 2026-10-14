@@ -4,6 +4,12 @@ import { parseActiveReport } from "../lib/evo-active-report.js";
 import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 export default async function handler(req,res){
+ if(req.query.route==="aggregator-sales-match"){
+  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const unit=String(req.body?.unit||req.query.unit||"bike").toLowerCase();if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
+  try{const r=await fetch(WORKER+"/admin/aggregator-sales-match",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({...req.body,unit}),cache:"no-store"});res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(await r.text())}catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}
+ }
+
  if(req.query.route==="teacher-view"){
   if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false});
   const q=new URLSearchParams();for(const k of ["unit","month","teacher","action","session_id"])if(typeof req.query[k]==="string")q.set(k,req.query[k]);
