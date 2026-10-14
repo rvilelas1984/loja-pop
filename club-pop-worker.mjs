@@ -908,8 +908,8 @@ export default {
         let memberId=before?.id||null;
         if(memberId){await env.DB.prepare("UPDATE members SET first_name=?,last_name=?,email=?,birth_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(first,last,email,birth,memberId).run();}
         else{const ins=await env.DB.prepare("INSERT INTO members(evo_member_id,cpf_last4,first_name,last_name,email,birth_date,status,updated_at) VALUES(?,?,?,?,?,?,'ACTIVE',CURRENT_TIMESTAMP) RETURNING id").bind(evoId,cpf?cpf.slice(-4):null,first,last,email,birth).first();memberId=ins?.id||null}
-        const now=new Date().toISOString();await env.DB.prepare("UPDATE evo_member_master SET raw_json=?,synced_at=?,is_current=1 WHERE unit=? AND CAST(evo_member_id AS TEXT)=?").bind(JSON.stringify(x),now,unit,String(evoId)).run();
-        return json({ok:true,unit,idMember:evoId,memberId,name:[first,last].filter(Boolean).join(" "),before:{email:before?.email||null,birthDate:before?.birth_date||null},after:{email,birthDate:birth},updatedAt:now});
+        const now=new Date().toISOString(),master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND CAST(evo_member_id AS TEXT)=? LIMIT 1").bind(unit,String(evoId)).first();let personal={};try{personal=JSON.parse(master?.personal_json||"{}")}catch{}personal={...personal,...x,document:cpf||personal.document||null};await env.DB.prepare("UPDATE evo_member_master SET personal_json=?,raw_json=?,synced_at=?,is_current=1 WHERE unit=? AND CAST(evo_member_id AS TEXT)=?").bind(JSON.stringify(personal),JSON.stringify(x),now,unit,String(evoId)).run();
+        return json({ok:true,unit,idMember:evoId,memberId,name:[first,last].filter(Boolean).join(" "),hasCpf:/^\\d{11}$/.test(cpf),before:{email:before?.email||null,birthDate:before?.birth_date||null},after:{email,birthDate:birth,cpfUpdated:/^\\d{11}$/.test(cpf)},updatedAt:now});
       }
       if(url.pathname==="/admin/teachers"){
         if(!["GET","POST"].includes(request.method))return json({ok:false,error:"METHOD"},405);
