@@ -911,15 +911,27 @@ export default {
       if(url.pathname==="/admin/evo-student-sync-one"&&request.method==="POST"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck},cache:"no-store"}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const b=await request.json().catch(()=>({})),unit=String(b.unit||""),x=b.member||{},evoId=Number(x.idMember||b.idMember);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||""),x=b.member||{},evoId=Number(x.idMember||x.id||b.idMember);
         if(!["bike","gym"].includes(unit)||!Number.isSafeInteger(evoId)||evoId<=0)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const email=String(x.email||x.emailAddress||x.mail||"").trim().toLowerCase()||null,birth=String(x.birthDate||x.dateBirth||x.birthdate||x.birthday||"").slice(0,10)||null,full=String(x.name||"").trim(),first=String(x.firstName||full).trim(),last=String(x.lastName||"").trim(),cpf=String(x.document||x.cpf||"").replace(/\D/g,""),now=new Date().toISOString();
         const before=await env.DB.prepare("SELECT id,email,birth_date FROM members WHERE evo_member_id=? LIMIT 1").bind(evoId).first();
-        const email=String(x.email||x.emailAddress||x.mail||"").trim().toLowerCase()||null,birth=String(x.birthDate||x.dateBirth||x.birthdate||x.birthday||"").slice(0,10)||null,first=String(x.firstName||x.name||"").trim(),last=String(x.lastName||"").trim(),cpf=String(x.document||x.cpf||"").replace(/\D/g,"");
         let memberId=before?.id||null;
-        if(memberId){await env.DB.prepare("UPDATE members SET first_name=?,last_name=?,email=?,birth_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(first,last,email,birth,memberId).run();}
-        else{const ins=await env.DB.prepare("INSERT INTO members(evo_member_id,cpf_last4,first_name,last_name,email,birth_date,status,updated_at) VALUES(?,?,?,?,?,?,'ACTIVE',CURRENT_TIMESTAMP) RETURNING id").bind(evoId,cpf?cpf.slice(-4):null,first,last,email,birth).first();memberId=ins?.id||null}
-        const now=new Date().toISOString(),master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND CAST(evo_member_id AS TEXT)=? LIMIT 1").bind(unit,String(evoId)).first();let personal={};try{personal=JSON.parse(master?.personal_json||"{}")}catch{}personal={...personal,...x,document:cpf||personal.document||null};await env.DB.prepare("UPDATE evo_member_master SET personal_json=?,raw_json=?,synced_at=?,is_current=1 WHERE unit=? AND CAST(evo_member_id AS TEXT)=?").bind(JSON.stringify(personal),JSON.stringify(x),now,unit,String(evoId)).run();
-        return json({ok:true,unit,idMember:evoId,memberId,name:[first,last].filter(Boolean).join(" "),hasCpf:/^\\d{11}$/.test(cpf),before:{email:before?.email||null,birthDate:before?.birth_date||null},after:{email,birthDate:birth,cpfUpdated:/^\\d{11}$/.test(cpf)},updatedAt:now});
+        if(memberId){
+          await env.DB.prepare("UPDATE members SET first_name=?,last_name=?,email=?,birth_date=?,cpf_last4=COALESCE(?,cpf_last4),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(first,last,email,birth,cpf?cpf.slice(-4):null,memberId).run();
+        }else if(/^\d{11}$/.test(cpf)){
+          const byCpf=await env.DB.prepare("SELECT id,evo_member_id,email,birth_date FROM members WHERE cpf_last4=? ORDER BY updated_at DESC LIMIT 20").bind(cpf.slice(-4)).all();
+          const exact=(byCpf.results||[]).find(r=>Number(r.evo_member_id)===evoId);
+          if(exact){memberId=exact.id;await env.DB.prepare("UPDATE members SET first_name=?,last_name=?,email=?,birth_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(first,last,email,birth,memberId).run()}
+        }
+        const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND CAST(evo_member_id AS TEXT)=? LIMIT 1").bind(unit,String(evoId)).first();
+        let personal={};try{personal=JSON.parse(master?.personal_json||"{}")}catch{}
+        personal={...personal,...x,idMember:evoId,document:cpf||personal.document||null};
+        if(master){
+          await env.DB.prepare("UPDATE evo_member_master SET personal_json=?,raw_json=?,synced_at=?,is_current=1 WHERE unit=? AND CAST(evo_member_id AS TEXT)=?").bind(JSON.stringify(personal),JSON.stringify(x),now,unit,String(evoId)).run();
+        }else{
+          await env.DB.prepare("INSERT INTO evo_member_master(unit,evo_member_id,is_current,personal_json,raw_json,synced_at) VALUES(?,?,1,?,?,?)").bind(unit,String(evoId),JSON.stringify(personal),JSON.stringify(x),now).run();
+        }
+        return json({ok:true,unit,idMember:evoId,memberId,name:[first,last].filter(Boolean).join(" "),hasCpf:/^\d{11}$/.test(cpf),createdInMaster:!master,before:{email:before?.email||null,birthDate:before?.birth_date||null},after:{email,birthDate:birth,cpfUpdated:/^\d{11}$/.test(cpf)},updatedAt:now});
       }
       if(url.pathname==="/admin/teachers"){
         if(!["GET","POST"].includes(request.method))return json({ok:false,error:"METHOD"},405);
