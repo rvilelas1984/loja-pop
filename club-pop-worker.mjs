@@ -485,7 +485,7 @@ export default {
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS aggregator_member_links(unit TEXT NOT NULL,origin TEXT NOT NULL,aggregator_id TEXT NOT NULL,evo_member_id TEXT NOT NULL,confirmed_by TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,origin,aggregator_id))").run();
         if(String(input.action||"")==="confirm_link"){
           const origin=String(input.origin||""),aggregatorId=String(input.aggregatorId||"").trim(),evoMemberId=String(input.evoMemberId||"").trim();
-          if(!["Wellhub","TotalPass"].includes(origin)||!aggregatorId||!/^\\d+$/.test(evoMemberId))return json({ok:false,error:"VINCULO_INVALIDO"},400);
+          if(!["Wellhub","TotalPass"].includes(origin)||!aggregatorId||!/^\d+$/.test(evoMemberId))return json({ok:false,error:"VINCULO_INVALIDO"},400);
           const exists=await env.DB.prepare("SELECT 1 ok FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,evoMemberId).first();
           if(!exists)return json({ok:false,error:"ALUNO_D1_NAO_ENCONTRADO"},404);
           await env.DB.prepare("INSERT INTO aggregator_member_links(unit,origin,aggregator_id,evo_member_id,confirmed_by,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,origin,aggregator_id) DO UPDATE SET evo_member_id=excluded.evo_member_id,confirmed_by=excluded.confirmed_by,updated_at=CURRENT_TIMESTAMP").bind(unit,origin,aggregatorId,evoMemberId,String(admin.email||admin.name||"admin")).run();
