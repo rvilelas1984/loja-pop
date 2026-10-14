@@ -10,6 +10,8 @@ export default async function handler(req,res){if(String(req.query.route||"")===
   try{const r=await fetch(WORKER+"/admin/evo-csv-import",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify(req.body||{}),cache:"no-store"});res.status(r.status);res.setHeader("Cache-Control","no-store");return res.send(await r.text())}catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
  }
 
+ if(req.query.route==="aggregator-sales-batch"){if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});const unit=String(req.query.unit||req.body?.unit||"bike"),month=String(req.query.month||req.body?.month||"2026-09");try{const r=await fetch(WORKER+"/admin/aggregator-sales-batch?unit="+encodeURIComponent(unit)+"&month="+encodeURIComponent(month),{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="POST"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});res.status(r.status);res.setHeader("Cache-Control","no-store");return res.send(await r.text())}catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}}
+
  if(req.query.route==="aggregator-sales-match"){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=String(req.body?.unit||req.query.unit||"bike").toLowerCase();if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
