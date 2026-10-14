@@ -92,18 +92,116 @@ document.querySelectorAll('section.panel').forEach(panel=>{const h=panel.querySe
 const extra=document.createElement('style');extra.textContent='.cp-collapse{padding:0;overflow:hidden}.cp-collapse>summary{padding:17px 20px;cursor:pointer;font-weight:800;font-size:15px;list-style:none}.cp-collapse>summary:after{content:"⌄";float:right}.cp-collapse[open]>summary:after{content:"⌃"}.cp-collapse>section{padding:15px 20px 20px}.cp-collapse .panel{border:0;box-shadow:none}.two>.cp-collapse{min-width:0}.cp-collapse .rate{max-width:100%}';document.head.appendChild(extra);
 $('unit').value=window.cpAdminScope?.get()==='gym'?'gym':'bike';$('month').value=new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}).slice(0,7);$('syncStart').value=$('month').value+'-01';$('syncEnd').value=new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});window.addEventListener('cp:scopechange',e=>{if(e.detail.scope==='bike'||e.detail.scope==='gym'){$('unit').value=e.detail.scope;loadD1()}});
 
-function openProfessorDemonstrativo(name){
- const unit=$('unit').value,classes=visible().filter(a=>a.teacher===name&&(!$('teacherWeekFilter').value||week(a)===$('teacherWeekFilter').value)).sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
+
+let professorPdfLoader=null;
+function ensureProfessorPdfLibrary(){
+ if(window.jspdf?.jsPDF)return Promise.resolve();
+ if(professorPdfLoader)return professorPdfLoader;
+ professorPdfLoader=new Promise((resolve,reject)=>{
+  const script=document.createElement('script');
+  script.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js';
+  script.onload=()=>window.jspdf?.jsPDF?resolve():reject(new Error('Biblioteca PDF indisponível'));
+  script.onerror=()=>reject(new Error('Não foi possível carregar o gerador de PDF'));
+  document.head.appendChild(script);
+ }).catch(e=>{professorPdfLoader=null;throw e});
+ return professorPdfLoader;
+}
+async function openProfessorDemonstrativo(name){
+ const unit=$('unit').value,selectedWeek=$('teacherWeekFilter').value;
+ const classes=visible().filter(a=>a.teacher===name&&(!selectedWeek||week(a)===selectedWeek)).sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
  if(!classes.length){alert('Nenhuma aula encontrada neste filtro.');return}
- const sum=classes.reduce((n,a)=>n+payment(a),0),att=classes.reduce((n,a)=>n+Number(a.att||0),0),cap=classes.reduce((n,a)=>n+Number(a.capacity||0),0);
- const group=new Map(),hours=[...new Set(classes.map(a=>a.time))].sort(),weeks=[...new Set(classes.map(a=>week(a)))];
- classes.forEach(a=>{const key=week(a)+'|'+a.time;const item=group.get(key)||{total:0,count:0};item.total+=Number(a.att||0);item.count++;group.set(key,item)});
- const colors=['#9c7be0','#6d40c0','#3a2764','#b7a0dd','#755b99','#c7a3ef'];
- const bars=weeks.map((w,i)=>'<div class="weekbar"><div class="weekname">'+esc(w)+'</div><div class="barrow">'+hours.map((h,j)=>{const v=group.get(w+'|'+h),avg=v?v.total/v.count:0;return '<div class="baritem"><div class="barvalue">'+(v?avg.toFixed(1).replace('.',','):'—')+'</div><div class="bar" style="height:'+Math.max(2,avg/Math.max(1,...classes.map(a=>Number(a.capacity||1)))*105)+'px;background:'+colors[j%colors.length]+'"></div></div>'}).join('')+'</div></div>').join('');
- const lines=classes.map(a=>'<tr><td>'+esc(a.date.split('-').reverse().join('/'))+'</td><td>'+day(a)+'</td><td>'+esc(a.time)+'</td><td>'+esc(a.activity||'—')+'</td><td>'+Number(a.att||0)+'</td><td>'+pct(Number(a.att||0)/Math.max(1,Number(a.capacity||1)))+'</td><td>'+brl(payment(a))+'</td></tr>').join('');
- const unitName=unit==='bike'?'BIKE POP':'GYM POP',range=$('teacherWeekFilter').value||$('month').value;
- const html='<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Demonstrativo - '+esc(name)+'</title><style>@page{size:A4;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#242239;margin:0;font-size:11px}.header{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #7647c8;padding-bottom:14px}.brand{font-size:24px;font-weight:900}.brand span{color:#7647c8}.sub{font-size:10px;color:#687084;text-align:right}.meta{margin:16px 0;line-height:1.9}h2{font-size:15px;margin:20px 0 9px}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.card{background:#f3effa;padding:12px 9px;border-radius:7px;min-height:66px}.card small{display:block;color:#64708b;font-size:9px}.card b{display:block;font-size:20px;margin-top:9px}.money{background:#f3effa;border-left:4px solid #7647c8;padding:13px;font-size:15px;font-weight:bold}.money strong{color:#7647c8;float:right}.legend{display:flex;gap:13px;flex-wrap:wrap;font-size:10px}.legend i{display:inline-block;width:10px;height:10px;margin-right:4px}.chart{display:flex;align-items:end;gap:10px;min-height:156px;border-bottom:1px solid #cbd0db;padding:20px 0 0}.weekbar{flex:1;text-align:center;min-width:0}.weekname{font-size:9px;color:#687084;margin-top:8px;white-space:nowrap}.barrow{height:120px;display:flex;align-items:end;justify-content:center;gap:3px}.baritem{flex:1;max-width:26px;display:flex;flex-direction:column;align-items:center;justify-content:end;height:100%}.bar{width:100%;border-radius:3px 3px 0 0}.barvalue{font-size:8px;margin-bottom:3px}table{border-collapse:collapse;width:100%;font-size:9px}th{background:#242239;color:white;text-align:left;padding:9px 6px}td{padding:8px 6px;border-bottom:1px solid #e5e7ed}tr:nth-child(even) td{background:#f7f6fa}tfoot td{background:#f3effa!important;font-weight:bold}.detail{break-before:page}.hint{color:#64708b;font-size:9px;line-height:1.5;margin-top:13px}.actions{margin:14px 0;display:flex;gap:10px}.actions button{background:#7647c8;color:white;border:0;padding:10px 16px;border-radius:7px;cursor:pointer}@media print{.actions{display:none}.detail{page-break-before:always}thead{display:table-header-group}tr{break-inside:avoid}}@media screen{body{max-width:820px;margin:20px auto;padding:20px}.detail{margin-top:55px}}</style></head><body><div class="actions"><button onclick="window.print()">Salvar / imprimir PDF</button></div><div class="header"><div class="brand">BIKE <span>POP</span></div><div class="sub">DEMONSTRATIVO DE AULAS E DESEMPENHO<br>'+unitName+'</div></div><div class="meta"><b>Professor:</b> '+esc(name)+'<br><b>Unidade:</b> '+unitName+' &nbsp; | &nbsp; <b>Período:</b> '+esc(range)+'<br><b>Emissão:</b> '+new Date().toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'})+'</div><h2>Resumo do período</h2><div class="cards"><div class="card"><small>AULAS MINISTRADAS</small><b>'+classes.length+'</b></div><div class="card"><small>PARTICIPAÇÕES</small><b>'+att+'</b></div><div class="card"><small>MÉDIA POR AULA</small><b>'+(att/classes.length).toFixed(1).replace('.',',')+'</b></div><div class="card"><small>OCUPAÇÃO MÉDIA</small><b>'+pct(att/Math.max(1,cap))+'</b></div></div><h2>Demonstrativo financeiro</h2><div class="money">TOTAL ESTIMADO A RECEBER <strong>'+brl(sum)+'</strong></div><h2>Evolução semanal por horário</h2><div class="hint">Média de participantes por aula, agrupada por semana e horário.</div><div class="chart">'+bars+'</div><div class="legend" style="margin-top:15px">'+hours.map((h,j)=>'<span><i style="background:'+colors[j%colors.length]+'"></i>'+esc(h)+'</span>').join('')+'</div><div class="detail"><h2>Detalhamento das aulas do período</h2><div class="hint" style="margin-bottom:12px">Todas as aulas consideradas no demonstrativo financeiro e no gráfico.</div><table><thead><tr><th>Data</th><th>Dia</th><th>Horário</th><th>Atividade</th><th>Alunos</th><th>Ocupação</th><th>Valor</th></tr></thead><tbody>'+lines+'</tbody><tfoot><tr><td colspan="4">TOTAL</td><td>'+att+'</td><td></td><td>'+brl(sum)+'</td></tr></tfoot></table><p class="hint">Os valores seguem as faixas configuradas na página Professores para cada atividade e unidade. Documento demonstrativo; não substitui holerite ou comprovante de pagamento. Os dados correspondem ao filtro selecionado.</p></div></body></html>';
- const win=window.open('','_blank');if(!win){alert('Permita pop-ups para gerar o demonstrativo em PDF.');return}win.document.open();win.document.write(html);win.document.close();
+ const trigger=[...document.querySelectorAll('[data-prof-pdf]')].find(b=>b.dataset.profPdf===name);
+ if(trigger){trigger.disabled=true;trigger.textContent='Gerando PDF...'}
+ try{
+  await ensureProfessorPdfLibrary();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
+  const pw=210,ph=297,margin=17,right=193,usable=176;
+  const rgb=(hex)=>[parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16),parseInt(hex.slice(5,7),16)];
+  const color=(hex)=>doc.setTextColor(...rgb(hex));
+  const fill=(hex)=>doc.setFillColor(...rgb(hex));
+  const text=(value,x,y,size=9,hex='#242239',weight='normal',opts={})=>{doc.setFont('helvetica',weight);doc.setFontSize(size);color(hex);doc.text(String(value),x,y,opts)};
+  const rect=(x,y,w,h,hex)=>{fill(hex);doc.rect(x,y,w,h,'F')};
+  const line=(x,y,w,hex='#d9d9e3')=>{doc.setDrawColor(...rgb(hex));doc.line(x,y,x+w,y)};
+  const fmt=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1});
+  const att=classes.reduce((n,a)=>n+Number(a.att||0),0);
+  const capacity=classes.reduce((n,a)=>n+Math.max(1,Number(a.capacity||1)),0);
+  const sum=classes.reduce((n,a)=>n+payment(a),0);
+  const first=classes[0].date.split('-').reverse().join('/');
+  const last=classes[classes.length-1].date.split('-').reverse().join('/');
+  const unitName=unit==='bike'?'Bike Pop':'Gym Pop';
+  const title=(heading,y)=>{text(heading,margin,y,12,'#242239','bold');return y+9};
+  const header=(subtitle)=>{
+   text('BIKE',margin,23,17,'#242239','bold');text('POP',36,23,17,'#7647c8','bold');
+   text('DEMONSTRATIVO DE AULAS E DESEMPENHO',right,18,7,'#64708b','normal',{align:'right'});
+   text(subtitle,right,24,8,'#7647c8','bold',{align:'right'});
+   rect(margin,29,usable,1.1,'#7647c8');
+  };
+  const footer=()=>{line(margin,283,usable);text('CLUB POP  |  Demonstrativo de aulas e desempenho',margin,288,7,'#64708b');text('Página '+doc.getNumberOfPages(),right,288,7,'#64708b','normal',{align:'right'})};
+  header(unitName.toUpperCase());
+  text('Professor: '+name,margin,41,10,'#242239','bold');
+  text('Unidade: '+unitName+'  |  Período: '+first+' a '+last,margin,48,8,'#64708b');
+  text('Emissão: '+new Date().toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'}),margin,54,8,'#64708b');
+  let y=title('Resumo do período',67);
+  const metrics=[['AULAS MINISTRADAS',classes.length],['PARTICIPAÇÕES',att],['MÉDIA POR AULA',fmt(att/classes.length)],['OCUPAÇÃO MÉDIA',fmt(att/Math.max(1,capacity)*100)+'%']];
+  metrics.forEach((m,i)=>{const x=margin+i*44;rect(x,y,42,24,'#f3effa');text(m[0],x+3,y+6,6,'#64708b');text(m[1],x+3,y+18,15,'#242239','bold')});
+  y+=36;y=title('Demonstrativo financeiro',y);
+  rect(margin,y,usable,18,'#f3effa');rect(margin,y,1.3,18,'#7647c8');
+  text('TOTAL ESTIMADO A RECEBER',margin+5,y+11,9,'#242239','bold');
+  text(brl(sum),right-4,y+11,12,'#7647c8','bold',{align:'right'});
+  y+=31;y=title('Evolução semanal por horário',y);
+  text('Média de alunos por aula. Cada horário é comparado separadamente entre as semanas.',margin,y,7,'#64708b');y+=8;
+  const groups=new Map();
+  classes.forEach(a=>{const w=week(a),h=a.time,k=w+'|'+h;const v=groups.get(k)||{sum:0,count:0};v.sum+=Number(a.att||0);v.count++;groups.set(k,v)});
+  const hours=[...new Set(classes.map(a=>a.time))].sort();
+  const weeks=[...new Set(classes.map(a=>week(a)))].sort((a,b)=>{const ai=classes.find(c=>week(c)===a)?.date||'',bi=classes.find(c=>week(c)===b)?.date||'';return ai.localeCompare(bi)});
+  const pageBottom=270;
+  function chartPage(){footer();doc.addPage();header(unitName.toUpperCase());y=42;text('Evolução semanal por horário (continuação)',margin,y,11,'#242239','bold');y+=12}
+  hours.forEach(h=>{
+   const entries=weeks.map(w=>({w,v:groups.get(w+'|'+h)})).filter(e=>e.v);
+   const needed=15+entries.length*10+8;
+   if(y+needed>pageBottom)chartPage();
+   text('Horário '+h,margin,y,10,'#7647c8','bold');y+=8;
+   const max=Math.max(1,...entries.map(e=>e.v.sum/e.v.count));
+   entries.forEach((e,i)=>{
+    const avg=e.v.sum/e.v.count;
+    const label=e.w;
+    text(label,margin,y+4,7,'#64708b');
+    rect(margin+48,y,106,5,'#f3effa');
+    rect(margin+48,y,106*avg/Math.max(34,max),5,'#7647c8');
+    text(fmt(avg),right,y+4,8,'#242239','bold',{align:'right'});
+    y+=10;
+   });
+   y+=7;
+  });
+  footer();
+  doc.addPage();header(unitName.toUpperCase());
+  y=43;y=title('Detalhamento das aulas do período',y);
+  text('Todas as aulas consideradas no demonstrativo financeiro e nos indicadores.',margin,y,7,'#64708b');y+=10;
+  const cols=[margin,44,61,81,122,140,164],heads=['Data','Dia','Hora','Atividade','Alunos','Ocup.','Valor'];
+  const drawTableHead=()=>{
+   rect(margin,y,usable,10,'#242239');
+   heads.forEach((h,i)=>text(h,cols[i]+2,y+6.5,7,'#ffffff','bold'));
+   y+=10;
+  };
+  drawTableHead();
+  classes.forEach((a,i)=>{
+   if(y+9>269){footer();doc.addPage();header(unitName.toUpperCase());y=43;text('Detalhamento das aulas (continuação)',margin,y,11,'#242239','bold');y+=9;drawTableHead()}
+   if(i%2===1)rect(margin,y,usable,9,'#f7f6fa');
+   const activity=String(a.activity||'—');const safeActivity=activity.length>19?activity.slice(0,18)+'…':activity;
+   const vals=[a.date.split('-').reverse().join('/'),day(a),a.time,safeActivity,Number(a.att||0),fmt(Number(a.att||0)/Math.max(1,Number(a.capacity||1))*100)+'%',brl(payment(a))];
+   vals.forEach((v,j)=>text(v,cols[j]+2,y+5.8,j===3?6.3:7,'#242239'));
+   y+=9;
+  });
+  if(y+24>269){footer();doc.addPage();header(unitName.toUpperCase());y=43}
+  rect(margin,y,usable,11,'#f3effa');text('TOTAL',margin+3,y+7,8,'#242239','bold');text(att,cols[4]+2,y+7,8,'#242239','bold');text(brl(sum),right-2,y+7,8,'#7647c8','bold',{align:'right'});y+=17;
+  const note=doc.splitTextToSize('Valores calculados com as faixas configuradas na página Professores. Documento demonstrativo, não substitui holerite ou comprovante de pagamento.',usable);
+  text(note,margin,y,7,'#64708b');
+  footer();
+  const filename='demonstrativo_'+name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'_').toLowerCase()+'_'+$('month').value+'.pdf';
+  doc.save(filename);
+ }catch(error){console.error('Erro ao gerar PDF do professor',error);alert('Não foi possível gerar o PDF. Verifique sua conexão e tente novamente.')}
+ finally{if(trigger){trigger.disabled=false;trigger.textContent='📄 Demonstrativo de aulas do professor · PDF'}}
 }
 document.addEventListener('click',e=>{const b=e.target.closest('[data-prof-pdf]');if(b){e.preventDefault();openProfessorDemonstrativo(b.dataset.profPdf)}});
 
