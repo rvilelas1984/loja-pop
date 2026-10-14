@@ -3,7 +3,7 @@ import { attendanceWeekStarts } from "../lib/evo-attendance-weeks.js";
 import { parseActiveReport } from "../lib/evo-active-report.js";
 import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
-export default async function handler(req,res){
+export default async function handler(req,res){if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bike");if(!["bike","gym","club"].includes(unit))return send(res,400,{ok:false,error:"UNIDADE_INVALIDA"});try{const r=await fetch(WORKER+"/admin/tasks?unit="+encodeURIComponent(unit),{method:req.method,headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),"content-type":"application/json"},...(req.method==="POST"?{body:JSON.stringify(typeof req.body==="string"?JSON.parse(req.body||"{}"):req.body||{})}:{}),cache:"no-store"});return send(res,r.status,await r.json())}catch{return send(res,502,{ok:false,error:"FALHA_D1"})}}
  if(req.query.route==="csv-import"){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=String(req.body?.unit||"");if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
