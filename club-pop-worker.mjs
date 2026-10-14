@@ -832,6 +832,40 @@ export default {
         return json({ok:true,source:"d1",evoRequestsMade:0,memberId:s.id,links:{bike:s.evo_member_id||null,gymMemberColumn:s.gym_client_id||null,gymResolved:s.gym_resolved_id||null},units:{bike:await inspect("bike",s.evo_member_id),gym:await inspect("gym",s.gym_resolved_id)}});
       }
 
+
+      // Importação CSV EVO: somente novos IDs, sem consultas EVO e sem alterar contratos.
+      if (url.pathname === "/admin/evo-csv-import" && request.method === "POST") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({}));
+        const unit=String(b.unit||"");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const members=Array.isArray(b.members)?b.members:[];
+        if(!members.length||members.length>50)return json({ok:false,error:"LOTE_INVALIDO_MAX_50"},400);
+        let inserted=0,existing=0,invalid=0;
+        const safe=(x,n=250)=>String(x??"").trim().slice(0,n);
+        for(const m of members){
+          const id=safe(m.IDCLIENTE,30);
+          if(!/^\d+$/.test(id)){invalid++;continue}
+          const name=safe(m.NOME,240),parts=name.split(/\s+/);
+          const cpf=safe(m["CPF (CIN)"],20).replace(/\D/g,"");
+          const birth=safe(m["DATA DE NASCIMENTO"],40);
+          const dateBR=x=>{const z=String(x||"").match(/^(\d{2})\/(\d{2})\/(\d{4})/);return z?z[3]+"-"+z[2]+"-"+z[1]:null};
+          const personal={idMember:Number(id),firstName:parts.shift()||"",lastName:parts.join(" "),document:cpf||null,birthDate:dateBR(birth),registerDate:dateBR(m["DATA DO CADASTRO"])};
+          const contacts={email:safe(m["E-MAIL"],250),phone:safe(m.TELEFONE,80)};
+          const integrations={gympassId:safe(m["WELLHUB ID"],120)||null,idBranch:unit==="bike"?8347:null,branchName:unit==="bike"?"STUDIO BIKE POP":"STUDIO GYM POP"};
+          const meta={source:"CLIENTES.csv",sourceType:"evo_inactive_csv",statusCliente:safe(m.STATUSCLIENTE,60),importDate:new Date().toISOString()};
+          // Nunca sobrescrever alunos atuais nem reclassificar cadastros existentes.
+          const result=await env.DB.prepare("INSERT OR IGNORE INTO evo_member_master(unit,evo_member_id,is_current,personal_json,contacts_json,address_json,access_json,financial_json,integrations_json,memberships_json,metadata_json,raw_json,synced_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)")
+            .bind(unit,id,0,JSON.stringify(personal),JSON.stringify(contacts),"{}","{}","{}",JSON.stringify(integrations),"[]",JSON.stringify(meta),JSON.stringify(m)).run();
+          if(Number(result.meta?.changes||0)>0)inserted++;else existing++;
+        }
+        return json({ok:true,unit,received:members.length,inserted,existing,invalid,evoRequests:0});
+      }
+
       // Recebe um lote coletivo já obtido da EVO pelo transporte central e materializa snapshots no D1.
       if (url.pathname === "/admin/evo-sync-ingest" && request.method === "POST") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
