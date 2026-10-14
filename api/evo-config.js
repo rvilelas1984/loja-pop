@@ -135,7 +135,7 @@ export default async function handler(req,res){if(String(req.query.route||"")===
   try{
    const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
    const evo=getEvoTransport(unit),rr=await evo.fetch("https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(id));if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_ALUNO_HTTP_"+rr.status,requests:1});
-   const raw=await rr.json(),x=Array.isArray(raw)?raw[0]:raw;if(!x)return res.status(404).json({ok:false,error:"ALUNO_NAO_ENCONTRADO",requests:1});
+   const raw=await rr.json(),x=Array.isArray(raw)?raw[0]:(raw?.data||raw?.member||raw);if(!x||typeof x!=="object")return res.status(404).json({ok:false,error:"ALUNO_NAO_ENCONTRADO",requests:1});
    const payload={unit,idMember:Number(x.idMember||id),member:x};
    const wr=await fetch(WORKER+"/admin/evo-student-sync-one",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify(payload),cache:"no-store"}),wd=await wr.json().catch(()=>({}));if(!wr.ok||!wd.ok)return res.status(wr.status||502).json({ok:false,error:wd.error||"FALHA_ATUALIZAR_D1",requests:1});
    return res.json({...wd,ok:true,requests:1});
