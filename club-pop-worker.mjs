@@ -338,6 +338,24 @@ async function runScheduledAttendanceSync(env) {
       const sr=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+encodeURIComponent(date)+"&showFullWeek=false&onlyAvailables=false&take=100","schedule");if(!sr.ok)throw new Error("EVO_GRADE_HTTP_"+sr.status);
       const raw=await sr.json(),list=Array.isArray(raw)?raw:(Array.isArray(raw?.data)?raw.data:[]),sessions=[],diagnostic={returned:list.length,dateMatch:0,status6:0,validId:0,sample:[]};
       for(const s of list){const d=String(s?.activityDate||s?.date||"").slice(0,10),id=s?.idAtividadeSessao??s?.idActivitySession??s?.idActivitieSession,dm=d===date,st6=[4,6].includes(Number(s?.status)),vi=Number.isSafeInteger(Number(id))&&Number(id)>0;if(dm)diagnostic.dateMatch++;if(st6)diagnostic.status6++;if(vi)diagnostic.validId++;if(diagnostic.sample.length<5)diagnostic.sample.push({date:d,status:s?.status??null,id:id??null});if(dm&&st6&&vi)sessions.push({id:String(id),date:d})}
+      // Reaproveita a mesma resposta da grade EVO para a Visao dos Professores.
+      // Nunca transforma uma aula futura em presenca nem substitui aulas ja finalizadas.
+      const futureStatements=[];
+      for(const item of list){
+        const day=String(item?.activityDate||item?.date||"").slice(0,10);
+        const sid=item?.idAtividadeSessao??item?.idActivitySession??item?.idActivitieSession;
+        if(day!==date||!Number.isSafeInteger(Number(sid))||Number(sid)<=0||[4,6].includes(Number(item?.status)))continue;
+        const instructor=attendanceInstructorName(item);
+        const rawTime=String(item?.startTime||item?.time||item?.activityStartTime||"").trim();
+        const match=rawTime.match(/^(\\d{1,2}):(\\d{2})(?::\\d{2})?\\s*(AM|PM)?$/i);
+        if(!instructor||!match)continue;
+        let hour=Number(match[1]);if(match[3])hour=hour%12+(match[3].toUpperCase()==="PM"?12:0);
+        if(hour>23||Number(match[2])>59)continue;
+        const startTime=String(hour).padStart(2,"0")+":"+match[2];
+        const activity=String(item?.name||item?.activityName||item?.activity?.name||"Aula").slice(0,200);
+        futureStatements.push(env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,instructor_name,synced_at) VALUES(?,?,?,?,?,'scheduled',0,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,instructor_name=excluded.instructor_name,synced_at=CURRENT_TIMESTAMP WHERE evo_attendance_sessions.status='scheduled'").bind(unit,String(sid),day,startTime,activity,instructor));
+      }
+      for(let i=0;i<futureStatements.length;i+=40)await env.DB.batch(futureStatements.slice(i,i+40));
       const unique=[...new Map(sessions.map(x=>[x.id,x])).values()];classesFound=unique.length;
       let done=new Set();if(unique.length){const ids=unique.map(x=>x.id),q=await env.DB.prepare("SELECT id_activity_session FROM evo_attendance_sessions WHERE unit=? AND status='done' AND id_activity_session IN ("+ids.map(()=>"?").join(",")+")").bind(unit,...ids).all();done=new Set((q.results||[]).map(x=>String(x.id_activity_session)))}
       const pending=unique.filter(x=>!done.has(x.id));newClasses=pending.length;
