@@ -47,6 +47,27 @@ async function handler(req,res){
    return res.status(200).json({ok:true,unit,kind,idMember:id,type,fitcoin:amount,before,after:Number.isFinite(after)?after:null,diagnostic:{method:"PUT",endpoint:"/api/v1/members/fitcoins",status:wr.status,verified:check.ok}});
 
  }
+ if(kind==="product_sale_lab"){
+   // Isolated EVO diagnostic. No Mercado Pago, Fitcoins debit or Club Pop order.
+   const b=req.method==="POST"?req.body||{}:req.query;
+   const idProduct=Number(b.idProduct),idMember=Number(b.idMember);
+   const original=Number(b.originalCents),discount=Number(b.discountCents);
+   const variant=String(b.variant||"discount");
+   if(![idProduct,idMember,original,discount].every(Number.isSafeInteger)||idProduct<1||idMember<1||original<1||discount<0||discount>=original||!["discount","discountValue","productDiscount","net"].includes(variant))
+    return res.status(400).json({ok:false,error:"PARAMETROS_INVALIDOS"});
+   const net=original-discount;
+   const sessionId="clubpop-lab-"+crypto.randomUUID();
+   const payload={idProduct,productValue:variant==="net"?net/100:original/100,productAmount:1,memberData:{idMember},payment:13,totalInstallments:1,sessionId};
+   if(variant==="discount")payload.discount=discount/100;
+   if(variant==="discountValue")payload.discountValue=discount/100;
+   if(variant==="productDiscount")payload.productDiscount=discount/100;
+   if(req.method==="GET")return res.json({ok:true,mode:"preview",variant,originalCents:original,discountCents:discount,netCents:net,payload,warning:"Campos de desconto experimentais; nenhuma venda foi criada."});
+   if(String(b.confirm)!=="CRIAR_VENDA_REAL")return res.status(400).json({ok:false,error:"CONFIRMACAO_OBRIGATORIA",payload});
+   const url="https://evo-integracao-api.w12app.com.br/api/v2/sales";
+   const wr=await evoFetch(url,{method:"POST",headers:{...headers,"Content-Type":"application/json"},body:JSON.stringify(payload),cache:"no-store"});
+   const result=await parse(wr);
+   return res.status(wr.ok?200:(wr.status||502)).json({ok:wr.ok,mode:"real",unit,variant,sessionId,originalCents:original,discountCents:discount,netCents:net,payload,evoStatus:wr.status,evoResponse:result,warning:"Venda real: confira no painel EVO antes de repetir. Não há reenvio automático."});
+ }
  if(kind==="attendance")return res.status(400).json({ok:false,error:"Presenças são consultadas por aluno/período e armazenadas no histórico D1."});
  if(kind==="contract_categories"){
    const q=await evo("https://evo-integracao-api.w12app.com.br/api/v1/membership/category",headers);
