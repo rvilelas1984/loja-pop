@@ -1487,7 +1487,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         for(const item of all){
           if(!item||typeof item!=="object")return json({ok:false,error:"PRODUTO_INVALIDO",requests},422);
           const id=String(item.idProduct??"").trim(),name=String(item.nameProduct??"").trim();
-          if(!/^\\d+$/.test(id)||!name||name.length>250||seen.has(id))return json({ok:false,error:"PRODUTO_INVALIDO",requests},422);
+          if(!/^[0-9]+$/.test(id)||!name||name.length>250||seen.has(id))return json({ok:false,error:"PRODUTO_INVALIDO",requests},422);
           seen.add(id);
           const value=item.value==null?null:Number(item.value),stock=item.currentAmount==null?null:Number(item.currentAmount);
           if((value!==null&&(!Number.isFinite(value)||value<0))||(stock!==null&&!Number.isFinite(stock)))return json({ok:false,error:"PRECO_OU_ESTOQUE_INVALIDO",requests},422);
