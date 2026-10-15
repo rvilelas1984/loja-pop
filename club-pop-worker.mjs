@@ -2292,6 +2292,25 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         }catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
       }
 
+      // Conciliação administrativa de vendas EVO: leitura sem efeitos financeiros.
+      // Não dispara POST remoto enquanto o contrato de desconto/recebimento EVO não estiver validado.
+      if(url.pathname==="/admin/evo-product-sales/pending"&&request.method==="GET"){
+        const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        let auth;try{auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie,Accept:"application/json"},cache:"no-store"})}catch{return json({ok:false,error:"AUTENTICACAO_INDISPONIVEL"},502)}
+        const admin=await auth.json().catch(()=>({}));
+        if(!auth.ok||admin.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=String(url.searchParams.get("unit")||"bike");
+        if(!["bike","gym"].includes(unit)||!(admin.units||[]).includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        const [orders,content]=await Promise.all([
+          env.DB.prepare("SELECT id,unit,item_id,item_name,external_member_id,original_cents,discount_cents,amount_cents,currency_quantity,status,external_state,created_at FROM club_pix_orders WHERE unit=? AND item_type='product' AND status='approved' AND external_state='confirmed' ORDER BY created_at DESC LIMIT 100").bind(unit).all(),
+          env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop'").first()
+        ]);
+        const products=JSON.parse(content?.content_json||"{}").products||[];
+        const result=(orders.results||[]).map(o=>{const p=products.find(x=>String(x.id)===String(o.item_id)&&String(x.unit||"bike")===unit);if(!p||!p.evoProductId||!(p.source==="evo"||p.origin==="evo"))return null;return {orderId:o.id,unit:o.unit,productId:String(p.evoProductId),productName:o.item_name,originalCents:o.original_cents,fitcoinsDiscountCents:o.discount_cents,pixCents:o.amount_cents,fitcoinsUsed:o.currency_quantity,memberEvoId:o.external_member_id,status:"PENDENTE_CONCILIACAO_EVO",createdAt:o.created_at}}).filter(Boolean);
+        return json({ok:true,unit,remoteSalesCreated:false,orders:result,note:"Não reenviar pagamento nem debitar moedas. Conferir manualmente se cada pedido já consta na EVO antes de transmitir."});
+      }
+
       // Simulacao segura da conciliacao EVO: sem Pix, debito, estoque ou venda remota.
       if(url.pathname==="/checkout/evo-product/test"&&request.method==="POST"){
         const member=await authenticatedMember(request,env);
