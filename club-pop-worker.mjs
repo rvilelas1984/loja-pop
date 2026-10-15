@@ -355,12 +355,25 @@ async function runScheduledAttendanceSync(env) {
       for(const s of list){const d=String(s?.activityDate||s?.date||"").slice(0,10),id=s?.idAtividadeSessao??s?.idActivitySession??s?.idActivitieSession,dm=d===date,st6=[4,6].includes(Number(s?.status)),vi=Number.isSafeInteger(Number(id))&&Number(id)>0;if(dm)diagnostic.dateMatch++;if(st6)diagnostic.status6++;if(vi)diagnostic.validId++;if(diagnostic.sample.length<5)diagnostic.sample.push({date:d,status:s?.status??null,id:id??null});if(dm&&st6&&vi)sessions.push({id:String(id),date:d})}
       // Reaproveita a mesma resposta da grade EVO para a Visao dos Professores.
       // Nunca transforma uma aula futura em presenca nem substitui aulas ja finalizadas.
-      const futureStatements=[];
+      const futureStatements=[];let futureDetailLookups=0;
       for(const item of list){
         const day=String(item?.activityDate||item?.date||"").slice(0,10);
         const sid=item?.idAtividadeSessao??item?.idActivitySession??item?.idActivitieSession;
         if(day!==date||!Number.isSafeInteger(Number(sid))||Number(sid)<=0||[4,6].includes(Number(item?.status)))continue;
-        const instructor=attendanceInstructorName(item);
+        let instructor=attendanceInstructorName(item);
+        // Algumas grades EVO omitem o professor. Só consulta o detalhe quando
+        // existe reserva no D1 para a mesma aula; nunca deduz pelo horário.
+        if(!instructor && String(sid) && futureDetailLookups<3){
+          const known=await env.DB.prepare("SELECT 1 AS found FROM checkin_reservation_snapshots WHERE unit=? AND session_id=? LIMIT 1").bind(unit,String(sid)).first();
+          if(known){
+            futureDetailLookups++;
+            const detailResponse=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(String(sid)),"future_instructor_detail");
+            if(detailResponse.ok){
+              const payload=await detailResponse.json(),detail=Array.isArray(payload)?payload[0]:payload;
+              if(String(detail?.idActivitySession??detail?.idActivitieSession??detail?.idAtividadeSessao??"")===String(sid))instructor=attendanceInstructorName(detail);
+            }
+          }
+        }
         const rawTime=String(item?.startTime||item?.time||item?.activityStartTime||"").trim();
         const match=rawTime.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
         if(!instructor||!match)continue;
