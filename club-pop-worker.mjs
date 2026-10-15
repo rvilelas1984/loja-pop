@@ -2557,7 +2557,15 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const stm=[env.DB.prepare("DELETE FROM checkin_reservation_snapshots WHERE unit=? AND session_id=?").bind(unit,sid)];
         for(const x of valid)stm.push(env.DB.prepare("INSERT INTO checkin_reservation_snapshots(unit,session_id,activity_date,start_time,activity_name,slot_number,evo_member_id,member_name,removed,status,checked_in) VALUES(?,?,?,?,?,?,?,?,?,?,?)").bind(unit,sid,date,time,String(session.name||"").slice(0,160),x.slot,x.id,x.name,x.removed,x.status,x.checked));
         await env.DB.batch(stm);
-        return json({ok:true,source:"d1",saved:valid.length,evoRequestsMade:0});
+        // O Check-in já consultou a EVO: reaproveitar o professor confirmado,
+        // sem nova requisição e sem alterar aulas concluídas.
+        const instructor=String(session?.instructor||"").trim().slice(0,160);
+        let teacherAgendaUpdated=false;
+        if(instructor){
+          const result=await env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,instructor_name,synced_at) VALUES(?,?,?,?,?,'scheduled',0,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,instructor_name=excluded.instructor_name,synced_at=CURRENT_TIMESTAMP WHERE evo_attendance_sessions.status='scheduled'").bind(unit,sid,date,time,String(session.name||"").slice(0,160),instructor).run();
+          teacherAgendaUpdated=!!result.meta?.changes;
+        }
+        return json({ok:true,source:"d1",saved:valid.length,evoRequestsMade:0,teacherAgendaUpdated,teacherInstructorFound:!!instructor});
       }
 
       if(url.pathname==="/checkin-birthday-flags"&&request.method==="POST"){
