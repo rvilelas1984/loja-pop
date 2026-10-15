@@ -850,7 +850,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if (!target) return json({ok:false,error:"OPERACAO_EVO_NAO_PERMITIDA"},400);
         const requestedUnit=url.pathname==="/internal/evo-bike"?"bike":String(operation.unit||"bike").toLowerCase();
         const cfg=await getEvoConfig(env,requestedUnit);
-        const isVoucherCreate=target.pathname==="/api/v2/voucher"&&operation.method==="POST";
+        if(target.pathname==="/api/v2/sales"&&operation.method==="POST"){const p=operation.payload;const keys=["idProduct","productAmount","memberData","payment","totalInstallments","sessionId","productValue","discount","discountValue","productDiscount"];if(!p||typeof p!=="object"||Array.isArray(p)||Object.keys(p).some(k=>!keys.includes(k))||!/^clubpop-lab-[a-f0-9-]{36}$/.test(String(p.sessionId||""))||!Number.isSafeInteger(p.idProduct)||p.idProduct<=0||p.productAmount!==1||!Number.isSafeInteger(p.memberData?.idMember)||p.memberData.idMember<=0||p.payment!==13||p.totalInstallments!==1||!["bike","gym"].includes(requestedUnit)||Object.entries(p).some(([k,v])=>["productValue","discount","discountValue","productDiscount"].includes(k)&&(!Number.isFinite(v)||v<0||v>1000)))return json({ok:false,error:"LAB_EVO_SALE_INVALID"},400);}\n        const isVoucherCreate=target.pathname==="/api/v2/voucher"&&operation.method==="POST";
         if(isVoucherCreate){
           const v=operation.payload;
           const service=v?.flContrato===false, ids=service?v?.idsServicos:v?.idsContratos;
@@ -3533,7 +3533,7 @@ function allowedEvoTarget(value, method) {
   let url; try { url=new URL(value); } catch { return null; }
   if (url.protocol!=="https:" || url.port || url.username || url.password || url.hash || !["evo-integracao.w12app.com.br","evo-integracao-api.w12app.com.br"].includes(url.hostname)) return null;
   const path=url.pathname;
-  if(method==="POST")return path==="/api/v2/voucher"&&!url.search?url:null;
+  if(method==="POST")return (path==="/api/v2/voucher"||path==="/api/v2/sales")&&!url.search?url:null;
   if (method==="PUT") return path==="/api/v1/members/fitcoins" ? url : null;
   if (method!=="GET") return null;
   if (path==="/api/v2/management/activeclients" || path==="/api/v2/members/active-members") return url;
