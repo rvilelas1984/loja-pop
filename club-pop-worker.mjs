@@ -1219,8 +1219,13 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       if (url.pathname === "/admin/evo-automation-runs" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
-        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
+        if(!vr.ok||!vd.authenticated)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const requestedUnit=String(url.searchParams.get("unit")||"bike").toLowerCase();
+        if(!["bike","gym"].includes(requestedUnit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const permitted=vd.role==="admin" || (vd.role==="reception" && Array.isArray(vd.permissions) && vd.permissions.includes("/admin-alunos-evo.html"));
+        if(!permitted)return json({ok:false,error:"SEM_PERMISSAO_ALUNOS"},403);
+        if(vd.role!=="admin" && (!Array.isArray(vd.units)||!vd.units.includes(requestedUnit)))return json({ok:false,error:"UNIDADE_SEM_ACESSO"},403);
+        const unit=requestedUnit;
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
         const rr=await env.DB.prepare("SELECT unit,kind,scheduled_minute,status,detail,updated_at FROM evo_sync_schedule_runs WHERE unit=? ORDER BY scheduled_minute DESC LIMIT 40").bind(unit).all();
         return json({ok:true,runs:rr.results||[]});
