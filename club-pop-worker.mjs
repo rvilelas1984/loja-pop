@@ -1,3 +1,4 @@
+import { snapshotProductSale, syncProductSale } from './lib/evo-product-sales.mjs';
 import { ensureTeacherLinks, validateTeacherLinks, teacherView } from "./lib/teacher-view.mjs";
 function favoriteEquipmentFromRows(rows,unit,activity){const type=unit==="bike"?"B":/step/i.test(activity||"")?"S":/jump/i.test(activity||"")?"J":null;if(!type)return "Livre";const selected=rows.filter(r=>unit==="bike"||(type==="S"?/step/i.test(r.activity||""):/jump/i.test(r.activity||"")));const nums=selected.map(r=>Number(r.slotNumber)).filter(n=>Number.isInteger(n)&&n>0);if(!nums.length)return "—";const counts={};for(const n of nums)counts[n]=(counts[n]||0)+1;const [num,count]=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];return count/nums.length>=0.55?type+num:"—"}
 import {benefitVouchers} from './lib/benefit-vouchers.mjs';
@@ -13,6 +14,30 @@ async function checkoutEvo(env,unit){
   try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,?,?)").bind(unit,"fitcoins",method,path.split("?")[0],response.status,response.ok?1:0).run()}catch{}
   return response;
  };
+}
+
+// Isolated sales transport: reuses unit credentials, never the payment/debit adapter.
+async function syncCheckoutSale(env,orderId,options={}) {
+ try {
+  let cfg;
+  return await syncProductSale(env.DB,orderId,async(path,method,payload)=>{
+   if(!cfg){const row=await env.DB.prepare('SELECT unit FROM club_evo_product_sales WHERE order_id=?').bind(orderId).first();cfg=await getEvoConfig(env,row.unit);}
+   let response;
+   try {response=await fetch('https://evo-integracao-api.w12app.com.br'+path,{method,headers:{Authorization:'Basic '+btoa(cfg.dns+':'+cfg.token),Accept:'application/json','Content-Type':'application/json',culture:'pt-BR'},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store',signal:AbortSignal.timeout(15000)});return response;}
+   finally {try{await env.DB.prepare('INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,?,?,?,?)').bind(cfg.unit,'product_sale',method,path.split('?')[0],response?.status||0,response?.ok?1:0).run()}catch{}}
+  },options);
+ }catch {return {state:'pending',error:'EVO_SALE_SYNC_UNAVAILABLE'};}
+}
+async function settleCheckout(env,order) {
+ const result=await settleFitcoins(env.DB,order,await checkoutEvo(env,order.unit));
+ return {...result,evoSale:result.status==='approved'?await syncCheckoutSale(env,order.id):null};
+}
+async function productSalesTick(env) {
+ try {
+  // Only snapshots made by the new checkout; historical orders are never scanned.
+  const rows=await env.DB.prepare("SELECT s.order_id FROM club_evo_product_sales s JOIN club_pix_orders o ON o.id=s.order_id WHERE o.status='approved' AND ((o.currency_quantity>0 AND o.external_state='confirmed') OR (o.currency_quantity=0 AND o.external_state='none')) AND s.checks<4 AND s.state IN ('waiting','sending','uncertain','verify_pending') AND (s.checked_at IS NULL OR datetime(s.checked_at)<datetime('now','-10 minutes')) ORDER BY s.created_at LIMIT 3").all();
+  for(const row of rows.results||[])await syncCheckoutSale(env,row.order_id);
+ }catch {console.error('EVO_PRODUCT_SALES_TICK_FAILED');}
 }
 
 // Production Mercado Pago credentials are encrypted per unit in D1.
@@ -37,10 +62,10 @@ async function clubPixReconcile(env,order,result){
    if(Math.round(Number(result.total_paid_amount)*100)!==Number(order.amount_cents)||!payments.length||payments.some(p=>p.status!=="processed"||p.payment_method?.id!=="pix")||(result.currency_id&&result.currency_id!=="BRL"))throw Error("PIX_PAYMENT_UNCONFIRMED");
  }
  if(next==="approved"&&order.external_member_id){
-   if(order.status==="approved")return {status:"approved",deliveryQueued:true};
+   if(order.status==="approved")return {status:"approved",deliveryQueued:true,evoSale:await syncCheckoutSale(env,order.id)};
    if(order.external_state==="review"||order.external_state==="running")return {status:"paid_pending_coins",coinsState:"review",fulfilled:false};
    await env.DB.prepare("UPDATE club_pix_orders SET status='paid_pending_coins',choice_expires_at=NULL WHERE id=? AND status NOT IN ('approved','refunded') AND reservation_state='held'").bind(order.id).run();
-   return settleFitcoins(env.DB,order,await checkoutEvo(env,order.unit));
+   return settleCheckout(env,order);
  }
  if(next!=="approved"&&order.external_member_id&&order.external_state!=="none")return {status:order.status,fulfilled:false};
  if(next==="approved"){
@@ -54,7 +79,7 @@ async function clubPixReconcile(env,order,result){
  }else{
    await env.DB.prepare("UPDATE club_pix_orders SET status=?,reservation_state=CASE WHEN ? IN ('cancelled','expired','rejected') THEN 'released' ELSE reservation_state END,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('approved')").bind(next,next,order.id).run();
  }
- return {status:next,fulfilled:false,deliveryQueued:next==="approved"};
+ return {status:next,fulfilled:false,deliveryQueued:next==="approved",evoSale:next==="approved"?await syncCheckoutSale(env,order.id):null};
 }
 
 // Encrypted Mercado Pago configuration. No secret is ever returned to the browser.
@@ -466,7 +491,7 @@ async function whatsappBirthdayTick(env){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
@@ -2256,6 +2281,12 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           return json({ok:true,redemptions:rows.map(receptionRecord),transactions});
         }
         const b=await request.json(),id=String(b.redemptionId||'').replace(/^checkout:/,'');
+        if(b.action==='evo_sale_retry'){
+          const sale=await env.DB.prepare('SELECT unit FROM club_evo_product_sales WHERE order_id=?').bind(id).first();
+          if(auth.role!=='admin'||!sale||!scopes.includes(sale.unit))return json({ok:false,error:'SEM_PERMISSAO'},403);
+          const result=await syncCheckoutSale(env,id,{retry:true});
+          return json({ok:true,evoSale:result,pixCharged:false,fitcoinsDebited:false});
+        }
         const o=await env.DB.prepare("SELECT o.*,trim(coalesce(m.first_name,'')||' '||coalesce(m.last_name,'')) member_name FROM club_pix_orders o JOIN members m ON m.id=o.member_id WHERE o.id=? AND o.external_member_id IS NOT NULL").bind(id).first();
         if(!o||!scopes.includes(o.unit))return json({ok:false,error:"RESGATE_NAO_ENCONTRADO"},404);
         try{return json(await receptionAction(env.DB,o,String(b.action||''),['refund','coins_check','coins_retry'].includes(String(b.action||''))?await checkoutEvo(env,o.unit):null,{...b,actor:String(auth.id||auth.email||auth.name||'recepcao')}));}catch(e){return json({ok:false,error:e.checkoutError?e.message:"FITCOINS_REQUER_CONFERENCIA"},409)}
@@ -2288,12 +2319,13 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             body={...body,quantity:0,mode:"pix",save:true,key:crypto.randomUUID()};
           }
           const choice=await checkoutQuote(env.DB,member,body);
+          if(body.save===true&&choice.orderId)await snapshotProductSale(env.DB,choice.orderId,member);
           return json({...choice,amountCents:choice.pixCents});
         }catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
       }
 
       // Conciliação administrativa de vendas EVO: leitura sem efeitos financeiros.
-      // Não dispara POST remoto enquanto o contrato de desconto/recebimento EVO não estiver validado.
+      // Status das vendas novas; pedidos históricos continuam sem envio automático.
       if(url.pathname==="/admin/evo-product-sales/pending"&&request.method==="GET"){
         const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -2303,12 +2335,12 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const unit=String(url.searchParams.get("unit")||"bike");
         if(!["bike","gym"].includes(unit)||!(admin.units||[]).includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
         const [orders,content]=await Promise.all([
-          env.DB.prepare("SELECT id,unit,item_id,item_name,external_member_id,original_cents,discount_cents,amount_cents,currency_quantity,status,external_state,created_at FROM club_pix_orders WHERE unit=? AND item_type='product' AND status='approved' AND external_state='confirmed' ORDER BY created_at DESC LIMIT 100").bind(unit).all(),
+          env.DB.prepare("SELECT o.id,o.unit,o.item_id,o.item_name,o.external_member_id,o.original_cents,o.discount_cents,o.amount_cents,o.currency_quantity,o.status,o.external_state,o.created_at,s.state sale_state,s.evo_sale_id,s.last_error,s.stock_before,s.stock_after,s.member_evo_id FROM club_pix_orders o LEFT JOIN club_evo_product_sales s ON s.order_id=o.id WHERE o.unit=? AND o.item_type='product' AND o.status='approved' AND (o.external_state='confirmed' OR o.currency_quantity=0) ORDER BY o.created_at DESC LIMIT 100").bind(unit).all(),
           env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop'").first()
         ]);
         const products=JSON.parse(content?.content_json||"{}").products||[];
-        const result=(orders.results||[]).map(o=>{const p=products.find(x=>String(x.id)===String(o.item_id)&&String(x.unit||"bike")===unit);if(!p||!p.evoProductId||!(p.source==="evo"||p.origin==="evo"))return null;return {orderId:o.id,unit:o.unit,productId:String(p.evoProductId),productName:o.item_name,originalCents:o.original_cents,fitcoinsDiscountCents:o.discount_cents,pixCents:o.amount_cents,fitcoinsUsed:o.currency_quantity,memberEvoId:o.external_member_id,status:"PENDENTE_CONCILIACAO_EVO",createdAt:o.created_at}}).filter(Boolean);
-        return json({ok:true,unit,remoteSalesCreated:false,orders:result,note:"Não reenviar pagamento nem debitar moedas. Conferir manualmente se cada pedido já consta na EVO antes de transmitir."});
+        const result=(orders.results||[]).map(o=>{const p=products.find(x=>String(x.id)===String(o.item_id)&&String(x.unit||"bike")===unit);if(!p||!p.evoProductId||!(p.source==="evo"||p.origin==="evo"))return null;return {orderId:o.id,unit:o.unit,productId:String(p.evoProductId),productName:o.item_name,originalCents:o.original_cents,fitcoinsDiscountCents:o.discount_cents,pixCents:o.amount_cents,fitcoinsUsed:o.currency_quantity,memberEvoId:o.member_evo_id||o.external_member_id,status:o.sale_state||"PENDENTE_CONCILIACAO_EVO",evoSaleId:o.evo_sale_id||null,error:o.last_error||null,stockBefore:o.stock_before,stockAfter:o.stock_after,createdAt:o.created_at}}).filter(Boolean);
+        return json({ok:true,unit,remoteSalesCreated:result.some(o=>o.evoSaleId),orders:result,note:"Novos pedidos são enviados após pagamento confirmado. Nova tentativa administrativa: evo_sale_retry. Pedidos históricos não são reenviados."});
       }
 
       // Simulacao segura da conciliacao EVO: sem Pix, debito, estoque ou venda remota.
@@ -2345,7 +2377,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(order.provider_order_id)return json({ok:true,orderId:id,providerOrderId:order.provider_order_id,status:order.status});
         if(order.status==="approved")return json({ok:true,orderId:id,status:"approved",amountCents:order.amount_cents});
         if(order.external_member_id&&order.amount_cents===0&&order.status==='creating'&&['failed','confirmed'].includes(order.external_state)){
-          try{return json({ok:true,orderId:id,amountCents:0,...await settleFitcoins(env.DB,{...order,status:'creating'},await checkoutEvo(env,order.unit))});}catch{return json({ok:false,error:"FITCOINS_REQUER_CONFERENCIA",orderId:id},409)}
+          try{return json({ok:true,orderId:id,amountCents:0,...await settleCheckout(env,{...order,status:'creating'})});}catch{return json({ok:false,error:"FITCOINS_REQUER_CONFERENCIA",orderId:id},409)}
         }
         let savedChoice=false;
         try{savedChoice=await validateChoice(env.DB,member,order);}catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
@@ -2353,7 +2385,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(savedChoice&&order.amount_cents===0&&order.external_member_id){
           const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='creating',choice_expires_at=NULL WHERE id=? AND status='selected' AND reservation_state='held' AND datetime(choice_expires_at)>datetime('now')").bind(id).run();
           if(claim.meta.changes!==1)return json({ok:false,error:"ESCOLHA_EXPIRADA_SALVE_NOVAMENTE"},409);
-          try{return json({ok:true,orderId:id,amountCents:0,...await settleFitcoins(env.DB,order,await checkoutEvo(env,order.unit))});}catch(e){return json({ok:false,error:"FITCOINS_REQUER_CONFERENCIA",orderId:id},409)}
+          try{return json({ok:true,orderId:id,amountCents:0,...await settleCheckout(env,order)});}catch(e){return json({ok:false,error:"FITCOINS_REQUER_CONFERENCIA",orderId:id},409)}
         }
         if(savedChoice&&order.amount_cents===0){
           try{
