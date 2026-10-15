@@ -11,7 +11,7 @@ async function handler(req,res){
  if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"Método não permitido"});
  if(!valid(req))return res.status(401).json({ok:false,error:"Sessão administrativa inválida"});
  const cfg=evoConfig(req.query.unit||"bike"),unit=cfg.key,kind=String(req.query.kind||"activities"),gym=unit==="gym";
- if(gym&&!["gym_schedule","gym_session","fitcoins"].includes(kind))return res.status(400).json({ok:false,error:"Operação não habilitada para Gym Pop."});
+ if(gym&&!["gym_schedule","gym_session","fitcoins","product_sale_lab"].includes(kind))return res.status(400).json({ok:false,error:"Operação não habilitada para Gym Pop."});
  const evoFetch=cfg.fetch,evo=(url,headers)=>evoRequest(evoFetch,url,headers);
  if(!cfg.configured)return res.status(503).json({ok:false,error:"Credenciais EVO da unidade não configuradas",unit,expected:{dns:cfg.prefix+"_DNS",token:cfg.prefix+"_TOKEN"}});
  const headers=cfg.headers;
@@ -53,11 +53,13 @@ async function handler(req,res){
    const idProduct=Number(b.idProduct),idMember=Number(b.idMember);
    const original=Number(b.originalCents),discount=Number(b.discountCents);
    const variant=String(b.variant||"discount");
-   if(![idProduct,idMember,original,discount].every(Number.isSafeInteger)||idProduct<1||idMember<1||original<1||discount<0||discount>=original||!["discount","discountValue","productDiscount","net"].includes(variant))
+   if(![idProduct,idMember,original,discount].every(Number.isSafeInteger)||idProduct<1||idMember<1||original<1||discount<0||discount>=original||!["discount","discountValue","productDiscount","net","catalogPrice"].includes(variant))
     return res.status(400).json({ok:false,error:"PARAMETROS_INVALIDOS"});
    const net=original-discount;
    const sessionId="clubpop-lab-"+crypto.randomUUID();
    const payload={idProduct,productValue:variant==="net"?net/100:original/100,productAmount:1,memberData:{idMember},payment:13,totalInstallments:1,sessionId};
+   if(variant==="catalogPrice")delete payload.productValue;
+   if(variant==="catalogPrice")payload.discount=discount/100;
    if(variant==="discount")payload.discount=discount/100;
    if(variant==="discountValue")payload.discountValue=discount/100;
    if(variant==="productDiscount")payload.productDiscount=discount/100;
