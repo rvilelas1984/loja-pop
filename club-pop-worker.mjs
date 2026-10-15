@@ -1451,6 +1451,55 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({ok:true,unit,saved:rows.length,evoRequestsMade:0});
       }
 
+      if (url.pathname === "/admin/evo-product-catalog" && ["GET","POST"].includes(request.method)) {
+        const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie,Accept:"application/json"},cache:"no-store"});
+        const session=await auth.json().catch(()=>({}));
+        if(!auth.ok||session.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase();
+        if(unit!=="bike")return json({ok:false,error:"APENAS_BIKE_NESTA_FASE"},400);
+        const tenant="default";
+        if(request.method==="GET"){
+          const rows=await env.DB.prepare("SELECT evo_product_id id,name,sku,barcode,price_cents priceCents,stock_quantity stock,active,last_synced_at syncedAt FROM evo_product_catalog WHERE tenant_key=? AND unit=? ORDER BY lower(name)").bind(tenant,unit).all();
+          const meta=await env.DB.prepare("SELECT last_success_at lastSuccessAt,last_count lastCount,request_count requestCount,last_error lastError FROM evo_product_sync WHERE tenant_key=? AND unit=?").bind(tenant,unit).first();
+          return json({ok:true,unit,products:rows.results||[],lastSyncAt:meta?.lastSuccessAt||null,lastCount:meta?.lastCount||0,lastRequestCount:meta?.requestCount||0,lastError:meta?.lastError||null,evoRequestsMade:0});
+        }
+        const cfg=await getEvoConfig(env,unit);
+        const endpoint="/api/v1/product",base="https://evo-integracao-api.w12app.com.br"+endpoint;
+        const all=[];let skip=0,requests=0,done=false;
+        while(requests<20){
+          let response;
+          try{response=await fetch(base+"?take=50&skip="+skip+"&onlySellable=false",{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"},signal:AbortSignal.timeout(15000)});}
+          catch(e){requests++;try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,'GET',?,0,0)").bind(unit,"products_catalog",endpoint).run()}catch{}return json({ok:false,error:"EVO_PRODUTOS_REDE",requests},502);}
+          requests++;
+          try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,'GET',?,?,?)").bind(unit,"products_catalog",endpoint,response.status,response.ok?1:0).run()}catch{}
+          if(!response.ok)return json({ok:false,error:"EVO_PRODUTOS_HTTP_"+response.status,requests,message:"Catálogo anterior preservado. Verifique permissão Product na EVO."},502);
+          const payload=await response.json().catch(()=>null);
+          const items=Array.isArray(payload)?payload:Array.isArray(payload?.data)?payload.data:Array.isArray(payload?.items)?payload.items:null;
+          if(!items||items.length>50)return json({ok:false,error:"FORMATO_PRODUTOS_EVO_INVALIDO",requests},502);
+          all.push(...items);
+          if(items.length<50){done=true;break;}
+          skip+=items.length;
+        }
+        if(!done)return json({ok:false,error:"PAGINACAO_PRODUTOS_INCOMPLETA",requests},422);
+        const normalized=[],seen=new Set();
+        for(const item of all){
+          if(!item||typeof item!=="object")return json({ok:false,error:"PRODUTO_INVALIDO",requests},422);
+          const id=String(item.idProduct??"").trim(),name=String(item.nameProduct??"").trim();
+          if(!/^[0-9]+$/.test(id)||!name||name.length>250||seen.has(id))return json({ok:false,error:"PRODUTO_INVALIDO",requests},422);
+          seen.add(id);
+          const value=item.value==null?null:Number(item.value),stock=item.currentAmount==null?null:Number(item.currentAmount);
+          if((value!==null&&(!Number.isFinite(value)||value<0))||(stock!==null&&!Number.isFinite(stock)))return json({ok:false,error:"PRECO_OU_ESTOQUE_INVALIDO",requests},422);
+          normalized.push({id,name,sku:item.code==null?null:String(item.code),price:value===null?null:Math.round(value*100),stock,active:item.active===false?0:1,raw:JSON.stringify(item)});
+        }
+        const writes=[env.DB.prepare("UPDATE evo_product_catalog SET active=0 WHERE tenant_key=? AND unit=?").bind(tenant,unit)];
+        for(const p of normalized)writes.push(env.DB.prepare("INSERT INTO evo_product_catalog(tenant_key,unit,evo_product_id,name,sku,price_cents,stock_quantity,active,raw_json) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_key,unit,evo_product_id) DO UPDATE SET name=excluded.name,sku=excluded.sku,price_cents=excluded.price_cents,stock_quantity=excluded.stock_quantity,active=excluded.active,raw_json=excluded.raw_json,last_seen_at=CURRENT_TIMESTAMP,last_synced_at=CURRENT_TIMESTAMP").bind(tenant,unit,p.id,p.name,p.sku,p.price,p.stock,p.active,p.raw));
+        writes.push(env.DB.prepare("INSERT INTO evo_product_sync(tenant_key,unit,last_attempt_at,last_success_at,last_count,last_error,request_count) VALUES(?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,NULL,?) ON CONFLICT(tenant_key,unit) DO UPDATE SET last_attempt_at=CURRENT_TIMESTAMP,last_success_at=CURRENT_TIMESTAMP,last_count=excluded.last_count,last_error=NULL,request_count=excluded.request_count").bind(tenant,unit,normalized.length,requests));
+        await env.DB.batch(writes);
+        return json({ok:true,unit,saved:normalized.length,requests});
+      }
+
       if (url.pathname === "/admin/evo-service-catalog" && ["GET","POST"].includes(request.method)) {
         const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
