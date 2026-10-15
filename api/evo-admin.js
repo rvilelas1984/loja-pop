@@ -47,7 +47,7 @@ async function handler(req,res){
    return res.status(200).json({ok:true,unit,kind,idMember:id,type,fitcoin:amount,before,after:Number.isFinite(after)?after:null,diagnostic:{method:"PUT",endpoint:"/api/v1/members/fitcoins",status:wr.status,verified:check.ok}});
 
  }
- if(kind==="sale_receivables_lab"){const idSale=Number(req.query.idSale);if(req.method!=="GET"||!Number.isSafeInteger(idSale)||idSale<=0)return res.status(400).json({ok:false,error:"ID_VENDA_INVALIDO"});const q=await evo("https://evo-integracao-api.w12app.com.br/api/v1/receivables?idSale="+idSale,headers);return res.status(q.ok?200:(q.status||502)).json({ok:q.ok,unit,kind,idSale,readOnly:true,evoStatus:q.status,evoResponse:q.data});}
+ if(kind==="sale_receivables_lab"){const idSale=Number(req.query.idSale);if(req.method!=="GET"||!Number.isSafeInteger(idSale)||idSale<=0)return res.status(400).json({ok:false,error:"ID_VENDA_INVALIDO"});const q=await evo("https://evo-integracao-api.w12app.com.br/api/v1/receivables?idSale="+idSale,headers);if(q.ok)return res.json({ok:true,unit,kind,idSale,readOnly:true,source:"receivables",evoStatus:q.status,evoResponse:q.data});const sale=await evo("https://evo-integracao-api.w12app.com.br/api/v2/sales/"+idSale,headers);return res.status(sale.ok?200:(sale.status||502)).json({ok:sale.ok,unit,kind,idSale,readOnly:true,source:"sale_by_id",receivablesStatus:q.status,evoStatus:sale.status,evoResponse:sale.data});}
  if(kind==="product_sale_lab"){
    // Isolated EVO diagnostic. No Mercado Pago, Fitcoins debit or Club Pop order.
    const b=req.method==="POST"?req.body||{}:req.query;
