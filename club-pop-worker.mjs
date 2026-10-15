@@ -2292,6 +2292,21 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         }catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
       }
 
+      // Simulacao segura da conciliacao EVO: sem Pix, debito, estoque ou venda remota.
+      if(url.pathname==="/checkout/evo-product/test"&&request.method==="POST"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({}));
+        if(!["bike","gym"].includes(String(b.unit||""))||!String(b.itemId||""))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        try{
+          const result=await checkoutQuote(env.DB,member,{...b,itemType:"product",save:false});
+          const row=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop'").first();
+          const product=(JSON.parse(row?.content_json||"{}").products||[]).find(p=>String(p.id)===String(b.itemId)&&String(p.unit||"bike")===String(b.unit));
+          if(!product||product.source!=="evo"&&product.origin!=="evo"||!product.evoProductId)return json({ok:false,error:"PRODUTO_NAO_VINCULADO_EVO"},409);
+          return json({ok:true,simulation:true,remoteSaleCreated:false,pixCharged:false,coinsDebited:false,stockChanged:false,order:{evoProductId:String(product.evoProductId),originalCents:result.originalCents,fitcoinsDiscountCents:result.discountCents,pixPaymentCents:result.pixCents,netSaleCents:result.pixCents,currencyQuantity:result.quantity},note:"Simulacao contabil. Envio da venda EVO depende de validacao do contrato da API."});
+        }catch(e){const known=checkoutError(e);return json({ok:false,error:known?.message||"SIMULACAO_INDISPONIVEL"},known?.status||409)}
+      }
+
       // Test-only Mercado Pago Orders API. Disabled unless explicitly enabled in Worker.
       if (["/checkout/pix/create","/checkout/coins/confirm"].includes(url.pathname) && request.method === "POST") {
 
