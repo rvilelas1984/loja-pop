@@ -11,7 +11,7 @@ async function handler(req,res){
  if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"Método não permitido"});
  if(!valid(req))return res.status(401).json({ok:false,error:"Sessão administrativa inválida"});
  const cfg=evoConfig(req.query.unit||"bike"),unit=cfg.key,kind=String(req.query.kind||"activities"),gym=unit==="gym";
- if(gym&&!["gym_schedule","gym_session","fitcoins","product_sale_lab"].includes(kind))return res.status(400).json({ok:false,error:"Operação não habilitada para Gym Pop."});
+ if(gym&&!["gym_schedule","gym_session","fitcoins","product_sale_lab","sale_receivables_lab"].includes(kind))return res.status(400).json({ok:false,error:"Operação não habilitada para Gym Pop."});
  const evoFetch=cfg.fetch,evo=(url,headers)=>evoRequest(evoFetch,url,headers);
  if(!cfg.configured)return res.status(503).json({ok:false,error:"Credenciais EVO da unidade não configuradas",unit,expected:{dns:cfg.prefix+"_DNS",token:cfg.prefix+"_TOKEN"}});
  const headers=cfg.headers;
@@ -47,6 +47,7 @@ async function handler(req,res){
    return res.status(200).json({ok:true,unit,kind,idMember:id,type,fitcoin:amount,before,after:Number.isFinite(after)?after:null,diagnostic:{method:"PUT",endpoint:"/api/v1/members/fitcoins",status:wr.status,verified:check.ok}});
 
  }
+ if(kind==="sale_receivables_lab"){const idSale=Number(req.query.idSale);if(req.method!=="GET"||!Number.isSafeInteger(idSale)||idSale<=0)return res.status(400).json({ok:false,error:"ID_VENDA_INVALIDO"});const q=await evo("https://evo-integracao-api.w12app.com.br/api/v1/receivables?idSale="+idSale,headers);return res.status(q.ok?200:(q.status||502)).json({ok:q.ok,unit,kind,idSale,readOnly:true,evoStatus:q.status,evoResponse:q.data});}
  if(kind==="product_sale_lab"){
    // Isolated EVO diagnostic. No Mercado Pago, Fitcoins debit or Club Pop order.
    const b=req.method==="POST"?req.body||{}:req.query;
