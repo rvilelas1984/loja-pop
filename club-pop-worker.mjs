@@ -3538,6 +3538,7 @@ function allowedEvoTarget(value, method) {
   if (method==="PUT") return path==="/api/v1/members/fitcoins" ? url : null;
   if (method!=="GET") return null;
   if(path==="/api/v1/receivables")return /^\?idSale=[1-9]\d*$/.test(url.search)?url:null;
+  if(/^\/api\/v2\/sales\/[1-9]\d*$/.test(path)&&!url.search)return url;
   if (path==="/api/v2/management/activeclients" || path==="/api/v2/members/active-members") return url;
   return /^\/api\/v[123]\/(?:members(?:\/\d+|\/basic|\/fitcoins)?|activities(?:\/schedule(?:\/detail)?|\/member\/sessions)?|membership(?:\/category)?|membermembership)$/.test(path) ? url : null;
 }
