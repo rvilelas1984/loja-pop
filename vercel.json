@@ -6,6 +6,7 @@
     }
   },
   "rewrites": [
+    {"source":"/api/partner-daily-redemption","destination":"https://club-pop-api.renato-vilelas-personal.workers.dev/partner-daily-redemption"},
     {
       "source": "/checkout/service-voucher",
       "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/checkout/service-voucher"
