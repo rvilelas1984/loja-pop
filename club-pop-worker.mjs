@@ -2879,6 +2879,21 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
  const benefits=JSON.parse(contentRow?.content_json||"{}").benefits||[];
  const date=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
  const memberId=String(member.id);
+ if(request.method==="GET"&&url.searchParams.get("eligibility")==="1"){
+  const offers=benefits.filter(b=>String(b.unit||"bike").toLowerCase()===unit&&b.status==="Ativo");
+  const needsContracts=offers.some(b=>["active","specific"].includes(String(b.partnerVoucher?.eligibility||"everyone")));
+  let contracts=[];
+  if(needsContracts){
+   const evoId=unit==="bike"?member.evo_member_id:(await env.DB.prepare("SELECT COALESCE(m.gym_client_id,g.gym_client_id) AS evo_id FROM members m LEFT JOIN gym_member_links g ON g.member_id=m.id AND g.status='ACTIVE' WHERE m.id=? LIMIT 1").bind(member.id).first())?.evo_id;
+   if(evoId)contracts=(await env.DB.prepare("SELECT id_membership,id_member_membership FROM evo_member_contracts WHERE unit=? AND evo_member_id=? AND lower(COALESCE(membership_status,'')) IN ('active','1') AND (end_date IS NULL OR date(end_date)>=?) AND (cancel_date IS NULL OR date(cancel_date)>?)").bind(unit,String(evoId),date,date).all()).results||[];
+  }
+  return json({ok:true,eligibility:offers.map(b=>{
+   const rule=String(b.partnerVoucher?.eligibility||"everyone");
+   const allowed=String(b.partnerVoucher?.eligibleContracts||"").split(",").map(x=>x.trim()).filter(Boolean);
+   const reason=rule==="everyone"?null:!contracts.length?"CONTRATO_ATIVO_NAO_ENCONTRADO":rule==="specific"&&(!allowed.length||!contracts.some(c=>allowed.includes(String(c.id_membership))||allowed.includes(String(c.id_member_membership))))?"PLANO_NAO_ELEGIVEL":null;
+   return {benefitId:String(b.id),eligible:!reason,reason};
+  })});
+ }
  if(request.method==="GET"){
   const rows=await env.DB.prepare("SELECT benefit_id,used_at FROM partner_daily_redemptions WHERE member_id=? AND unit=? AND local_date=?").bind(memberId,unit,date).all();
   return json({ok:true,used:rows.results||[]});
