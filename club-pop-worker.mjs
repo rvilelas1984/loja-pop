@@ -729,6 +729,31 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
 
       if(url.pathname==="/benefit-vouchers" || url.pathname==="/admin/benefit-vouchers")return benefitVouchers(request,env,url.pathname.startsWith("/admin/")?null:await authenticatedMember(request,env),json);
       if(url.pathname==="/currency-store")return currencyStudent(request,env,await authenticatedMember(request,env),json);
+      if(url.pathname==="/admin/partner-voucher-history"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const response=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const auth=await response.json().catch(()=>({}));
+        if(!response.ok||!auth?.ok)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const perms=auth.permissions||auth.user?.permissions||[];
+        if(Array.isArray(perms)&&perms.length&&!perms.some(p=>p==="*"||p==="/admin-beneficios.html"))return json({ok:false,error:"SEM_PERMISSAO"},403);
+        const unit=(url.searchParams.get("unit")||"club").toLowerCase();
+        if(!["club","bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_daily_redemptions(id INTEGER PRIMARY KEY AUTOINCREMENT,benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,member_name TEXT NOT NULL,partner_name TEXT NOT NULL,benefit_title TEXT NOT NULL,local_date TEXT NOT NULL,used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(benefit_id,unit,member_id,local_date))").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_once_redemptions(id INTEGER PRIMARY KEY AUTOINCREMENT,benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,member_name TEXT NOT NULL,partner_name TEXT NOT NULL,benefit_title TEXT NOT NULL,used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(benefit_id,unit,member_id))").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_code_vouchers(benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,member_name TEXT NOT NULL,code TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,used_at TEXT,PRIMARY KEY(benefit_id,unit,member_id))").run();
+        const filter=unit==="club"?"":" WHERE unit=?";
+        const queries=[
+          "SELECT benefit_id,unit,member_id,member_name,partner_name,benefit_title,'Presencial diário' AS mode,used_at AS date,'Utilizado' AS status,NULL AS code FROM partner_daily_redemptions"+filter,
+          "SELECT benefit_id,unit,member_id,member_name,partner_name,benefit_title,'Presencial único' AS mode,used_at AS date,'Utilizado' AS status,NULL AS code FROM partner_once_redemptions"+filter,
+          "SELECT benefit_id,unit,member_id,member_name,'' AS partner_name,'' AS benefit_title,'Código + WhatsApp' AS mode,created_at AS date,CASE WHEN used_at IS NULL THEN 'Emitido' ELSE 'Utilizado' END AS status,code FROM partner_code_vouchers"+filter
+        ];
+        const result=await Promise.all(queries.map(q=>{const p=env.DB.prepare(q);return(unit==="club"?p:p.bind(unit)).all()}));
+        const content=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop' LIMIT 1").first();
+        const benefits=JSON.parse(content?.content_json||"{}").benefits||[];
+        const rows=result.flatMap((r,i)=>(r.results||[]).map(x=>{const b=benefits.find(y=>String(y.id)===String(x.benefit_id)&&String(y.unit||"bike").toLowerCase()===x.unit);return {...x,partner_name:x.partner_name||b?.partner||"",benefit_title:x.benefit_title||b?.title||""}}));
+        return json({ok:true,rows});
+      }
       if(url.pathname==="/admin/currencies"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
