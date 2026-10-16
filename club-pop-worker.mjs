@@ -2888,6 +2888,17 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
  const benefit=benefits.find(x=>String(x.id)===String(body?.benefitId)&&String(x.unit||"bike").toLowerCase()===unit);
  if(!benefit||benefit.status!=="Ativo"||benefit.partnerVoucher?.frequency!=="daily"||benefit.partnerVoucher?.redemptionMode!=="onsite")return json({ok:false,error:"BENEFICIO_INDISPONIVEL"},400);
  if((benefit.start&&benefit.start>date)||(benefit.end&&benefit.end<date))return json({ok:false,error:"FORA_DA_VALIDADE"},400);
+ const eligibility=String(benefit.partnerVoucher?.eligibility||"everyone");
+ if(eligibility==="active"||eligibility==="specific"){
+  const evoId=unit==="bike"?member.evo_member_id:(await env.DB.prepare("SELECT COALESCE(m.gym_client_id,g.gym_client_id) AS evo_id FROM members m LEFT JOIN gym_member_links g ON g.member_id=m.id AND g.status='ACTIVE' WHERE m.id=? LIMIT 1").bind(member.id).first())?.evo_id;
+  if(!evoId)return json({ok:false,error:"CONTRATO_ATIVO_NAO_ENCONTRADO"},403);
+  const contracts=(await env.DB.prepare("SELECT id_membership,id_member_membership,membership_status,end_date,cancel_date FROM evo_member_contracts WHERE unit=? AND evo_member_id=? AND lower(COALESCE(membership_status,'')) IN ('active','1') AND (end_date IS NULL OR date(end_date)>=?) AND (cancel_date IS NULL OR date(cancel_date)>?)").bind(unit,String(evoId),date,date).all()).results||[];
+  if(!contracts.length)return json({ok:false,error:"CONTRATO_ATIVO_NAO_ENCONTRADO"},403);
+  if(eligibility==="specific"){
+   const allowed=String(benefit.partnerVoucher?.eligibleContracts||"").split(",").map(x=>x.trim()).filter(Boolean);
+   if(!allowed.length||!contracts.some(c=>allowed.includes(String(c.id_membership))||allowed.includes(String(c.id_member_membership))))return json({ok:false,error:"PLANO_NAO_ELEGIVEL"},403);
+  }
+ }
  const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM partner_daily_redemptions WHERE benefit_id=? AND unit=?").bind(String(benefit.id),unit).first();
  const limit=Number(benefit.partnerVoucher?.quantity||0);
  // Daily-use offers are recurring; a one-time total stock cap does not apply to daily confirmations.
