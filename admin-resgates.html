@@ -11,7 +11,7 @@
  const filtered=arr.filter(x=>(!type||x.itemType===type)&&(!status||(status==="ready"?x.status==="approved":x.status!=="approved")));
  const fmt=n=>"R$ "+(Number(n||0)/100).toFixed(2).replace(".",",");
  const safe=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
- const row=x=>'<tr style="border-top:1px solid #e1e6ea"><td style="padding:10px">'+safe(x.id)+'</td><td>'+safe(x.itemType==="service"?"Serviço":"Produto")+'</td><td>'+safe(x.itemName||x.itemId)+'</td><td>'+fmt(x.amountCents)+'</td><td>'+safe(x.currencyQuantity??"—")+'</td><td>'+safe(x.memberName||"Pendente")+'</td><td>'+safe(x.cpf||"Pendente")+'</td><td>'+safe(String(x.createdAt||"").slice(0,10).split("-").reverse().join("/"))+'</td><td>'+safe(x.status)+'</td></tr>';
+ const row=x=>'<tr style="border-top:1px solid #e1e6ea"><td style="padding:10px">'+safe(x.id)+'</td><td>'+safe(x.itemType==="service"?"Serviço":"Produto")+'</td><td>'+safe(x.storedItemName||x.itemName||x.itemId)+'</td><td>'+fmt(x.amountCents)+'</td><td>'+safe(x.currencyQuantity??"—")+'</td><td>'+safe(x.memberName||"Pendente")+'</td><td>'+safe(x.cpf||"Pendente")+'</td><td>'+safe(String(x.createdAt||"").slice(0,10).split("-").reverse().join("/"))+'</td><td>'+safe(x.status)+'</td></tr>';
  root.innerHTML=filtered.length?'<div style="overflow-x:auto"><table style="width:100%;min-width:1100px;border-collapse:collapse;text-align:left"><thead><tr><th>Pedido</th><th>Tipo</th><th>Produto / serviço</th><th>Valor Pix</th><th>Fitcoins</th><th>Aluno</th><th>CPF</th><th>Data</th><th>Status</th></tr></thead><tbody>'+filtered.map(row).join("")+'</tbody></table></div>':'Nenhuma compra encontrada para os filtros atuais.';
  const k=document.getElementById("cpEvoKpis");
  if(k&&unit==="club")k.innerHTML='<div class="card" style="padding:12px">Selecione Bike Pop ou Gym Pop para preparar o arquivo EVO.</div>';
@@ -46,7 +46,7 @@ function cpEvoPrepare(){
  const orders=typeof pixOrders!=='undefined'?pixOrders:[];
  cpEvoPrepared=orders.filter(x=>String(x.unit||'').toLowerCase()===unit&&['product','service'].includes(x.itemType)&&x.status==='approved'&&!x.cancelledAt&&!x.fiscalRegisteredAt&&x.externalState!=='review'&&x.externalState!=='refunding');
  const fmt=n=>'R$ '+(Number(n||0)/100).toFixed(2).replace('.',',');
- const ready=x=>Boolean(x.memberName&&/^\d{11}$/.test(String(x.cpf||'').replace(/\D/g,''))&&x.itemName&&Number(x.amountCents)>0&&x.paymentMode==='pix');
+ const ready=x=>Boolean(x.memberName&&/^\d{11}$/.test(String(x.cpf||'').replace(/\D/g,''))&&(x.storedItemName||x.itemName)&&Number(x.amountCents)>0&&x.paymentMode==='pix');
  const k=document.getElementById('cpEvoKpis');
  if(k)k.innerHTML=[['Prontos para envio',cpEvoPrepared.filter(ready).length],['Pendentes',cpEvoPrepared.filter(x=>!ready(x)).length],['Total do arquivo',cpEvoPrepared.length],['Concluídos EVO','—']].map(([label,n])=>'<div class="card" style="padding:12px"><small>'+label+'</small><h3>'+n+'</h3></div>').join('');
  const root=document.getElementById('cpEvoExportRows');
@@ -61,7 +61,7 @@ function cpEvoExport(){
  if(!selected.length){cpNotify("error","Seleção","Marque ao menos uma venda.");return}
  const rows=[];
  for(const {x,i} of selected){
- const name=String(x.memberName||'').trim(),cpf=String(x.cpf||'').replace(/\D/g,''),value=Number(x.amountCents||0)/100,item=String(x.itemName||'').trim(),purchaseDate=String(x.createdAt||'').slice(0,10);
+ const name=String(x.memberName||'').trim(),cpf=String(x.cpf||'').replace(/\D/g,''),value=Number(x.amountCents||0)/100,item=String(x.storedItemName||x.itemName||'').trim(),purchaseDate=String(x.createdAt||'').slice(0,10);
  if(!name||cpf.length!==11||!item||!/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)||!Number.isFinite(value)||value<=0){cpNotify("error","Dados incompletos","Confira nome, CPF com 11 dígitos, nome do catálogo e valor positivo do pedido "+x.id);return}
  rows.push({"ID_FILIAL":branch,"NOME":name,"CPF (CIN)":cpf,"VALOR":value,"SERVIÇO":x.itemType==="service"?item:"","PRODUTO":x.itemType==="product"?item:"","DATA_VENDA":purchaseDate.split("-").reverse().join("/"),"TIPO_RECEBIMENTO":Number(receipt),"TID":"","NSU":"","AUTORIZAÇÃO":""});
  }
