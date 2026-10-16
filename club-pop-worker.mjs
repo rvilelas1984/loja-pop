@@ -19,6 +19,8 @@ async function checkoutEvo(env,unit){
 
 // Isolated sales transport: reuses unit credentials, never the payment/debit adapter.
 async function syncCheckoutSale(env,orderId,options={}) {
+ // EVO product sale integration paused: manual reception workflow only.
+ return {state:'manual_only',remoteSaleCreated:false};
  try {
   let cfg;
   return await syncProductSale(env.DB,orderId,async(path,method,payload)=>{
@@ -2315,7 +2317,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             body={...body,quantity:0,mode:"pix",save:true,key:crypto.randomUUID()};
           }
           const choice=await checkoutQuote(env.DB,member,body);
-          if(body.save===true&&choice.orderId)await snapshotProductSale(env.DB,choice.orderId,member);
+          // Automatic EVO product sale snapshots paused; checkout remains unchanged.
           return json({...choice,amountCents:choice.pixCents});
         }catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
       }
