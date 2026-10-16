@@ -3539,6 +3539,7 @@ function allowedEvoTarget(value, method) {
   if (method!=="GET") return null;
   if(path==="/api/v1/receivables")return /^\?idSale=[1-9]\d*$/.test(url.search)?url:null;
   if(/^\/api\/v2\/sales\/[1-9]\d*$/.test(path)&&!url.search)return url;
+  if(path==="/api/v2/sales")return url.searchParams.size===5&&["idMember","startDate","endDate","take","skip"].every(k=>url.searchParams.has(k))&&/^\d+$/.test(url.searchParams.get("idMember")||"")&&/^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("startDate")||"")&&url.searchParams.get("startDate")===url.searchParams.get("endDate")&&url.searchParams.get("take")==="100"&&url.searchParams.get("skip")==="0"?url:null;
   if (path==="/api/v2/management/activeclients" || path==="/api/v2/members/active-members") return url;
   return /^\/api\/v[123]\/(?:members(?:\/\d+|\/basic|\/fitcoins)?|activities(?:\/schedule(?:\/detail)?|\/member\/sessions)?|membership(?:\/category)?|membermembership)$/.test(path) ? url : null;
 }
