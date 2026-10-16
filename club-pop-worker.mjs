@@ -1,3 +1,4 @@
+import {loadOrders as loadShopOrders, shopImport} from './lib/evo-shop-import.mjs';
 async function verifyProxyAuth(request,env,unit,route){const signed=request.headers.get("x-clubpop-proxy-auth")||"";if(!signed||!env.AUTO_SYNC_SECRET)return null;const parts=signed.split(".");if(parts.length!==2)return null;const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(env.AUTO_SYNC_SECRET),{name:"HMAC",hash:"SHA-256"},false,["sign"]);const bytes=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(parts[0])));const expected=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");if(expected.length!==parts[1].length)return null;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^parts[1].charCodeAt(i);if(diff)return null;let actor;try{actor=JSON.parse(atob(parts[0].replace(/-/g,"+").replace(/_/g,"/")))}catch{return null}if(!Number.isFinite(actor.t)||Math.abs(Date.now()-actor.t)>120000||actor.unit!==unit||actor.route!==route||actor.method!==request.method||!Array.isArray(actor.units)||!actor.units.includes(unit))return null;return actor}
 import { snapshotProductSale, syncProductSale } from './lib/evo-product-sales.mjs';
 import { ensureTeacherLinks, validateTeacherLinks, teacherView } from "./lib/teacher-view.mjs";
@@ -2974,7 +2975,29 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
  }
  return json({ok:true,status:finalStatus,amountCents:order.amount_cents});
 }
-      if(url.pathname==="/admin/pix-orders"&&request.method==="GET"){const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});const vd=await vr.json().catch(()=>({}));if(!vr.ok||!["admin","reception"].includes(vd.role))return json({ok:false,error:"NAO_AUTORIZADO"},401);const unit=String(url.searchParams.get("unit")||"bike");if(!["bike","gym","club"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);const rows=await env.DB.prepare("SELECT o.id,o.member_id memberId,TRIM(COALESCE(m.first_name,'')||' '||COALESCE(m.last_name,'')) memberName,o.unit,o.item_type itemType,o.item_id itemId,o.amount_cents amountCents,o.original_cents originalCents,o.discount_cents discountCents,o.currency_quantity currencyQuantity,o.payment_mode paymentMode,o.item_name storedItemName, (SELECT json_extract(e.personal_json,'$.document') FROM evo_member_master e WHERE e.unit=o.unit AND e.evo_member_id=COALESCE(NULLIF(o.external_member_id,''),CAST(m.evo_member_id AS TEXT)) LIMIT 1) cpf,o.external_state externalState,o.external_before externalBefore,o.status,o.created_at createdAt,o.updated_at updatedAt,f.delivery_state deliveryState,fs.registered_at fiscalRegisteredAt,fs.registered_by fiscalRegisteredBy FROM club_pix_orders o LEFT JOIN club_fiscal_sale_entries fs ON fs.order_id=o.id LEFT JOIN members m ON m.id=o.member_id LEFT JOIN club_pix_fulfillment f ON f.order_id=o.id WHERE (?='club' OR o.unit=?) AND (o.status IN ('approved','refunded','refund_pending','paid_pending_coins','cancelled') OR (o.external_state IN ('running','review','confirmed','refunding') AND o.status NOT IN ('selected','superseded','expired','created'))) ORDER BY o.created_at DESC LIMIT 200").bind(unit,unit).all();return json({ok:true,orders:rows.results||[]});}
+      if(url.pathname==="/admin/shop-sales-import") {
+        if(!['GET','POST'].includes(request.method))return json({ok:false,error:'METODO_INVALIDO'},405);
+        const unit=String(url.searchParams.get('unit')||'');
+        if(!['bike','gym'].includes(unit))return json({ok:false,error:'UNIDADE_INVALIDA'},400);
+        const actor=await verifyProxyAuth(request,env,unit,'shop-sales-import');
+        if(actor?.role!=='admin')return json({ok:false,error:'NAO_AUTORIZADO'},403);
+        try {const body=request.method==='POST'?await request.json():{};return json(await shopImport(env.DB,unit,request.method,body,actor));}
+        catch(e){return json({ok:false,error:e.status?e.message:'Não foi possível consultar as vendas no D1.'},e.status||500)}
+      }
+      if(url.pathname==="/admin/pix-orders"&&request.method==="GET") {
+        const ck=request.headers.get('x-clubpop-admin-cookie')||'';
+        if(!ck)return json({ok:false,error:'NAO_AUTORIZADO'},401);
+        const vr=await fetch('https://loja-pop-green.vercel.app/api/admin-auth?route=me',{headers:{Cookie:ck,Accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(8000)});
+        const actor=await vr.json().catch(()=>({}));
+        if(!vr.ok||!['admin','reception'].includes(actor.role))return json({ok:false,error:'NAO_AUTORIZADO'},401);
+        const unit=String(url.searchParams.get('unit')||'bike');
+        if(!['bike','gym','club'].includes(unit))return json({ok:false,error:'UNIDADE_INVALIDA'},400);
+        if(unit!=='club'&&!actor.units?.includes(unit))return json({ok:false,error:'NAO_AUTORIZADO'},403);
+        let orders=(await loadShopOrders(env.DB,unit)).filter(o=>actor.units?.includes(o.unit));
+        // Preserve the reception operation list; the complete audit is opt-in.
+        if(url.searchParams.get('all')!=='1')orders=orders.filter(o=>['approved','refunded','refund_pending','paid_pending_coins','cancelled'].includes(o.status)||(['running','review','confirmed','refunding'].includes(o.externalState)&&!['selected','superseded','expired','created'].includes(o.status)));
+        return json({ok:true,orders});
+      }
       if(url.pathname==="/admin/fiscal-sale"&&request.method==="POST"){const ck=request.headers.get("x-clubpop-admin-cookie")||"";const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck},cache:"no-store"});const auth=await vr.json().catch(()=>({}));if(!vr.ok||!["admin","reception"].includes(auth.role)||!auth.permissions?.some(p=>p==="*"||p==="/admin-resgates.html"))return json({ok:false,error:"SEM_PERMISSAO"},403);const b=await request.json().catch(()=>({})),id=String(b.orderId||"");if(!/^[0-9a-f-]{36}$/i.test(id))return json({ok:false,error:"PEDIDO_INVALIDO"},400);const o=await env.DB.prepare("SELECT id,unit,status FROM club_pix_orders WHERE id=?").bind(id).first();if(!o||o.status!=="approved"||!auth.units?.includes(o.unit))return json({ok:false,error:"VENDA_NAO_ELEGIVEL"},409);const result=await env.DB.prepare("INSERT OR IGNORE INTO club_fiscal_sale_entries(order_id,unit,registered_by) VALUES(?,?,?)").bind(id,o.unit,String(auth.email||auth.id||auth.role).slice(0,200)).run();const row=await env.DB.prepare("SELECT registered_at registeredAt,registered_by registeredBy FROM club_fiscal_sale_entries WHERE order_id=?").bind(id).first();return json({ok:true,alreadyRegistered:!result.meta.changes,...row});}
       if (url.pathname === "/admin/mission-redemptions" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";

@@ -7,6 +7,19 @@ import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 function proxyAuth(req,unit,route){const sess=adminSession(req);if(!sess||!sess.units?.includes(unit)||!["admin","reception","teacher"].includes(sess.role))return null;const secret=process.env.AUTO_SYNC_SECRET;if(!secret)return null;const claims=Buffer.from(JSON.stringify({role:sess.role,units:sess.units,permissions:sess.permissions||[],id:sess.id||null,name:sess.name||"",teacherId:sess.teacherId||null,t:Date.now(),unit,route,method:req.method})).toString("base64url");return claims+"."+crypto.createHmac("sha256",secret).update(claims).digest("hex")}
 export default async function handler(req,res){if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bike");if(!["bike","gym","club"].includes(unit))return send(res,400,{ok:false,error:"UNIDADE_INVALIDA"});const signed=proxyAuth(req,unit,"tasks");if(!signed)return send(res,403,{ok:false,error:"NAO_AUTORIZADO"});try{const r=await fetch(WORKER+"/admin/tasks?unit="+encodeURIComponent(unit)+(req.query.studentId?"&studentId="+encodeURIComponent(String(req.query.studentId)):""),{method:req.method,headers:{"x-clubpop-proxy-auth":signed,"content-type":"application/json"},...(req.method==="POST"?{body:JSON.stringify(typeof req.body==="string"?JSON.parse(req.body||"{}"):req.body||{})}:{}),cache:"no-store"});const txt=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(txt)}catch{return send(res,502,{ok:false,error:"FALHA_D1"})}}
+ if(req.query.route==='shop-sales-import') {
+  res.setHeader('Cache-Control','no-store');
+  if(!['GET','POST'].includes(req.method))return res.status(405).json({ok:false,error:'METODO_INVALIDO'});
+  const unit=String(req.query.unit||''),sess=adminSession(req);
+  if(!['bike','gym'].includes(unit)||sess?.role!=='admin'||!sess.units?.includes(unit))return res.status(403).json({ok:false,error:'NAO_AUTORIZADO'});
+  const signed=proxyAuth(req,unit,'shop-sales-import');
+  if(!signed)return res.status(503).json({ok:false,error:'CHAVE_AUTENTICACAO_INTERNA_AUSENTE'});
+  try {
+   const body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};
+   const r=await fetch(WORKER+'/admin/shop-sales-import?unit='+unit,{method:req.method,headers:{'Content-Type':'application/json','x-clubpop-proxy-auth':signed},...(req.method==='POST'?{body:JSON.stringify(body)}:{}),cache:'no-store',signal:AbortSignal.timeout(25000)});
+   res.setHeader('Content-Type','application/json; charset=utf-8');return res.status(r.status).send(await r.text());
+  }catch{return res.status(502).json({ok:false,error:'FALHA_CONEXAO_WORKER'})}
+ }
  if(req.query.route==="csv-import"){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=String(req.body?.unit||"");if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});

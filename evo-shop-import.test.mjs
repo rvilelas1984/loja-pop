@@ -74,3 +74,10 @@ test('transaction guard catches a sale changed between reading and writing',asyn
  const batch=db.batch;db.batch=async stm=>{sql.exec("UPDATE club_pix_orders SET status='refunded'");return batch(stm)};
  await assert.rejects(shopImport(db,'bike','POST',{action:'export',orderIds:['bike-order']},{}));assert.equal(sql.prepare('SELECT count(*) n FROM club_evo_import_batches').get().n,0);
 });
+test('Worker authorizes unit, role, method and signed claims before D1 access',async()=>{
+ const {default:worker}=await import('./club-pop-worker.mjs');const {createHmac}=await import('node:crypto');const secret='fixture-only-secret';
+ const request=(claims,unit='bike',method='GET')=>{const c=Buffer.from(JSON.stringify(claims)).toString('base64url');return new Request('https://worker.test/admin/shop-sales-import?unit='+unit,{method,headers:{'x-clubpop-proxy-auth':c+'.'+createHmac('sha256',secret).update(c).digest('hex')}})};
+ const validClaims={role:'admin',units:['bike'],unit:'bike',route:'shop-sales-import',method:'GET',t:Date.now()};
+ for(const patch of [{role:'reception'},{units:['gym']},{unit:'gym'},{route:'teacher-view'},{method:'POST'},{t:0}]){const r=await worker.fetch(request({...validClaims,...patch}),{AUTO_SYNC_SECRET:secret,DB:{prepare(){throw Error('must not access DB')}}});assert.equal(r.status,403)}
+ const {db}=fixture();const r=await worker.fetch(request(validClaims),{AUTO_SYNC_SECRET:secret,DB:db});assert.equal(r.status,200);const d=await r.json();assert.equal(d.orders.length,1);assert.equal(d.orders[0].unit,'bike');
+});
