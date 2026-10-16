@@ -67,7 +67,7 @@ async function handler(req,res){
     return res.status(400).json({ok:false,error:"PARAMETROS_INVALIDOS"});
    const net=original-discount;
    const sessionId="clubpop-lab-"+crypto.randomUUID();
-   const payload={idProduct,productValue:variant==="net"?net/100:original/100,productAmount:1,memberData:{idMember},payment:13,totalInstallments:1,sessionId};
+   const payload={idProduct,productValue:variant==="net"?net/100:original/100,productAmount:1,memberData:{idMember},payment:15,totalInstallments:1,sessionId};
    if(variant==="catalogPrice")delete payload.productValue;
    if(variant==="catalogPrice")payload.discount=discount/100;
    if(variant==="discount")payload.discount=discount/100;
