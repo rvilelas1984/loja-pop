@@ -568,6 +568,17 @@ if(action==="delegate"){
 if(actor.role!=="admin"||!keys.length||!Number.isInteger(Number(body.staffId)))return json({ok:false,error:"DELEGACAO_INVALIDA"},400);
 const staff=(await staffRows()).find(x=>x.id===Number(body.staffId));if(!staff)return json({ok:false,error:"RECEPCIONISTA_INVALIDO"},400);
 let changed=0;for(const key of keys){const r=await db.prepare("UPDATE club_tasks SET assigned_staff_id=?,assigned_name=?,status='delegated',completed_by=NULL,completed_name=NULL,completed_at=NULL,last_action_by=?,last_action_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND source_key=? AND status!='closed'").bind(staff.id,staff.name,String(actor.name||"Administrador"),unit,key).run();changed+=Number(r.meta?.changes||0)}return json({ok:true,changed})}
+if(["validate","return"].includes(action)){
+if(actor.role!=="admin"||keys.length!==1)return json({ok:false,error:"SEM_PERMISSAO"},403);
+const task=await db.prepare("SELECT id,status FROM club_tasks WHERE unit=? AND source_key=?").bind(unit,keys[0]).first();
+if(!task||task.status!=="waiting_validation")return json({ok:false,error:"TAREFA_NAO_AGUARDANDO_VALIDACAO"},409);
+const next=action==="validate"?"closed":"delegated",note=String(body.notes||"").trim().slice(0,1000);
+if(action==="return"&&!note)return json({ok:false,error:"JUSTIFICATIVA_OBRIGATORIA"},400);
+const result=await db.prepare("UPDATE club_tasks SET status=?,last_action_by=?,last_action_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,notes=CASE WHEN ?='return' THEN COALESCE(notes,'')||char(10)||? ELSE notes END WHERE id=? AND status='waiting_validation'").bind(next,String(actor.name||"Administrador"),action,note?"Devolvida pelo administrador: "+note:"",task.id).run();
+if(!result.meta?.changes)return json({ok:false,error:"TAREFA_JA_ATUALIZADA"},409);
+await db.prepare("INSERT INTO club_task_history(task_id,unit,actor_name,old_status,new_status) VALUES(?,?,?,?,?)").bind(task.id,unit,String(actor.name||"Administrador"),"waiting_validation",next).run();
+return json({ok:true,changed:1,status:next});
+}
 if(["in_progress","no_response","complete"].includes(action)){
 if(actor.role!=="reception"||!actor.id||keys.length!==1)return json({ok:false,error:"ACAO_INVALIDA"},400);
 const key=keys[0],task=await db.prepare("SELECT id,status FROM club_tasks WHERE unit=? AND source_key=? AND assigned_staff_id=?").bind(unit,key,Number(actor.id)).first();
