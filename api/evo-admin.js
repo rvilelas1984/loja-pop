@@ -50,7 +50,7 @@ async function handler(req,res){
  if(kind==="sale_history_lab"){
    if(req.method!=="GET")return res.status(405).json({ok:false,error:"SOMENTE_LEITURA"});
    const idMember=Number(req.query.idMember),date=String(req.query.date||"");
-   if(!Number.isSafeInteger(idMember)||idMember<=0||!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!Number.isFinite(Date.parse(date)))
+   if(!Number.isSafeInteger(idMember)||idMember<=0||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date)))
      return res.status(400).json({ok:false,error:"PARAMETROS_INVALIDOS"});
    const query=new URLSearchParams({idMember:String(idMember),startDate:date,endDate:date,take:"100",skip:"0"});
    const q=await evo("https://evo-integracao-api.w12app.com.br/api/v2/sales?"+query,headers);
