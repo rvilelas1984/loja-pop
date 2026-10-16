@@ -22,7 +22,7 @@ function render(){
  const preview=filter==='done'?done:ready;
  $('cpEvoExportRows').innerHTML=table(['ID filial','Aluno','CPF','Data da venda','Valor','Produto / serviço','Recebimento','Pedido','Status','Pendência / retorno EVO'],preview.slice(0,limit).map(o=>[cfg.branchCode||'Pendente',o.memberName||'Pendente',o.cpf||'Pendente',o.saleDate,brl(o.amountCents),o.officialName||'Vínculo EVO pendente',receiptFor(o,cfg)||'Pendente',o.id,o.importStatus==='confirmed'?'Concluído EVO':'Pronto para envio',o.importStatus==='confirmed'?(o.returnLog||'Importação confirmada'):o.importStatus==='exported'?'Arquivo já baixado · aguardando devolutiva':o.importStatus==='rejected'?'Rejeitada pela EVO · revisar e reenviar':o.importStatus==='review'?'Devolutiva inconclusiva · conferir':'Pronto para exportar']));
  $('cpEvoMore').hidden=shown.length<=limit&&preview.length<=limit;$('cpEvoCounts').textContent=shown.length+' compras no histórico · '+preview.length+(filter==='done'?' concluídas na EVO':' prontas para envio');
- $('cpEvoExport').disabled=busy||!all.some(o=>['product','service'].includes(o.itemType)&&!pendingReasons(o,cfg).length);
+ $('cpEvoExport').disabled=busy||(!ready.length);
  $('cpEvoFilters').querySelectorAll('button').forEach(b=>{b.classList.toggle('active',b.dataset.filter===filter);b.setAttribute('aria-pressed',String(b.dataset.filter===filter))});
  
 }
@@ -48,8 +48,19 @@ $('cpEvoExport').onclick=()=>action(async u=>{
  if(loadedUnit!==u||!data)throw Error('Aguarde o carregamento da unidade.');
  const cfg=settings(),ready=data.orders.filter(o=>['product','service'].includes(o.itemType)&&!pendingReasons(o,cfg).length).slice(0,100);
  if(!ready.length)throw Error('Nenhuma venda elegível.');
+ const fresh=ready.filter(o=>!o.importStatus);
+ if(!fresh.length){
+  const batches=(data.batches||[]).filter(b=>(b.snapshot||[]).some(x=>ready.some(o=>o.id===x.orderId)));
+  if(!batches.length)throw Error('Não foi encontrado lote anterior para baixar novamente.');
+  const selected=$('cpEvoBatch').value;
+  const batch=batches.find(b=>b.id===selected)||batches[0];
+  download({batchId:batch.id,snapshot:batch.snapshot},u);
+  $('cpEvoBatch').value=batch.id;
+  message('Arquivo já baixado anteriormente. Nova cópia do lote original '+batch.id+' gerada sem duplicar o registro no D1.');
+  return;
+ }
  await api('POST',{action:'settings',settings:cfg},u);
- const batch=await api('POST',{action:'export',orderIds:ready.map(o=>o.id)},u);
+ const batch=await api('POST',{action:'export',orderIds:fresh.map(o=>o.id)},u);
  try{download(batch,u)}finally{await load();if(unit()===u)$('cpEvoBatch').value=batch.batchId}
  message('Lote '+batch.batchId+' salvo no D1: '+batch.snapshot.length+' vendas. Permanecem em Prontas para envio até a confirmação da devolutiva EVO. Se o download falhar, use Baixar lote original.');
 });
