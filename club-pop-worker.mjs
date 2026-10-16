@@ -2879,6 +2879,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
  const benefits=JSON.parse(contentRow?.content_json||"{}").benefits||[];
  const date=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
  const memberId=String(member.id);
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_once_redemptions(id INTEGER PRIMARY KEY AUTOINCREMENT,benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,member_name TEXT NOT NULL,partner_name TEXT NOT NULL,benefit_title TEXT NOT NULL,used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(benefit_id,unit,member_id))").run();
  if(request.method==="GET"&&url.searchParams.get("eligibility")==="1"){
   const offers=benefits.filter(b=>String(b.unit||"bike").toLowerCase()===unit&&b.status==="Ativo");
   const needsContracts=offers.some(b=>["active","specific"].includes(String(b.partnerVoucher?.eligibility||"everyone")));
@@ -2896,12 +2897,13 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
  }
  if(request.method==="GET"){
   const rows=await env.DB.prepare("SELECT benefit_id,used_at FROM partner_daily_redemptions WHERE member_id=? AND unit=? AND local_date=?").bind(memberId,unit,date).all();
-  return json({ok:true,used:rows.results||[]});
+  const once=await env.DB.prepare("SELECT benefit_id,used_at FROM partner_once_redemptions WHERE member_id=? AND unit=?").bind(memberId,unit).all();
+  return json({ok:true,used:rows.results||[],usedOnce:once.results||[]});
  }
  if(request.method!=="POST")return json({ok:false,error:"METODO_NAO_PERMITIDO"},405);
  const body=await readJson(request);
  const benefit=benefits.find(x=>String(x.id)===String(body?.benefitId)&&String(x.unit||"bike").toLowerCase()===unit);
- if(!benefit||benefit.status!=="Ativo"||benefit.partnerVoucher?.frequency!=="daily"||benefit.partnerVoucher?.redemptionMode!=="onsite")return json({ok:false,error:"BENEFICIO_INDISPONIVEL"},400);
+ if(!benefit||benefit.status!=="Ativo"||!["daily","once"].includes(benefit.partnerVoucher?.frequency)||benefit.partnerVoucher?.redemptionMode!=="onsite")return json({ok:false,error:"BENEFICIO_INDISPONIVEL"},400);
  if((benefit.start&&benefit.start>date)||(benefit.end&&benefit.end<date))return json({ok:false,error:"FORA_DA_VALIDADE"},400);
  const eligibility=String(benefit.partnerVoucher?.eligibility||"everyone");
  if(eligibility==="active"||eligibility==="specific"){
@@ -2918,6 +2920,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
  const limit=Number(benefit.partnerVoucher?.quantity||0);
  // Daily-use offers are recurring; a one-time total stock cap does not apply to daily confirmations.
  const memberName=[member.first_name||member.firstName||member.name||"",member.last_name||member.lastName||""].join(" ").trim()||"Aluno Club Pop";
+ if(benefit.partnerVoucher.frequency==="once"){
+  const once=await env.DB.prepare("INSERT OR IGNORE INTO partner_once_redemptions(benefit_id,unit,member_id,member_name,partner_name,benefit_title) VALUES(?,?,?,?,?,?)").bind(String(benefit.id),unit,memberId,memberName,String(benefit.partner||""),String(benefit.title||"")).run();
+  if(!once.meta?.changes)return json({ok:false,error:"JA_UTILIZADO"},409);
+  return json({ok:true,usedAt:new Date().toISOString(),benefitId:String(benefit.id)});
+ }
  const insert=await env.DB.prepare("INSERT OR IGNORE INTO partner_daily_redemptions(benefit_id,unit,member_id,member_name,partner_name,benefit_title,local_date) VALUES(?,?,?,?,?,?,?)").bind(String(benefit.id),unit,memberId,memberName,String(benefit.partner||""),String(benefit.title||""),date).run();
  if(!insert.meta?.changes)return json({ok:false,error:"JA_UTILIZADO_HOJE"},409);
  return json({ok:true,usedAt:new Date().toISOString(),date,benefitId:String(benefit.id)});
