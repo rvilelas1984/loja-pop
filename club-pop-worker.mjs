@@ -550,9 +550,19 @@ sql+=" ORDER BY updated_at DESC";const q=await db.prepare(sql).bind(...args).all
 const missing=(q.results||[]).filter(t=>t.source==="aggregator_sales"&&!t.student_cpf);
 if(missing.length){
   const batches=await db.prepare("SELECT rows_json FROM aggregator_sales_batches WHERE unit=? ORDER BY competence DESC LIMIT 12").bind(unit).all().catch(()=>({results:[]}));
-  const indexed=new Map();
-  for(const batch of batches.results||[]){let rows=[];try{rows=JSON.parse(batch.rows_json||"[]")}catch{};for(const r of rows){const origin=String(r.origin||"");const aid=String(r.aggregatorId||"");const cpf=String(r.cpf||"").replace(/\\D/g,"").padStart(11,"0");if(!origin||!aid||!/^[0-9]{11}$/.test(cpf)||/^0+$/.test(cpf))continue;const key=origin+"|"+aid;if(!indexed.has(key))indexed.set(key,cpf)}}
-  for(const t of missing){const cpf=indexed.get(String(t.source_key||""));if(!cpf)continue;await db.prepare("UPDATE club_tasks SET student_cpf=? WHERE id=? AND (student_cpf IS NULL OR student_cpf='')").bind(cpf,t.id).run();t.student_cpf=cpf}
+  const normalize=v=>String(v??"").trim().toLowerCase().replace(/[^a-z0-9]/g,"");
+  const normalizeCpf=v=>{const digits=String(v??"").replace(/[^0-9]/g,"");return digits.length>=1&&digits.length<=11?digits.padStart(11,"0"):null};
+  const byId=new Map(),byName=new Map();
+  for(const batch of batches.results||[]){let rows=[];try{rows=JSON.parse(batch.rows_json||"[]")}catch{};if(!Array.isArray(rows))continue;
+    for(const r of rows){const origin=normalize(r.origin||r.source||r.aggregator),aid=normalize(r.aggregatorId||r.aggregator_id||r.id),name=normalize(r.name||r.student_name||r.studentName),cpf=normalizeCpf(r.cpf||r.documento||r.numeroDocumento||r.numero_documento||r.document||r.documentNumber);
+      if(!origin||!cpf||/^0+$/.test(cpf))continue;
+      if(aid){const key=origin+"|"+aid;if(!byId.has(key))byId.set(key,new Set());byId.get(key).add(cpf)}
+      if(name){const key=origin+"|"+name;if(!byName.has(key))byName.set(key,new Set());byName.get(key).add(cpf)}
+    }
+  }
+  for(const t of missing){const origin=normalize(t.aggregator_origin||String(t.source_key||"").split("|")[0]);const aid=normalize(t.aggregator_id||String(t.source_key||"").split("|").slice(1).join("|"));const name=normalize(t.student_name||t.title);const exact=byId.get(origin+"|"+aid);const candidates=exact&&exact.size===1?exact:byName.get(origin+"|"+name);if(!candidates||candidates.size!==1)continue;
+    const cpf=[...candidates][0];await db.prepare("UPDATE club_tasks SET student_cpf=? WHERE id=? AND (student_cpf IS NULL OR student_cpf='')").bind(cpf,t.id).run();t.student_cpf=cpf;
+  }
 }
 const staff=actor.role==="admin"?await staffRows():[];
 const templates=actor.role==="admin"?(await db.prepare("SELECT title FROM club_task_templates WHERE unit=? ORDER BY title").bind(unit).all()).results.map(x=>x.title):[];
