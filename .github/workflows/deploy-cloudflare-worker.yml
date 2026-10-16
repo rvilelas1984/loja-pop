@@ -11,6 +11,7 @@ on:
       - "lib/checkout.mjs"
       - "lib/checkout-fitcoins.mjs"
       - "lib/evo-product-sales.mjs"
+      - "lib/evo-shop-import.mjs"
       - "wrangler.jsonc"
       - ".github/workflows/deploy-cloudflare-worker.yml"
   workflow_dispatch:
