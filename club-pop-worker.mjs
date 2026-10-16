@@ -2880,6 +2880,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
  const date=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
  const memberId=String(member.id);
  await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_once_redemptions(id INTEGER PRIMARY KEY AUTOINCREMENT,benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,member_name TEXT NOT NULL,partner_name TEXT NOT NULL,benefit_title TEXT NOT NULL,used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(benefit_id,unit,member_id))").run();
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_code_vouchers(benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,member_name TEXT NOT NULL,code TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,used_at TEXT,PRIMARY KEY(benefit_id,unit,member_id))").run();
  if(request.method==="GET"&&url.searchParams.get("eligibility")==="1"){
   const offers=benefits.filter(b=>String(b.unit||"bike").toLowerCase()===unit&&b.status==="Ativo");
   const needsContracts=offers.some(b=>["active","specific"].includes(String(b.partnerVoucher?.eligibility||"everyone")));
@@ -2895,6 +2896,10 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
    return {benefitId:String(b.id),eligible:!reason,reason};
   })});
  }
+ if(request.method==="GET"&&url.searchParams.get("codes")==="1"){
+  const rows=await env.DB.prepare("SELECT benefit_id,code,created_at,used_at FROM partner_code_vouchers WHERE unit=? AND member_id=?").bind(unit,memberId).all();
+  return json({ok:true,codes:rows.results||[]});
+ }
  if(request.method==="GET"){
   const rows=await env.DB.prepare("SELECT benefit_id,used_at FROM partner_daily_redemptions WHERE member_id=? AND unit=? AND local_date=?").bind(memberId,unit,date).all();
   const once=await env.DB.prepare("SELECT benefit_id,used_at FROM partner_once_redemptions WHERE member_id=? AND unit=?").bind(memberId,unit).all();
@@ -2903,7 +2908,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
  if(request.method!=="POST")return json({ok:false,error:"METODO_NAO_PERMITIDO"},405);
  const body=await readJson(request);
  const benefit=benefits.find(x=>String(x.id)===String(body?.benefitId)&&String(x.unit||"bike").toLowerCase()===unit);
- if(!benefit||benefit.status!=="Ativo"||!["daily","once"].includes(benefit.partnerVoucher?.frequency)||benefit.partnerVoucher?.redemptionMode!=="onsite")return json({ok:false,error:"BENEFICIO_INDISPONIVEL"},400);
+ if(!benefit||benefit.status!=="Ativo"||!["daily","once"].includes(benefit.partnerVoucher?.frequency)||!["onsite","code"].includes(benefit.partnerVoucher?.redemptionMode))return json({ok:false,error:"BENEFICIO_INDISPONIVEL"},400);
  if((benefit.start&&benefit.start>date)||(benefit.end&&benefit.end<date))return json({ok:false,error:"FORA_DA_VALIDADE"},400);
  const eligibility=String(benefit.partnerVoucher?.eligibility||"everyone");
  if(eligibility==="active"||eligibility==="specific"){
@@ -2915,6 +2920,24 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
    const allowed=String(benefit.partnerVoucher?.eligibleContracts||"").split(",").map(x=>x.trim()).filter(Boolean);
    if(!allowed.length||!contracts.some(c=>allowed.includes(String(c.id_membership))||allowed.includes(String(c.id_member_membership))))return json({ok:false,error:"PLANO_NAO_ELEGIVEL"},403);
   }
+ }
+ if(benefit.partnerVoucher.redemptionMode==="code"){
+  if(benefit.partnerVoucher.frequency!=="once")return json({ok:false,error:"MODALIDADE_NAO_SUPORTADA"},400);
+  const previous=await env.DB.prepare("SELECT code,created_at FROM partner_code_vouchers WHERE benefit_id=? AND unit=? AND member_id=?").bind(String(benefit.id),unit,memberId).first();
+  if(previous)return json({ok:true,code:previous.code,createdAt:previous.created_at,existing:true});
+  const quantity=Math.max(0,Math.floor(Number(benefit.partnerVoucher.quantity||0)));
+  if(!quantity)return json({ok:false,error:"VOUCHERS_ESGOTADOS"},409);
+  const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes=crypto.getRandomValues(new Uint8Array(8));
+  const code=Array.from(bytes,x=>alphabet[x%alphabet.length]).join("");
+  const memberName=[member.first_name||member.firstName||member.name||"",member.last_name||member.lastName||""].join(" ").trim()||"Aluno Club Pop";
+  const inserted=await env.DB.prepare("INSERT OR IGNORE INTO partner_code_vouchers(benefit_id,unit,member_id,member_name,code) SELECT ?,?,?,?,? WHERE (SELECT COUNT(*) FROM partner_code_vouchers WHERE benefit_id=? AND unit=?)<?").bind(String(benefit.id),unit,memberId,memberName,code,String(benefit.id),unit,quantity).run();
+  if(!inserted.meta?.changes){
+   const existing=await env.DB.prepare("SELECT code,created_at FROM partner_code_vouchers WHERE benefit_id=? AND unit=? AND member_id=?").bind(String(benefit.id),unit,memberId).first();
+   if(existing)return json({ok:true,code:existing.code,createdAt:existing.created_at,existing:true});
+   return json({ok:false,error:"VOUCHERS_ESGOTADOS"},409);
+  }
+  return json({ok:true,code,createdAt:new Date().toISOString(),existing:false});
  }
  const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM partner_daily_redemptions WHERE benefit_id=? AND unit=?").bind(String(benefit.id),unit).first();
  const limit=Number(benefit.partnerVoucher?.quantity||0);
