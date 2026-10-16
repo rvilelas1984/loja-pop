@@ -19,10 +19,11 @@ function render(){
  $('cpEvoRows').innerHTML=table(['Pedido','Tipo','Produto / serviço oficial EVO','Aluno','CPF','Data original','Valor original','Desconto (R$)','Fitcoins','Pago no Pix','Forma de pagamento','Status da compra','Situação EVO'],shown.slice(0,limit).map(o=>[o.id,o.itemType==='service'?'Serviço':'Produto',o.officialName||o.storedItemName||o.itemName||'Pendente',o.memberName||'Pendente',o.cpf||'Pendente',o.saleDate,brl(o.originalCents),brl(o.discountCents),o.currencyQuantity,brl(o.status==='approved'&&o.pixVerified?o.amountCents:0)+(o.status==='refunded'?' (estornado)':''),modes[o.paymentMode]||o.paymentMode,o.status+(o.isTest?' · teste':''),status(o,cfg)]));
  const ready=all.filter(o=>!pendingReasons(o,cfg).length),done=all.filter(o=>o.importStatus==='confirmed'),pending=all.filter(o=>o.importStatus==='rejected'||(!['confirmed','exported'].includes(o.importStatus)&&pendingReasons(o,cfg).length>0&&o.amountCents>0)),sum=a=>a.reduce((n,o)=>n+Number(o.amountCents||0),0);
  $('cpEvoKpis').innerHTML=[['Prontos para EVO',ready],['Pendentes',pending],['Total do arquivo',ready.slice(0,100)],['Concluídos EVO',done]].map(([label,a])=>'<div class="card"><small>'+label+'</small><h3>'+a.length+'</h3><strong>'+brl(sum(a))+'</strong></div>').join('');
- const preview=ready;
- $('cpEvoExportRows').innerHTML=table(['ID filial','Aluno','CPF','Data da venda','Valor','Produto / serviço','Recebimento','Pedido','Status','Pendência / retorno EVO'],preview.slice(0,limit).map(o=>[cfg.branchCode||'Pendente',o.memberName||'Pendente',o.cpf||'Pendente',o.saleDate,brl(o.amountCents),o.officialName||'Vínculo EVO pendente',receiptFor(o,cfg)||'Pendente',o.id,status(o,cfg),[...pendingReasons(o,cfg),o.returnLog].filter(Boolean).join(' · ')]));
- $('cpEvoMore').hidden=shown.length<=limit&&preview.length<=limit;$('cpEvoCounts').textContent=shown.length+' compras no histórico · '+preview.length+' prontas para envio';
+ const preview=filter==='done'?done:ready;
+ $('cpEvoExportRows').innerHTML=table(['ID filial','Aluno','CPF','Data da venda','Valor','Produto / serviço','Recebimento','Pedido','Status','Pendência / retorno EVO'],preview.slice(0,limit).map(o=>[cfg.branchCode||'Pendente',o.memberName||'Pendente',o.cpf||'Pendente',o.saleDate,brl(o.amountCents),o.officialName||'Vínculo EVO pendente',receiptFor(o,cfg)||'Pendente',o.id,o.importStatus==='confirmed'?'Concluído EVO':'Pronto para envio',o.importStatus==='confirmed'?(o.returnLog||'Importação confirmada'):'Pronto para exportar']));
+ $('cpEvoMore').hidden=shown.length<=limit&&preview.length<=limit;$('cpEvoCounts').textContent=shown.length+' compras no histórico · '+preview.length+(filter==='done'?' concluídas na EVO':' prontas para envio');
  $('cpEvoExport').disabled=busy||!ready.length;
+ $('cpEvoFilters').querySelectorAll('button').forEach(b=>{b.classList.toggle('active',b.dataset.filter===filter);b.setAttribute('aria-pressed',String(b.dataset.filter===filter))});
  
 }
 function renderBatches(){
@@ -59,6 +60,7 @@ $('cpEvoReturn').onclick=()=>action(async u=>{
  await load();message(r.changed+' vendas atualizadas; '+r.unmatched+' linhas sem correspondência. As rejeições aparecem na prévia e as confirmações não serão exportadas novamente.');
 });
 
+$('cpEvoFilters').onclick=e=>{const b=e.target.closest('[data-filter]');if(b&&['ready','done'].includes(b.dataset.filter)){filter=b.dataset.filter;limit=50;render()}};
 $('cpEvoMore').onclick=()=>{limit+=50;render()};$('cpEvoReload').onclick=load;
 for(const id of ['cpEvoType','cpEvoPayment','cpEvoImport','cpEvoBranch','cpEvoReceiptPix','cpEvoReceiptCoins','cpEvoReceiptMixed'])$(id).addEventListener('input',render);
 document.addEventListener('change',e=>{if(e.target.closest('[data-cp-unit],#cp-unit-select'))load()});
