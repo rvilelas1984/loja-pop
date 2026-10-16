@@ -2890,7 +2890,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
  if((benefit.start&&benefit.start>date)||(benefit.end&&benefit.end<date))return json({ok:false,error:"FORA_DA_VALIDADE"},400);
  const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM partner_daily_redemptions WHERE benefit_id=? AND unit=?").bind(String(benefit.id),unit).first();
  const limit=Number(benefit.partnerVoucher?.quantity||0);
- if(limit>0&&Number(count?.total||0)>=limit)return json({ok:false,error:"LIMITE_ESGOTADO"},409);
+ // Daily-use offers are recurring; a one-time total stock cap does not apply to daily confirmations.
  const memberName=[member.first_name||member.firstName||member.name||"",member.last_name||member.lastName||""].join(" ").trim()||"Aluno Club Pop";
  const insert=await env.DB.prepare("INSERT OR IGNORE INTO partner_daily_redemptions(benefit_id,unit,member_id,member_name,partner_name,benefit_title,local_date) VALUES(?,?,?,?,?,?,?)").bind(String(benefit.id),unit,memberId,memberName,String(benefit.partner||""),String(benefit.title||""),date).run();
  if(!insert.meta?.changes)return json({ok:false,error:"JA_UTILIZADO_HOJE"},409);
