@@ -17,12 +17,12 @@ function render(){
  const cfg=settings(),all=data.orders.filter(o=>['product','service'].includes(o.itemType)),type=$('cpEvoType').value,pay=$('cpEvoPayment').value,imp=$('cpEvoImport').value;
  const shown=all.filter(o=>(!type||o.itemType===type)&&(!pay||o.status===pay)&&(!imp||o.importStatus===imp||(imp==='none'&&!o.importStatus)));
  $('cpEvoRows').innerHTML=table(['Pedido','Tipo','Produto / serviço oficial EVO','Aluno','CPF','Data original','Valor original','Desconto (R$)','Fitcoins','Pago no Pix','Forma de pagamento','Status da compra','Situação EVO'],shown.slice(0,limit).map(o=>[o.id,o.itemType==='service'?'Serviço':'Produto',o.officialName||o.storedItemName||o.itemName||'Pendente',o.memberName||'Pendente',o.cpf||'Pendente',o.saleDate,brl(o.originalCents),brl(o.discountCents),o.currencyQuantity,brl(o.status==='approved'&&o.pixVerified?o.amountCents:0)+(o.status==='refunded'?' (estornado)':''),modes[o.paymentMode]||o.paymentMode,o.status+(o.isTest?' · teste':''),status(o,cfg)]));
- const ready=all.filter(o=>!pendingReasons(o,cfg).length),done=all.filter(o=>o.importStatus==='confirmed'),pending=all.filter(o=>o.importStatus==='rejected'||(!['confirmed','exported'].includes(o.importStatus)&&pendingReasons(o,cfg).length>0&&o.amountCents>0)),sum=a=>a.reduce((n,o)=>n+Number(o.amountCents||0),0);
+ const ready=all.filter(o=>o.status==='approved'&&!o.isTest&&o.importStatus!=='confirmed'&&(!o.importStatus||['exported','review','rejected'].includes(o.importStatus))&&pendingReasons(o,cfg).every(reason=>['Aguardando conferência do lote anterior'].includes(reason))),done=all.filter(o=>o.importStatus==='confirmed'),pending=all.filter(o=>o.importStatus==='rejected'||(!['confirmed','exported'].includes(o.importStatus)&&pendingReasons(o,cfg).length>0&&o.amountCents>0)),sum=a=>a.reduce((n,o)=>n+Number(o.amountCents||0),0);
  $('cpEvoKpis').innerHTML=[['Prontos para EVO',ready],['Pendentes',pending],['Total do arquivo',ready.slice(0,100)],['Concluídos EVO',done]].map(([label,a])=>'<div class="card"><small>'+label+'</small><h3>'+a.length+'</h3><strong>'+brl(sum(a))+'</strong></div>').join('');
  const preview=filter==='done'?done:ready;
- $('cpEvoExportRows').innerHTML=table(['ID filial','Aluno','CPF','Data da venda','Valor','Produto / serviço','Recebimento','Pedido','Status','Pendência / retorno EVO'],preview.slice(0,limit).map(o=>[cfg.branchCode||'Pendente',o.memberName||'Pendente',o.cpf||'Pendente',o.saleDate,brl(o.amountCents),o.officialName||'Vínculo EVO pendente',receiptFor(o,cfg)||'Pendente',o.id,o.importStatus==='confirmed'?'Concluído EVO':'Pronto para envio',o.importStatus==='confirmed'?(o.returnLog||'Importação confirmada'):'Pronto para exportar']));
+ $('cpEvoExportRows').innerHTML=table(['ID filial','Aluno','CPF','Data da venda','Valor','Produto / serviço','Recebimento','Pedido','Status','Pendência / retorno EVO'],preview.slice(0,limit).map(o=>[cfg.branchCode||'Pendente',o.memberName||'Pendente',o.cpf||'Pendente',o.saleDate,brl(o.amountCents),o.officialName||'Vínculo EVO pendente',receiptFor(o,cfg)||'Pendente',o.id,o.importStatus==='confirmed'?'Concluído EVO':'Pronto para envio',o.importStatus==='confirmed'?(o.returnLog||'Importação confirmada'):o.importStatus==='exported'?'Arquivo já baixado · aguardando devolutiva':o.importStatus==='rejected'?'Rejeitada pela EVO · revisar e reenviar':o.importStatus==='review'?'Devolutiva inconclusiva · conferir':'Pronto para exportar']));
  $('cpEvoMore').hidden=shown.length<=limit&&preview.length<=limit;$('cpEvoCounts').textContent=shown.length+' compras no histórico · '+preview.length+(filter==='done'?' concluídas na EVO':' prontas para envio');
- $('cpEvoExport').disabled=busy||!ready.length;
+ $('cpEvoExport').disabled=busy||!all.some(o=>['product','service'].includes(o.itemType)&&!pendingReasons(o,cfg).length);
  $('cpEvoFilters').querySelectorAll('button').forEach(b=>{b.classList.toggle('active',b.dataset.filter===filter);b.setAttribute('aria-pressed',String(b.dataset.filter===filter))});
  
 }
@@ -51,13 +51,13 @@ $('cpEvoExport').onclick=()=>action(async u=>{
  await api('POST',{action:'settings',settings:cfg},u);
  const batch=await api('POST',{action:'export',orderIds:ready.map(o=>o.id)},u);
  try{download(batch,u)}finally{await load();if(unit()===u)$('cpEvoBatch').value=batch.batchId}
- message('Lote '+batch.batchId+' salvo no D1: '+batch.snapshot.length+' vendas. Se o download falhar, use Baixar lote original.');
+ message('Lote '+batch.batchId+' salvo no D1: '+batch.snapshot.length+' vendas. Permanecem em Prontas para envio até a confirmação da devolutiva EVO. Se o download falhar, use Baixar lote original.');
 });
 $('cpEvoDownload').onclick=()=>{try{const b=data?.batches.find(x=>x.id===$('cpEvoBatch').value);if(!b)throw Error('Selecione um lote.');download({batchId:b.id,snapshot:b.snapshot},loadedUnit)}catch(e){message(e.message,true)}};
 $('cpEvoReturn').onclick=()=>action(async u=>{
  const file=$('cpEvoFile').files?.[0],batchId=$('cpEvoBatch').value;if(!file||!batchId)throw Error('Selecione o lote e a planilha devolvida.');if(file.size>10*1024*1024)throw Error('Arquivo acima de 10 MB.');
  const entries=readReturn(XLSX,await file.arrayBuffer()),r=await api('POST',{action:'return',batchId,entries},u);
- await load();message(r.changed+' vendas atualizadas; '+r.unmatched+' linhas sem correspondência. As rejeições aparecem na prévia e as confirmações não serão exportadas novamente.');
+ await load();message(r.changed+' vendas conferidas; '+r.unmatched+' linhas sem correspondência. Somente as confirmadas saem de Prontas para envio e entram em Concluídas EVO.');
 });
 
 $('cpEvoFilters').onclick=e=>{const b=e.target.closest('[data-filter]');if(b&&['ready','done'].includes(b.dataset.filter)){filter=b.dataset.filter;limit=50;render()}};
