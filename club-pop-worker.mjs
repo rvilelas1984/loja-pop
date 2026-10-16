@@ -2869,7 +2869,44 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       // =====================================================
       // CLUB POP CONTENT STORE (D1)
       // =====================================================
-      if(url.pathname==="/content-store"){
+      if(url.pathname==="/partner-daily-redemption"){
+ const member=await authenticatedMember(request,env);
+ if(!member)return json({ok:false,error:"SESSAO_INVALIDA"},401);
+ const unit=(url.searchParams.get("unit")||"bike").toLowerCase();
+ if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_daily_redemptions(id INTEGER PRIMARY KEY AUTOINCREMENT,benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,member_name TEXT NOT NULL,partner_name TEXT NOT NULL,benefit_title TEXT NOT NULL,local_date TEXT NOT NULL,used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(benefit_id,unit,member_id,local_date))").run();
+ const contentRow=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop' LIMIT 1").first();
+ const benefits=JSON.parse(contentRow?.content_json||"{}").benefits||[];
+ const date=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+ const memberId=String(member.id);
+ if(request.method==="GET"){
+  const rows=await env.DB.prepare("SELECT benefit_id,used_at FROM partner_daily_redemptions WHERE member_id=? AND unit=? AND local_date=?").bind(memberId,unit,date).all();
+  return json({ok:true,used:rows.results||[]});
+ }
+ if(request.method!=="POST")return json({ok:false,error:"METODO_NAO_PERMITIDO"},405);
+ const body=await readJson(request);
+ const benefit=benefits.find(x=>String(x.id)===String(body?.benefitId)&&String(x.unit||"bike").toLowerCase()===unit);
+ if(!benefit||benefit.status!=="Ativo"||benefit.partnerVoucher?.frequency!=="daily"||benefit.partnerVoucher?.redemptionMode!=="onsite")return json({ok:false,error:"BENEFICIO_INDISPONIVEL"},400);
+ if((benefit.start&&benefit.start>date)||(benefit.end&&benefit.end<date))return json({ok:false,error:"FORA_DA_VALIDADE"},400);
+ const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM partner_daily_redemptions WHERE benefit_id=? AND unit=?").bind(String(benefit.id),unit).first();
+ const limit=Number(benefit.partnerVoucher?.quantity||0);
+ if(limit>0&&Number(count?.total||0)>=limit)return json({ok:false,error:"LIMITE_ESGOTADO"},409);
+ const memberName=[member.first_name||member.firstName||member.name||"",member.last_name||member.lastName||""].join(" ").trim()||"Aluno Club Pop";
+ const insert=await env.DB.prepare("INSERT OR IGNORE INTO partner_daily_redemptions(benefit_id,unit,member_id,member_name,partner_name,benefit_title,local_date) VALUES(?,?,?,?,?,?,?)").bind(String(benefit.id),unit,memberId,memberName,String(benefit.partner||""),String(benefit.title||""),date).run();
+ if(!insert.meta?.changes)return json({ok:false,error:"JA_UTILIZADO_HOJE"},409);
+ return json({ok:true,usedAt:new Date().toISOString(),date,benefitId:String(benefit.id)});
+}
+if(url.pathname==="/partner-daily-redemption/admin"){
+ const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+ if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+ const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+ if(!auth.ok)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_daily_redemptions(id INTEGER PRIMARY KEY AUTOINCREMENT,benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,member_name TEXT NOT NULL,partner_name TEXT NOT NULL,benefit_title TEXT NOT NULL,local_date TEXT NOT NULL,used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(benefit_id,unit,member_id,local_date))").run();
+ const unit=url.searchParams.get("unit")==="gym"?"gym":"bike";
+ const rows=await env.DB.prepare("SELECT benefit_id,member_name,partner_name,benefit_title,local_date,used_at FROM partner_daily_redemptions WHERE unit=? ORDER BY used_at DESC LIMIT 300").bind(unit).all();
+ return json({ok:true,rows:rows.results||[]});
+}
+if(url.pathname==="/content-store"){
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS app_content(content_key TEXT PRIMARY KEY,content_json TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         if(request.method==="GET"){
           const row=await env.DB.prepare("SELECT content_json,updated_at FROM app_content WHERE content_key='club-pop' LIMIT 1").first();
