@@ -547,6 +547,13 @@ if(lookup){if(actor.role!=="admin")return json({ok:false,error:"SEM_PERMISSAO"},
 let sql="SELECT * FROM club_tasks WHERE unit=?",args=[unit];
 if(actor.role==="reception"){if(!actor.id)return json({ok:true,tasks:[],role:actor.role,name:actor.name});sql+=" AND assigned_staff_id=?";args.push(Number(actor.id))}
 sql+=" ORDER BY updated_at DESC";const q=await db.prepare(sql).bind(...args).all();
+const missing=(q.results||[]).filter(t=>t.source==="aggregator_sales"&&!t.student_cpf);
+if(missing.length){
+  const batches=await db.prepare("SELECT rows_json FROM aggregator_sales_batches WHERE unit=? ORDER BY competence DESC LIMIT 12").bind(unit).all().catch(()=>({results:[]}));
+  const indexed=new Map();
+  for(const batch of batches.results||[]){let rows=[];try{rows=JSON.parse(batch.rows_json||"[]")}catch{};for(const r of rows){const origin=String(r.origin||"");const aid=String(r.aggregatorId||"");const cpf=String(r.cpf||"").replace(/\\D/g,"").padStart(11,"0");if(!origin||!aid||!/^[0-9]{11}$/.test(cpf)||/^0+$/.test(cpf))continue;const key=origin+"|"+aid;if(!indexed.has(key))indexed.set(key,cpf)}}
+  for(const t of missing){const cpf=indexed.get(String(t.source_key||""));if(!cpf)continue;await db.prepare("UPDATE club_tasks SET student_cpf=? WHERE id=? AND (student_cpf IS NULL OR student_cpf='')").bind(cpf,t.id).run();t.student_cpf=cpf}
+}
 const staff=actor.role==="admin"?await staffRows():[];
 const templates=actor.role==="admin"?(await db.prepare("SELECT title FROM club_task_templates WHERE unit=? ORDER BY title").bind(unit).all()).results.map(x=>x.title):[];
 return json({ok:true,role:actor.role,name:actor.name,tasks:q.results||[],staff,templates});
