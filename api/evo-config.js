@@ -5,7 +5,7 @@ import { attendanceWeekStarts } from "../lib/evo-attendance-weeks.js";
 import { parseActiveReport } from "../lib/evo-active-report.js";
 import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
-function proxyAuth(req,unit,route){const sess=adminSession(req);if(!sess||!sess.units?.includes(unit)||!["admin","reception","teacher"].includes(sess.role))return null;const secret=process.env.AUTO_SYNC_SECRET;if(!secret)return null;const claims=Buffer.from(JSON.stringify({role:sess.role,units:sess.units,permissions:sess.permissions||[],id:sess.id||null,name:sess.name||"",teacherId:sess.teacherId||null,t:Date.now(),unit,route,method:req.method})).toString("base64url");return claims+"."+crypto.createHmac("sha256",secret).update(claims).digest("hex")}
+function proxyAuth(req,unit,route){const sess=adminSession(req);if(!sess||!(unit==="all"&&route==="teacher-view"?sess.units?.some(u=>u==="bike"||u==="gym"):sess.units?.includes(unit))||!["admin","reception","teacher"].includes(sess.role))return null;const secret=process.env.AUTO_SYNC_SECRET;if(!secret)return null;const claims=Buffer.from(JSON.stringify({role:sess.role,units:sess.units,permissions:sess.permissions||[],id:sess.id||null,name:sess.name||"",teacherId:sess.teacherId||null,t:Date.now(),unit,route,method:req.method})).toString("base64url");return claims+"."+crypto.createHmac("sha256",secret).update(claims).digest("hex")}
 export default async function handler(req,res){
  if(req.query.route==="partner-voucher-history"){
   const sess=adminSession(req),unit=String(req.query.unit||"club").toLowerCase();
