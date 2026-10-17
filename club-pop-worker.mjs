@@ -734,7 +734,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const response=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const auth=await response.json().catch(()=>({}));
-        if(!response.ok||!auth?.ok)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        if(!response.ok||auth.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const perms=auth.permissions||auth.user?.permissions||[];
         if(Array.isArray(perms)&&perms.length&&!perms.some(p=>p==="*"||p==="/admin-beneficios.html"))return json({ok:false,error:"SEM_PERMISSAO"},403);
         const unit=(url.searchParams.get("unit")||"club").toLowerCase();
