@@ -729,6 +729,20 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
 
       if(url.pathname==="/benefit-vouchers" || url.pathname==="/admin/benefit-vouchers")return benefitVouchers(request,env,url.pathname.startsWith("/admin/")?null:await authenticatedMember(request,env),json);
       if(url.pathname==="/currency-store")return currencyStudent(request,env,await authenticatedMember(request,env),json);
+      if(url.pathname==="/partner-campaign-event"&&request.method==="POST"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"SESSAO_INVALIDA"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase(),body=await request.json().catch(()=>({}));
+        if(!["bike","gym"].includes(unit)||!["view","partner_click"].includes(body.event)||!/^benefit-[a-zA-Z0-9_-]+$/.test(String(body.benefitId||"")))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const content=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop' LIMIT 1").first();
+        const benefit=(JSON.parse(content?.content_json||"{}").benefits||[]).find(b=>String(b.id)===String(body.benefitId)&&String(b.unit||"bike").toLowerCase()===unit&&b.status==="Ativo");
+        if(!benefit)return json({ok:false,error:"BENEFICIO_INDISPONIVEL"},404);
+        if(body.event==="partner_click"&&(!benefit.partnerVoucher?.partnerLinkEnabled||!/^https:\/\//i.test(benefit.partnerVoucher?.partnerLinkUrl||"")))return json({ok:false,error:"LINK_INDISPONIVEL"},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_campaign_events(id INTEGER PRIMARY KEY AUTOINCREMENT,benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,event_type TEXT NOT NULL,day TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(benefit_id,unit,member_id,event_type,day))").run();
+        const day=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+        await env.DB.prepare("INSERT OR IGNORE INTO partner_campaign_events(benefit_id,unit,member_id,event_type,day) VALUES(?,?,?,?,?)").bind(String(body.benefitId),unit,String(member.id),body.event,day).run();
+        return json({ok:true});
+      }
       if(url.pathname==="/admin/partner-voucher-history"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -752,7 +766,11 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const content=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop' LIMIT 1").first();
         const benefits=JSON.parse(content?.content_json||"{}").benefits||[];
         const rows=result.flatMap((r,i)=>(r.results||[]).map(x=>{const b=benefits.find(y=>String(y.id)===String(x.benefit_id)&&String(y.unit||"bike").toLowerCase()===x.unit);return {...x,partner_name:x.partner_name||b?.partner||"",benefit_title:x.benefit_title||b?.title||""}}));
-        return json({ok:true,rows});
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_campaign_events(id INTEGER PRIMARY KEY AUTOINCREMENT,benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,event_type TEXT NOT NULL,day TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(benefit_id,unit,member_id,event_type,day))").run();
+        const ev=await (unit==="club"?env.DB.prepare("SELECT event_type,COUNT(*) AS total FROM partner_campaign_events GROUP BY event_type"):env.DB.prepare("SELECT event_type,COUNT(*) AS total FROM partner_campaign_events WHERE unit=? GROUP BY event_type").bind(unit)).all();
+        const metrics=Object.fromEntries((ev.results||[]).map(r=>[r.event_type,Number(r.total)]));
+        const campaign={views:metrics.view||0,clicks:metrics.partner_click||0,issued:rows.filter(r=>r.mode==="Código + WhatsApp").length,used:rows.filter(r=>r.status==="Utilizado").length};
+        return json({ok:true,rows,campaign});
       }
       if(url.pathname==="/admin/currencies"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
