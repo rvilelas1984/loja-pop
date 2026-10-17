@@ -171,7 +171,7 @@ async function refreshBikeStars(){
  const unit=localStorage.getItem('clubpop_active_unit')||'bike';
  if(unit!=='bike'){card.style.display='none';return;}
  const session=JSON.parse(sessionStorage.getItem('clubpop')||'{}');
- const token=session.token||session.accessToken||session.authToken||localStorage.getItem('clubpop_token');
+ const token=sessionStorage.getItem('clubpop_token');
  if(!token){card.style.display='none';return;}
  try{
   const response=await fetch('/api/auth?route=evo-cache&unit=bike',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
