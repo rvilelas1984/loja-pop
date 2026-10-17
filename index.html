@@ -69,7 +69,7 @@
 <div id="firstStep" hidden><label>SEU CPF</label><input id="firstCpf" inputmode="numeric" placeholder="000.000.000-00"><label style="margin-top:12px">E-MAIL CADASTRADO</label><input id="firstEmail" type="email" autocomplete="email" placeholder="seu@email.com"><label style="margin-top:12px">DATA DE NASCIMENTO</label><input id="firstBirth" type="date"><button class="btn" id="validateFirst">VALIDAR MEUS DADOS →</button><button class="btn" id="backLogin" style="background:#eef8fc;color:#0875d1">VOLTAR AO LOGIN</button></div>
 <div id="pinStep" hidden><label>CRIE SEU PIN DE 6 NÚMEROS</label><div class="pinfield"><input id="newPin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" placeholder="••••••"><button type="button" class="pin-toggle" data-target="newPin" aria-label="Mostrar PIN">◉</button></div><label style="margin-top:12px">CONFIRME O PIN</label><div class="pinfield"><input id="newPin2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" placeholder="••••••"><button type="button" class="pin-toggle" data-target="newPin2" aria-label="Mostrar PIN">◉</button></div><button class="btn" id="createPin">CRIAR PIN E ENTRAR →</button></div>
 <div class="msg" id="msg"></div></div><div id="syncInfo" style="margin:18px 3px 0;font-size:9px;color:#747b86;text-align:center"></div></main></section>
-<section id="dashboard" class="bike-view"><header id="club-pop-student-header" class="cp-header-card cp-header-placeholder" aria-label="Cabeçalho Club Pop"></header><header class="top"><div><div class="brand" id="dashBrand" role="button" tabindex="0">CLUB <span>POP</span> · <b id="dashUnitBrand">BIKE POP</b></div><div class="tag">Benefícios exclusivos para alunos Pop</div></div><div class="avatar" id="avatar" role="button" tabindex="0">A</div></header><main><section class="hello"><h1 id="hello">Olá 👋</h1><p id="summary">Seu Club Pop • acompanhe suas conquistas</p></section><div class="unit-switch" id="unitSwitch"><button class="unit-btn active" data-unit="bike">BIKE POP<small>Ciclismo Indoor</small></button><button class="unit-btn" data-unit="gym">GYM POP<small>Aulas de Ginástica</small></button></div><section class="balance"><div class="label">SEU SALDO</div><div class="coins"><span id="coins">—</span> <small>Fitcoins</small></div><p>Seus treinos viram benefícios exclusivos no Club Pop.</p><button class="btn" onclick="location.href='/loja'">RESGATAR FITCOINS →</button></section><section id="nextClassBlock" class="next-class-card" aria-label="Minha próxima aula">
+<section id="dashboard" class="bike-view"><header id="club-pop-student-header" class="cp-header-card cp-header-placeholder" aria-label="Cabeçalho Club Pop"></header><header class="top"><div><div class="brand" id="dashBrand" role="button" tabindex="0">CLUB <span>POP</span> · <b id="dashUnitBrand">BIKE POP</b></div><div class="tag">Benefícios exclusivos para alunos Pop</div></div><div class="avatar" id="avatar" role="button" tabindex="0">A</div></header><main><section class="hello"><h1 id="hello">Olá 👋</h1><p id="summary">Seu Club Pop • acompanhe suas conquistas</p></section><div class="unit-switch" id="unitSwitch"><button class="unit-btn active" data-unit="bike">BIKE POP<small>Ciclismo Indoor</small></button><button class="unit-btn" data-unit="gym">GYM POP<small>Aulas de Ginástica</small></button></div><section class="balance"><div class="label">SEU SALDO</div><div class="coins"><span id="coins">—</span> <small>Fitcoins</small></div><p>Seus treinos viram benefícios exclusivos no Club Pop.</p><button class="btn" onclick="location.href='/loja'">RESGATAR FITCOINS →</button></section><section id="bikeStarsCard" style="display:none;background:#fff;border:1px solid #eadcf7;border-radius:20px;padding:18px;margin:0 0 18px;box-shadow:0 7px 24px #27103c12" aria-label="Minhas estrelas"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><div style="font-size:12px;font-weight:900;color:#7134a0">⭐ MINHAS ESTRELAS</div><div id="bikeStarsTitle" style="font-size:13px;color:#67606d;margin-top:6px">Sua jornada Bike Pop</div></div><strong id="bikeStarsTotal" style="font-size:32px;color:#7134a0">—</strong></div><div style="height:11px;border-radius:20px;background:#eee6f5;overflow:hidden;margin-top:16px"><div id="bikeStarsFill" style="height:100%;width:0;background:linear-gradient(90deg,#8346bb,#c48bea);border-radius:20px;transition:width .4s"></div></div><div style="display:flex;justify-content:space-between;font-size:11px;color:#777;margin-top:7px"><span id="bikeStarsFrom"></span><span id="bikeStarsTo"></span></div><p id="bikeStarsMessage" style="font-size:13px;font-weight:750;color:#7134a0;margin:13px 0 0"></p></section><section id="nextClassBlock" class="next-class-card" aria-label="Minha próxima aula">
  <div class="next-class-top"><span class="next-class-kicker">◷ &nbsp; MINHA PRÓXIMA AULA</span><span id="nextClassStatus" class="next-class-status">Consultando</span></div>
  <div id="nextClassTitle" class="next-class-title">Próxima aula</div>
  <div id="nextClassDetails" class="next-class-details" aria-live="polite">Consultando reservas...</div>
@@ -164,4 +164,30 @@ if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch
 <label id="classChatNamePreference" hidden style="display:flex;align-items:center;gap:9px;color:#d7d2e7;font-size:13px;margin:10px 0"><input type="checkbox" id="classChatNameToggle"> Mostrar meu nome no chat</label>
 <div id="classChatMessages" style="overflow-y:auto;flex:1;min-height:120px;padding:12px 0;display:flex;flex-direction:column;gap:10px"></div>
 <form id="classChatForm" style="display:flex;gap:8px;padding-bottom:12px"><input id="classChatInput" maxlength="500" placeholder="Sua mensagem..." style="flex:1;min-width:0;padding:12px;border:0;border-radius:10px"><button style="background:#b88cf9;border:0;border-radius:10px;padding:12px;font-weight:bold">Enviar</button></form>
-</div></body></html>
+</div><script type="module">
+import {bikeStarProgress} from '/lib/bike-star-levels.mjs';
+const card=document.getElementById('bikeStarsCard');
+async function refreshBikeStars(){
+ const unit=localStorage.getItem('clubpop_active_unit')||'bike';
+ if(unit!=='bike'){card.style.display='none';return;}
+ const session=JSON.parse(sessionStorage.getItem('clubpop')||'{}');
+ const token=session.token||session.accessToken||session.authToken||localStorage.getItem('clubpop_token');
+ if(!token){card.style.display='none';return;}
+ try{
+  const response=await fetch('/api/auth?route=evo-cache&unit=bike',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+  const result=await response.json();
+  if(!response.ok||!result.ok||!result.data?.bikeStars){card.style.display='none';return;}
+  const p=bikeStarProgress(result.data.bikeStars.total);
+  document.getElementById('bikeStarsTotal').textContent=p.total.toLocaleString('pt-BR');
+  document.getElementById('bikeStarsTitle').textContent=p.title;
+  document.getElementById('bikeStarsFill').style.width=p.percent+'%';
+  document.getElementById('bikeStarsFrom').textContent=p.currentMilestone+' aulas';
+  document.getElementById('bikeStarsTo').textContent=p.nextMilestone+' aulas';
+  document.getElementById('bikeStarsMessage').textContent=p.message;
+  card.style.display='';
+ }catch{card.style.display='none';}
+}
+document.addEventListener('click',e=>{if(e.target.closest('[data-unit]'))setTimeout(refreshBikeStars,300)});
+window.addEventListener('focus',refreshBikeStars);
+setTimeout(refreshBikeStars,1000);
+</script></body></html>
