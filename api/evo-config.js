@@ -12,6 +12,14 @@ export default async function handler(req,res){
   const unit=String(req.query.unit||"bike");if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
   try{const r=await fetch(WORKER+"/partner-campaign-event?unit="+unit,{method:"POST",headers:{"Content-Type":"application/json",Authorization:String(req.headers.authorization||"")},body:JSON.stringify(req.body||{}),cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
  }
+ if(req.query.route==="partner-performance"){
+  const sess=adminSession(req),unit=String(req.query.unit||"club").toLowerCase();
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  if(!sess||sess.role!=="admin")return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+  if(!["club","bike","gym"].includes(unit)||(unit!=="club"&&!sess.units?.includes(unit)))return res.status(403).json({ok:false,error:"UNIDADE_NAO_PERMITIDA"});
+  const qs=new URLSearchParams({unit,partnerId:String(req.query.partnerId||""),month:String(req.query.month||"")});
+  try{const r=await fetch(WORKER+"/admin/partner-performance?"+qs,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),Accept:"application/json"},cache:"no-store",signal:AbortSignal.timeout(20000)});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ }
  if(req.query.route==="partner-voucher-history"){
   const sess=adminSession(req),unit=String(req.query.unit||"club").toLowerCase();
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});

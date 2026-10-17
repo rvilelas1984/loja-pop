@@ -743,6 +743,36 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         await env.DB.prepare("INSERT OR IGNORE INTO partner_campaign_events(benefit_id,unit,member_id,event_type,day) VALUES(?,?,?,?,?)").bind(String(body.benefitId),unit,String(member.id),body.event,day).run();
         return json({ok:true});
       }
+      if(url.pathname==="/admin/partner-performance"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const auth=await ar.json().catch(()=>({}));
+        if(!ar.ok||auth.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const perms=auth.permissions||auth.user?.permissions||[];
+        if(Array.isArray(perms)&&perms.length&&!perms.some(p=>p==="*"||p==="/admin-beneficios.html"))return json({ok:false,error:"SEM_PERMISSAO"},403);
+        const unit=(url.searchParams.get("unit")||"club").toLowerCase(),partnerId=String(url.searchParams.get("partnerId")||""),month=String(url.searchParams.get("month")||"");
+        if(!["club","bike","gym"].includes(unit)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||!partnerId)return json({ok:false,error:"FILTRO_INVALIDO"},400);
+        const raw=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop' LIMIT 1").first();
+        const content=JSON.parse(raw?.content_json||"{}"),partner=(content.partners||[]).find(x=>String(x.id)===partnerId);
+        if(!partner)return json({ok:false,error:"PARCEIRO_NAO_ENCONTRADO"},404);
+        const offers=(content.benefits||[]).filter(x=>(String(x.partnerId||"")===partnerId||(!x.partnerId&&String(x.partner||"").trim().toLowerCase()===String(partner.name||"").trim().toLowerCase()))&&(unit==="club"||String(x.unit||"bike").toLowerCase()===unit));
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS partner_campaign_events(id INTEGER PRIMARY KEY AUTOINCREMENT,benefit_id TEXT NOT NULL,unit TEXT NOT NULL,member_id TEXT NOT NULL,event_type TEXT NOT NULL,day TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(benefit_id,unit,member_id,event_type,day))").run();
+        const totals=[];
+        for(const b of offers){
+          const bu=String(b.unit||"bike").toLowerCase(),id=String(b.id);
+          const events=await env.DB.prepare("SELECT event_type,COUNT(*) AS n,COUNT(DISTINCT member_id) AS people FROM partner_campaign_events WHERE benefit_id=? AND unit=? AND substr(day,1,7)=? GROUP BY event_type").bind(id,bu,month).all();
+          const e=Object.fromEntries((events.results||[]).map(x=>[x.event_type,{count:Number(x.n),people:Number(x.people)}]));
+          const [codes,daily,once]=await Promise.all([
+            env.DB.prepare("SELECT COUNT(*) AS issued,SUM(CASE WHEN used_at IS NOT NULL AND substr(used_at,1,7)=? THEN 1 ELSE 0 END) AS used FROM partner_code_vouchers WHERE benefit_id=? AND unit=? AND substr(created_at,1,7)=?").bind(month,id,bu,month).first().catch(()=>({issued:0,used:0})),
+            env.DB.prepare("SELECT COUNT(*) AS n FROM partner_daily_redemptions WHERE benefit_id=? AND unit=? AND substr(local_date,1,7)=?").bind(id,bu,month).first().catch(()=>({n:0})),
+            env.DB.prepare("SELECT COUNT(*) AS n FROM partner_once_redemptions WHERE benefit_id=? AND unit=? AND substr(used_at,1,7)=?").bind(id,bu,month).first().catch(()=>({n:0}))
+          ]);
+          totals.push({id,title:b.title||"Benefício",unit:bu,views:e.view?.count||0,uniqueViews:e.view?.people||0,clicks:e.partner_click?.count||0,uniqueClicks:e.partner_click?.people||0,issued:Number(codes?.issued||0),used:Number(codes?.used||0)+Number(daily?.n||0)+Number(once?.n||0)});
+        }
+        const sum=k=>totals.reduce((n,x)=>n+Number(x[k]||0),0);
+        return json({ok:true,partner:{id:partner.id,name:partner.name,site:partner.site||"",instagram:partner.instagram||""},month,unit,offers:totals,totals:{benefits:totals.length,views:sum("views"),clicks:sum("clicks"),issued:sum("issued"),used:sum("used"),uniqueViewsByOffer:sum("uniqueViews")}});
+      }
       if(url.pathname==="/admin/partner-voucher-history"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
