@@ -4250,7 +4250,7 @@ async function voucherBatchTick(env,options={}){
      const inserted=await env.DB.prepare("INSERT OR IGNORE INTO club_voucher_codes(unit,batch_id,evo_voucher_id,code,request_id,status,assigned_at) VALUES(?,?,?,?,?,'assigned',CURRENT_TIMESTAMP)").bind(unit,batch.id,batch.evo_voucher_id,codes[i],requestId).run();if(!inserted.meta.changes){const existing=await env.DB.prepare('SELECT request_id FROM club_voucher_codes WHERE code=? AND batch_id=?').bind(codes[i],batch.id).first();if(Number(existing?.request_id)!==Number(requestId))throw Error('CODIGO_JA_VINCULADO');}
      await env.DB.prepare("UPDATE club_voucher_requests SET assigned_code=?,evo_voucher_id=?,status='code_pending',processed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending' AND batch_id=?").bind(codes[i],batch.evo_voucher_id,requestId,batch.id).run();
     }
-    const assigned=await env.DB.prepare("SELECT q.*,m.name model_name FROM club_voucher_requests q JOIN club_voucher_models m ON m.id=q.model_id WHERE q.batch_id=? AND q.assigned_code IS NOT NULL").bind(batch.id).all();
+    const assigned=await env.DB.prepare("SELECT q.*,COALESCE(NULLIF(m.public_name,''),m.name) model_name FROM club_voucher_requests q JOIN club_voucher_models m ON m.id=q.model_id WHERE q.batch_id=? AND q.assigned_code IS NOT NULL").bind(batch.id).all();
     for(const q of assigned.results||[])await voucherDeliverBatch(env,q);
     const outstanding=await env.DB.prepare("SELECT COUNT(*) AS n FROM club_voucher_requests WHERE batch_id=? AND status!='issued'").bind(batch.id).first();
     if(Number(outstanding?.n||0)===0)await env.DB.prepare("UPDATE club_voucher_batches SET status='completed',completed_at=CURRENT_TIMESTAMP WHERE id=?").bind(batch.id).run();
