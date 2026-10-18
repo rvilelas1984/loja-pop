@@ -41,7 +41,18 @@ if(isWeek){const days=Math.max(1,Number(req.quantity)||1),dayPct=Math.min(100,Ma
 else html+='<div class="mc-kicker">🔥 MISSÃO PRESENÇA · '+esc(String(m.unit||"bike").toUpperCase())+'</div><h2>'+esc(m.name)+'</h2><p>'+esc(m.description||"Você já começou. Agora é manter o ritmo!")+'</p>';
 if(pct>=100){const prizes=gs.filter(g=>value>=Number(g.value)).flatMap(g=>rewardLabels(g,catalog));html+='<div class="mc-celebrate" role="status" style="margin:14px 0;padding:18px 14px;border-radius:18px;background:linear-gradient(125deg,#ffdb72,#fff4c7);color:#40264e;text-align:center"><div style="font-size:28px">🎉🏆</div><strong style="display:block;font-size:21px;margin:5px 0">Parabéns! Você ganhou!</strong><span style="display:block;font-size:17px;font-weight:800">'+prizes.map(esc).join(" + ")+'</span></div>';}
 if(pct<100)html+='<div class="mc-row"><b>PROGRESSO DA MISSÃO</b><b>'+pct+'%</b></div><div class="mc-bar"><i style="width:'+pct+'%"></i></div>';
-if(isWeek){html+='<h2>'+done+' de '+target+' semanas concluídas</h2><div class="mc-weeks">'+Array.from({length:target},(_,i)=>'<div><span class="'+(i===done?"current":"")+'">'+(i+1)+'</span><small>SEM '+(i+1)+'</small></div>').join("")+'</div>'}
+if(isWeek){
+ const compact=options.compact===true,daysRequired=Math.max(1,Number(req.quantity)||1),weeklyPct=Math.min(100,Math.round(week/daysRequired*100));
+ const stageColor=p=>p>=100?"#19865e":p>=75?"#229cb9":p>=50?"#e2a33b":p>=25?"#b65b38":"#49356d";
+ const stageName=p=>p>=100?"Concluída":p>=75?"Quase lá!":p>=50?"Avançando":p>=25?"Ganhando ritmo":"Começando";
+ html+='<div class="mc-constancy '+(compact?'mc-constancy-compact':'mc-constancy-full')+'">';
+ html+='<div class="mc-constancy-heading"><strong>Jornada de '+target+' semanas</strong><span>'+done+' / '+target+' concluídas</span></div>';
+ html+='<div class="mc-constancy-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:'+(compact?'6':'9')+'px">';
+ html+=Array.from({length:target},(_,i)=>{const complete=i<done,active=i===done&&done<target,stage=complete?100:active?weeklyPct:0,color=stageColor(stage),title=complete?"✓ Concluída":active?stageName(stage):"Pendente";return '<div class="mc-constancy-week" style="border:1px solid '+(complete?"#4abf92":active?color:"#465162")+';background:'+(complete?"#193e37":active?"linear-gradient(130deg,"+color+",#293442)":"#293442")+';border-radius:12px;padding:'+(compact?'7px 3px':'10px 4px')+';text-align:center;color:white;min-width:0"><div style="font-size:'+(compact?'13':'17')+'px;font-weight:850">'+(complete?'✓':active?'⚡':'🔒')+'</div><div style="font-size:'+(compact?'10':'12')+'px;font-weight:750">Semana '+(i+1)+'</div>'+(!compact?'<small style="display:block;color:#e1e8ef;font-size:10px;margin-top:4px">'+title+'</small>':'')+'</div>'}).join("");
+ html+='</div>';
+ if(!compact){html+='<p class="mc-constancy-hint" style="font-size:12px;margin:10px 0;color:#b9c9d7">Cada semana fica verde quando você completa '+daysRequired+' '+(daysRequired===1?'dia diferente':'dias diferentes')+'.</p>';}
+ html+='</div>';
+}
 else if(pct<100){html+='<h2>'+(n>=target?'Meta de '+target+' '+(target===1?'presença atingida':'presenças atingida')+'! Você realizou '+n+' '+(n===1?'presença.':'presenças.') : n+' de '+target+' presenças')+'</h2><p>'+(n>=target?'Você atingiu a meta. Consulte sua missão para verificar a recompensa.':'Faltam '+Math.max(0,Number(next?.value||target)-n)+' aulas para o próximo prêmio')+'</p>'}
 if(options.compact===true&&!isWeek){
  const achieved=gs.filter(g=>value>=Number(g.value));
