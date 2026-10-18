@@ -1,3 +1,4 @@
+import {adminBikeRanking} from './lib/admin-bike-ranking.mjs';
 import {loadOrders as loadShopOrders, shopImport} from './lib/evo-shop-import.mjs';
 async function verifyProxyAuth(request,env,unit,route){const signed=request.headers.get("x-clubpop-proxy-auth")||"";if(!signed||!env.AUTO_SYNC_SECRET)return null;const parts=signed.split(".");if(parts.length!==2)return null;const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(env.AUTO_SYNC_SECRET),{name:"HMAC",hash:"SHA-256"},false,["sign"]);const bytes=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(parts[0])));const expected=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");if(expected.length!==parts[1].length)return null;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^parts[1].charCodeAt(i);if(diff)return null;let actor;try{actor=JSON.parse(atob(parts[0].replace(/-/g,"+").replace(/_/g,"/")))}catch{return null}if(!Number.isFinite(actor.t)||Math.abs(Date.now()-actor.t)>120000||actor.unit!==unit||actor.route!==route||actor.method!==request.method||!Array.isArray(actor.units)||!(unit==="all"&&route==="teacher-view"?actor.units.some(u=>u==="bike"||u==="gym"):actor.units.includes(unit)))return null;return actor}
 import { snapshotProductSale, syncProductSale } from './lib/evo-product-sales.mjs';
@@ -1001,20 +1002,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
-        const page=Math.max(1,Math.min(100000,Number(url.searchParams.get("page"))||1));
-        const q=String(url.searchParams.get("q")||"").trim().slice(0,100);
-        const min=Math.max(0,Number(url.searchParams.get("min"))||0);
-        const max=Math.min(1000000,Math.max(min,Number(url.searchParams.get("max"))||1000000));
-        const order=url.searchParams.get("order")==="asc"?"ASC":"DESC";
-        const base="FROM members m LEFT JOIN (SELECT evo_member_id,COUNT(*) AS attended FROM evo_member_attendance WHERE unit='bike' GROUP BY evo_member_id) a ON CAST(a.evo_member_id AS TEXT)=CAST(m.evo_member_id AS TEXT)";
-        const where=" WHERE (COALESCE(m.presencas_legadas_bike,0)+COALESCE(a.attended,0)) BETWEEN ? AND ? AND (?='' OR m.first_name||' '||m.last_name LIKE ? OR CAST(m.evo_member_id AS TEXT) LIKE ? OR CAST(m.id AS TEXT) LIKE ? OR EXISTS (SELECT 1 FROM evo_member_master em WHERE em.unit='bike' AND CAST(em.evo_member_id AS TEXT)=CAST(m.evo_member_id AS TEXT) AND json_extract(em.personal_json,'$.document') LIKE ?))";
-        const params=[min,max,q,'%'+q+'%','%'+q+'%','%'+q+'%','%'+q+'%'];
-        const count=await env.DB.prepare("SELECT COUNT(*) n "+base+where).bind(...params).first();
-        const data=await env.DB.prepare("SELECT m.id,m.evo_member_id,m.first_name,m.last_name,COALESCE(m.presencas_legadas_bike,0)+COALESCE(a.attended,0) AS stars "+base+where+" ORDER BY stars "+order+",m.id ASC LIMIT 10 OFFSET ?").bind(...params,(page-1)*10).all();
-        const near=await env.DB.prepare("SELECT m.id,m.evo_member_id,m.first_name,m.last_name,COALESCE(m.presencas_legadas_bike,0)+COALESCE(a.attended,0) AS stars "+base+" WHERE COALESCE(m.presencas_legadas_bike,0)+COALESCE(a.attended,0)>0 ORDER BY stars DESC LIMIT 500").all();
-        const milestone=n=>n<12?12:n<24?24:n<50?50:Math.floor(n/50)*50+50;
-        const upcoming=(near.results||[]).map(x=>({...x,next:milestone(x.stars),remaining:milestone(x.stars)-x.stars})).filter(x=>x.remaining<=5).sort((a,b)=>a.remaining-b.remaining||b.stars-a.stars).slice(0,10);
-        return json({ok:true,unit:"bike",page,total:Number(count?.n||0),rows:data.results||[],upcoming,evoRequestsMade:0});
+        return json(await adminBikeRanking(env.DB,url.searchParams));
       }
       // Cache de leitura do Dashboard: nunca chama a EVO.
       if (url.pathname === "/member/evo-cache" && request.method === "GET") {
