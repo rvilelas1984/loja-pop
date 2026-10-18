@@ -4052,6 +4052,17 @@ async function challengeTaskProgress(env,member,mission){
   if(task.type==="image_generated"||task.type==="share_clicked"){
    const action=task.type==="image_generated"?"POP_FIT_IMAGE_GENERATED":"POP_FIT_SHARE_CLICKED";
    const r=await env.DB.prepare("SELECT COUNT(*) n FROM audit_log WHERE actor_type='MEMBER' AND actor_id=? AND action=? AND date(datetime(created_at,'-3 hours')) BETWEEN ? AND ? AND json_valid(metadata_json) AND (?='club' OR json_extract(metadata_json,'$.unit')=?)").bind(String(member.id),action,mission.start,mission.end,mission.unit,mission.unit).first();n=Number(r?.n||0);
+  }else if(task.type==="presence"||task.type==="activity"){
+   const units=mission.unit==="club"?["bike","gym"]:[mission.unit||"bike"];
+   const rows=[];
+   for(const unit of units){
+    const evoId=unit==="gym"?member.gym_client_id:member.evo_member_id;
+    if(!evoId)continue;
+    const result=await env.DB.prepare("SELECT attendance_date,activity_name FROM evo_member_attendance WHERE unit=? AND evo_member_id=? AND substr(attendance_date,1,10) BETWEEN ? AND ?").bind(unit,String(evoId),mission.start,mission.end).all();
+    rows.push(...(result.results||[]));
+   }
+   const eligible=task.type==="activity"?rows.filter(x=>String(x.activity_name||"").trim().toLowerCase()===String(task.activity||"").trim().toLowerCase()):rows;
+   n=task.type==="activity"&&(!task.activity||task.activity==="*")?0:task.distinctDays===true?new Set(eligible.map(x=>String(x.attendance_date).slice(0,10))).size:eligible.length;
   }else {const copy={...mission,tasks:[task]};n=(await voucherMissionProgress(env,member,copy))?need:0;}
   out.push({id:String(task.id),current:Math.min(n,need),required:need,done:n>=need});
  }
