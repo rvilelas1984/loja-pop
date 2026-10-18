@@ -11,6 +11,33 @@ function paintPage(color){if(!color)return;document.documentElement.style.setPro
 function themeKey(u){return "clubpop_unit_theme_"+u}
 function applyTheme(d,u){if(!d||!d.backgroundColor)return;paintPage(d.backgroundColor);if(d.faviconData){let fav=document.querySelector('link[rel="icon"]');if(!fav){fav=document.createElement("link");fav.rel="icon";document.head.appendChild(fav)}fav.href=d.faviconData}render(d,u)}
 async function refresh(){const u=unit();document.documentElement.dataset.clubUnit=u;try{const cached=JSON.parse(localStorage.getItem(themeKey(u))||"null");if(cached)applyTheme(cached,u)}catch{}try{const r=await fetch("/api/evo-config?route=unit-theme&unit="+u,{cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok)return;try{localStorage.setItem(themeKey(u),JSON.stringify(d))}catch{}applyTheme(d,u)}catch(e){}}
-function ensurePopFitNav(){document.querySelectorAll("nav.nav.modern").forEach(n=>{if(n.querySelector("[data-pop-fit-nav]"))return;const b=document.createElement("button");b.className="cp-action";b.dataset.popFitNav="1";b.onclick=()=>location.href="/pop-fit";b.innerHTML="<svg viewBox='0 0 24 24'><path d='M4 18 9 13l4 3 7-9'/><path d='M16 7h4v4'/></svg><span>Pop Fit</span>";const profile=[...n.querySelectorAll("button")].find(x=>/perfil/i.test(x.textContent||""));n.insertBefore(b,profile||null);n.style.gridTemplateColumns="repeat("+n.children.length+",minmax(0,1fr))"})}function unitChanged(){ensurePopFitNav();refresh()}
+// One navigation definition for every student page, including promotion details.
+const studentNavItems=[["home", "Início", "/", "<path d='M3 10.5 12 3l9 7.5'/><path d='M5 9.5V21h14V9.5'/><path d='M9 21v-7h6v7'/>"], ["challenges", "Desafios", "/missoes.html", "<path d='m12 3 2.1 4.3 4.8.7-3.5 3.4.8 4.8L12 14l-4.2 2.2.8-4.8L5.1 8l4.8-.7L12 3Z'/><path d='M7 20h10'/>"], ["benefits", "Benefícios", "/beneficios.html", "<path d='M20 12v8H4v-8'/><path d='M2 7h20v5H2z'/><path d='M12 7v13'/><path d='M12 7H7.5A2.5 2.5 0 1 1 10 4.5L12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5L12 7Z'/>"], ["store", "Loja", "/loja.html", "<path d='M6 8h12l1 13H5L6 8Z'/><path d='M9 10V6a3 3 0 0 1 6 0v4'/>"], ["fit", "Pop Fit", "/pop-fit", "<path d=\"M4 18 9 13l4 3 7-9\"/><path d=\"M16 7h4v4\"/>"], ["profile", "Perfil", "/perfil.html", "<circle cx='12' cy='8' r='4'/><path d='M4.5 21a7.5 7.5 0 0 1 15 0'/>"]];
+function ensurePopFitNav(){
+ const menus=document.querySelectorAll('.navwrap > nav');if(!menus.length)return;
+ if(!document.getElementById('cp-student-navigation-css')){
+  const style=document.createElement('style');style.id='cp-student-navigation-css';style.textContent=`
+  .navwrap.cp-student-navigation-wrap{box-sizing:border-box!important;position:fixed!important;inset:auto auto 0 50%!important;transform:translateX(-50%)!important;width:min(460px,100%)!important;max-width:100%!important;margin:0!important;padding:0 10px max(10px,env(safe-area-inset-bottom,0px))!important;z-index:50!important;background:transparent!important}
+  .cp-student-navigation-wrap>.cp-student-navigation{all:unset!important;box-sizing:border-box!important;display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;align-items:center!important;width:100%!important;height:84px!important;padding:6px!important;border:1px solid #e5e9ee!important;border-radius:24px!important;background:#fff!important;box-shadow:0 10px 30px #1112!important;font-family:Inter,system-ui,sans-serif!important}
+  .cp-student-navigation>button{all:unset!important;box-sizing:border-box!important;position:relative!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:5px!important;min-width:0!important;width:100%!important;height:70px!important;padding:0 2px!important;border-radius:18px!important;color:#8b929b!important;cursor:pointer!important;text-align:center!important}
+  .cp-student-navigation>button[aria-current="page"]{color:#078fcb!important;background:#eaf8fe!important}
+  .cp-student-navigation>button[aria-current="page"]:after{content:""!important;position:absolute!important;bottom:3px!important;width:20px!important;height:3px!important;border-radius:9px!important;background:#08a9e3!important}
+  .cp-student-navigation>button:focus-visible{outline:2px solid #078fcb!important;outline-offset:-2px!important}
+  .cp-student-navigation>button>svg{all:unset!important;display:block!important;flex:none!important;width:25px!important;height:25px!important;stroke:currentColor!important;fill:none!important;stroke-width:1.9!important;stroke-linecap:round!important;stroke-linejoin:round!important}
+  .cp-student-navigation>button>span{all:unset!important;display:block!important;max-width:100%!important;white-space:nowrap!important;font-size:11px!important;line-height:13px!important;font-weight:800!important}
+  .cp-student-navigation-content{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))!important}
+  @media(max-width:360px){.cp-student-navigation>button>span{font-size:9px!important}}
+  `;document.head.append(style);
+ }
+ const page=location.pathname.replace(/\.html$/,'').replace(/\/$/,'')||'/';
+ const section=({'/':'home','/index':'home','/missoes':'challenges','/desafios':'challenges','/promocoes':'challenges','/promocao':'challenges','/meus-numeros':'challenges','/meu-hall-conquistas':'challenges','/beneficios':'benefits','/meus-vouchers':'benefits','/loja':'store','/minhas-compras':'store','/pop-fit':'fit','/perfil':'profile','/privacidade':'profile'})[page];
+ menus.forEach(nav=>{
+  if(nav.dataset.standardNavigation==='1')return;
+  nav.dataset.standardNavigation='1';nav.className='cp-student-navigation';nav.setAttribute('aria-label','Menu do aluno');nav.parentElement.classList.add('cp-student-navigation-wrap');
+  nav.replaceChildren(...studentNavItems.map(([key,label,url,icon])=>{const button=document.createElement('button');button.type='button';button.dataset.studentNav=key;if(key===section)button.setAttribute('aria-current','page');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+icon+'</svg><span>'+label+'</span>';button.onclick=()=>location.href=url;return button}));
+ });
+ const content=document.getElementById('dashboard')||document.querySelector('main.app,main.shell,.app,.shell')||document.querySelector('main');content?.classList.add('cp-student-navigation-content');
+}
+function unitChanged(){ensurePopFitNav();refresh()}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>{ensurePopFitNav();refresh()});else{ensurePopFitNav();refresh()};window.addEventListener("pageshow",refresh);window.addEventListener("storage",e=>{if(e.key==="clubpop_active_unit")refresh()});document.addEventListener("click",()=>setTimeout(unitChanged,0),true);window.clubPopRefreshHeader=refresh;
 })();
