@@ -1,27 +1,127 @@
 /* Club Pop guided tour — preview rollout, no API calls and no account mutations. */
 (()=>{"use strict";
-const VERSION="2026-10-tour-v1",RUN="cp_tour_run",DONE="cp_tour_done_"+VERSION;
+const VERSION="2026-10-tour-v2",RUN="cp_tour_run",DONE="cp_tour_done_"+VERSION;
 const steps=[
-["/","Boas-vindas ao Club Pop","Aqui começa sua jornada. Vamos conhecer os recursos principais em poucos passos.","#dashboard"],
-["/","Seu painel inicial","No dashboard você acompanha sua evolução e encontra os atalhos mais importantes.",".hello"],
-["/","Escolha a unidade","Alterne entre Bike Pop e Gym Pop. Cada unidade apresenta suas informações.", "#unitSwitch"],
-["/","Fitcoins","Acompanhe seu saldo. Use os Fitcoins nos benefícios e produtos disponíveis.",".balance"],
-["/","Estrelas","Cada aula realizada soma uma estrela. O histórico é acumulativo, mesmo com várias aulas no mesmo dia.","#bikeStarsCard"],
-["/","Sua medalha atual","Este atalho leva ao Hall de Conquistas, com seus marcos e medalhas.","#clubHallCurrentMedal"],
-["/meu-hall-conquistas.html","Hall de Conquistas","Conheça suas medalhas, troféus e marcos de aulas. O histórico mostra sua evolução e novas conquistas.","#cpMedalPanel"],
-["/meu-hall-conquistas.html","Medalhas e outras conquistas","Explore as abas do Hall. Suas conquistas são calculadas com base no histórico confirmado de aulas.","#cpTabBadges"],
-["/missoes.html","Suas missões","Aqui você acompanha metas, desafios e recompensas disponíveis.","main"],
-["/missoes.html","Criar uma missão","Em Nova missão, escolha um desafio próprio ou entre amigos. Defina total de aulas, dias diferentes, constância semanal ou modalidade.","button"],
-["/missoes.html","Configurar a meta","Escolha quantidade e período. Nos desafios entre amigos, adicione participantes; depois acompanhe a evolução pela página.","main"],
-["/loja.html","Loja e Fitcoins","Conheça os produtos e serviços, confira valores e condições e escolha como usar seus Fitcoins.","main"],
-["/beneficios.html","Benefícios","Veja os benefícios disponíveis, condições e opções de resgate.","main"],
-["/meus-vouchers.html","Meus vouchers","Acompanhe vouchers e orientações de utilização. Alguns resgates exigem validação da recepção.","main"],
-["/minhas-compras.html","Minhas compras","Consulte o histórico de compras e pedidos feitos no Club Pop.","main"],
-["/promocoes.html","Promoções","Veja campanhas ativas, regras de participação e oportunidades de ganhar prêmios.","main"],
-["/meus-numeros.html","Meus números da sorte","Quando houver promoções com números da sorte, acompanhe sua participação aqui.","main"],
-["/perfil.html","Meu perfil","Acesse seus dados, atalhos, histórico e preferências pessoais.","main"],
-["/privacidade.html","Sua privacidade","Você pode controlar a visibilidade das suas estrelas e outras informações públicas, conforme as opções disponíveis.","main"],
-["/perfil.html","Pronto para explorar!","Você já conhece o essencial. Para rever este guia, use o botão Rever tutorial no seu perfil.","main"]
+ [
+  "/",
+  "Início · Dashboard",
+  "Este é seu painel: aqui você acompanha suas aulas, seu progresso e os principais atalhos.",
+  "#dashboard"
+ ],
+ [
+  "/",
+  "Unidades",
+  "Alterne entre Bike Pop e Gym Pop para consultar as informações de cada estúdio.",
+  "#unitSwitch"
+ ],
+ [
+  "/",
+  "Fitcoins",
+  "Confira o saldo de Fitcoins e acesse a loja para descobrir como utilizá-los.",
+  ".balance"
+ ],
+ [
+  "/",
+  "Estrelas",
+  "Cada aula efetivamente realizada vale uma estrela, mesmo que você faça várias aulas no mesmo dia.",
+  "#bikeStarsCard"
+ ],
+ [
+  "/",
+  "Medalha atual",
+  "Toque na medalha para conhecer seu Hall de Conquistas.",
+  "#clubHallCurrentMedal"
+ ],
+ [
+  "/meu-hall-conquistas.html",
+  "Hall · Medalhas e troféus",
+  "Seu histórico de estrelas libera medalhas. Quatro medalhas completam uma jornada e liberam um troféu.",
+  "#cpMedalPanel"
+ ],
+ [
+  "/meu-hall-conquistas.html",
+  "Hall · Brasões",
+  "Nesta aba você acompanha os brasões e outros reconhecimentos disponíveis.",
+  "#cpTabBadges"
+ ],
+ [
+  "/missoes.html",
+  "Menu · Desafios e missões",
+  "Pelo menu Desafios você acompanha missões disponíveis e seu progresso.",
+  ".nav"
+ ],
+ [
+  "/missoes.html",
+  "Nova missão",
+  "Toque em Nova missão para escolher desafio próprio ou entre amigos. Depois selecione uma das quatro metas.",
+  "main"
+ ],
+ [
+  "/missoes.html",
+  "Defina seu objetivo",
+  "Escolha total de aulas, dias diferentes, constância semanal ou aulas por modalidade; configure a meta e, se quiser, convide amigos.",
+  "main"
+ ],
+ [
+  "/beneficios.html",
+  "Menu · Benefícios",
+  "Veja os benefícios disponíveis, as condições e como resgatar.",
+  "main"
+ ],
+ [
+  "/meus-vouchers.html",
+  "Meus vouchers",
+  "Consulte seus vouchers e instruções de utilização.",
+  "main"
+ ],
+ [
+  "/loja.html",
+  "Menu · Loja",
+  "Veja produtos e serviços, confira preços e opções de pagamento com Fitcoins.",
+  "main"
+ ],
+ [
+  "/minhas-compras.html",
+  "Minhas compras",
+  "Acompanhe seus pedidos e o histórico de compras.",
+  "main"
+ ],
+ [
+  "/promocoes.html",
+  "Promoções",
+  "Confira campanhas, critérios de participação e prazos.",
+  "main"
+ ],
+ [
+  "/meus-numeros.html",
+  "Números da sorte",
+  "Quando uma promoção oferecer números da sorte, você poderá acompanhar seus números aqui.",
+  "main"
+ ],
+ [
+  "/perfil.html",
+  "Menu · Perfil",
+  "Aqui ficam seus dados, histórico, atalhos e configurações pessoais.",
+  "main"
+ ],
+ [
+  "/perfil.html",
+  "Atalhos da conta",
+  "Pelo perfil você também acessa Hall de Conquistas, missões, vouchers e compras.",
+  ".card"
+ ],
+ [
+  "/privacidade.html",
+  "Configurações de privacidade",
+  "Controle a exibição pública de estrelas e conquistas conforme as opções disponíveis.",
+  "main"
+ ],
+ [
+  "/perfil.html",
+  "Tudo pronto!",
+  "Você concluiu a visita. Use Rever tutorial no perfil sempre que precisar.",
+  "main"
+ ]
 ];
 const $=(q)=>document.querySelector(q);
 function path(){return location.pathname.replace(/\/$/,"")||"/"}
