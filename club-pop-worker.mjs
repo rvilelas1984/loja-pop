@@ -1,5 +1,6 @@
 import {adminBikeRanking} from './lib/admin-bike-ranking.mjs';
 import {communityChallenges} from './lib/community-challenges.mjs';
+import {adminCommunityMissions} from './lib/admin-community-missions.mjs';
 import {hallConquests} from './lib/hall-conquests.mjs';
 import {adminGymRanking,rankingBase} from './lib/admin-gym-ranking.mjs';
 import {loadOrders as loadShopOrders, shopImport} from './lib/evo-shop-import.mjs';
@@ -1036,6 +1037,16 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const actor=await verifyProxyAuth(request,env,unit,"hall-conquests");
         if(!actor||!["admin","reception"].includes(actor.role)||actor.role==="reception"&&!((actor.permissions||[]).includes("*")||(actor.permissions||[]).includes("/admin-alunos-evo.html")))return json({ok:false,error:"NAO_AUTORIZADO"},403);
         try{return json(await hallConquests(env.DB,unit))}catch{return json({ok:false,error:"CONSULTA_INDISPONIVEL"},500)}
+      }
+      if(url.pathname==="/admin/community-missions"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=url.searchParams.get("unit")||"club";
+        if(!["club","bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        try{return json(await adminCommunityMissions(env.DB,unit,url.searchParams.get("id")||""))}catch(e){return json({ok:false,error:"RELATORIO_INDISPONIVEL"},500)}
       }
       if(url.pathname==="/admin/bike-stars"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
