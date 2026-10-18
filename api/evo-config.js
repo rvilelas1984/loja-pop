@@ -14,6 +14,13 @@ export default async function handler(req,res){
  const signed=proxyAuth(req,unit,"checkin-stars");if(!signed)return res.status(503).json({ok:false,error:"ASSINATURA_INDISPONIVEL"});
  try{const r=await fetch(WORKER+"/admin/checkin-stars?unit="+unit,{method:"POST",headers:{"x-clubpop-proxy-auth":signed,"content-type":"application/json"},body:JSON.stringify({ids:req.body?.ids||[]}),cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
  }
+ if(req.query.route==="hall-conquests-display"){
+ const unit=String(req.query.unit||"");const user=adminSession(req);
+ if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+ if(!["bike","gym"].includes(unit)||!user||user.role!=="admin"||!user.units?.includes(unit))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+ const signed=proxyAuth(req,unit,"hall-conquests");if(!signed)return res.status(503).json({ok:false,error:"ASSINATURA_INDISPONIVEL"});
+ try{const r=await fetch(WORKER+"/admin/hall-conquests/display?unit="+unit,{method:"POST",headers:{"x-clubpop-proxy-auth":signed,"Content-Type":"application/json"},body:JSON.stringify(req.body||{}),cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ }
  if(req.query.route==="hall-conquests"){
  const unit=String(req.query.unit||"");if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
  const user=adminSession(req);if(!["bike","gym"].includes(unit)||!user||!["admin","reception"].includes(user.role)||!user.units?.includes(unit)||user.role==="reception"&&!((user.permissions||[]).includes("*")||(user.permissions||[]).includes("/admin-alunos-evo.html")))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
