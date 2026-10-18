@@ -27,6 +27,13 @@ window.claimMission=async(mid,gid,btn)=>{
   const veil=document.createElement("div");
   veil.style.cssText="position:fixed;inset:0;z-index:99998;background:#000a;display:grid;place-items:center;padding:20px";
   veil.innerHTML='<div role="dialog" aria-modal="true" aria-label="Confirmar resgate" style="background:#fff;color:#172032;border-radius:22px;padding:25px;max-width:390px;width:100%;box-shadow:0 20px 60px #0004"><div style="font-size:35px">🏆</div><h2 style="margin:10px 0">Resgatar agora ou continuar?</h2><p style="line-height:1.5">Ao resgatar este prêmio, você <b>encerra sua participação nesta missão</b> e abre mão dos próximos níveis. As recompensas não são cumulativas.</p><button type="button" data-decision="continue" style="width:100%;padding:14px;border:1px solid #b9c2d0;border-radius:12px;background:#eef6fa;color:#163447;font-weight:800;margin-bottom:10px">CONTINUAR ME DESAFIANDO</button><button type="button" data-decision="claim" style="width:100%;padding:14px;border:0;border-radius:12px;background:#137a53;color:white;font-weight:800">RESGATAR E ENCERRAR MISSÃO</button></div>';
+  const selectedButton=btn;
+  const selectedCard=selectedButton.closest(".mc-goal,.mc-tier,.mc-reward,div");
+  const selectedText=(selectedCard?.textContent||selectedButton.parentElement?.textContent||"");
+  const fitcoinsMatch=selectedText.match(/(\\d[\\d.,]*)\\s*Fitcoins/i);
+  const fitcoinsAmount=fitcoinsMatch?fitcoinsMatch[1]:null;
+  const confirmButton=veil.querySelector('[data-decision="claim"]');
+  if(fitcoinsAmount)confirmButton.textContent="RESGATAR "+fitcoinsAmount+" FITCOINS E ENCERRAR";
   document.body.appendChild(veil);
   veil.querySelectorAll("[data-decision]").forEach(el=>el.onclick=()=>{const yes=el.dataset.decision==="claim";veil.remove();resolve(yes)});
  });
