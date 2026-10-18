@@ -22,7 +22,16 @@ async function requireClubUser(){try{await authFetch("/auth/me");return JSON.par
 async function missionApi(route,opts={}){const token=sessionStorage.getItem("clubpop_token"),r=await fetch("/api/mission-redemptions?route="+route,{...opts,headers:{"Content-Type":"application/json",Authorization:"Bearer "+token,...(opts.headers||{})}}),d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||"Falha no resgate");return d}
 function clubMissionEligible(m,u,unit,today){if(m.eligibility!=='selected')return true;const allowed=new Set((m.contracts||[]).map(String));if(!allowed.size)return false;return (u.memberships||[]).some(x=>{const id=String(x.idMembership??x.id_membership??x.idMembershipEvo??'');const status=String(x.membershipStatus??x.statusMemberMembership??x.status??'').toLowerCase();const start=String(x.startDate||'').slice(0,10),end=String(x.endDate||'').slice(0,10);return id&&(allowed.has(unit+':'+id)||allowed.has(String(m.unit||unit).toLowerCase()+':'+id)||allowed.has(id))&&!x.cancelDate&&(!start||start<=today)&&(!end||end>=today)&&(!status||['1','active','ativo'].includes(status))})}
 window.claimMission=async(mid,gid,btn)=>{
- if(btn.disabled)return;btn.disabled=true;
+ if(btn.disabled)return;
+ const accepted=await new Promise(resolve=>{
+  const veil=document.createElement("div");
+  veil.style.cssText="position:fixed;inset:0;z-index:99998;background:#000a;display:grid;place-items:center;padding:20px";
+  veil.innerHTML='<div role="dialog" aria-modal="true" aria-label="Confirmar resgate" style="background:#fff;color:#172032;border-radius:22px;padding:25px;max-width:390px;width:100%;box-shadow:0 20px 60px #0004"><div style="font-size:35px">🏆</div><h2 style="margin:10px 0">Resgatar agora ou continuar?</h2><p style="line-height:1.5">Ao resgatar este prêmio, você <b>encerra sua participação nesta missão</b> e abre mão dos próximos níveis. As recompensas não são cumulativas.</p><button type="button" data-decision="continue" style="width:100%;padding:14px;border:1px solid #b9c2d0;border-radius:12px;background:#eef6fa;color:#163447;font-weight:800;margin-bottom:10px">CONTINUAR ME DESAFIANDO</button><button type="button" data-decision="claim" style="width:100%;padding:14px;border:0;border-radius:12px;background:#137a53;color:white;font-weight:800">RESGATAR E ENCERRAR MISSÃO</button></div>';
+  document.body.appendChild(veil);
+  veil.querySelectorAll("[data-decision]").forEach(el=>el.onclick=()=>{const yes=el.dataset.decision==="claim";veil.remove();resolve(yes)});
+ });
+ if(!accepted)return;
+ btn.disabled=true;
  const overlay=document.createElement("div");overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:#0009;display:grid;place-items:center;padding:20px";
  overlay.innerHTML='<div role="status" style="background:white;color:#162032;border-radius:20px;padding:30px;max-width:360px;width:100%;text-align:center;box-shadow:0 20px 60px #0004"><div style="font-size:34px">⏳</div><h2>Resgatando seu prêmio...</h2><p>Aguarde a confirmação dos seus Fitcoins.</p></div>';
  document.body.appendChild(overlay);
