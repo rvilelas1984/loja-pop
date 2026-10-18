@@ -73,4 +73,4 @@ return html;
 }
 document.addEventListener("click",e=>{const btn=e.target.closest(".mc-claim");if(btn&&typeof window.claimMission==="function")window.claimMission(btn.dataset.mission,btn.dataset.goal,btn)});
 window.ClubMissionCard={render,rewardLabels};
-})();
+})();(compact?'':)+
