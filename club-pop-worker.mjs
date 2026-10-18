@@ -1031,6 +1031,20 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const stars=Object.fromEntries(rows.map(x=>[String(x.evo_member_id),Number(x.stars)]));
         return json({ok:true,stars});
       }
+      if(url.pathname==="/admin/hall-conquests/display"&&request.method==="POST"){
+        const unit=url.searchParams.get("unit");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const actor=await verifyProxyAuth(request,env,unit,"hall-conquests");
+        if(!actor||actor.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        try{
+          const body=await request.json(),memberId=String(body.evoMemberId||""),sessionId=String(body.sessionId||""),earnedDate=String(body.earnedDate||""),date=String(body.date||""),target=Number(body.target);
+          if(!/^\d+$/.test(memberId)||!/^\d+$/.test(sessionId)||!/^\d{4}-\d{2}-\d{2}$/.test(earnedDate)||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isInteger(target)||target<1||earnedDate>=date)return json({ok:false,error:"DADOS_INVALIDOS"},400);
+          const eligible=await env.DB.prepare("SELECT 1 FROM checkin_reservation_snapshots WHERE unit=? AND session_id=? AND activity_date=? AND evo_member_id=? AND removed=0 LIMIT 1").bind(unit,sessionId,date,memberId).first();
+          if(!eligible)return json({ok:false,error:"ALUNO_NAO_ELEGIVEL"},409);
+          await env.DB.prepare("INSERT OR IGNORE INTO conquest_tv_display(unit,evo_member_id,target,earned_date,displayed_date,session_id) VALUES(?,?,?,?,?,?)").bind(unit,memberId,target,earnedDate,date,sessionId).run();
+          return json({ok:true});
+        }catch{return json({ok:false,error:"REGISTRO_INDISPONIVEL"},500)}
+      }
       if(url.pathname==="/admin/hall-conquests"&&request.method==="GET"){
         const unit=url.searchParams.get("unit");
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
