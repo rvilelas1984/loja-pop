@@ -54,7 +54,8 @@ if(isWeek){
  html+='</div>';
 }
 else if(pct<100){html+='<h2>'+(n>=target?'Meta de '+target+' '+(target===1?'presença atingida':'presenças atingida')+'! Você realizou '+n+' '+(n===1?'presença.':'presenças.') : n+' de '+target+' presenças')+'</h2><p>'+(n>=target?'Você atingiu a meta. Consulte sua missão para verificar a recompensa.':'Faltam '+Math.max(0,Number(next?.value||target)-n)+' aulas para o próximo prêmio')+'</p>'}
-if(options.compact===true&&!isWeek){
+if(options.compact===true&&isWeek){html+='<div class="mc-constancy-reward" style="background:#223d52;border:1px solid #4ecbe9;border-radius:12px;padding:12px;margin-top:12px;color:white"><b>🏆 RECOMPENSA FINAL</b><div>'+rewardLabels(gs.at(-1),catalog).map(esc).join(" + ")+'</div></div>'}
+else if(options.compact===true&&!isWeek){
  const achieved=gs.filter(g=>value>=Number(g.value));
  const highest=achieved.at(-1);
  const upcoming=gs.find(g=>value<Number(g.value));
