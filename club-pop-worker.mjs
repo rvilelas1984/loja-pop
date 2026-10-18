@@ -1,4 +1,5 @@
 import {adminBikeRanking} from './lib/admin-bike-ranking.mjs';
+import {adminGymRanking} from './lib/admin-gym-ranking.mjs';
 import {loadOrders as loadShopOrders, shopImport} from './lib/evo-shop-import.mjs';
 async function verifyProxyAuth(request,env,unit,route){const signed=request.headers.get("x-clubpop-proxy-auth")||"";if(!signed||!env.AUTO_SYNC_SECRET)return null;const parts=signed.split(".");if(parts.length!==2)return null;const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(env.AUTO_SYNC_SECRET),{name:"HMAC",hash:"SHA-256"},false,["sign"]);const bytes=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(parts[0])));const expected=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");if(expected.length!==parts[1].length)return null;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^parts[1].charCodeAt(i);if(diff)return null;let actor;try{actor=JSON.parse(atob(parts[0].replace(/-/g,"+").replace(/_/g,"/")))}catch{return null}if(!Number.isFinite(actor.t)||Math.abs(Date.now()-actor.t)>120000||actor.unit!==unit||actor.route!==route||actor.method!==request.method||!Array.isArray(actor.units)||!(unit==="all"&&route==="teacher-view"?actor.units.some(u=>u==="bike"||u==="gym"):actor.units.includes(unit)))return null;return actor}
 import { snapshotProductSale, syncProductSale } from './lib/evo-product-sales.mjs';
@@ -1003,6 +1004,14 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
         return json(await adminBikeRanking(env.DB,url.searchParams));
+      }
+      if(url.pathname==="/admin/gym-stars"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        return json(await adminGymRanking(env.DB,url.searchParams));
       }
       // Cache de leitura do Dashboard: nunca chama a EVO.
       if (url.pathname === "/member/evo-cache" && request.method === "GET") {
