@@ -30,7 +30,7 @@ window.claimMission=async(mid,gid,btn)=>{
   const selectedButton=btn;
   const selectedCard=selectedButton.closest(".mc-goal,.mc-tier,.mc-reward,div");
   const selectedText=(selectedCard?.textContent||selectedButton.parentElement?.textContent||"");
-  const fitcoinsMatch=selectedText.match(/(\\d[\\d.,]*)\\s*Fitcoins/i);
+  const fitcoinsMatch=selectedText.match(/(\d[\d.,]*)\s*Fitcoins/i);
   const fitcoinsAmount=fitcoinsMatch?fitcoinsMatch[1]:null;
   const confirmButton=veil.querySelector('[data-decision="claim"]');
   if(fitcoinsAmount)confirmButton.textContent="RESGATAR "+fitcoinsAmount+" FITCOINS E ENCERRAR";
