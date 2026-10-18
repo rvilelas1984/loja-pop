@@ -5,6 +5,16 @@ const palettes={"Premium Noturno":{"bg":"#151923","fg":"#FFFFFF","muted":"#D1D9E
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rewardLabels=(g,c)=>{const rr=Array.isArray(g?.rewards)?g.rewards:[];return rr.length?rr.map(r=>{if(r.type==="fitcoins")return "🪙 "+Number(r.amount||r.rewardValue||g.rewardValue||0)+" Fitcoins";const col=r.type==="product"?c.products:r.type==="service"?c.services:r.type==="voucher"?c.vouchers:[];return r.rewardName||r.name||r.label||(col||[]).find(x=>String(x.id)===String(r.rewardId))?.name||g.rewardName||"Recompensa"}):[g?.rewardName||"Recompensa"]};
 const style=m=>{const p={...(palettes[m.cardPalette]||palettes["Premium Noturno"]),...(m.cardColors||{})};return Object.entries(p).filter(([k,v])=>/^[a-z]+$/.test(k)&&/^#[0-9a-f]{6}$/i.test(v)).map(([k,v])=>"--mc-"+k+":"+v).join(";")};
+function deadline(m){
+ const raw=m.end||m.endDate||m.end_date||m.end_at||m.endsAt;
+ if(!raw)return '<div class="mc-deadline" style="margin:13px 0;padding:10px 12px;border:1px solid currentColor;border-radius:12px;opacity:.9;font-size:12px">📅 Prazo não informado</div>';
+ const d=new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(raw))?String(raw)+'T23:59:59':raw);
+ if(!Number.isFinite(d.getTime()))return '<div class="mc-deadline" style="margin:13px 0;font-size:12px">📅 Consulte o prazo desta missão</div>';
+ const today=new Date(), days=Math.max(0,Math.ceil((d-today)/86400000));
+ const label=d<today?'🔴 Prazo encerrado':days<=1?'🔴 Último dia':days<=3?'🟠 Faltam '+days+' dias':'⏳ Faltam '+days+' dias';
+ const date=d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+ return '<div class="mc-deadline" role="status" style="margin:13px 0;padding:11px 12px;border:1px solid currentColor;border-radius:12px;font-size:13px;font-weight:750">📅 Encerra em '+esc(date)+' · '+label+'</div>';
+}
 function render(m,state={},catalog={},options={}){
 if(m.type==="challenge"){
  const tasks=Array.isArray(m.tasks)?m.tasks:[],progress=state.challengeProgress?.[m.id],goals=m.goals||[],goal=goals[0],reward=goal?rewardLabels(goal,catalog).join(" + "):"Recompensa";
@@ -16,7 +26,7 @@ if(m.type==="challenge"){
  const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
  const tone=pct=>{const k=Math.min(3,Math.floor(Math.min(99.999,pct)/25)),t=(pct-shades[k].at)/25,a=rgb(shades[k].color),b=rgb(shades[k+1].color);return "#"+a.map((v,j)=>Math.round(v+(b[j]-v)*t).toString(16).padStart(2,"0")).join("")};
  const status=pct=>shades.slice().reverse().find(x=>pct>=x.at)?.label||"Começando";
- html+='<div class="mc-rewards" style="gap:'+(compact?'9':'14')+'px;margin-top:'+(compact?'12':'20')+'px">'+tasks.map((t,i)=>{
+ html+=deadline(m);html+='<div class="mc-rewards" style="gap:'+(compact?'9':'14')+'px;margin-top:'+(compact?'12':'20')+'px">'+tasks.map((t,i)=>{
  const p=progress?.tasks?.find(x=>x.id===String(t.id)),required=Math.max(1,Number(p?.required??t.quantity??1)),current=Math.max(0,Number(p?.current)||0),pct=p?.done===true?100:Math.min(100,Math.round(current/required*100)),color=tone(pct);
  const title=esc(t.studentText||names[t.type]||"Atividade do desafio");
  return '<div class="mc-reward" style="background:linear-gradient(120deg,'+color+',#34225b);border:1px solid '+color+';padding:'+(compact?'11px 13px':'17px 18px')+';border-radius:'+(compact?'14':'19')+'px;gap:'+(compact?'5':'9')+'px;color:#fff">'+
@@ -37,7 +47,7 @@ const n=Math.max(0,Number(state.attendanceCount)||0),week=Math.max(0,Number(stat
 const gs=[...(m.goals||[])].sort((a,b)=>Number(a.value)-Number(b.value)),req=(m.requirements||[])[0]||{};
 const allowClaim=options.allowClaim===true,isWeek=m.type==="consistency",value=isWeek?done:n,next=gs.find(g=>value<Number(g.value))||gs.at(-1),target=Math.max(1,Number(gs.at(-1)?.value||req.quantity||1)),pct=Math.min(100,Math.round(value/target*100));
 let html='<section class="club-mission-card" style="'+style(m)+'">';
-if(isWeek){const days=Math.max(1,Number(req.quantity)||1),dayPct=Math.min(100,Math.round(week/days*100)),compact=options.compact===true;html+='<div class="mc-head"><span class="mc-icon">⚡</span><div><h2>'+esc(m.name)+'</h2><p>'+esc(m.description||"Complete a meta semanal e mantenha sua sequência.")+'</p></div></div><div class="mc-kicker">SEMANA ATUAL · '+week+' DE '+days+' DIAS</div><div class="mc-days">'+["S","T","Q","Q","S","S","D"].map((x,i)=>'<span class="'+(i<week?"done":"")+'">'+x+'</span>').join("")+'</div><div class="mc-row"><b>⚡ '+week+' de '+days+' dias concluídos</b><b>'+dayPct+'%</b></div><div class="mc-bar"><i style="width:'+dayPct+'%"></i></div><hr/>'}
+html+=deadline(m);if(isWeek){const days=Math.max(1,Number(req.quantity)||1),dayPct=Math.min(100,Math.round(week/days*100)),compact=options.compact===true;html+='<div class="mc-head"><span class="mc-icon">⚡</span><div><h2>'+esc(m.name)+'</h2><p>'+esc(m.description||"Complete a meta semanal e mantenha sua sequência.")+'</p></div></div><div class="mc-kicker">SEMANA ATUAL · '+week+' DE '+days+' DIAS</div><div class="mc-days">'+["S","T","Q","Q","S","S","D"].map((x,i)=>'<span class="'+(i<week?"done":"")+'">'+x+'</span>').join("")+'</div><div class="mc-row"><b>⚡ '+week+' de '+days+' dias concluídos</b><b>'+dayPct+'%</b></div><div class="mc-bar"><i style="width:'+dayPct+'%"></i></div><hr/>'}
 else html+='<div class="mc-kicker">🔥 MISSÃO PRESENÇA · '+esc(String(m.unit||"bike").toUpperCase())+'</div><h2>'+esc(m.name)+'</h2><p>'+esc(m.description||"Você já começou. Agora é manter o ritmo!")+'</p>';
 if(pct>=100){const prizes=gs.filter(g=>value>=Number(g.value)).flatMap(g=>rewardLabels(g,catalog));html+='<div class="mc-celebrate" role="status" style="margin:14px 0;padding:18px 14px;border-radius:18px;background:linear-gradient(125deg,#ffdb72,#fff4c7);color:#40264e;text-align:center"><div style="font-size:28px">🎉🏆</div><strong style="display:block;font-size:21px;margin:5px 0">Parabéns! Você ganhou!</strong><span style="display:block;font-size:17px;font-weight:800">'+prizes.map(esc).join(" + ")+'</span></div>';}
 if(pct<100)html+='<div class="mc-row"><b>PROGRESSO DA MISSÃO</b><b>'+pct+'%</b></div><div class="mc-bar"><i style="width:'+pct+'%"></i></div>';
