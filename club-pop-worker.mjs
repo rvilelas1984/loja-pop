@@ -1036,7 +1036,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
         const actor=await verifyProxyAuth(request,env,unit,"hall-conquests");
         if(!actor||!["admin","reception"].includes(actor.role)||actor.role==="reception"&&!((actor.permissions||[]).includes("*")||(actor.permissions||[]).includes("/admin-alunos-evo.html")))return json({ok:false,error:"NAO_AUTORIZADO"},403);
-        try{return json(await hallConquests(env.DB,unit))}catch{return json({ok:false,error:"CONSULTA_INDISPONIVEL"},500)}
+        try{return json(await hallConquests(env.DB,unit,url.searchParams.get("date")))}catch{return json({ok:false,error:"CONSULTA_INDISPONIVEL"},500)}
       }
       if(url.pathname==="/admin/community-missions"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
