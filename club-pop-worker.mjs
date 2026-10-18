@@ -1001,18 +1001,18 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         return new Response(upstreamBody, {status: upstream.status, headers: {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}});
       }
 
-      // Consent is off by default; only the authenticated student can change it.
+      // Stars are visible by default; only the authenticated student can opt out.
       if(url.pathname==="/member/checkin-stars-privacy"&&["GET","PUT"].includes(request.method)){
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        await env.DB.prepare("CREATE TABLE IF NOT EXISTS checkin_stars_privacy(member_id INTEGER PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS checkin_stars_privacy(member_id INTEGER PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         if(request.method==="PUT"){
           const body=await request.json().catch(()=>({}));
           if(typeof body.enabled!=="boolean")return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
           await env.DB.prepare("INSERT INTO checkin_stars_privacy(member_id,enabled,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET enabled=excluded.enabled,updated_at=CURRENT_TIMESTAMP").bind(member.id,body.enabled?1:0).run();
         }
         const row=await env.DB.prepare("SELECT enabled FROM checkin_stars_privacy WHERE member_id=?").bind(member.id).first();
-        return json({ok:true,enabled:!!row?.enabled});
+        return json({ok:true,enabled:row?Number(row.enabled)===1:true});
       }
       if(url.pathname==="/admin/checkin-stars"&&request.method==="POST"){
         const unit=String(url.searchParams.get("unit")||"");
@@ -1023,10 +1023,10 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!Array.isArray(body.ids)||body.ids.length>100)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
         const ids=[...new Set(body.ids.map(String).filter(x=>/^\d{1,16}$/.test(x)))];
         if(!ids.length)return json({ok:true,stars:{}});
-        await env.DB.prepare("CREATE TABLE IF NOT EXISTS checkin_stars_privacy(member_id INTEGER PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS checkin_stars_privacy(member_id INTEGER PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const base=unit==="gym"?rankingBase:(await import('./lib/admin-bike-ranking.mjs')).rankingBase;
         const marks=ids.map(()=>"?").join(",");
-        const sql=base+"SELECT t.evo_member_id,t.stars FROM totals t JOIN members m ON "+(unit==="gym"?"(CAST(m.gym_client_id AS TEXT)=t.evo_member_id OR CAST(m.evo_member_id AS TEXT)=t.evo_member_id)":"CAST(m.evo_member_id AS TEXT)=t.evo_member_id")+" JOIN checkin_stars_privacy p ON p.member_id=m.id AND p.enabled=1 WHERE t.evo_member_id IN ("+marks+")";
+        const sql=base+"SELECT t.evo_member_id,t.stars FROM totals t JOIN members m ON "+(unit==="gym"?"(CAST(m.gym_client_id AS TEXT)=t.evo_member_id OR CAST(m.evo_member_id AS TEXT)=t.evo_member_id)":"CAST(m.evo_member_id AS TEXT)=t.evo_member_id")+" LEFT JOIN checkin_stars_privacy p ON p.member_id=m.id WHERE COALESCE(p.enabled,1)=1 AND t.evo_member_id IN ("+marks+")";
         const rows=(await env.DB.prepare(sql).bind(...ids).all()).results||[];
         const stars=Object.fromEntries(rows.map(x=>[String(x.evo_member_id),Number(x.stars)]));
         return json({ok:true,stars});
