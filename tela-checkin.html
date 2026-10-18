@@ -82,25 +82,25 @@ function toMinutes(v){const [h,m]=String(v||"0:0").split(":").map(Number);return
 function renderScheduleClass(x){const current={idActivitySession:x.idActivitySession,name:x.name||"",startTime:x.startTime||"",endTime:x.endTime||"",instructor:x.instructor||"",date:day(),dateLabel:new Date(day()+"T12:00:00").toLocaleDateString("pt-BR"),enrollments:[]};render({ok:true,unit:document.getElementById("unitSelect")?.value||"bike",current,next:null,layout:null})}
 function watchClassChange(){if(!currentSessionId||load.busy)return;const unit=document.getElementById("unitSelect")?.value||"bike",schedule=dailySchedule(unit),i=schedule.findIndex(x=>String(x.idActivitySession)===String(currentSessionId)),next=i>=0?schedule[i+1]:null;if(!next)return;const threshold=toMinutes(next.startTime)-30,now=localMinutes(),key=String(currentSessionId)+"->"+String(next.idActivitySession)+"@"+threshold;if(now<threshold||autoReloadKey===key)return;const ck="cpCheckinClass:"+unit+":"+day()+":"+next.idActivitySession;let hit=null;try{hit=JSON.parse(localStorage.getItem(ck)||"null")}catch{}if(hit?.ok&&String(hit.current?.idActivitySession)===String(next.idActivitySession)){autoReloadKey=key;render(hit);currentSessionId=hit.current?.idActivitySession;currentStart=hit.current?.startTime;els.status.textContent="Próxima aula exibida automaticamente • dados completos em cache • 0 EVO";return}els.status.textContent="Próxima aula aguardando cache completo • tela atual preservada • 0 EVO"}
 // Preview cycle: no card is shown without a verified record for the current class.
-let cpConquestItems=[],cpConquestPhase="positions",cpConquestAt=Date.now();
+let cpConquestItems=[],cpConquestPhase="positions",cpConquestAt=Date.now(),cpConquestShown=[];
 async function cpRefreshConquests(){
  const unit=document.getElementById("unitSelect")?.value||"bike",id=String(currentSessionId||"");
- cpConquestItems=[];document.querySelector(".screen")?.classList.remove("cp-show-conquests");
+ cpConquestItems=[];cpConquestShown=[];cpConquestPhase="positions";cpConquestAt=Date.now();document.querySelector(".screen")?.classList.remove("cp-show-conquests");
  if(!id)return;
  try{
   const r=await fetch("/api/evo-config?route=hall-conquests&unit="+encodeURIComponent(unit)+"&date="+encodeURIComponent(day()),{cache:"no-store"});
   const d=await r.json();if(!r.ok||!d.ok)return;
   // Current-day milestones are deliberately excluded: they are only confirmed after class closure.
-  cpConquestItems=(d.daily||[]).filter(x=>String(x.sessionId||"")===id&&x.type==="birthday").slice(0,4);
+  cpConquestItems=(d.pending||[]).filter(x=>String(x.sessionId||"")===id&&x.type==="milestone").slice(0,4);
  }catch{}
 }
 setInterval(()=>{const now=Date.now(),screen=document.querySelector(".screen");if(!screen)return;
  const elapsed=now-cpConquestAt;
  if(cpConquestPhase==="positions"&&elapsed>=15000&&cpConquestItems.length){
   document.getElementById("cpConquestCards").innerHTML=cpConquestItems.map(x=>'<div class="cp-tv-conquest-card"><strong>'+esc(x.name)+'</strong><span>'+esc(x.medal||"Conquista")+'</span></div>').join("");
-  screen.classList.add("cp-show-conquests");cpConquestPhase="conquests";cpConquestAt=now;
+  screen.classList.add("cp-show-conquests");cpConquestShown=[...cpConquestItems];cpConquestPhase="conquests";cpConquestAt=now;
  }else if(elapsed>=(cpConquestPhase==="conquests"?10000:15000)){
-  screen.classList.remove("cp-show-conquests");cpConquestPhase="positions";cpConquestAt=now;
+  if(cpConquestPhase==="conquests"&&cpConquestShown.length){const unit=document.getElementById("unitSelect")?.value||"bike",date=day();for(const x of cpConquestShown){fetch("/api/evo-config?route=hall-conquests-display&unit="+unit,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({evoMemberId:x.evoMemberId,sessionId:x.sessionId,earnedDate:x.earnedDate,date,target:x.target})}).then(r=>{if(r.ok){cpConquestItems=cpConquestItems.filter(y=>!(y.evoMemberId===x.evoMemberId&&y.target===x.target&&y.earnedDate===x.earnedDate))}}).catch(()=>{})}cpConquestShown=[]}screen.classList.remove("cp-show-conquests");cpConquestPhase="positions";cpConquestAt=now;
  }
 },1000);
 setInterval(cpRefreshConquests,60000);
