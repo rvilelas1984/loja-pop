@@ -7,12 +7,13 @@ import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 function proxyAuth(req,unit,route){const sess=adminSession(req);if(!sess||!(unit==="all"&&route==="teacher-view"?sess.units?.some(u=>u==="bike"||u==="gym"):sess.units?.includes(unit))||!["admin","reception","teacher"].includes(sess.role))return null;const secret=process.env.AUTO_SYNC_SECRET;if(!secret)return null;const claims=Buffer.from(JSON.stringify({role:sess.role,units:sess.units,permissions:sess.permissions||[],id:sess.id||null,name:sess.name||"",teacherId:sess.teacherId||null,t:Date.now(),unit,route,method:req.method})).toString("base64url");return claims+"."+crypto.createHmac("sha256",secret).update(claims).digest("hex")}
 export default async function handler(req,res){
- if(req.query.route==="bike-stars"){
+ if(req.query.route==="bike-stars"||req.query.route==="gym-stars"){
+ const rankingUnit=req.query.route==="gym-stars"?"gym":"bike";
  const user=adminSession(req);
  if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
- if(!user||user.role!=="admin"||!user.units?.includes("bike"))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+ if(!user||user.role!=="admin"||!user.units?.includes(rankingUnit))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
  const q=new URLSearchParams();for(const k of ["page","q","min","max","order"])if(req.query[k]!=null)q.set(k,String(req.query[k]));
- try{const r=await fetch(WORKER+"/admin/bike-stars?"+q,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ try{const r=await fetch(WORKER+"/admin/"+rankingUnit+"-stars?"+q,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
  }
 
  if(req.query.route==="partner-campaign-event"){
