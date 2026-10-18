@@ -7,6 +7,12 @@ import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 function proxyAuth(req,unit,route){const sess=adminSession(req);if(!sess||!(unit==="all"&&route==="teacher-view"?sess.units?.some(u=>u==="bike"||u==="gym"):sess.units?.includes(unit))||!["admin","reception","teacher"].includes(sess.role))return null;const secret=process.env.AUTO_SYNC_SECRET;if(!secret)return null;const claims=Buffer.from(JSON.stringify({role:sess.role,units:sess.units,permissions:sess.permissions||[],id:sess.id||null,name:sess.name||"",teacherId:sess.teacherId||null,t:Date.now(),unit,route,method:req.method})).toString("base64url");return claims+"."+crypto.createHmac("sha256",secret).update(claims).digest("hex")}
 export default async function handler(req,res){
+ if(req.query.route==="hall-conquests"){
+ const unit=String(req.query.unit||"");if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+ const user=adminSession(req);if(!["bike","gym"].includes(unit)||!user||!["admin","reception"].includes(user.role)||!user.units?.includes(unit)||user.role==="reception"&&!((user.permissions||[]).includes("*")||(user.permissions||[]).includes("/admin-alunos-evo.html")))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+ const signed=proxyAuth(req,unit,"hall-conquests");if(!signed)return res.status(503).json({ok:false,error:"ASSINATURA_INDISPONIVEL"});
+ try{const r=await fetch(WORKER+"/admin/hall-conquests?unit="+unit,{headers:{"x-clubpop-proxy-auth":signed},cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ }
  if(req.query.route==="bike-stars"||req.query.route==="gym-stars"){
  const rankingUnit=req.query.route==="gym-stars"?"gym":"bike";
  const user=adminSession(req);

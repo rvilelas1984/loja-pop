@@ -1,4 +1,5 @@
 import {adminBikeRanking} from './lib/admin-bike-ranking.mjs';
+import {hallConquests} from './lib/hall-conquests.mjs';
 import {adminGymRanking,rankingBase} from './lib/admin-gym-ranking.mjs';
 import {loadOrders as loadShopOrders, shopImport} from './lib/evo-shop-import.mjs';
 async function verifyProxyAuth(request,env,unit,route){const signed=request.headers.get("x-clubpop-proxy-auth")||"";if(!signed||!env.AUTO_SYNC_SECRET)return null;const parts=signed.split(".");if(parts.length!==2)return null;const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(env.AUTO_SYNC_SECRET),{name:"HMAC",hash:"SHA-256"},false,["sign"]);const bytes=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(parts[0])));const expected=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");if(expected.length!==parts[1].length)return null;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^parts[1].charCodeAt(i);if(diff)return null;let actor;try{actor=JSON.parse(atob(parts[0].replace(/-/g,"+").replace(/_/g,"/")))}catch{return null}if(!Number.isFinite(actor.t)||Math.abs(Date.now()-actor.t)>120000||actor.unit!==unit||actor.route!==route||actor.method!==request.method||!Array.isArray(actor.units)||!(unit==="all"&&route==="teacher-view"?actor.units.some(u=>u==="bike"||u==="gym"):actor.units.includes(unit)))return null;return actor}
@@ -997,6 +998,13 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         return new Response(upstreamBody, {status: upstream.status, headers: {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}});
       }
 
+      if(url.pathname==="/admin/hall-conquests"&&request.method==="GET"){
+        const unit=url.searchParams.get("unit");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const actor=await verifyProxyAuth(request,env,unit,"hall-conquests");
+        if(!actor||!["admin","reception"].includes(actor.role)||actor.role==="reception"&&!((actor.permissions||[]).includes("*")||(actor.permissions||[]).includes("/admin-alunos-evo.html")))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        try{return json(await hallConquests(env.DB,unit))}catch{return json({ok:false,error:"CONSULTA_INDISPONIVEL"},500)}
+      }
       if(url.pathname==="/admin/bike-stars"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
