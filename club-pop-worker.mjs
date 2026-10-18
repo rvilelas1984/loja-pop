@@ -1045,6 +1045,21 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           return json({ok:true});
         }catch{return json({ok:false,error:"REGISTRO_INDISPONIVEL"},500)}
       }
+      if(url.pathname==="/admin/hall-conquests/settings"&&["GET","POST"].includes(request.method)){
+        const unit=url.searchParams.get("unit");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const actor=await verifyProxyAuth(request,env,unit,"hall-conquests");
+        if(!actor||!["admin","reception"].includes(actor.role)||request.method==="POST"&&actor.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        try{
+          if(request.method==="POST"){
+            const body=await request.json(),positions=Number(body.positionsSeconds),highlights=Number(body.highlightsSeconds);
+            if(!Number.isInteger(positions)||positions<5||positions>60||!Number.isInteger(highlights)||highlights<5||highlights>60||typeof body.showEmpty!=="boolean")return json({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
+            await env.DB.prepare("INSERT INTO conquest_tv_settings(unit,show_empty,positions_seconds,highlights_seconds,updated_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET show_empty=excluded.show_empty,positions_seconds=excluded.positions_seconds,highlights_seconds=excluded.highlights_seconds,updated_at=CURRENT_TIMESTAMP").bind(unit,body.showEmpty?1:0,positions,highlights).run();
+          }
+          const row=await env.DB.prepare("SELECT show_empty,positions_seconds,highlights_seconds FROM conquest_tv_settings WHERE unit=?").bind(unit).first();
+          return json({ok:true,settings:{showEmpty:!!row?.show_empty,positionsSeconds:row?.positions_seconds??15,highlightsSeconds:row?.highlights_seconds??10}});
+        }catch{return json({ok:false,error:"CONFIGURACAO_INDISPONIVEL"},500)}
+      }
       if(url.pathname==="/admin/hall-conquests"&&request.method==="GET"){
         const unit=url.searchParams.get("unit");
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
