@@ -3281,6 +3281,21 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
         const body=await readJson(request),missionKey=String(body.missionId||""),goalKey=String(body.goalId||"");
         const mission=await clubContentItem(env,"mission",missionKey); if(!mission)return json({ok:false,error:"MISSAO_NAO_ENCONTRADA"},404);
         const goal=(mission.goals||[]).find(x=>String(x.id)===goalKey); if(!goal)return json({ok:false,error:"META_NAO_ENCONTRADA"},404);
+        // A mission with tiered rewards grants one final choice per student.
+        if(mission.type==="presence" && (mission.goals||[]).length>1){
+          await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_mission_final_choice (member_id INTEGER NOT NULL,mission_id TEXT NOT NULL,period_key TEXT NOT NULL,goal_id TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(member_id,mission_id,period_key))").run();
+          const periodKey=mission.period==="month"?String(mission.start||"").slice(0,7):String(mission.start||"")+"_"+String(mission.end||"");
+          const prior=await env.DB.prepare("SELECT source_id FROM redemptions WHERE member_id=? AND source_type='MISSION' AND reference_id=? ORDER BY id DESC LIMIT 1").bind(member.id,missionKey).first();
+          if(prior && String(prior.source_id)!==goalKey)return json({ok:false,error:"MISSAO_JA_ENCERRADA_OUTRA_META"},409);
+          if(prior)return json({ok:true,alreadyClaimed:true,missionClosed:true});
+          const progress=await missionProgressValue(env,member,mission);
+          if(progress<Number(goal.value||0))return json({ok:false,error:"META_AINDA_NAO_ATINGIDA",progress},409);
+          const inserted=await env.DB.prepare("INSERT OR IGNORE INTO club_mission_final_choice(member_id,mission_id,period_key,goal_id) VALUES(?,?,?,?)").bind(member.id,missionKey,periodKey,goalKey).run();
+          if(Number(inserted.meta?.changes||0)!==1){
+            const chosen=await env.DB.prepare("SELECT goal_id FROM club_mission_final_choice WHERE member_id=? AND mission_id=? AND period_key=?").bind(member.id,missionKey,periodKey).first();
+            if(String(chosen?.goal_id)!==goalKey)return json({ok:false,error:"MISSAO_JA_ENCERRADA_OUTRA_META"},409);
+          }
+        }
         const rewards=Array.isArray(goal.rewards)?goal.rewards.filter(x=>x&&x.type):[];
         if(mission.type==="challenge"&&goal.rewardType==="fitcoins")return await challengeFitcoinClaim(env,member,mission,goal,json);
         if(goal.rewardType==="currency"||rewards.some(x=>x.type==="currency")){
