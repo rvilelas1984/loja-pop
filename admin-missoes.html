@@ -92,7 +92,21 @@ main.wrap .cp-v5-bar{width:100%;max-width:none!important;margin:0 0 18px!importa
 .communityAdminList{display:grid;gap:10px}.communityAdminRow{display:grid;grid-template-columns:minmax(0,2fr) 1fr 1fr auto;gap:14px;align-items:center;border:1px solid #e4e8ef;border-radius:15px;padding:15px}.communityAdminRow h3{font-size:15px;margin:5px 0}.communityAdminRow p{margin:0;font-size:12px;color:#67748a}.communityAdminPill{display:inline-block;background:#e9f6fa;color:#087a94;padding:5px 8px;border-radius:8px;font-size:10px;font-weight:800}.communityAdminRow button{border:0;background:#192c52;color:white;border-radius:10px;padding:11px;cursor:pointer;font-weight:800}.communityAdminRow b{font-size:17px}.communityAdminBar{height:7px;background:#e3eaf2;border-radius:10px;overflow:hidden;margin-top:7px}.communityAdminBar i{display:block;height:100%;background:#0da6c1;border-radius:10px}.communityAdminFootnote{font-size:11px;color:#718096;line-height:1.5;margin-top:16px}
 .communityAdminDialog{border:0;border-radius:22px;width:min(650px,calc(100% - 24px));max-height:85vh;overflow:auto;padding:24px;background:#f8faff;box-shadow:0 20px 70px #11182744}.communityAdminDialog::backdrop{background:#0d1b34aa;backdrop-filter:blur(3px)}.communityAdminDialog h2{margin:0 0 10px}.communityAdminDialog .communityAdminInfo{background:white;border:1px solid #e1e7ef;padding:13px;border-radius:13px;margin:10px 0}.communityAdminDialog table{width:100%;border-collapse:collapse;font-size:12px}.communityAdminDialog td,.communityAdminDialog th{padding:9px 5px;border-bottom:1px solid #e2e8f0;text-align:left}.communityAdminDialog>button{margin-top:15px;border:0;border-radius:12px;background:#192c52;color:#fff;padding:12px 25px}
 @media(max-width:700px){.communityAdminPanel{padding:16px}.communityAdminStats{grid-template-columns:repeat(2,minmax(0,1fr))}.communityAdminFilters{grid-template-columns:1fr}.communityAdminRow{grid-template-columns:1fr 1fr}.communityAdminRow>div:first-child{grid-column:1/-1}.communityAdminRow button{grid-column:1/-1}.communityAdminHeading h2{font-size:19px}}
-</style></head><body><header><div class="topnav"><strong>✦ CLUB POP · ADMIN</strong><div style="display:flex;align-items:center;gap:9px"><label class="tagunit" for="topunit">Unidade</label><select id="topunit"><option>Bike Pop</option><option>Gym Pop</option><option>Club Pop</option></select><button class="hamb" id="hamb" aria-label="Abrir menu">☰</button></div></div><div class="navdrawer" id="navdrawer"><a href="#" data-nav="Dashboard">Dashboard</a><a href="#" data-nav="Missões">Missões</a><a href="#" data-nav="Promoções">Promoções</a><a href="#" data-nav="Central de Vouchers">Central de Vouchers</a><a href="#" data-nav="Alunos">Alunos</a><a href="#" data-nav="Configurações">Configurações</a></div><small>CONTEÚDO DO ALUNO · CLUB POP</small><h1>Missões</h1><p>Cadastre, acompanhe e edite as missões dos alunos.</p></header><main class="wrap"><section id="communityAdmin" class="communityAdminPanel" aria-labelledby="communityAdminTitle">
+</style>
+<style>
+#cpMissionOverview[hidden],#cpMissionEditor[hidden],#communityAdmin[hidden],.cp-mission-navigation[hidden]{display:none!important}
+.cp-mission-navigation{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 24px;padding:6px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}
+.cp-mission-navigation button{flex:1;padding:13px 18px;border:0;border-radius:10px;background:transparent;color:#475569;font:inherit;font-weight:700;cursor:pointer}
+.cp-mission-navigation button[aria-pressed="true"]{background:#111827;color:#fff}
+.cp-workspace-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 20px}
+.cp-workspace-heading h2{margin:8px 0;font-size:22px}.cp-workspace-heading p{margin:0;color:#64748b;line-height:1.5}
+.cp-workspace-heading button{padding:10px 14px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#334155;font:inherit;cursor:pointer}
+#cpMissionEditor .cp-v5-bar{margin-bottom:16px}#cpMissionEditor .tabs{margin-bottom:20px}
+#cpMissionOverview>.cp-v5-status{margin:12px 0}#cpMissionOverview>.cp-v5-status[data-error="true"]{color:#b91c1c}
+body:not(.cp-mission-editing) .cp-preview-toggle{display:none!important}
+@media(max-width:600px){.cp-workspace-heading{align-items:flex-start}.cp-mission-navigation button{padding:12px 8px;font-size:14px}}
+</style>
+</head><body><header><div class="topnav"><strong>✦ CLUB POP · ADMIN</strong><div style="display:flex;align-items:center;gap:9px"><label class="tagunit" for="topunit">Unidade</label><select id="topunit"><option>Bike Pop</option><option>Gym Pop</option><option>Club Pop</option></select><button class="hamb" id="hamb" aria-label="Abrir menu">☰</button></div></div><div class="navdrawer" id="navdrawer"><a href="#" data-nav="Dashboard">Dashboard</a><a href="#" data-nav="Missões">Missões</a><a href="#" data-nav="Promoções">Promoções</a><a href="#" data-nav="Central de Vouchers">Central de Vouchers</a><a href="#" data-nav="Alunos">Alunos</a><a href="#" data-nav="Configurações">Configurações</a></div><small>CONTEÚDO DO ALUNO · CLUB POP</small><h1>Missões</h1><p>Cadastre, acompanhe e edite as missões dos alunos.</p></header><main class="wrap"><section id="communityAdmin" class="communityAdminPanel" aria-labelledby="communityAdminTitle">
  <div class="communityAdminHeading"><div><span class="communityAdminEyebrow">ANÁLISE DE ENGAJAMENTO</span><h2 id="communityAdminTitle">🌎 Missões da Comunidade</h2><p>Acompanhe os desafios criados pelos alunos e descubra quais geram mais participação.</p></div><button id="communityAdminRefresh" type="button">↻ Atualizar</button></div>
  <div id="communityAdminStats" class="communityAdminStats"></div>
  <div class="communityAdminFilters"><input id="communityAdminSearch" type="search" placeholder="Buscar missão ou criador..." aria-label="Buscar missão ou criador"><select id="communityAdminType" aria-label="Filtrar tipo"><option value="">Todos os tipos</option><option value="private">Pessoal</option><option value="friends">Entre amigos</option><option value="public">Pública</option></select><select id="communityAdminStatus" aria-label="Filtrar período"><option value="">Todos os períodos</option><option value="upcoming">Em breve</option><option value="active">Em andamento</option><option value="ended">Encerradas</option></select></div>
@@ -154,7 +168,7 @@ render=function(){
 
 const bar=document.createElement("div");bar.className="cp-v5-bar";bar.innerHTML='<label for="cpV5Mission">Missões cadastradas · selecionar para editar</label><select id="cpV5Mission"><option value="">+ Nova missão</option></select><button id="cpV5New" type="button">+ Nova</button><button id="cpV5Reload" type="button">Atualizar</button><button id="cpV5Save" type="button">Salvar missão</button><span class="cp-v5-status" id="cpV5Status" role="status">Carregando dados...</span>';const main=document.querySelector("main.wrap");main.prepend(bar);const metrics=document.createElement("div");metrics.className="cp-mission-metrics";main.prepend(metrics);
 metrics.innerHTML='<div><small>Missões cadastradas</small><strong>—</strong></div><div><small>Missões ativas</small><strong>—</strong></div><div><small>Contratos disponíveis</small><strong>—</strong></div>';const picker=document.getElementById("cpV5Mission"),status=document.getElementById("cpV5Status");
-function notify(msg,error=false){status.textContent=msg;status.dataset.error=String(error);if(error&&window.cpNotify)window.cpNotify("error","Missões V5",msg)}
+function notify(msg,error=false){status.textContent=msg;status.dataset.error=String(error);overviewStatus.textContent=msg;overviewStatus.dataset.error=String(error);if(error&&window.cpNotify)window.cpNotify("error","Missões V5",msg)}
 function editorFromModel(m){const kind=Object.keys(kinds).find(k=>kinds[k]===m.type)||"presenca",d=data[kind];active=kind;d.name=m.name||"";d.description=m.description||"";d.start=m.start||"";d.end=m.end||"";d.unit=reverseUnits[m.unit]||"Bike Pop";d.eligibility=m.eligibility||"all";d.cardPalette=m.cardPalette||'Premium Noturno';d.cardColors=m.cardColors||{};d.cardTheme=m.cardTheme||'dark';d.cardEmphasis=m.cardEmphasis||'';d.cardButtonText=m.cardButtonText||'';d.cardAccent=m.cardAccent||'';d.contracts=Array.isArray(m.contracts)?m.contracts:[];d.differentDays=!!m.requireDistinctDays;
 if(kind==="presenca")d.levels=(m.goals||[]).map(g=>({goal:Number(g.value||1),rewards:Array.isArray(g.rewards)&&g.rewards.length?g.rewards:[{type:g.rewardType==="manual"?"voucher":g.rewardType||"voucher",rewardId:g.rewardId||"",rewardName:g.rewardName||"",amount:Number(g.rewardValue||0)}]}));
 if(kind==="constancia"){d.goal=Number(m.requirements?.[0]?.quantity||d.goal);d.weeks=Number(m.goals?.[0]?.value||d.weeks);d.rewards=m.goals?.[0]?.rewards||d.rewards}
@@ -176,11 +190,37 @@ for(const kind of Object.keys(typeLabels)){
 }
 bar.after(missionPanel);
 const editorArea=document.querySelector('main.wrap > .layout');
-const editorToggle=document.createElement('button');editorToggle.type='button';editorToggle.className='cp-editor-toggle';editorToggle.textContent='✎ Formulário de missão · recolhido';editorToggle.setAttribute('aria-expanded','false');missionPanel.after(editorToggle);
-if(editorArea)editorArea.hidden=true;
-function openMissionEditor(){if(editorArea)editorArea.hidden=false;editorToggle.setAttribute('aria-expanded','true');editorToggle.textContent='▼ Recolher formulário de missão';editorToggle.scrollIntoView({behavior:'smooth',block:'start'})}
-function closeMissionEditor(){if(editorArea)editorArea.hidden=true;editorToggle.setAttribute('aria-expanded','false');editorToggle.textContent='✎ Formulário de missão · recolhido'}
-editorToggle.onclick=()=>editorArea?.hidden?openMissionEditor():closeMissionEditor();
+// Keep list, community management and editing in separate workspaces.
+const community=document.getElementById('communityAdmin');
+const navigation=document.createElement('nav');navigation.className='cp-mission-navigation';navigation.setAttribute('aria-label','Áreas de missões');
+navigation.innerHTML='<button type="button" data-view="studio" aria-pressed="true">Missões do estúdio</button><button type="button" data-view="community" aria-pressed="false">Missões da comunidade</button>';
+const overview=document.createElement('section');overview.id='cpMissionOverview';
+const overviewHeading=document.createElement('div');overviewHeading.className='cp-workspace-heading';overviewHeading.innerHTML='<div><h2>Missões do estúdio</h2><p>Escolha um tipo para consultar, criar ou editar uma missão.</p></div>';
+const overviewStatus=document.createElement('p');overviewStatus.className='cp-v5-status';overviewStatus.setAttribute('role','status');
+const reload=document.getElementById('cpV5Reload');overviewHeading.append(reload);
+overview.append(overviewHeading,metrics,overviewStatus,missionPanel);
+const editor=document.createElement('section');editor.id='cpMissionEditor';editor.hidden=true;
+const editorHeading=document.createElement('div');editorHeading.className='cp-workspace-heading';
+editorHeading.innerHTML='<div><button type="button" id="cpBackToMissions">← Voltar às missões</button><h2 id="cpEditorTitle" tabindex="-1">Configurar missão</h2><p>Preencha as etapas e confira a prévia antes de salvar.</p></div>';
+editor.append(editorHeading,bar,main.querySelector('nav.tabs'),editorArea);
+main.prepend(navigation,overview,editor);
+community.hidden=true;
+function showWorkspace(view){
+ overview.hidden=view!=='studio';community.hidden=view!=='community';editor.hidden=view!=='editor';
+ navigation.hidden=view==='editor';
+ navigation.querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.view===view)));
+ document.body.classList.toggle('cp-mission-editing',view==='editor');
+ document.querySelector('.cp-preview-close')?.click();
+}
+navigation.addEventListener('click',event=>{const button=event.target.closest('button[data-view]');if(button)showWorkspace(button.dataset.view)});
+function openMissionEditor(){
+ showWorkspace('editor');
+ const title=document.getElementById('cpEditorTitle');title.textContent=(selected[active]?'Editar missão':'Nova missão')+' · '+names[active];
+ window.scrollTo({top:0,behavior:'instant'});title.focus({preventScroll:true});
+}
+function closeMissionEditor(){showWorkspace('studio');window.scrollTo({top:0,behavior:'instant'});navigation.querySelector('button').focus({preventScroll:true})}
+document.getElementById('cpBackToMissions').onclick=closeMissionEditor;
+editor.querySelector('nav.tabs').addEventListener('click',event=>{if(event.target.closest('[data-type]'))document.getElementById('cpEditorTitle').textContent=(selected[active]?'Editar missão':'Nova missão')+' · '+names[active]});
 function refreshPicker(){
  const scope=window.cpAdminScope?.get()||'bike';
  const scoped=stored.missionList.filter(m=>scope==='club'||m.unit===scope);
@@ -215,7 +255,7 @@ document.getElementById("preview").addEventListener("click",()=>{ /* prévia ape
 load().catch(e=>notify(e.message,true));
 })();
 </script><script>
-(()=>{const toolbar=document.createElement("div");toolbar.className="cp-preview-toggle";toolbar.style.display="none";toolbar.innerHTML='<button type="button" id="cpShowPreview" aria-expanded="false">👁 Ver pré-visualização do aluno</button>';const main=document.querySelector("main");main?.parentNode.insertBefore(toolbar,main);const close=document.createElement("button");close.className="cp-preview-close";close.type="button";close.textContent="✕ Fechar prévia";document.body.append(close);const btn=document.getElementById("cpShowPreview");const toggle=on=>{document.body.classList.toggle("cp-preview-mobile-open",on);btn.setAttribute("aria-expanded",String(on));btn.textContent=on?"👁 Pré-visualização aberta":"👁 Ver pré-visualização do aluno"};btn.onclick=()=>toggle(true);close.onclick=()=>toggle(false);document.addEventListener("keydown",e=>{if(e.key==="Escape")toggle(false)});})();
+(()=>{const toolbar=document.createElement("div");toolbar.className="cp-preview-toggle";toolbar.style.display="none";toolbar.innerHTML='<button type="button" id="cpShowPreview" aria-expanded="false">👁 Ver pré-visualização do aluno</button>';const main=document.querySelector("main");document.getElementById("cpMissionEditor")?.prepend(toolbar);const close=document.createElement("button");close.className="cp-preview-close";close.type="button";close.textContent="✕ Fechar prévia";document.body.append(close);const btn=document.getElementById("cpShowPreview");const toggle=on=>{document.body.classList.toggle("cp-preview-mobile-open",on);btn.setAttribute("aria-expanded",String(on));btn.textContent=on?"👁 Pré-visualização aberta":"👁 Ver pré-visualização do aluno"};btn.onclick=()=>toggle(true);close.onclick=()=>toggle(false);document.addEventListener("keydown",e=>{if(e.key==="Escape")toggle(false)});})();
 </script><script src="/admin-mission-badges.js"></script><script>
 (()=>{const $=q=>document.querySelector(q),esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));let data=[];
 const unit=()=>({ "Bike Pop":"bike","Gym Pop":"gym","Club Pop":"club" }[$("#topunit")?.value]||"club");
