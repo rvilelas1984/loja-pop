@@ -31,7 +31,7 @@ start.onclick=async()=>{start.disabled=true;preview.disabled=true;let inserted=0
 </script><script>
 (()=>{let page=1;const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function load(){ $('starRows').textContent='Consultando D1...';const p=new URLSearchParams({page,q:$('starQuery').value,min:$('starMin').value||'0',max:$('starMax').value||'1000000',order:$('starOrder').value});
-try{const r=await fetch('/api/bike-stars?'+p,{credentials:'same-origin',cache:'no-store'}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Falha na consulta');
+try{const r=await fetch('/api/evo-config?route=bike-stars&'+p,{credentials:'same-origin',cache:'no-store'}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Falha na consulta');
 $('starCount').textContent=d.total.toLocaleString('pt-BR');$('starNearCount').textContent=d.upcoming.length;
 $('starRows').innerHTML=d.rows.length?d.rows.map(x=>'<div style="padding:10px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;gap:8px"><span>'+esc(x.first_name)+' '+esc(x.last_name)+' <small>#'+esc(x.evo_member_id)+'</small></span><b>'+Number(x.stars).toLocaleString('pt-BR')+' ⭐</b></div>').join(''):'Nenhum aluno encontrado';
 $('starUpcoming').innerHTML=d.upcoming.length?d.upcoming.map(x=>'<div style="padding:9px;border-bottom:1px solid #eee">'+esc(x.first_name)+' '+esc(x.last_name)+' — <b>'+x.stars+' ⭐</b> · faltam '+x.remaining+' para '+x.next+'</div>').join(''):'Nenhum aluno a até 5 aulas do próximo marco entre os alunos consultados';
