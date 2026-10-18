@@ -166,42 +166,9 @@ if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch
 <form id="classChatForm" style="display:flex;gap:8px;padding-bottom:12px"><input id="classChatInput" maxlength="500" placeholder="Sua mensagem..." style="flex:1;min-width:0;padding:12px;border:0;border-radius:10px"><button style="background:#b88cf9;border:0;border-radius:10px;padding:12px;font-weight:bold">Enviar</button></form>
 </div><script type="module">
 import {bikeStarProgress} from '/lib/bike-star-levels.mjs';
+import {initBikeStarsCelebration} from '/lib/bike-stars-celebration.mjs';
 const card=document.getElementById('bikeStarsCard');
-const overlay=document.getElementById('bikeStarsOverlay');
-let starState=null,previousFocus=null,lastPhrase=-1;
-const phrases=[
-'{name}, cada pedalada conta uma história de dedicação. Você já realizou {count} aulas. Parabéns!',
-'{name}, são {count} aulas de esforço, energia e superação. Essa conquista é toda sua!',
-'{name}, você transformou constância em resultados. São {count} aulas para comemorar!',
-'{name}, cada aula foi um passo adiante. Suas {count} aulas merecem muitos aplausos!',
-'{name}, sua determinação inspira! Você já acumulou {count} aulas no Bike Pop.',
-'{name}, que orgulho acompanhar sua jornada! {count} aulas conquistadas com dedicação.',
-'{name}, você escolheu continuar, aula após aula. Hoje já são {count} motivos para celebrar!',
-'{name}, sua energia faz parte da nossa história. Parabéns pelas {count} aulas!',
-'{name}, ninguém pedala por você: essas {count} aulas são fruto do seu compromisso!',
-'{name}, a melhor conquista é perceber o quanto você evoluiu. Parabéns pelas {count} aulas!',
-'{name}, seu ritmo, sua força, sua jornada. Você já chegou a {count} aulas!',
-'{name}, a consistência merece reconhecimento. Celebre suas {count} aulas no Bike Pop!'
-];
-function starsName(){const data=JSON.parse(sessionStorage.getItem('clubpop')||'{}');return String(data.firstName||'Aluno').trim().slice(0,40)||'Aluno'}
-function starsPhrase(name,count){let n=Math.floor(Math.random()*phrases.length);if(n===lastPhrase)n=(n+1)%phrases.length;lastPhrase=n;return phrases[n].replaceAll('{name}',name).replaceAll('{count}',count.toLocaleString('pt-BR'))}
-function openStars(){if(!starState||card.style.display==='none')return;previousFocus=document.activeElement;const name=starsName();starState.name=name;document.getElementById('bikeStarsDialogTitle').textContent='Parabéns, '+name+'!';document.getElementById('bikeStarsDialogCount').textContent=starState.total.toLocaleString('pt-BR');document.getElementById('bikeStarsDialogPhrase').textContent=starsPhrase(name,starState.total);document.getElementById('bikeStarsShareStatus').textContent='';overlay.hidden=false;overlay.style.display='flex';document.getElementById('bikeStarsClose').focus()}
-function closeStars(){overlay.style.display='none';overlay.hidden=true;previousFocus?.focus?.()}
-card.addEventListener('click',openStars);
-card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openStars()}});
-document.getElementById('bikeStarsClose').addEventListener('click',closeStars);
-overlay.addEventListener('click',e=>{if(e.target===overlay)closeStars()});
-document.addEventListener('keydown',e=>{if(overlay.hidden)return;if(e.key==='Escape')closeStars();if(e.key==='Tab'){const buttons=[document.getElementById('bikeStarsClose'),document.getElementById('bikeStarsShare')];const next=e.shiftKey?buttons[0]:buttons[1];if((e.shiftKey&&document.activeElement===buttons[0])||(!e.shiftKey&&document.activeElement===buttons[1])){e.preventDefault();(e.shiftKey?buttons[1]:buttons[0]).focus()}}});
-document.getElementById('bikeStarsShare').addEventListener('click',async()=>{
-if(!starState)return;
-const msg=starState.name+' já realizou '+starState.total.toLocaleString('pt-BR')+' aulas no Studio Bike Pop! ⭐ Uma conquista para celebrar. #BikePop #ClubPop';
-const status=document.getElementById('bikeStarsShareStatus');
-try{if(navigator.share){await navigator.share({title:'Minha conquista Bike Pop',text:msg});return}
-if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(msg);status.textContent='Mensagem copiada! Agora você pode compartilhar.';return}
-status.textContent='Compartilhamento não disponível neste navegador.'
-}catch(e){if(e.name!=='AbortError')status.textContent='Não foi possível compartilhar. Tente novamente.'}
-});
-
+const celebration=initBikeStarsCelebration(card);
 async function refreshBikeStars(){
  const unit=localStorage.getItem('clubpop_active_unit')||'bike';
  if(unit!=='bike'){card.style.display='none';return;}
@@ -213,7 +180,7 @@ async function refreshBikeStars(){
   const result=await response.json();
   if(!response.ok||!result.ok||!result.data?.bikeStars){card.style.display='none';return;}
   const p=bikeStarProgress(result.data.bikeStars.total);
-  starState={total:p.total};
+  celebration.setData({total:p.total,title:p.title,name:String(JSON.parse(sessionStorage.getItem('clubpop')||'{}').firstName||'Aluno').trim().slice(0,40)||'Aluno'});
   document.getElementById('bikeStarsTotal').textContent=p.total.toLocaleString('pt-BR');
   document.getElementById('bikeStarsTitle').textContent=p.title;
   document.getElementById('bikeStarsFill').style.width=p.percent+'%';
