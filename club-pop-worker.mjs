@@ -1,5 +1,5 @@
 import {adminBikeRanking} from './lib/admin-bike-ranking.mjs';
-import {adminGymRanking} from './lib/admin-gym-ranking.mjs';
+import {adminGymRanking,rankingBase} from './lib/admin-gym-ranking.mjs';
 import {loadOrders as loadShopOrders, shopImport} from './lib/evo-shop-import.mjs';
 async function verifyProxyAuth(request,env,unit,route){const signed=request.headers.get("x-clubpop-proxy-auth")||"";if(!signed||!env.AUTO_SYNC_SECRET)return null;const parts=signed.split(".");if(parts.length!==2)return null;const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(env.AUTO_SYNC_SECRET),{name:"HMAC",hash:"SHA-256"},false,["sign"]);const bytes=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(parts[0])));const expected=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");if(expected.length!==parts[1].length)return null;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^parts[1].charCodeAt(i);if(diff)return null;let actor;try{actor=JSON.parse(atob(parts[0].replace(/-/g,"+").replace(/_/g,"/")))}catch{return null}if(!Number.isFinite(actor.t)||Math.abs(Date.now()-actor.t)>120000||actor.unit!==unit||actor.route!==route||actor.method!==request.method||!Array.isArray(actor.units)||!(unit==="all"&&route==="teacher-view"?actor.units.some(u=>u==="bike"||u==="gym"):actor.units.includes(unit)))return null;return actor}
 import { snapshotProductSale, syncProductSale } from './lib/evo-product-sales.mjs';
@@ -1012,6 +1012,27 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
         return json(await adminGymRanking(env.DB,url.searchParams));
+      }
+      // Student-only lifetime stars, read from D1; never calls EVO.
+      if (url.pathname === "/member/stars" && request.method === "GET") {
+        const auth=request.headers.get("Authorization")||"";
+        if(!auth.startsWith("Bearer "))return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const tokenHash=await sha256(auth.slice(7));
+        const session=await env.DB.prepare("SELECT m.id,m.evo_member_id,COALESCE(NULLIF(m.gym_client_id,''),g.gym_client_id) AS gym_client_id,m.first_name,m.last_name FROM auth_sessions s JOIN members m ON m.id=s.member_id LEFT JOIN gym_member_links g ON g.member_id=m.id AND g.status='ACTIVE' WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP LIMIT 1").bind(tokenHash).first();
+        if(!session)return json({ok:false,error:"SESSAO_INVALIDA"},401);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
+        const evoId=unit==="gym"?session.gym_client_id:session.evo_member_id;
+        if(!evoId)return json({ok:false,error:"UNIDADE_NAO_VINCULADA"},404);
+        let legacy=0,actual=0;
+        if(unit==="gym"){
+          const starRow=await env.DB.prepare(rankingBase+"SELECT legacy,actual,stars FROM totals WHERE evo_member_id=? LIMIT 1").bind(String(evoId)).first();
+          if(!starRow)return json({ok:false,error:"ALUNO_SEM_RANKING"},404);
+          legacy=Number(starRow.legacy||0);actual=Number(starRow.actual||0);
+        }else{
+          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,(SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT)) AS actual FROM members m WHERE m.id=?").bind(session.id).first();
+          legacy=Number(starRow?.legacy||0);actual=Number(starRow?.actual||0);
+        }
+        return json({ok:true,unit,memberId:session.id,name:[session.first_name,session.last_name].filter(Boolean).join(" ").trim()||"Aluno",stars:{legacy,actual,total:legacy+actual},source:"d1",evoRequestsMade:0});
       }
       // Cache de leitura do Dashboard: nunca chama a EVO.
       if (url.pathname === "/member/evo-cache" && request.method === "GET") {
