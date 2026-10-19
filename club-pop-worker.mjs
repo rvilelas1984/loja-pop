@@ -1136,6 +1136,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           const q=await env.DB.prepare("SELECT attendance_date,start_time,activity_name,id_activity_session,json_extract(raw_json,'$.raw.slotNumber') AS slotNumber FROM evo_member_attendance WHERE unit='bike' AND evo_member_id=? AND substr(attendance_date,1,7)=? ORDER BY attendance_date,start_time,id_activity_session").bind(String(evoId),month).all();
           const rows=(q.results||[]).map(a=>({date:a.attendance_date,startTime:a.start_time,activity:a.activity_name,idActivitySession:a.id_activity_session,slotNumber:a.slotNumber,presenca:true,isFinalized:true})),times={},acts={},days=new Set();
           for(const a of rows){days.add(a.date);if(a.startTime)times[a.startTime]=(times[a.startTime]||0)+1;if(a.activity)acts[a.activity]=(acts[a.activity]||0)+1}
+          for(const a of events){const activity=String(a.activity_name||"").trim(),date=String(a.attendance_date||"").slice(0,10);if(!activity||!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))continue;const key=activity.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").trim();if(!modalityHistory[key])modalityHistory[key]={name:activity,dates:[]};modalityHistory[key].dates.push(date)}
           const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0]?.[0]||null,monday=new Date(today+"T00:00:00Z");monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);const week=rows.filter(a=>a.date>=monday.toISOString().slice(0,10)&&a.date<=today);
           data.attendance={ok:true,period:{month},attendanceCount:rows.length,distinctDays:days.size,favoriteTime:top(times),favoriteActivity:top(acts),favoriteEquipment:favoriteEquipmentFromRows(rows,unit,top(acts)),currentWeek:{attendanceCount:week.length,distinctDays:new Set(week.map(a=>a.date)).size},attendance:rows};
           const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,(SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT)) AS current_count FROM members m WHERE m.id=?").bind(session.id).first();
@@ -1838,6 +1839,25 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       }
 
 
+
+      if(url.pathname==="/admin/student-segments"&&["GET","POST","DELETE"].includes(request.method)){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const admin=await vr.json().catch(()=>({}));
+        if(!vr.ok||admin.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=url.searchParams.get("unit")==="gym"?"gym":"bike";
+        if(admin.units?.length&&!admin.units.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        if(request.method==="GET"){const list=(await env.DB.prepare("SELECT id,name,filters_json,created_at,updated_at FROM student_management_segments WHERE unit=? ORDER BY updated_at DESC LIMIT 100").bind(unit).all()).results;return json({ok:true,segments:list.map(x=>({...x,filters:JSON.parse(x.filters_json||"{}")}))})}
+        if(request.method==="DELETE"){const id=Number(url.searchParams.get("id"));if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"ID_INVALIDO"},400);await env.DB.prepare("DELETE FROM student_management_segments WHERE unit=? AND id=?").bind(unit,id).run();return json({ok:true})}
+        const data=await request.json().catch(()=>({})),name=String(data.name||"").trim();
+        if(!name||name.length>80||!data.filters||typeof data.filters!=="object"||Array.isArray(data.filters))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const allowed=["search","absence","period","hour","category","weekday","modality","classes","contactable","window","habitModality","habitDays","habitMinimum","habitState","habitWindow"];
+        const clean={};for(const k of allowed){if(data.filters[k]!==undefined)clean[k]=String(data.filters[k]).slice(0,100)}
+        const serialized=JSON.stringify(clean);
+        if(data.id){const id=Number(data.id);if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"ID_INVALIDO"},400);const result=await env.DB.prepare("UPDATE student_management_segments SET name=?,filters_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND unit=?").bind(name,serialized,id,unit).run();if(!result.meta?.changes)return json({ok:false,error:"SEGMENTO_NAO_ENCONTRADO"},404);return json({ok:true,id})}
+        const result=await env.DB.prepare("INSERT INTO student_management_segments(unit,name,filters_json) VALUES(?,?,?)").bind(unit,name,serialized).run();return json({ok:true,id:result.meta?.last_row_id});
+      }
       // Gestão de Alunos: segmentos de retenção calculados exclusivamente no D1.
       if(url.pathname==="/admin/student-management"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
@@ -1862,7 +1882,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         `).bind(unit).all()).results||[];
         const ids=new Set(contracts.map(x=>String(x.evo_member_id)));
         const master=(await env.DB.prepare("SELECT evo_member_id,personal_json,contacts_json FROM evo_member_master WHERE unit=? AND is_current=1").bind(unit).all()).results||[];
-        const attendance=(await env.DB.prepare("SELECT evo_member_id,attendance_date,start_time,activity_name FROM evo_member_attendance WHERE unit=? AND attendance_date>=date('now',?,'-3 hours')").bind(unit,"-"+windowDays+" days").all()).results||[];
+        const attendance=(await env.DB.prepare("SELECT evo_member_id,attendance_date,start_time,activity_name FROM evo_member_attendance WHERE unit=? AND attendance_date>=date('now','-180 days','-3 hours')").bind(unit).all()).results||[];
         const grouped=new Map();
         for(const a of attendance){const id=String(a.evo_member_id);if(!ids.has(id))continue;let list=grouped.get(id);if(!list){list=[];grouped.set(id,list)}list.push(a)}
         const counts=new Map(contracts.map(c=>[String(c.evo_member_id),c]));
@@ -1871,8 +1891,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           let p={};try{p=JSON.parse(m.personal_json||"{}")}catch{}
           let contacts=[];try{contacts=JSON.parse(m.contacts_json||"[]")}catch{}
           const events=grouped.get(String(m.evo_member_id))||[];
-          const byHour={},byDay={},byPeriod={},byActivity={};let last="";
-          for(const a of events){const date=String(a.attendance_date||"").slice(0,10);if(date>last)last=date;
+          const byHour={},byDay={},byPeriod={},byActivity={},modalityHistory={};let last="";
+          for(const a of events){const date=String(a.attendance_date||"").slice(0,10);if(date>last)last=date; if(date<new Date(Date.parse(today+"T12:00:00Z")-(windowDays-1)*86400000).toISOString().slice(0,10))continue;
             const hour=String(a.start_time||"").slice(0,5);
             if(/^\d{2}:\d{2}$/.test(hour)){byHour[hour]=(byHour[hour]||0)+1;const h=Number(hour.slice(0,2)),period=h<12?"manha":h<18?"tarde":"noite";byPeriod[period]=(byPeriod[period]||0)+1}
             if(/^\d{4}-\d{2}-\d{2}$/.test(date)){const day=new Date(date+"T12:00:00Z").getUTCDay();byDay[day]=(byDay[day]||0)+1}
@@ -1882,9 +1902,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const days=last?Math.floor((Date.parse(today+"T12:00:00Z")-Date.parse(last+"T12:00:00Z"))/86400000):null;
           const c=counts.get(String(m.evo_member_id));
           const phone=contacts.map(x=>String(x.description||"").replace(/\D/g,"")).find(x=>x.length>=10&&x.length<=13)||"";
-          return {id:String(m.evo_member_id),name:[p.firstName,p.lastName].filter(Boolean).join(" ")||p.registerName||"Aluno",contracts:c?.contracts||"",categories:c?.categories||"",lastPresence:last,daysAbsent:days,period:top(byPeriod),hour:top(byHour),weekday:top(byDay),modality:top(byActivity),classes:events.length,phone:phone||null};
+          return {id:String(m.evo_member_id),name:[p.firstName,p.lastName].filter(Boolean).join(" ")||p.registerName||"Aluno",contracts:c?.contracts||"",categories:c?.categories||"",lastPresence:last,daysAbsent:days,period:top(byPeriod),hour:top(byHour),weekday:top(byDay),modality:top(byActivity),classes:events.filter(a=>String(a.attendance_date||"").slice(0,10)>=new Date(Date.parse(today+"T12:00:00Z")-(windowDays-1)*86400000).toISOString().slice(0,10)).length,modalityHistory:Object.values(modalityHistory),historyDays:180,phone:phone||null};
         });
-        return json({ok:true,unit,windowDays,total:rows.length,rows,source:"d1",notes:"Presenças e hábitos calculados na janela escolhida; ausência sem histórico permanece indeterminada. Contatos exigem confirmação antes de enviar."});
+        return json({ok:true,unit,windowDays,total:rows.length,rows,source:"d1",notes:"Hábitos calculados na janela selecionada; histórico de modalidades limitado aos últimos 180 dias. Contatos exigem confirmação antes de enviar."});
       }
       // Espelho administrativo de alunos EVO: leitura exclusiva do D1, sem chamada à EVO.
       if (url.pathname === "/admin/evo-students" && request.method === "GET") {
