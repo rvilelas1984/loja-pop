@@ -104,6 +104,20 @@ function chatproSafeApiUrl(value){
   return true;
  }catch{return false}
 }
+async function claimStudentDispatch(env,b,phone,flow,enabledUnits){
+ const unit=String(b.unit||""),batch=String(b.batchId||""),name=String(b.groupName||"").trim();
+ if(!["bike","gym"].includes(unit)||!enabledUnits.includes(unit))return {error:"CHATPRO_NAO_HABILITADO_NESTA_UNIDADE",status:403};
+ if(!/^[0-9a-f-]{36}$/i.test(batch)||!name||name.length>80||!/^55\d{10,11}$/.test(phone)||b.subscriber_id)return {error:"GRUPO_OU_TELEFONE_INVALIDO",status:400};
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS student_management_dispatches(batch_id TEXT NOT NULL,phone TEXT NOT NULL,unit TEXT NOT NULL,group_name TEXT NOT NULL,flow INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(batch_id,phone))").run();
+ const inserted=await env.DB.prepare("INSERT OR IGNORE INTO student_management_dispatches(batch_id,phone,unit,group_name,flow) VALUES(?,?,?,?,?)").bind(batch,phone,unit,name,flow).run();
+ if(!inserted.meta?.changes){
+  const previous=await env.DB.prepare("SELECT unit,flow,status FROM student_management_dispatches WHERE batch_id=? AND phone=?").bind(batch,phone).first();
+  if(previous?.unit===unit&&previous?.flow===flow&&previous?.status==='accepted')return {duplicate:true};
+  return {error:"ENVIO_JA_PROCESSADO_OU_INCERTO_CONFIRA_NO_CHATPRO",status:409};
+ }
+ return {finish:async status=>env.DB.prepare("UPDATE student_management_dispatches SET status=?,updated_at=CURRENT_TIMESTAMP WHERE batch_id=? AND phone=?").bind(status,batch,phone).run()};
+}
+
 async function chatproAdminConfig(request,env,url,json){
  const respond=(data,status=200)=>json(data,status);
  const ck=request.headers.get("x-clubpop-admin-cookie")||"";
@@ -220,14 +234,21 @@ async function chatproAdminConfig(request,env,url,json){
    if(!r.ok)throw new Error("CHATPRO_HTTP_"+r.status);
    return await r.json();
   };
+  let dispatch;
+  if(action==="send"&&b.source==="student-management"){
+   dispatch=await claimStudentDispatch(env,b,phone,flow,enabledUnits);
+   if(dispatch.error)return respond({ok:false,error:dispatch.error},dispatch.status);
+   if(dispatch.duplicate)return respond({ok:true,duplicate:true,flow});
+  }
   try{
    if(action==="flows"){const flows=await call("/flows/");return respond({ok:true,flows})}
    if(action==="find"){const subscriber=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/");return respond({ok:true,subscriber})}
    if(!sid){const sub=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/");sid=String(sub.id||"")}
-   if(!sid)return respond({ok:false,error:"CONTATO_NAO_ENCONTRADO"},404);
+   if(!sid){if(dispatch)await dispatch.finish("review");return respond({ok:false,error:"CONTATO_NAO_ENCONTRADO"},404)}
    const result=await call("/subscriber/"+encodeURIComponent(sid)+"/send_flow/","POST",{flow});
+   if(dispatch)await dispatch.finish("accepted");
    return respond({ok:true,subscriber_id:sid,flow,result});
-  }catch(e){return respond({ok:false,error:e.message||"CHATPRO_INDISPONIVEL"},502)}
+  }catch(e){if(dispatch)await dispatch.finish("review").catch(()=>{});return respond({ok:false,error:e.message||"CHATPRO_INDISPONIVEL"},502)}
  }
  if(request.method==="POST"&&action==="test"){
   if(!record?.api_key_cipher)return respond({ok:false,error:"CREDENCIAIS_AUSENTES"},400);
