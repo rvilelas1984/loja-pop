@@ -1362,6 +1362,57 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         let params;try{params=activityParams(url.searchParams)}catch{return json({ok:false,error:"PARAMETROS_INVALIDOS"},400)}
         return json(await readActivityCenter(env,params));
       }
+      // Relatos beta: identidade do aluno deriva exclusivamente da sessão autenticada.
+      if(url.pathname==="/student-issues"&&["GET","POST"].includes(request.method)){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        if(request.method==="GET"){
+          const rows=await env.DB.prepare("SELECT id,area,description,status,priority,created_at,updated_at,resolved_at FROM student_issue_reports WHERE member_id=? AND unit=? ORDER BY id DESC LIMIT 50").bind(String(member.id),unit).all();
+          return json({ok:true,items:rows.results||[]});
+        }
+        let body;try{body=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
+        const area=String(body?.area||""),description=String(body?.description||"").trim();
+        if(!["dashboard","missoes","presencas","brasoes","estrelas","vouchers","beneficios","loja","perfil","outros"].includes(area)||description.length<10||description.length>3000)return json({ok:false,error:"RELATO_INVALIDO"},400);
+        const name=[member.first_name,member.last_name].filter(Boolean).join(" ").trim()||"Aluno";
+        const evoId=unit==="gym"?(member.gym_client_id||null):(member.evo_member_id||null);
+        const result=await env.DB.prepare("INSERT INTO student_issue_reports(member_id,evo_member_id,member_name,unit,area,description) VALUES(?,?,?,?,?,?)").bind(String(member.id),evoId==null?null:String(evoId),name,unit,area,description).run();
+        const id=result.meta?.last_row_id;
+        await env.DB.prepare("INSERT INTO student_issue_report_events(report_id,actor_type,actor_id,event_type,note) VALUES(?,'student',?,'created',NULL)").bind(id,String(member.id)).run();
+        return json({ok:true,id},201);
+      }
+      if(url.pathname==="/admin/student-issues"&&["GET","POST"].includes(request.method)){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const admin=await vr.json().catch(()=>({}));
+        if(!vr.ok||!["admin","reception"].includes(admin.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(admin.role!=="admin"&&!((admin.permissions||[]).includes("*")||(admin.permissions||[]).includes("/admin-relatos-alunos.html")))return json({ok:false,error:"SEM_PERMISSAO"},403);
+        const unit=String(url.searchParams.get("unit")||"club");
+        if(!["bike","gym","club"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        if(unit!=="club"&&admin.units?.length&&!admin.units.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        if(request.method==="GET"){
+          const status=String(url.searchParams.get("status")||"");
+          if(status&&!["aberto","em_analise","aguardando_aluno","resolvido","encerrado"].includes(status))return json({ok:false,error:"STATUS_INVALIDO"},400);
+          const clauses=[],bind=[];
+          if(unit!=="club"){clauses.push("unit=?");bind.push(unit)}
+          else if(admin.role!=="admin"&&admin.units?.length){clauses.push("unit IN ("+admin.units.map(()=>"?").join(",")+")");bind.push(...admin.units)}
+          if(status){clauses.push("status=?");bind.push(status)}
+          const q="SELECT * FROM student_issue_reports"+(clauses.length?" WHERE "+clauses.join(" AND "):"")+" ORDER BY id DESC LIMIT 200";
+          const rows=await env.DB.prepare(q).bind(...bind).all();
+          return json({ok:true,items:rows.results||[]});
+        }
+        let body;try{body=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
+        const id=Number(body?.id),status=String(body?.status||""),priority=String(body?.priority||""),note=String(body?.note||"").trim();
+        if(!Number.isSafeInteger(id)||id<1||!["aberto","em_analise","aguardando_aluno","resolvido","encerrado"].includes(status)||!["baixa","media","alta","critica"].includes(priority)||note.length>3000)return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const current=await env.DB.prepare("SELECT id,unit,status,priority FROM student_issue_reports WHERE id=?").bind(id).first();
+        if(!current)return json({ok:false,error:"NAO_ENCONTRADO"},404);
+        if((unit!=="club"&&current.unit!==unit)||(admin.role!=="admin"&&admin.units?.length&&!admin.units.includes(current.unit)))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        await env.DB.prepare("UPDATE student_issue_reports SET status=?,priority=?,updated_at=CURRENT_TIMESTAMP,resolved_at=CASE WHEN ?='resolvido' THEN COALESCE(resolved_at,CURRENT_TIMESTAMP) ELSE NULL END WHERE id=?").bind(status,priority,status,id).run();
+        await env.DB.prepare("INSERT INTO student_issue_report_events(report_id,actor_type,actor_id,event_type,note) VALUES(?,'admin',?,'updated',?)").bind(id,String(admin.name||admin.role),note||("Situação: "+status+"; prioridade: "+priority)).run();
+        return json({ok:true,id});
+      }
       // Desempenho semanal: leitura de aulas confirmadas no D1, sem EVO.
       if(url.pathname==="/admin/weekly-attendance"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
