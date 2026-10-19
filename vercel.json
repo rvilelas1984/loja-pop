@@ -8,7 +8,7 @@
   "rewrites": [
     {
       "source": "/api/links-uteis/:action",
-      "destination": "/api/links-uteis?action=:action"
+      "destination": "/api/evo-config?route=links-uteis&action=:action"
     },
     {
       "source": "/aula-experimental",
