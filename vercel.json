@@ -7,6 +7,14 @@
   },
   "rewrites": [
     {
+      "source": "/aula-experimental",
+      "destination": "/aula-experimental/index.html"
+    },
+    {
+      "source": "/aula-experimental/",
+      "destination": "/aula-experimental/index.html"
+    },
+    {
       "source": "/api/community-challenges",
       "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/member/community-challenges"
     },
