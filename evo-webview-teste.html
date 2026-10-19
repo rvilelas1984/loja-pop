@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Club Pop | Teste EVO</title><style>body{font:16px system-ui;background:#f5f7f6;color:#18221d;margin:0;padding:22px}main{max-width:560px;margin:auto}.card{background:white;border-radius:16px;padding:20px;margin:16px 0;box-shadow:0 2px 12px #0001}h1{color:#16834b}dt{font-weight:700;margin-top:12px}dd{margin:3px 0 0;overflow-wrap:anywhere}button,a.btn{display:inline-block;background:#16834b;color:white;border:0;border-radius:10px;padding:13px 17px;text-decoration:none;font:inherit;cursor:pointer}small{color:#526058}</style></head><body><main><h1>Club Pop + EVO</h1><p>Teste isolado de compatibilidade. Nenhuma informação será gravada no D1.</p><section class="card"><h2>Diagnóstico</h2><dl id="params"></dl><small>Por segurança, o IDMember não é exibido nem enviado para servidores nesta página.</small></section><section class="card"><h2>Navegação</h2><p id="status">Verificando integração...</p><button id="back">Voltar ao aplicativo EVO</button> <a class="btn" href="https://app.clubpopfit.com.br/">Abrir Club Pop</a></section></main><script>
+const p=new URLSearchParams(location.search);
+const fields=[['themeLightColor','Cor tema claro'],['themeDarkColor','Cor tema escuro'],['Culture','Idioma'],['Idw12','Unidade W12'],['IdBranch','Unidade EVO']];
+const dl=document.getElementById('params');
+for(const [key,label] of fields){const dt=document.createElement('dt');dt.textContent=label;const dd=document.createElement('dd');dd.textContent=p.get(key)||'Não recebido';dl.append(dt,dd)}
+const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent='Identificador criptografado do aluno';dd.textContent=p.has('IDMember')?'Recebido (oculto)':'Não recebido';dl.append(dt,dd);
+const bridge=window.flutter_inappwebview?.callHandler;
+document.getElementById('status').textContent=typeof bridge==='function'?'Comunicação WebView disponível':'Comunicação WebView não detectada (pode depender da inicialização do app)';
+document.getElementById('back').onclick=()=>{if(typeof window.flutter_inappwebview?.callHandler==='function'){window.flutter_inappwebview.callHandler('backPageWebView').catch(()=>history.back())}else{history.back()}};
+</script></body></html>
