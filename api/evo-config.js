@@ -226,6 +226,14 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
    return res.json({...wd,ok:true,requests:1});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_SINCRONIZAR_ALUNO"});}
  }
+ if(req.query.route==="student-management"){
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const unit=req.query.unit==="gym"?"gym":"bike",window=[30,60,90].includes(Number(req.query.window))?Number(req.query.window):90;
+  try{const url=WORKER+"/admin/student-management?unit="+unit+"&window="+window;
+   const r=await fetch(url,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});
+   const body=await r.text();res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.status(r.status).send(body);
+  }catch{return res.status(502).json({ok:false,error:"GESTAO_ALUNOS_INDISPONIVEL"})}
+ }
  if(req.query.route==="students"){if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike";try{const r=await fetch(WORKER+"/admin/evo-students?unit="+unit,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao consultar alunos EVO"})}}
  if(req.query.route==="active-count"){
   res.setHeader("Cache-Control","no-store");
