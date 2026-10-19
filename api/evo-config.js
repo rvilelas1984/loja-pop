@@ -226,6 +226,14 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
    return res.json({...wd,ok:true,requests:1});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_SINCRONIZAR_ALUNO"});}
  }
+ if(req.query.route==="student-segments"){
+  if(!["GET","POST","DELETE"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const unit=req.query.unit==="gym"?"gym":"bike",id=Number(req.query.id||0);
+  try{const url=WORKER+"/admin/student-segments?unit="+unit+(id>0?"&id="+id:"");
+   const r=await fetch(url,{method:req.method,headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),"Content-Type":"application/json"},body:req.method==="POST"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});
+   const body=await r.text();res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.status(r.status).send(body);
+  }catch{return res.status(502).json({ok:false,error:"SEGMENTOS_INDISPONIVEIS"})}
+ }
  if(req.query.route==="student-management"){
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=req.query.unit==="gym"?"gym":"bike",window=[30,60,90].includes(Number(req.query.window))?Number(req.query.window):90;
