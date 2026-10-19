@@ -1,3 +1,4 @@
+import linksUteisHandler from "../lib/links-uteis-handler.js";
 import crypto from "crypto";
 import { session as adminSession } from "./admin-auth.js";
 function attendanceClassFinished(date,time,now=new Date()) {const x=String(time||"").trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);if(!x||!/^\d{4}-\d{2}-\d{2}$/.test(String(date)))return false;let h=Number(x[1]),minute=Number(x[2]);if(x[3]){if(h<1||h>12)return false;h=h%12+(x[3].toUpperCase()==="PM"?12:0)}if(h>23||minute>59)return false;const local=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),v=t=>local.find(p=>p.type===t)?.value||"";const today=v("year")+"-"+v("month")+"-"+v("day");if(date<today)return true;if(date>today)return false;return h*60+minute+60<=Number(v("hour"))*60+Number(v("minute"));}
@@ -7,6 +8,7 @@ import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 function proxyAuth(req,unit,route){const sess=adminSession(req);if(!sess||!(unit==="all"&&route==="teacher-view"?sess.units?.some(u=>u==="bike"||u==="gym"):sess.units?.includes(unit))||!["admin","reception","teacher"].includes(sess.role))return null;const secret=process.env.AUTO_SYNC_SECRET;if(!secret)return null;const claims=Buffer.from(JSON.stringify({role:sess.role,units:sess.units,permissions:sess.permissions||[],id:sess.id||null,name:sess.name||"",teacherId:sess.teacherId||null,t:Date.now(),unit,route,method:req.method})).toString("base64url");return claims+"."+crypto.createHmac("sha256",secret).update(claims).digest("hex")}
 export default async function handler(req,res){
+ if(req.query.route==="links-uteis") return linksUteisHandler(req,res);
  if(req.query.route==="checkin-stars"){
  const unit=String(req.query.unit||"");const user=adminSession(req);
  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
