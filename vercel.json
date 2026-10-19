@@ -11,6 +11,10 @@
       "destination": "/api/evo-config?route=links-uteis&action=:action"
     },
     {
+      "source": "/l/:slug",
+      "destination": "/api/evo-config?route=links-uteis&action=redirect&slug=:slug"
+    },
+    {
       "source": "/aula-experimental",
       "destination": "/aula-experimental/index.html"
     },
