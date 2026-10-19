@@ -1047,7 +1047,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS checkin_stars_privacy(member_id INTEGER PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const base=unit==="gym"?rankingBase:(await import('./lib/admin-bike-ranking.mjs')).rankingBase;
         const marks=ids.map(()=>"?").join(",");
-        const sql=base+"SELECT t.evo_member_id,t.stars FROM totals t JOIN members m ON "+(unit==="gym"?"(CAST(m.gym_client_id AS TEXT)=t.evo_member_id OR CAST(m.evo_member_id AS TEXT)=t.evo_member_id)":"CAST(m.evo_member_id AS TEXT)=t.evo_member_id")+" LEFT JOIN checkin_stars_privacy p ON p.member_id=m.id WHERE COALESCE(p.enabled,1)=1 AND t.evo_member_id IN ("+marks+")";
+        const sql=base+"SELECT t.evo_member_id,MAX(t.stars) stars FROM totals t LEFT JOIN members m ON "+(unit==="gym"?"(CAST(m.gym_client_id AS TEXT)=t.evo_member_id OR CAST(m.evo_member_id AS TEXT)=t.evo_member_id)":"CAST(m.evo_member_id AS TEXT)=t.evo_member_id")+" LEFT JOIN checkin_stars_privacy p ON p.member_id=m.id WHERE COALESCE(p.enabled,1)=1 AND t.stars>0 AND t.evo_member_id IN ("+marks+") GROUP BY t.evo_member_id";
         const rows=(await env.DB.prepare(sql).bind(...ids).all()).results||[];
         const stars=Object.fromEntries(rows.map(x=>[String(x.evo_member_id),Number(x.stars)]));
         return json({ok:true,stars});
