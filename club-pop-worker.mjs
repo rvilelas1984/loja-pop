@@ -1902,7 +1902,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         `).bind(unit).all()).results||[];
         const ids=new Set(contracts.map(x=>String(x.evo_member_id)));
         const master=(await env.DB.prepare("SELECT evo_member_id,personal_json,contacts_json FROM evo_member_master WHERE unit=? AND is_current=1").bind(unit).all()).results||[];
-        const attendance=(await env.DB.prepare("SELECT evo_member_id,attendance_date,start_time,activity_name FROM evo_member_attendance WHERE unit=? AND attendance_date>=date('now','-180 days','-3 hours')").bind(unit).all()).results||[];
+        const attendance=(await env.DB.prepare("SELECT a.evo_member_id,a.attendance_date,a.start_time,a.activity_name,s.instructor_name FROM evo_member_attendance a LEFT JOIN evo_attendance_sessions s ON s.unit=a.unit AND s.id_activity_session=a.id_activity_session WHERE a.unit=? AND a.attendance_date>=date('now','-180 days','-3 hours')").bind(unit).all()).results||[];
         // Reservas futuras já espelhadas no D1; nenhuma requisição adicional à EVO.
         // Ausência de registro não comprova ausência de agendamento.
         const futureBookings=(await env.DB.prepare(`
@@ -1930,7 +1930,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             if(/^\d{4}-\d{2}-\d{2}$/.test(date)){const day=new Date(date+"T12:00:00Z").getUTCDay();byDay[day]=(byDay[day]||0)+1}
             const activity=String(a.activity_name||"").trim();if(activity)byActivity[activity]=(byActivity[activity]||0)+1;
           }
-                    for(const a of events){const activity=String(a.activity_name||"").trim(),date=String(a.attendance_date||"").slice(0,10);if(!activity||!/^\d{4}-\d{2}-\d{2}$/.test(date))continue;const key=activity.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();if(!modalityHistory[key])modalityHistory[key]={name:activity,dates:[]};modalityHistory[key].dates.push(date)}
+                    for(const a of events){const activity=String(a.activity_name||"").trim(),date=String(a.attendance_date||"").slice(0,10);if(!activity||!/^\d{4}-\d{2}-\d{2}$/.test(date))continue;const key=activity.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();if(!modalityHistory[key])modalityHistory[key]={name:activity,dates:[],sessions:[]};modalityHistory[key].dates.push(date);modalityHistory[key].sessions.push({date,time:String(a.start_time||"").slice(0,5),instructor:String(a.instructor_name||"").trim()})}
           const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0])))[0]?.[0]||"";
           const days=last?Math.floor((Date.parse(today+"T12:00:00Z")-Date.parse(last+"T12:00:00Z"))/86400000):null;
           const c=counts.get(String(m.evo_member_id));
