@@ -1419,6 +1419,52 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         await env.DB.prepare("INSERT INTO student_issue_report_events(report_id,actor_type,actor_id,event_type,note,visibility) VALUES(?,'admin',?,'updated',?,?)").bind(id,String(admin.name||admin.role),note||("Situação: "+status+"; prioridade: "+priority),note?visibility:"internal").run();
         return json({ok:true,id});
       }
+
+      // Central de tutoriais: conteúdo publicado acessível somente a alunos autenticados.
+      if(url.pathname==="/student/tutorials"&&request.method==="GET"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=String(url.searchParams.get("unit")||"bike");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const rows=await env.DB.prepare("SELECT id,title,description,category,unit,drive_file_id,sort_order FROM student_tutorial_videos WHERE published=1 AND (unit='all' OR unit=?) ORDER BY sort_order ASC,id DESC").bind(unit).all();
+        return json({ok:true,items:rows.results||[]});
+      }
+      if(url.pathname==="/admin/tutorials"&&["GET","POST","DELETE"].includes(request.method)){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const admin=await vr.json().catch(()=>({}));
+        if(!vr.ok||admin.role!=="admin")return json({ok:false,error:"SEM_PERMISSAO"},403);
+        if(request.method==="GET"){
+          const rows=await env.DB.prepare("SELECT * FROM student_tutorial_videos ORDER BY sort_order ASC,id DESC").all();
+          return json({ok:true,items:rows.results||[]});
+        }
+        let body;try{body=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
+        const id=Number(body?.id||0);
+        if(request.method==="DELETE"){
+          if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"ID_INVALIDO"},400);
+          const deleted=await env.DB.prepare("DELETE FROM student_tutorial_videos WHERE id=?").bind(id).run();
+          return json({ok:true,deleted:deleted.meta?.changes||0});
+        }
+        const title=String(body?.title||"").trim(),description=String(body?.description||"").trim(),category=String(body?.category||"").trim(),unit=String(body?.unit||"all");
+        const published=body?.published===false||body?.published===0?0:1,sortOrder=Number(body?.sort_order||0);
+        const link=String(body?.drive_url||"").trim();
+        let driveId="";
+        try{
+          const u=new URL(link);
+          if(!["drive.google.com","docs.google.com"].includes(u.hostname)||u.protocol!=="https:")throw Error("link");
+          const m=u.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/)||u.pathname.match(/\/d\/([a-zA-Z0-9_-]{10,})/);
+          driveId=m?.[1]||((u.pathname==="/open"||u.pathname==="/uc")?u.searchParams.get("id"):"")||"";
+        }catch{}
+        if(!title||title.length>120||description.length>700||!category||category.length>60||!["all","bike","gym"].includes(unit)||!Number.isSafeInteger(sortOrder)||sortOrder<0||sortOrder>9999||!/^[a-zA-Z0-9_-]{10,}$/.test(driveId))return json({ok:false,error:"DADOS_INVALIDOS_OU_LINK_DRIVE_INVALIDO"},400);
+        if(id){
+          const updated=await env.DB.prepare("UPDATE student_tutorial_videos SET title=?,description=?,category=?,unit=?,drive_file_id=?,sort_order=?,published=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(title,description,category,unit,driveId,sortOrder,published,id).run();
+          if(!updated.meta?.changes)return json({ok:false,error:"NAO_ENCONTRADO"},404);
+          return json({ok:true,id});
+        }
+        const inserted=await env.DB.prepare("INSERT INTO student_tutorial_videos(title,description,category,unit,drive_file_id,sort_order,published) VALUES(?,?,?,?,?,?,?)").bind(title,description,category,unit,driveId,sortOrder,published).run();
+        return json({ok:true,id:inserted.meta?.last_row_id},201);
+      }
       // Desempenho semanal: leitura de aulas confirmadas no D1, sem EVO.
       if(url.pathname==="/admin/weekly-attendance"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
