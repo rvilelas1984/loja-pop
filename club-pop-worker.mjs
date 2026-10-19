@@ -1903,6 +1903,18 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const ids=new Set(contracts.map(x=>String(x.evo_member_id)));
         const master=(await env.DB.prepare("SELECT evo_member_id,personal_json,contacts_json FROM evo_member_master WHERE unit=? AND is_current=1").bind(unit).all()).results||[];
         const attendance=(await env.DB.prepare("SELECT evo_member_id,attendance_date,start_time,activity_name FROM evo_member_attendance WHERE unit=? AND attendance_date>=date('now','-180 days','-3 hours')").bind(unit).all()).results||[];
+        // Reservas futuras já espelhadas no D1; nenhuma requisição adicional à EVO.
+        // Ausência de registro não comprova ausência de agendamento.
+        const futureBookings=(await env.DB.prepare(`
+          SELECT evo_member_id,activity_date,start_time,activity_name
+          FROM checkin_reservation_snapshots
+          WHERE unit=? AND removed=0 AND evo_member_id IS NOT NULL AND evo_member_id!=''
+            AND activity_date>=date('now','-3 hours') AND activity_date<=date('now','-3 hours','+30 days')
+            AND (activity_date>date('now','-3 hours') OR COALESCE(start_time,'23:59')>=time('now','-3 hours'))
+          ORDER BY activity_date,start_time
+        `).bind(unit).all()).results||[];
+        const nextBookingById=new Map();
+        for(const booking of futureBookings){const id=String(booking.evo_member_id);if(ids.has(id)&&!nextBookingById.has(id))nextBookingById.set(id,{date:booking.activity_date,time:booking.start_time,activity:booking.activity_name})}
         const grouped=new Map();
         for(const a of attendance){const id=String(a.evo_member_id);if(!ids.has(id))continue;let list=grouped.get(id);if(!list){list=[];grouped.set(id,list)}list.push(a)}
         const counts=new Map(contracts.map(c=>[String(c.evo_member_id),c]));
@@ -1925,7 +1937,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           // D1 stores imported contacts as {email,phone} and EVO contacts as an array.
           const phoneContacts=Array.isArray(contacts)?contacts:(contacts&&typeof contacts==="object"?[{description:contacts.phone}]:[]);
           const phone=phoneContacts.filter(x=>x&&typeof x==="object"&&!/email|e-mail/i.test(String(x.contactType||""))).map(x=>String(x.description||"").replace(/\D/g,"")).find(x=>x.length>=10&&x.length<=13)||"";
-          return {id:String(m.evo_member_id),name:[p.firstName,p.lastName].filter(Boolean).join(" ")||p.registerName||"Aluno",contracts:c?.contracts||"",categories:c?.categories||"",lastPresence:last,daysAbsent:days,period:top(byPeriod),hour:top(byHour),weekday:top(byDay),modality:top(byActivity),classes:events.filter(a=>String(a.attendance_date||"").slice(0,10)>=new Date(Date.parse(today+"T12:00:00Z")-(windowDays-1)*86400000).toISOString().slice(0,10)).length,modalityHistory:Object.values(modalityHistory),historyDays:180,phone:phone||null};
+          return {id:String(m.evo_member_id),name:[p.firstName,p.lastName].filter(Boolean).join(" ")||p.registerName||"Aluno",contracts:c?.contracts||"",categories:c?.categories||"",lastPresence:last,daysAbsent:days,period:top(byPeriod),hour:top(byHour),weekday:top(byDay),modality:top(byActivity),classes:events.filter(a=>String(a.attendance_date||"").slice(0,10)>=new Date(Date.parse(today+"T12:00:00Z")-(windowDays-1)*86400000).toISOString().slice(0,10)).length,modalityHistory:Object.values(modalityHistory),historyDays:180,phone:phone||null,nextBooking:nextBookingById.get(String(m.evo_member_id))||null};
         });
         return json({ok:true,unit,windowDays,total:rows.length,rows,source:"d1",notes:"Hábitos calculados na janela selecionada; histórico de modalidades limitado aos últimos 180 dias. Contatos exigem confirmação antes de enviar."});
       }
