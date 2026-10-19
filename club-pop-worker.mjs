@@ -1370,7 +1370,13 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
         if(request.method==="GET"){
           const rows=await env.DB.prepare("SELECT id,area,description,status,priority,created_at,updated_at,resolved_at FROM student_issue_reports WHERE member_id=? AND unit=? ORDER BY id DESC LIMIT 50").bind(String(member.id),unit).all();
-          return json({ok:true,items:rows.results||[]});
+          const items=rows.results||[];
+          if(items.length){
+            const ids=items.map(x=>x.id);
+            const events=await env.DB.prepare("SELECT report_id,note,created_at FROM student_issue_report_events WHERE report_id IN ("+ids.map(()=>"?").join(",")+") AND visibility='public' AND actor_type='admin' AND note IS NOT NULL AND TRIM(note)<>'' ORDER BY id ASC").bind(...ids).all();
+            for(const item of items)item.responses=(events.results||[]).filter(e=>e.report_id===item.id).map(e=>({message:e.note,created_at:e.created_at}));
+          }
+          return json({ok:true,items});
         }
         let body;try{body=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
         const area=String(body?.area||""),description=String(body?.description||"").trim();
@@ -1404,13 +1410,13 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           return json({ok:true,items:rows.results||[]});
         }
         let body;try{body=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
-        const id=Number(body?.id),status=String(body?.status||""),priority=String(body?.priority||""),note=String(body?.note||"").trim();
+        const id=Number(body?.id),status=String(body?.status||""),priority=String(body?.priority||""),note=String(body?.note||"").trim(),visibility=body?.visibility==="internal"?"internal":"public";
         if(!Number.isSafeInteger(id)||id<1||!["aberto","em_analise","aguardando_aluno","resolvido","encerrado"].includes(status)||!["baixa","media","alta","critica"].includes(priority)||note.length>3000)return json({ok:false,error:"DADOS_INVALIDOS"},400);
         const current=await env.DB.prepare("SELECT id,unit,status,priority FROM student_issue_reports WHERE id=?").bind(id).first();
         if(!current)return json({ok:false,error:"NAO_ENCONTRADO"},404);
         if((unit!=="club"&&current.unit!==unit)||(admin.role!=="admin"&&admin.units?.length&&!admin.units.includes(current.unit)))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
         await env.DB.prepare("UPDATE student_issue_reports SET status=?,priority=?,updated_at=CURRENT_TIMESTAMP,resolved_at=CASE WHEN ?='resolvido' THEN COALESCE(resolved_at,CURRENT_TIMESTAMP) ELSE NULL END WHERE id=?").bind(status,priority,status,id).run();
-        await env.DB.prepare("INSERT INTO student_issue_report_events(report_id,actor_type,actor_id,event_type,note) VALUES(?,'admin',?,'updated',?)").bind(id,String(admin.name||admin.role),note||("Situação: "+status+"; prioridade: "+priority)).run();
+        await env.DB.prepare("INSERT INTO student_issue_report_events(report_id,actor_type,actor_id,event_type,note,visibility) VALUES(?,'admin',?,'updated',?,?)").bind(id,String(admin.name||admin.role),note||("Situação: "+status+"; prioridade: "+priority),note?visibility:"internal").run();
         return json({ok:true,id});
       }
       // Desempenho semanal: leitura de aulas confirmadas no D1, sem EVO.
