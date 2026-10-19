@@ -1874,14 +1874,14 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const byHour={},byDay={},byPeriod={},byActivity={};let last="";
           for(const a of events){const date=String(a.attendance_date||"").slice(0,10);if(date>last)last=date;
             const hour=String(a.start_time||"").slice(0,5);
-            if(/^\\d{2}:\\d{2}$/.test(hour)){byHour[hour]=(byHour[hour]||0)+1;const h=Number(hour.slice(0,2)),period=h<12?"manha":h<18?"tarde":"noite";byPeriod[period]=(byPeriod[period]||0)+1}
-            if(/^\\d{4}-\\d{2}-\\d{2}$/.test(date)){const day=new Date(date+"T12:00:00Z").getUTCDay();byDay[day]=(byDay[day]||0)+1}
+            if(/^\d{2}:\d{2}$/.test(hour)){byHour[hour]=(byHour[hour]||0)+1;const h=Number(hour.slice(0,2)),period=h<12?"manha":h<18?"tarde":"noite";byPeriod[period]=(byPeriod[period]||0)+1}
+            if(/^\d{4}-\d{2}-\d{2}$/.test(date)){const day=new Date(date+"T12:00:00Z").getUTCDay();byDay[day]=(byDay[day]||0)+1}
             const activity=String(a.activity_name||"").trim();if(activity)byActivity[activity]=(byActivity[activity]||0)+1;
           }
           const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0])))[0]?.[0]||"";
           const days=last?Math.floor((Date.parse(today+"T12:00:00Z")-Date.parse(last+"T12:00:00Z"))/86400000):null;
           const c=counts.get(String(m.evo_member_id));
-          const phone=contacts.map(x=>String(x.description||"").replace(/\\D/g,"")).find(x=>x.length>=10&&x.length<=13)||"";
+          const phone=contacts.map(x=>String(x.description||"").replace(/\D/g,"")).find(x=>x.length>=10&&x.length<=13)||"";
           return {id:String(m.evo_member_id),name:[p.firstName,p.lastName].filter(Boolean).join(" ")||p.registerName||"Aluno",contracts:c?.contracts||"",categories:c?.categories||"",lastPresence:last,daysAbsent:days,period:top(byPeriod),hour:top(byHour),weekday:top(byDay),modality:top(byActivity),classes:events.length,phone:phone||null};
         });
         return json({ok:true,unit,windowDays,total:rows.length,rows,source:"d1",notes:"Presenças e hábitos calculados na janela escolhida; ausência sem histórico permanece indeterminada. Contatos exigem confirmação antes de enviar."});
