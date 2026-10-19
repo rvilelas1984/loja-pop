@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "club-pop-worker.mjs"
+      - "lib/useful-links-routes.mjs"
       - "lib/hall-conquests.mjs"
       - "lib/teacher-view.mjs"
       - "lib/community-challenges.mjs"
