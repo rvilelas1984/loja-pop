@@ -1134,7 +1134,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           if(!starRow)return json({ok:false,error:"ALUNO_SEM_RANKING"},404);
           legacy=Number(starRow.legacy||0);actual=Number(starRow.actual||0);
         }else{
-          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,(SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT)) AS actual FROM members m WHERE m.id=?").bind(session.id).first();
+          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,MAX((SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT)),COALESCE((SELECT baseline_count FROM bike_evo_historical_baseline b WHERE b.evo_member_id=CAST(m.evo_member_id AS TEXT)),0)) AS actual FROM members m WHERE m.id=?").bind(session.id).first();
           legacy=Number(starRow?.legacy||0);actual=Number(starRow?.actual||0);
         }
         return json({ok:true,unit,memberId:session.id,name:[session.first_name,session.last_name].filter(Boolean).join(" ").trim()||"Aluno",stars:{legacy,actual,total:legacy+actual},source:"d1",evoRequestsMade:0});
