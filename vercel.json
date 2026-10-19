@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/links-uteis/:action",
+      "destination": "/api/links-uteis?action=:action"
+    },
+    {
       "source": "/aula-experimental",
       "destination": "/aula-experimental/index.html"
     },
