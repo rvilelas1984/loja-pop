@@ -1103,7 +1103,8 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
-        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(!vr.ok||!["admin","reception"].includes(vd.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(vd.role==="reception"&&(!(vd.permissions||[]).some(p=>p==="*"||p==="/admin-alunos-evo.html")||!(vd.units||[]).includes("bike")))return json({ok:false,error:"SEM_PERMISSAO_ALUNOS"},403);
         return json(await adminBikeRanking(env.DB,url.searchParams));
       }
       if(url.pathname==="/admin/gym-stars"&&request.method==="GET"){
@@ -1111,7 +1112,8 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
-        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(!vr.ok||!["admin","reception"].includes(vd.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(vd.role==="reception"&&(!(vd.permissions||[]).some(p=>p==="*"||p==="/admin-alunos-evo.html")||!(vd.units||[]).includes("gym")))return json({ok:false,error:"SEM_PERMISSAO_ALUNOS"},403);
         return json(await adminGymRanking(env.DB,url.searchParams));
       }
       // Student-only lifetime stars, read from D1; never calls EVO.
