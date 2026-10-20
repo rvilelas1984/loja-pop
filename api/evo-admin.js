@@ -57,6 +57,15 @@ async function handler(req,res){
      memberships.sort((a,b)=>Number(b.current)-Number(a.current)||String(b.start||"").localeCompare(String(a.start||"")));
      return res.status(200).json({ok:true,action,status:200,requestCount,matched:rows.length,pages:diagnostics,exhausted,memberships,creditBalanceConfirmed:false,note:"Contrato vigente por datas não comprova crédito ou elegibilidade."});
    }
+   if(action==="sessions"&&req.method==="GET"){
+     if(!Number.isInteger(idMember)||idMember<1)return res.status(400).json({ok:false,error:"Informe ID EVO"});
+     const x=await evo(base+"/api/v2/members/"+idMember,headers);
+     const d=Array.isArray(x.data)?x.data[0]:x.data;
+     const fields={};
+     const walk=(obj,prefix,depth)=>{if(!obj||typeof obj!=="object"||depth>3)return;for(const [key,value] of Object.entries(obj)){const path=prefix?prefix+"."+key:key;if(/session|sessao|sessões|lesson|aula|credit|balance|remaining|available|used|contract|membership/i.test(key)){if(value===null||["string","number","boolean"].includes(typeof value))fields[path]=value;else if(Array.isArray(value))fields[path+"Count"]=value.length;}if(!Array.isArray(value)&&typeof value==="object")walk(value,path,depth+1)}};
+     walk(d,"",0);
+     return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,memberId:idMember,sessionFields:fields,sessionBalanceConfirmed:false,note:"Campos encontrados não comprovam saldo até validação com EVO."});
+   }
    if(action==="enroll"&&req.method==="POST"){
      const idConfiguration=Number(req.body?.idConfiguration),slotNumber=Number(req.body?.slotNumber),activityDate=String(req.body?.activityDate||"");
      if(req.body?.confirm!==true||!Number.isInteger(idMember)||idMember<1||!Number.isInteger(idConfiguration)||idConfiguration<1||!Number.isInteger(slotNumber)||slotNumber<1||slotNumber>34||!/^20\d{2}-\d{2}-\d{2}$/.test(activityDate))return res.status(400).json({ok:false,error:"Confirmação, aluno, configuração, data ou bike inválidos"});
