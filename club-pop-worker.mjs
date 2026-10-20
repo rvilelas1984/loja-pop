@@ -1594,26 +1594,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           found.push({sessionId:sid,date,time:x.startTime,activity:x.activitieName,status:label,replacement:x.isReplacement??null,finalized});
         }
         for(let i=0;i<statements.length;i+=40)await env.DB.batch(statements.slice(i,i+40));
-        // Conciliação auxiliar: nunca altera os contadores oficiais de contratos.
-        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_session_contract_reconciliation (unit TEXT NOT NULL,evo_member_id TEXT NOT NULL,id_activity_session TEXT NOT NULL,contract_key TEXT,session_date TEXT NOT NULL,session_time TEXT,confidence TEXT NOT NULL CHECK(confidence IN ('probable_unique','ambiguous','unmatched')),candidate_count INTEGER NOT NULL,source TEXT NOT NULL DEFAULT 'd1_date_active_contract',reconciled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,evo_member_id,id_activity_session))").run();
-        const todayLocal=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-        let reconciled=0,removed=0;
-        for(const x of rows){
-          const sid=String(x.idActivitieSession??x.idActivitySession??""),date=String(x.date||"").slice(0,10);
-          if(x.isFinalized===true||date<todayLocal||x.removed===true||x.canceled===true||x.cancelled===true){
-            const del=await env.DB.prepare("DELETE FROM evo_session_contract_reconciliation WHERE unit=? AND evo_member_id=? AND id_activity_session=?").bind(unit,id,sid).run();removed+=Number(del.meta?.changes||0);continue;
-          }
-          const candidates=await env.DB.prepare("SELECT contract_key FROM evo_member_contracts WHERE unit=? AND evo_member_id=? AND lower(membership_status)='active' AND cancel_date IS NULL AND start_date IS NOT NULL AND end_date IS NOT NULL AND date(?) BETWEEN date(start_date) AND date(end_date) AND id_member_membership IS NOT NULL AND json_extract(raw_json,'$.pendingSessions') IS NOT NULL").bind(unit,id,date).all();
-          const matches=(candidates.results||[]),confidence=matches.length===1?"probable_unique":matches.length>1?"ambiguous":"unmatched";
-          await env.DB.prepare("INSERT INTO evo_session_contract_reconciliation(unit,evo_member_id,id_activity_session,contract_key,session_date,session_time,confidence,candidate_count,source,reconciled_at) VALUES(?,?,?,?,?,?,?,?,'d1_date_active_contract',CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_member_id,id_activity_session) DO UPDATE SET contract_key=excluded.contract_key,session_date=excluded.session_date,session_time=excluded.session_time,confidence=excluded.confidence,candidate_count=excluded.candidate_count,reconciled_at=CURRENT_TIMESTAMP").bind(unit,id,sid,matches.length===1?matches[0].contract_key:null,date,String(x.startTime||""),confidence,matches.length).run();reconciled++;
-        }
-        // Somente uma resposta completa do período permite eliminar reservas que sumiram da EVO.
-        if(skip===0&&rows.length<take){
-          const ids=rows.map(x=>String(x.idActivitieSession??x.idActivitySession??""));
-          const sql="DELETE FROM evo_session_contract_reconciliation WHERE unit=? AND evo_member_id=? AND session_date BETWEEN ? AND ?"+(ids.length?" AND id_activity_session NOT IN ("+ids.map(()=>"?").join(",")+")":"");
-          const del=await env.DB.prepare(sql).bind(unit,id,start,end,...ids).run();removed+=Number(del.meta?.changes||0);
-        }
-        return json({ok:true,requests:1,saved:found.length,found,reconciled,removed,nextSkip:rows.length===take?skip+rows.length:null,hasMore:rows.length===take,note:"Sessões conciliadas separadamente; indicadores oficiais de contratos preservados."});
+        return json({ok:true,requests:1,saved:found.length,found,nextSkip:rows.length===take?skip+rows.length:null,hasMore:rows.length===take,note:"Histórico por aluno e período; não altera presenças nem estrelas. Página completa requer continuar."});
       }
       if (url.pathname === "/admin/evo-attendance-member" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
