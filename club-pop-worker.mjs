@@ -4213,9 +4213,9 @@ async function currentStudentJob(env, body) {
     await db.prepare("UPDATE evo_current_runs_v2 SET state='failed',error=?,requests=requests+?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(String(body.error||'EVO_FALHOU').slice(0,80),Number(body.requests||0),run.id).run();
     return {ok:true};
   }
-  if(body.action==='check')return {ok:true,runId:run.id,nextSkip:run.next_skip,pageSize:unit==='bike'?600:25};
+  if(body.action==='check')return {ok:true,runId:run.id,nextSkip:run.next_skip,pageSize:600};
   const rows=body.students,pageSize=Number(body.pageSize||25);
-  if(![25,...(unit==='bike'?[50,75,100,150,250,500,600]:[])].includes(pageSize))return {status:422,ok:false,error:'TAMANHO_LOTE_INVALIDO'};
+  if(![25,50,75,100,150,250,500,600].includes(pageSize))return {status:422,ok:false,error:'TAMANHO_LOTE_INVALIDO'};
   if(body.action!=='ingest'||!Array.isArray(rows)||rows.length>pageSize||body.skip!==run.next_skip)return {status:409,ok:false,error:'LOTE_FORA_DE_ORDEM'};
   const ids=new Set();
   for(const s of rows){
