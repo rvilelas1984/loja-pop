@@ -15,6 +15,41 @@ async function handler(req,res){
  const evoFetch=cfg.fetch,evo=(url,headers)=>evoRequest(evoFetch,url,headers);
  if(!cfg.configured)return res.status(503).json({ok:false,error:"Credenciais EVO da unidade não configuradas",unit,expected:{dns:cfg.prefix+"_DNS",token:cfg.prefix+"_TOKEN"}});
  const headers=cfg.headers;
+ if(kind==="booking_lab"){
+   if(unit!=="bike")return res.status(400).json({ok:false,error:"Laboratório liberado apenas para Bike Pop."});
+   const action=String(req.method==="POST"?req.body?.action:req.query.action||"schedule");
+   const idMember=Number(req.method==="POST"?req.body?.idMember:req.query.idMember);
+   const base="https://evo-integracao-api.w12app.com.br";
+   if(action==="schedule"&&req.method==="GET"){
+     const date=String(req.query.date||"");
+     if(!/^20\\d{2}-\\d{2}-\\d{2}$/.test(date))return res.status(400).json({ok:false,error:"Data inválida"});
+     const q=new URLSearchParams({date,showFullWeek:"false",take:"100"});
+     const x=await evo(base+"/api/v1/activities/schedule?"+q,headers);
+     return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,items:x.items.map(a=>({idConfiguration:a.idConfiguration,idActivitySession:a.idActivitySession??a.idAtividadeSessao,activityDate:a.activityDate,name:a.name,startTime:a.startTime,instructor:a.instructor,capacity:a.capacity,ocupation:a.ocupation,spots:a.spots||[]}))});
+   }
+   if(action==="detail"&&req.method==="GET"){
+     const id=Number(req.query.idActivitySession);
+     if(!Number.isInteger(id)||id<1)return res.status(400).json({ok:false,error:"Sessão inválida"});
+     const x=await evo(base+"/api/v1/activities/schedule/detail?idActivitySession="+id,headers);
+     const d=Array.isArray(x.data)?x.data[0]:x.data;
+     return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,session:x.ok?{idActivitySession:d?.idActivitySession,idConfiguration:d?.idConfiguration,date:d?.date,name:d?.name,startTime:d?.startTime,capacity:d?.capacity,ocupation:d?.ocupation,spots:d?.spots||[],enrollments:(d?.enrollments||[]).filter(e=>!e.removed).map(e=>({slotNumber:e.slotNumber}))}:null});
+   }
+   if(action==="member"&&req.method==="GET"){
+     if(!Number.isInteger(idMember)||idMember<1)return res.status(400).json({ok:false,error:"Informe ID EVO do aluno"});
+     const x=await evo(base+"/api/v2/members/"+idMember,headers);
+     const d=Array.isArray(x.data)?x.data[0]:x.data;
+     return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,member:x.ok?{idMember,name:d?.name||[d?.firstName,d?.lastName].filter(Boolean).join(" "),membershipCount:Array.isArray(d?.memberships)?d.memberships.length:null}:null});
+   }
+   if(action==="enroll"&&req.method==="POST"){
+     const idConfiguration=Number(req.body?.idConfiguration),slotNumber=Number(req.body?.slotNumber),activityDate=String(req.body?.activityDate||"");
+     if(req.body?.confirm!==true||!Number.isInteger(idMember)||idMember<1||!Number.isInteger(idConfiguration)||idConfiguration<1||!Number.isInteger(slotNumber)||slotNumber<1||slotNumber>34||!/^20\\d{2}-\\d{2}-\\d{2}$/.test(activityDate))return res.status(400).json({ok:false,error:"Confirmação, aluno, configuração, data ou bike inválidos"});
+     const q=new URLSearchParams({idConfiguration:String(idConfiguration),activityDate,slotNumber:String(slotNumber),idMember:String(idMember)});
+     const x=await evoFetch(base+"/api/v1/activities/schedule/enroll?"+q,{method:"POST",headers,cache:"no-store"});
+     const data=await parse(x);
+     return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,response:data});
+   }
+   return res.status(400).json({ok:false,error:"Ação não autorizada"});
+ }
  if(kind==="gym_schedule"){
    if(!gym)return res.status(400).json({ok:false,error:"Este diagnóstico é exclusivo do Gym Pop."});
    const date=String(req.query.date||new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()));
