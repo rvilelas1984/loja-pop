@@ -431,13 +431,13 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
    if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
    const cp=await fetch(WORKER+"/admin/evo-contracts-checkpoint?unit="+unit,{headers:{"x-clubpop-admin-cookie":cookie},cache:"no-store"}),cd=await cp.json().catch(()=>({}));
    if(!cp.ok||!cd.ok)return res.status(cp.status||502).json({ok:false,error:cd.error||"FALHA_CHECKPOINT_CONTRATOS"});
-   const requestedSkip=Math.max(0,Number(body.skip)||0),skip=Math.max(requestedSkip,Number(cd.nextSkip)||0),take=unit==="bike"?600:100,evo=getEvoTransport(unit),rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v3/membermembership?statusMemberMembership=1&showVips=true&showAggregators=true&take="+take+"&skip="+skip);
+   const requestedSkip=Math.max(0,Number(body.skip)||0),skip=Math.max(requestedSkip,Number(cd.nextSkip)||0),take=600,evo=getEvoTransport(unit),rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v3/membermembership?statusMemberMembership=1&showVips=true&showAggregators=true&take="+take+"&skip="+skip);
    if(rr.status===429)return res.json({ok:true,paused:true,skip,requests:1,checkpoint:skip});
    if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
    const rows=await rr.json();if(!Array.isArray(rows)||rows.length>take)return res.status(502).json({ok:false,error:"EVO_RESPOSTA_INVALIDA",requests:1});
-   const wr=await fetch(WORKER+"/admin/evo-contracts-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit,skip,rows,done:unit==="bike"?rows.length===0:rows.length<take,nextSkip:skip+rows.length})}),wd=await wr.json().catch(()=>({}));
+   const wr=await fetch(WORKER+"/admin/evo-contracts-ingest",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit,skip,rows,done:rows.length===0,nextSkip:skip+rows.length})}),wd=await wr.json().catch(()=>({}));
    if(!wr.ok||!wd.ok)return res.status(wr.status||502).json({ok:false,error:wd.error||"FALHA_GRAVAR_CONTRATOS",requests:1});
-   return res.json({...wd,requests:1,batch:rows.length,nextSkip:skip+rows.length,done:unit==="bike"?rows.length===0:rows.length<take});
+   return res.json({...wd,requests:1,batch:rows.length,nextSkip:skip+rows.length,done:rows.length===0});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_SYNC_CONTRATOS"})}
  }
  if(req.query.route==="auto-sync-students"){
