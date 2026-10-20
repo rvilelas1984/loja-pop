@@ -66,6 +66,17 @@ async function handler(req,res){
      walk(d,"",0);
      return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,memberId:idMember,sessionFields:fields,sessionBalanceConfirmed:false,note:"Campos encontrados não comprovam saldo até validação com EVO."});
    }
+   if(action==="contract_sessions"&&req.method==="GET"){
+     if(idMember!==965062)return res.status(403).json({ok:false,error:"Teste restrito ao perfil autorizado"});
+     const contractId=Number(req.query.contractId||7136713);
+     if(contractId!==7136713)return res.status(400).json({ok:false,error:"Contrato de teste inválido"});
+     const x=await evo(base+"/api/v1/membermembership/"+contractId,headers);
+     const d=Array.isArray(x.data)?x.data[0]:x.data;
+     const fields=["idMemberMembership","idMembership","membershipStatus","limitless","weeklyLimit","concludedSessions","pendingSessions","scheduledSessions","pendingRepositions","repositionsTotal","bonusSessions"];
+     const summary=Object.fromEntries(fields.filter(k=>d&&d[k]!==undefined).map(k=>[k,d[k]]));
+     summary.sessionItems=Array.isArray(d?.sessions)?d.sessions.length:null;
+     return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,contractId,summary,fieldNames:d&&typeof d==="object"?Object.keys(d):[],persistedToD1:false});
+   }
    if(action==="enroll"&&req.method==="POST"){
      const idConfiguration=Number(req.body?.idConfiguration),slotNumber=Number(req.body?.slotNumber),activityDate=String(req.body?.activityDate||"");
      if(req.body?.confirm!==true||!Number.isInteger(idMember)||idMember<1||!Number.isInteger(idConfiguration)||idConfiguration<1||!Number.isInteger(slotNumber)||slotNumber<1||slotNumber>34||!/^20\d{2}-\d{2}-\d{2}$/.test(activityDate))return res.status(400).json({ok:false,error:"Confirmação, aluno, configuração, data ou bike inválidos"});
