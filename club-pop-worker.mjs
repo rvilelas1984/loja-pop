@@ -4155,7 +4155,7 @@ async function currentStudentJob(env, body) {
     if(running)return {status:409,ok:false,error:'SINCRONIZACAO_JA_EM_ANDAMENTO'};
     const id=crypto.randomUUID();
     await db.prepare("INSERT INTO evo_current_runs_v2(id,unit,state) VALUES(?,?,'running')").bind(id,unit).run();
-    return {ok:true,runId:id,nextSkip:0};
+    return {ok:true,runId:id,nextSkip:0,pageSize:unit==='bike'?50:25};
   }
   const run=await db.prepare("SELECT * FROM evo_current_runs_v2 WHERE id=? AND unit=?").bind(String(body.runId||''),unit).first();
   if(!run||run.state!=='running')return {status:409,ok:false,error:'SINCRONIZACAO_INATIVA'};
@@ -4163,9 +4163,10 @@ async function currentStudentJob(env, body) {
     await db.prepare("UPDATE evo_current_runs_v2 SET state='failed',error=?,requests=requests+?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(String(body.error||'EVO_FALHOU').slice(0,80),Number(body.requests||0),run.id).run();
     return {ok:true};
   }
-  if(body.action==='check')return {ok:true,runId:run.id,nextSkip:run.next_skip};
-  const rows=body.students;
-  if(body.action!=='ingest'||!Array.isArray(rows)||rows.length>25||body.skip!==run.next_skip)return {status:409,ok:false,error:'LOTE_FORA_DE_ORDEM'};
+  if(body.action==='check')return {ok:true,runId:run.id,nextSkip:run.next_skip,pageSize:unit==='bike'?50:25};
+  const rows=body.students,pageSize=Number(body.pageSize||25);
+  if(![25,...(unit==='bike'?[50]:[])].includes(pageSize))return {status:422,ok:false,error:'TAMANHO_LOTE_INVALIDO'};
+  if(body.action!=='ingest'||!Array.isArray(rows)||rows.length>pageSize||body.skip!==run.next_skip)return {status:409,ok:false,error:'LOTE_FORA_DE_ORDEM'};
   const ids=new Set();
   for(const s of rows){
     if(!/^\d+$/.test(s.id)||ids.has(s.id)||typeof s.name!=='string'||s.name.length>200||!['Active','Suspended'].includes(s.status)||typeof s.gympass!=='boolean'||typeof s.totalpass!=='boolean'||(s.fitcoins!==null&&!Number.isFinite(s.fitcoins))||typeof s.vip!=='boolean'||!Array.isArray(s.vipMemberships)||!s.raw||typeof s.raw!=='object'||String(s.raw.idMember)!==s.id)return {status:422,ok:false,error:'LOTE_INVALIDO'};
@@ -4175,7 +4176,8 @@ async function currentStudentJob(env, body) {
   if(old.some(s=>ids.has(s.evo_member_id)))return {status:409,ok:false,error:'PAGINACAO_DUPLICADA'};
   const report=body.skip===0?body.reportIds:JSON.parse(run.report_ids||'null');
   if(!Array.isArray(report)||report.some(id=>!/^\d+$/.test(String(id))))return {status:422,ok:false,error:'RELATORIO_ATIVOS_INVALIDO'};
-  const next=run.next_skip+rows.length,requests=run.requests+Number(body.skip===0?2:1),done=rows.length<25;
+  const next=run.next_skip+rows.length,requests=run.requests+Number(body.skip===0?2:1),done=rows.length<pageSize;
+  if(pageSize===50&&done&&next<new Set(report.map(String)).size)return {status:422,ok:false,error:'PAGINACAO_INCOMPLETA_RELATORIO_ATIVOS'};
   await db.batch([
     db.prepare("INSERT INTO evo_current_stage_v2(run_id,evo_member_id,payload) SELECT ?,json_extract(value,'$.id'),value FROM json_each(?)").bind(run.id,JSON.stringify(rows)),
     db.prepare("UPDATE evo_current_runs_v2 SET next_skip=?,requests=?,report_ids=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(next,requests,JSON.stringify(report),run.id),
@@ -4195,7 +4197,7 @@ async function currentStudentJob(env, body) {
   }
   for(let i=0;i<masterStatements.length;i+=40)await db.batch(masterStatements.slice(i,i+40));
   for(let i=0;i<contractStatements.length;i+=40)await db.batch(contractStatements.slice(i,i+40));
-  if(!done)return {ok:true,runId:run.id,nextSkip:next,done:false};
+  if(!done)return {ok:true,runId:run.id,nextSkip:next,pageSize:unit==='bike'?50:25,done:false};
   const fresh=(await db.prepare('SELECT payload FROM evo_current_stage_v2 WHERE run_id=?').bind(run.id).all()).results.map(x=>JSON.parse(x.payload));
   if(!fresh.length)return {status:422,ok:false,error:'POPULACAO_VAZIA_NAO_PUBLICADA'};
   const previous=(await db.prepare("SELECT s.*,group_concat(c.category||':'||c.subtype) categories FROM evo_students s LEFT JOIN evo_student_categories c USING(unit,evo_member_id) WHERE s.unit=? AND s.is_current=1 GROUP BY s.evo_member_id").bind(unit).all()).results;
