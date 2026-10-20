@@ -223,12 +223,12 @@ const card=document.getElementById('bikeStarsCard');
 const celebration=initBikeStarsCelebration(card);
 async function refreshBikeStars(){
  const unit=localStorage.getItem('clubpop_active_unit')||'bike';
- if(unit!=='bike'){card.style.display='none';return;}
+ if(unit!=='bike'&&unit!=='gym'){card.style.display='none';return;}
  const session=JSON.parse(sessionStorage.getItem('clubpop')||'{}');
  const token=sessionStorage.getItem('clubpop_token');
  if(!token){card.style.display='none';return;}
  try{
-  const response=await fetch('/api/auth?route=stars&unit=bike',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+  const response=await fetch('/api/auth?route=stars&unit='+encodeURIComponent(unit),{headers:{Authorization:'Bearer '+token},cache:'no-store'});
   const result=await response.json();
   if(!response.ok||!result.ok||!result.stars || !Number.isFinite(result.stars.total) || result.stars.total < 0){card.style.display='none';return;}
   const p=bikeStarProgress(result.stars.total);
