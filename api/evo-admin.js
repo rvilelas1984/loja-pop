@@ -40,6 +40,13 @@ async function handler(req,res){
      const d=Array.isArray(x.data)?x.data[0]:x.data;
      return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,member:x.ok?{idMember,name:d?.name||[d?.firstName,d?.lastName].filter(Boolean).join(" "),membershipCount:Array.isArray(d?.memberships)?d.memberships.length:null}:null});
    }
+   if(action==="credits"&&req.method==="GET"){
+     if(!Number.isInteger(idMember)||idMember<1)return res.status(400).json({ok:false,error:"Informe ID EVO"});
+     const q=new URLSearchParams({idMember:String(idMember),take:"100",skip:"0"});
+     const x=await evo(base+"/api/v3/membermembership?"+q,headers);
+     const rows=x.items.filter(a=>String(a.idMember??a.memberId??"")===String(idMember));
+     return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,matched:rows.length,memberships:rows,creditBalanceConfirmed:false});
+   }
    if(action==="enroll"&&req.method==="POST"){
      const idConfiguration=Number(req.body?.idConfiguration),slotNumber=Number(req.body?.slotNumber),activityDate=String(req.body?.activityDate||"");
      if(req.body?.confirm!==true||!Number.isInteger(idMember)||idMember<1||!Number.isInteger(idConfiguration)||idConfiguration<1||!Number.isInteger(slotNumber)||slotNumber<1||slotNumber>34||!/^20\d{2}-\d{2}-\d{2}$/.test(activityDate))return res.status(400).json({ok:false,error:"Confirmação, aluno, configuração, data ou bike inválidos"});
