@@ -411,6 +411,16 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
   try{const wr=await fetch(WORKER+"/admin/evo-contracts-list?unit="+unit,{headers:{"x-clubpop-admin-cookie":cookie},cache:"no-store"}),wd=await wr.json().catch(()=>({}));return res.status(wr.status).json(wd)}catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_LISTA_CONTRATOS"})}
  }
+ if(req.query.route==="reset-contracts-scan"){
+  res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const cookie=String(req.headers.cookie||"");if(!cookie)return res.status(401).json({ok:false,error:"NAO_AUTORIZADO"});
+  try{
+   const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));
+   if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"NAO_AUTORIZADO"});
+   const rr=await fetch(WORKER+"/admin/evo-contracts-reset",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit:"bike",confirm:"INICIAR_NOVA_VARREDURA"}),cache:"no-store"}),d=await rr.json().catch(()=>({}));
+   return res.status(rr.status).json(d);
+  }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_REINICIAR_CONTRATOS"})}
+ }
  if(req.query.route==="sync-contracts"){
   res.setHeader("Cache-Control","no-store"); if(req.method!=="POST")return res.status(405).json({ok:false});
   const body=typeof req.body==="string"?JSON.parse(req.body):req.body||{},unit=String(req.query.unit||body.unit||"bike").toLowerCase();
