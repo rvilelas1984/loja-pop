@@ -36,3 +36,16 @@ test('contract modal opens, escapes content and never displays another contract'
  vm.runInContext(`contractReservationCards.set('3',{name:'Sem confirmação',contractReservations:[]});openContractReservations('3');`,context);
  assert.ok(dialog.innerHTML.includes('Ainda não há aulas com vínculo confirmado'));assert.ok(!dialog.innerHTML.includes('Douglas'));assert.equal(typeof click,'function');
 });
+test('EVO v3 aliases merge with the detailed contract without creating a blank third card',async()=>{
+ const {normalizeContracts}=await import('../lib/session-contracts.mjs');
+ const summary={idMemberMemberShip:7597229,idMembership:112435,membershipStart:'2026-10-20',membershipEnd:'2026-11-19',nameMembership:'Pacote 8 Aulas (Parceiro)'};
+ const detailed={...contract,startDate:'2026-10-20',endDate:'2026-11-19'};
+ for(const rows of [[summary,detailed],[detailed,summary]]){
+  const result=normalizeContracts([...rows,{idMemberMembership:7267520,concludedSessions:8,startDate:'2026-10-02',endDate:'2026-10-20'}]);
+  assert.equal(result.length,2);
+  const current=result.find(x=>Number(x.idMemberMembership)===7597229);
+  assert.equal(current.startDate,'2026-10-20');assert.equal(current.endDate,'2026-11-19');assert.equal(current.pendingSessions,8);assert.equal(current.scheduledSessions,0);
+ }
+ assert.equal(normalizeContracts([{idMembership:112435}]).length,0);
+ assert.equal(normalizeContracts([summary,{...detailed,cancelDate:'2026-10-21'}])[0].cancelDate,'2026-10-21');
+});
