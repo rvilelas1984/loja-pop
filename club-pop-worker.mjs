@@ -1621,7 +1621,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit=String(url.searchParams.get("unit")||""),start=String(url.searchParams.get("start")||""),end=String(url.searchParams.get("end")||"");
-        if(unit!=="bike"||!/^\\d{4}-\\d{2}$/.test(start)||!/^\\d{4}-\\d{2}$/.test(end)||start>end)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        if(unit!=="bike"||!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
         const from=start+"-01",to=end+"-31";
         const q=await env.DB.prepare("SELECT evo_status,justified_absence,COUNT(*) total FROM evo_member_attendance_states WHERE unit=? AND attendance_date BETWEEN ? AND ? GROUP BY evo_status,justified_absence").bind(unit,from,to).all();
         const ad=await env.DB.prepare("SELECT attendance_date,evo_status,justified_absence,id_activity_session FROM evo_member_attendance_states WHERE unit=? AND evo_member_id='1800958' AND attendance_date BETWEEN ? AND ? ORDER BY attendance_date,start_time").bind(unit,from,to).all();
