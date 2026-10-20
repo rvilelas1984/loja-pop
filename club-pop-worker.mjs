@@ -2002,11 +2002,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       if (url.pathname === "/admin/evo-contracts-reset" && request.method === "POST") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const b=await request.json().catch(()=>({}));if(b.unit!=="bike"||b.confirm!=="INICIAR_NOVA_VARREDURA")return json({ok:false,error:"REINICIO_NAO_CONFIRMADO"},422);
+        const b=await request.json().catch(()=>({}));if(!["bike","gym"].includes(b.unit)||b.confirm!=="INICIAR_NOVA_VARREDURA")return json({ok:false,error:"REINICIO_NAO_CONFIRMADO"},422);
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_contract_sync_checkpoint(unit TEXT PRIMARY KEY,next_skip INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
-        const prev=await env.DB.prepare("SELECT next_skip FROM evo_contract_sync_checkpoint WHERE unit='bike'").first();
-        await env.DB.prepare("INSERT INTO evo_contract_sync_checkpoint(unit,next_skip,updated_at) VALUES('bike',0,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET next_skip=0,updated_at=CURRENT_TIMESTAMP").run();
-        return json({ok:true,unit:"bike",previousCheckpoint:Number(prev?.next_skip||0),nextSkip:0,contractsPreserved:true});
+        const prev=await env.DB.prepare("SELECT next_skip FROM evo_contract_sync_checkpoint WHERE unit=?").bind(b.unit).first();
+        await env.DB.prepare("INSERT INTO evo_contract_sync_checkpoint(unit,next_skip,updated_at) VALUES(?,0,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET next_skip=0,updated_at=CURRENT_TIMESTAMP").bind(b.unit).run();
+        return json({ok:true,unit:b.unit,previousCheckpoint:Number(prev?.next_skip||0),nextSkip:0,contractsPreserved:true});
       }
 
       if (url.pathname === "/admin/evo-contracts-ingest" && request.method === "POST") {

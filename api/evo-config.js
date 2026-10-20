@@ -417,7 +417,7 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   try{
    const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));
    if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"NAO_AUTORIZADO"});
-   const rr=await fetch(WORKER+"/admin/evo-contracts-reset",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit:"bike",confirm:"INICIAR_NOVA_VARREDURA"}),cache:"no-store"}),d=await rr.json().catch(()=>({}));
+   const rr=await fetch(WORKER+"/admin/evo-contracts-reset",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit:String(req.query.unit||req.body?.unit||"bike").toLowerCase(),confirm:"INICIAR_NOVA_VARREDURA"}),cache:"no-store"}),d=await rr.json().catch(()=>({}));
    return res.status(rr.status).json(d);
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_REINICIAR_CONTRATOS"})}
  }
