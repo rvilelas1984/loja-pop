@@ -1227,9 +1227,28 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         ]);
         const data=parse(cache?.payload_json),personal=parse(master?.personal_json),financial=parse(master?.financial_json),masterMemberships=parse(master?.memberships_json),cachedMember=data.member&&typeof data.member==="object"?data.member:{};
         const display=String(student?.display_name||"").trim().split(/\s+/),fallbackFirst=display.shift()||base?.first_name||"Aluno",fallbackLast=display.join(" ")||base?.last_name||"";
-        const absenceRows=await env.DB.prepare("SELECT attendance_date,activity_name,evo_status,justified_absence FROM evo_member_attendance_states WHERE unit=? AND evo_member_id=? AND evo_status IN (1,2) AND LOWER(TRIM(activity_name))='bike pop'").bind(unit,String(evoId)).all();
-        const absences=(absenceRows.results||[]);
-        const projected=(contracts?.results||[]).map(x=>{const raw=parse(x.raw_json);return {...raw,idMembership:raw.idMembership??x.id_membership,idMemberMembership:raw.idMemberMembership??x.id_member_membership,idCategoryMembership:raw.idCategoryMembership??x.category_id,nameMembership:raw.nameMembership??raw.name??x.membership_name,membershipStatus:raw.membershipStatus??raw.statusMemberMembership??x.membership_status,startDate:raw.startDate??x.start_date,endDate:raw.endDate??x.end_date,cancelDate:raw.cancelDate??x.cancel_date,saleDate:raw.saleDate??x.sale_date,flAdditionalMembership:raw.flAdditionalMembership??!!x.is_additional,absenceAudit:{unjustified:absences.filter(a=>a.attendance_date>=String(raw.startDate??x.start_date??"").slice(0,10)&&a.attendance_date<=String(raw.endDate??x.end_date??"9999-12-31").slice(0,10)&&a.evo_status===1&&a.justified_absence===0).length,justified:absences.filter(a=>a.attendance_date>=String(raw.startDate??x.start_date??"").slice(0,10)&&a.attendance_date<=String(raw.endDate??x.end_date??"9999-12-31").slice(0,10)&&a.justified_absence===1).length,partial:true}}}),unitMemberships=projected.length?projected:(Array.isArray(masterMemberships)?masterMemberships:[]);
+        const absenceRows=await env.DB.prepare("SELECT id_activity_session,attendance_date,activity_name,evo_status,justified_absence FROM evo_member_attendance_states WHERE unit=? AND evo_member_id=? AND evo_status IN (1,2) AND LOWER(TRIM(activity_name))='bike pop'").bind(unit,String(evoId)).all();
+        const absences=absenceRows.results||[];
+        const contractRecords=(contracts?.results||[]).map(x=>({row:x,raw:parse(x.raw_json)}));
+        const eligibleAt=(date)=>contractRecords.filter(({row:x,raw})=>{
+          const name=String(raw.nameMembership??raw.name??x.membership_name??"").toUpperCase();
+          const status=String(x.membership_status??raw.membershipStatus??"").toLowerCase();
+          const start=String(raw.startDate??x.start_date??"").slice(0,10),end=String(raw.endDate??x.end_date??"9999-12-31").slice(0,10);
+          return status==="active"&&!/WELLHUB|GYMPASS|TOTAL\\s*PASS|TOTALPASS|MASSAGEM|SERVIÇO|SERVICO/.test(name)&&raw.limitless!==true&&Number(raw.concludedSessions)>0&&start<=date&&date<=end;
+        });
+        const attributed=new Map();
+        for(const absence of absences){
+          const candidates=eligibleAt(absence.attendance_date);
+          if(candidates.length!==1)continue; // Never duplicate an absence across overlapping contracts.
+          const id=String(candidates[0].row.id_member_membership||"");
+          if(!id)continue;
+          const list=attributed.get(id)||[];list.push(absence);attributed.set(id,list);
+        }
+        const projected=contractRecords.map(({row:x,raw})=>{
+          const linked=attributed.get(String(x.id_member_membership||""))||[];
+          const isEligible=String(x.membership_status??raw.membershipStatus??"").toLowerCase()==="active"&&!/WELLHUB|GYMPASS|TOTAL\\s*PASS|TOTALPASS|MASSAGEM|SERVIÇO|SERVICO/.test(String(raw.nameMembership??raw.name??x.membership_name??"").toUpperCase())&&raw.limitless!==true;
+          return {...raw,idMembership:raw.idMembership??x.id_membership,idMemberMembership:raw.idMemberMembership??x.id_member_membership,idCategoryMembership:raw.idCategoryMembership??x.category_id,nameMembership:raw.nameMembership??raw.name??x.membership_name,membershipStatus:raw.membershipStatus??raw.statusMemberMembership??x.membership_status,startDate:raw.startDate??x.start_date,endDate:raw.endDate??x.end_date,cancelDate:raw.cancelDate??x.cancel_date,saleDate:raw.saleDate??x.sale_date,flAdditionalMembership:raw.flAdditionalMembership??!!x.is_additional,absenceAudit:isEligible?{unjustified:linked.filter(a=>a.evo_status===1&&a.justified_absence===0).length,justified:linked.filter(a=>a.justified_absence===1).length,partial:true,attribution:"unique_eligible_contract_in_d1"}:null};
+        }),unitMemberships=projected.length?projected:(Array.isArray(masterMemberships)?masterMemberships:[]);
         data.member={idMember:evoId,firstName:personal.firstName||cachedMember.firstName||fallbackFirst,lastName:personal.lastName||cachedMember.lastName||fallbackLast,branchName:unit==="gym"?"Studio Gym Pop":"Studio Bike Pop",membershipStatus:student?.membership_status||cachedMember.membershipStatus||null,memberships:unitMemberships};
         const coin=[student?.fitcoins,financial.totalFitCoins,financial.totalFitcoins].find(v=>v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)));data.fitcoins=coin===undefined?null:Number(coin);
         const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()),part=t=>parts.find(p=>p.type===t).value,month=part("year")+"-"+part("month"),today=month+"-"+part("day");
