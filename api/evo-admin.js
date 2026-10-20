@@ -42,10 +42,20 @@ async function handler(req,res){
    }
    if(action==="credits"&&req.method==="GET"){
      if(!Number.isInteger(idMember)||idMember<1)return res.status(400).json({ok:false,error:"Informe ID EVO"});
-     const q=new URLSearchParams({idMember:String(idMember),take:"100",skip:"0"});
-     const x=await evo(base+"/api/v3/membermembership?"+q,headers);
-     const rows=x.items.filter(a=>String(a.idMember??a.memberId??"")===String(idMember));
-     return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,matched:rows.length,memberships:rows,creditBalanceConfirmed:false});
+     const take=100,limit=10,rows=[],diagnostics=[];let requestCount=0,exhausted=false;
+     for(let page=0;page<limit;page++){
+       const q=new URLSearchParams({idMember:String(idMember),take:String(take),skip:String(page*take),showAggregators:"true",showVips:"true"});
+       const x=await evo(base+"/api/v3/membermembership?"+q,headers);requestCount++;
+       if(!x.ok)return res.status(x.status||502).json({ok:false,action,status:x.status,requestCount,error:"Falha na consulta de contratos",pages:diagnostics});
+       const matching=x.items.filter(a=>String(a.idMember??a.memberId??a.member?.idMember??"")===String(idMember));
+       rows.push(...matching);
+       diagnostics.push({page:page+1,received:x.items.length,matched:matching.length});
+       if(x.items.length<take){exhausted=true;break;}
+     }
+     const now=Date.now();
+     const memberships=rows.map(a=>{const start=a.membershipStart??a.startDate??a.dateStart??null,end=a.membershipEnd??a.endDate??a.dateEnd??null,cancel=a.cancelDate??a.registerCancelDate??null;const current=Boolean(start&&end&&Date.parse(start)<=now&&Date.parse(end)>=now&&!cancel);return {idMemberMembership:a.idMemberMembership,name:a.nameMembership??a.membershipName??a.name??"",start,end,cancel,current,fields:Object.fromEntries(Object.entries(a).filter(([k])=>/credit|session|balance|quantity|available|remaining|used|class|lesson|aula/i.test(k)).slice(0,25))}});
+     memberships.sort((a,b)=>Number(b.current)-Number(a.current)||String(b.start||"").localeCompare(String(a.start||"")));
+     return res.status(200).json({ok:true,action,status:200,requestCount,matched:rows.length,pages:diagnostics,exhausted,memberships,creditBalanceConfirmed:false,note:"Contrato vigente por datas não comprova crédito ou elegibilidade."});
    }
    if(action==="enroll"&&req.method==="POST"){
      const idConfiguration=Number(req.body?.idConfiguration),slotNumber=Number(req.body?.slotNumber),activityDate=String(req.body?.activityDate||"");
