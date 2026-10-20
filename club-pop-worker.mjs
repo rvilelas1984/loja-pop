@@ -1538,37 +1538,33 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
       }
 
       if(url.pathname==="/admin/evo-attendance-reconcile-member"&&request.method==="POST"){const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);const b=await request.json().catch(()=>({})),unit=b.unit==="gym"?"gym":"bike",id=String(b.idMember||""),start=String(b.start||""),end=String(b.end||""),rows=b.rows;if(!/^\d+$/.test(id)||!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end||!Array.isArray(rows)||rows.length>200)return json({ok:false,error:"DADOS_INVALIDOS"},400);const existing=await env.DB.prepare("SELECT id_activity_session,attendance_date,start_time FROM evo_member_attendance WHERE unit=? AND evo_member_id=? AND attendance_date BETWEEN ? AND ?").bind(unit,id,start,end).all();const keys=new Set((existing.results||[]).map(x=>String(x.id_activity_session||"")));let saved=0,skipped=0;for(const x of rows){const sid=String(x.idActivitySession||""),date=String(x.date||""),time=String(x.startTime||"");if(!/^\d+$/.test(sid)||!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<start||date>end||keys.has(sid)){skipped++;continue}const payload={id,date,startTime:time,activity:String(x.activity||"").slice(0,200),idActivitySession:sid,presenca:true,isFinalized:true};await env.DB.prepare("INSERT OR IGNORE INTO evo_member_attendance(unit,evo_member_id,attendance_key,attendance_date,start_time,activity_name,id_activity_session,raw_json,synced_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)").bind(unit,id,sid,date,time,payload.activity,sid,JSON.stringify(payload)).run();keys.add(sid);saved++}return json({ok:true,saved,skipped,total:rows.length,unit,idMember:id})}
-      // Reconciliação pontual e segura: somente estados de matrícula, sem tocar em presenças ou estrelas.
       if(url.pathname==="/admin/evo-attendance-state-reconcile"&&request.method==="POST"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const b=await request.json().catch(()=>({}));
-        const unit=b.unit==="bike"?"bike":null,id=String(b.idMember||"");
-        const start=String(b.start||""),end=String(b.end||"");
-        if(!unit||!/^[0-9]+$/.test(id)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(start)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(end)||start>end||start<"2026-09-01"||end>"2026-10-20")return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
-        const q=await env.DB.prepare("SELECT id_activity_session,activity_date,start_time,activity_name FROM evo_attendance_sessions WHERE unit=? AND status='done' AND activity_date BETWEEN ? AND ? ORDER BY activity_date,id_activity_session LIMIT 120").bind(unit,start,end).all();
-        const classes=q.results||[],cfg=await getEvoConfig(env,unit),found=[],errors=[];
-        let requests=0;
-        for(const a of classes){
-          if(requests>=20)break;
-          const urlEvo="https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(a.id_activity_session);
-          requests++;
-          let res;
-          try{res=await fetch(urlEvo,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}})}catch(e){errors.push({session:a.id_activity_session,error:"NETWORK"});continue}
-          try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,'attendance_state_reconcile','GET','/api/v1/activities/schedule/detail',?,?)").bind(unit,res.status,res.ok?1:0).run()}catch{}
-          if(!res.ok){errors.push({session:a.id_activity_session,status:res.status});continue}
-          const payload=await res.json().catch(()=>null),d=Array.isArray(payload)?payload[0]:payload;
-          if(!d||String(d.idActivitySession)!==String(a.id_activity_session)||!Array.isArray(d.enrollments)){errors.push({session:a.id_activity_session,error:"DETAIL_INVALID"});continue}
-          const e=d.enrollments.find(x=>String(x.idMember)===id&&x.removed!==true);
-          if(!e)continue;
-          const status=Number(e.status),justified=e.justifiedAbsence===true?1:e.justifiedAbsence===false?0:null;
-          if(!Number.isInteger(status))continue;
-          await env.DB.prepare("INSERT INTO evo_member_attendance_states(unit,evo_member_id,id_activity_session,attendance_date,start_time,activity_name,evo_status,justified_absence,raw_json,synced_at) VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_member_id,id_activity_session) DO UPDATE SET evo_status=excluded.evo_status,justified_absence=excluded.justified_absence,raw_json=excluded.raw_json,synced_at=CURRENT_TIMESTAMP").bind(unit,id,String(a.id_activity_session),a.activity_date,a.start_time,a.activity_name,status,justified,JSON.stringify(e)).run();
-          found.push({date:a.activity_date,sessionId:String(a.id_activity_session),status,justifiedAbsence:justified});
+        const b=await request.json().catch(()=>({})),unit=b.unit,id=String(b.idMember||""),start=String(b.start||""),end=String(b.end||""),skip=Number(b.skip||0),take=50;
+        const validDate=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;
+        if(!["bike","gym"].includes(unit)||!/^\d+$/.test(id)||!validDate(start)||!validDate(end)||start>end||(Date.parse(end)-Date.parse(start))/86400000>31||!Number.isInteger(skip)||skip<0||skip>1000)return json({ok:false,error:"Informe aluno, unidade e período de até 31 dias"},400);
+        const known=await env.DB.prepare("SELECT evo_member_id FROM evo_member_master WHERE unit=? AND evo_member_id=?").bind(unit,id).first();
+        if(!known)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO_NA_UNIDADE"},404);
+        const cfg=await getEvoConfig(env,unit),qs=new URLSearchParams({idMember:id,dateStart:start,dateEnd:end,take:String(take),skip:String(skip)});
+        const r=await fetch("https://evo-integracao-api.w12app.com.br/api/v2/activities/member/sessions?"+qs,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});
+        await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,'attendance_state_reconcile','GET','/api/v2/activities/member/sessions',?,?)").bind(unit,r.status,r.ok?1:0).run();
+        if(!r.ok)return json({ok:false,error:"EVO_HTTP_"+r.status,requests:1},502);
+        const data=await r.json(),rows=Array.isArray(data)?data:data.items??data.data;
+        if(!Array.isArray(rows)||rows.length>take)return json({ok:false,error:"RETORNO_EVO_INVALIDO",requests:1},502);
+        const statements=[],found=[];
+        for(const x of rows){
+          const sid=String(x.idActivitieSession??x.idActivitySession??""),date=String(x.date||"").slice(0,10);
+          if(!/^\d+$/.test(sid)||!validDate(date)||date<start||date>end)return json({ok:false,error:"SESSAO_EVO_INVALIDA",requests:1},502);
+          const finalized=x.isFinalized===true,status=finalized?(x.faltaJustificada===true?2:x.falta===true?1:x.presenca===true?0:-1):-1;
+          const label=status===2?"Falta justificada":status===1?"Falta":status===0?"Presença":finalized?"Não informado":"Sessão não finalizada";
+          statements.push(env.DB.prepare("INSERT INTO evo_member_attendance_states(unit,evo_member_id,id_activity_session,attendance_date,start_time,activity_name,evo_status,justified_absence,raw_json,synced_at) VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_member_id,id_activity_session) DO UPDATE SET attendance_date=excluded.attendance_date,start_time=excluded.start_time,activity_name=excluded.activity_name,evo_status=excluded.evo_status,justified_absence=excluded.justified_absence,raw_json=excluded.raw_json,synced_at=CURRENT_TIMESTAMP").bind(unit,id,sid,date,String(x.startTime||""),String(x.activitieName||x.activityName||""),status,x.faltaJustificada===true?1:x.faltaJustificada===false?0:null,JSON.stringify(x)));
+          found.push({sessionId:sid,date,time:x.startTime,activity:x.activitieName,status:label,replacement:x.isReplacement??null,finalized});
         }
-        return json({ok:true,unit,idMember:id,requests,classesAvailable:classes.length,hasMore:classes.length>requests,found,errors,note:"Status bruto EVO; não inferir falta a partir do código sem validação."});
+        for(let i=0;i<statements.length;i+=40)await env.DB.batch(statements.slice(i,i+40));
+        return json({ok:true,requests:1,saved:found.length,found,nextSkip:rows.length===take?skip+rows.length:null,hasMore:rows.length===take,note:"Histórico por aluno e período; não altera presenças nem estrelas. Página completa requer continuar."});
       }
       if (url.pathname === "/admin/evo-attendance-member" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
