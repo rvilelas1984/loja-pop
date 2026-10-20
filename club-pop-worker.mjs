@@ -1624,7 +1624,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(unit!=="bike"||!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
         const from=start+"-01",to=end+"-31";
         const q=await env.DB.prepare("SELECT evo_status,justified_absence,COUNT(*) total FROM evo_member_attendance_states WHERE unit=? AND attendance_date BETWEEN ? AND ? GROUP BY evo_status,justified_absence").bind(unit,from,to).all();
-        const ad=await env.DB.prepare("SELECT attendance_date,evo_status,justified_absence,id_activity_session FROM evo_member_attendance_states WHERE unit=? AND evo_member_id='1800958' AND attendance_date BETWEEN ? AND ? ORDER BY attendance_date,start_time").bind(unit,from,to).all();
+        const ad=await env.DB.prepare("SELECT attendance_date,start_time,activity_name,evo_status,justified_absence,id_activity_session FROM evo_member_attendance_states WHERE unit=? AND evo_member_id='1800958' AND attendance_date BETWEEN ? AND ? ORDER BY attendance_date,start_time").bind(unit,from,to).all();
         const total=await env.DB.prepare("SELECT COUNT(DISTINCT id_activity_session) aulas,COUNT(*) registros FROM evo_member_attendance_states WHERE unit=? AND attendance_date BETWEEN ? AND ?").bind(unit,from,to).first();
         return json({ok:true,unit,start,end,totals:total||{},byStatus:q.results||[],adriana:{idMember:"1800958",rows:ad.results||[]}});
       }
