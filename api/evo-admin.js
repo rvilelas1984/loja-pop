@@ -75,7 +75,7 @@ async function handler(req,res){
      const fields=["idMemberMembership","idMembership","membershipStatus","limitless","weeklyLimit","concludedSessions","pendingSessions","scheduledSessions","pendingRepositions","repositionsTotal","bonusSessions"];
      const summary=Object.fromEntries(fields.filter(k=>d&&d[k]!==undefined).map(k=>[k,d[k]]));
      summary.sessionItems=Array.isArray(d?.sessions)?d.sessions.length:null;
-     return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,contractId,summary,fieldNames:d&&typeof d==="object"?Object.keys(d):[],persistedToD1:false});
+     return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,contractId,summary,fieldNames:d&&typeof d==="object"?Object.keys(d):[],evoError:!x.ok?{message:String(d?.error?.message||d?.message||d?.error||d?.raw||"Erro sem mensagem").slice(0,600),details:d?.errors||null}:null,persistedToD1:false});
    }
    if(action==="enroll"&&req.method==="POST"){
      const idConfiguration=Number(req.body?.idConfiguration),slotNumber=Number(req.body?.slotNumber),activityDate=String(req.body?.activityDate||"");
