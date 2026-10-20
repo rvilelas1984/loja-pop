@@ -3701,10 +3701,10 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
           if(unit==="bike"&&!member.evo_member_id||unit==="gym"&&!member.gym_client_id)return json({ok:false,error:"ALUNO_NAO_VINCULADO"},403);
           const localRewards=rewards.length?rewards:[{type:"currency",rewardId:goal.rewardId,amount:goal.rewardValue}];
           if(localRewards.some(x=>x.type!=="currency"))return json({ok:false,error:"SEPARE_MOEDAS_PROPRIAS_EM_OUTRA_META"},409);
-          if(mission.eligibility==="selected"){
+          if(mission.eligibility==="selected"||mission.eligibility==="active"){
             const id=unit==="gym"?member.gym_client_id:member.evo_member_id;
             const contracts=await env.DB.prepare("SELECT id_membership FROM evo_member_contracts WHERE unit=? AND evo_member_id=? AND (cancel_date IS NULL OR cancel_date='') AND (start_date IS NULL OR start_date='' OR substr(start_date,1,10)<=?) AND (end_date IS NULL OR end_date='' OR substr(end_date,1,10)>=?) AND lower(COALESCE(membership_status,'')) IN ('1','active','ativo')").bind(unit,String(id||''),today,today).all();
-            const allowed=new Set((mission.contracts||[]).map(String));if(!(contracts.results||[]).some(x=>allowed.has(unit+':'+x.id_membership)||allowed.has(String(x.id_membership))))return json({ok:false,error:"ALUNO_NAO_ELEGIVEL"},403);
+            const allowed=new Set((mission.contracts||[]).map(String));if(!(contracts.results||[]).some(x=>mission.eligibility==="active"||allowed.has(unit+':'+x.id_membership)||allowed.has(String(x.id_membership))))return json({ok:false,error:"ALUNO_NAO_ELEGIVEL"},403);
           }
           if(!Number.isFinite(Number(goal.value))||Number(goal.value)<=0||await currencyMissionProgress(env.DB,member,mission)<Number(goal.value))return json({ok:false,error:"META_AINDA_NAO_ATINGIDA"},409);
           const dedupe="CURRENCY-MISSION:"+unit+":"+member.id+":"+missionKey+":"+goalKey+":"+mission.start+":"+mission.end;
@@ -4677,10 +4677,10 @@ export async function claimEvoMissionVoucher(env,member,mission,goal,rewards){
     const today=voucherToday();if(mission.status!=='Ativo'||!validEvoExpiry(mission.start)||!validEvoExpiry(mission.end)||mission.start>today||mission.end<today)throw voucherError('MISSAO_FORA_DO_PERIODO');
     const model=await env.DB.prepare('SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1').bind(modelId,unit).first();
     if(!model)throw voucherError('MODELO_VOUCHER_INDISPONIVEL');
-    if(mission.eligibility==='selected'){
+    if(mission.eligibility==='selected'||mission.eligibility==='active'){
       const id=unit==='gym'?member.gym_client_id:member.evo_member_id;
       const contracts=await env.DB.prepare("SELECT id_membership FROM evo_member_contracts WHERE unit=? AND evo_member_id=? AND (cancel_date IS NULL OR cancel_date='') AND (start_date IS NULL OR start_date='' OR substr(start_date,1,10)<=?) AND (end_date IS NULL OR end_date='' OR substr(end_date,1,10)>=?) AND (membership_status IS NULL OR membership_status='' OR lower(membership_status) IN ('1','active','ativo'))").bind(unit,String(id),today,today).all();
-      const allowed=new Set((mission.contracts||[]).map(String));if(!(contracts.results||[]).some(x=>allowed.has(unit+':'+x.id_membership)||allowed.has(String(x.id_membership))))throw voucherError('ALUNO_NAO_ELEGIVEL');
+      const allowed=new Set((mission.contracts||[]).map(String));if(!(contracts.results||[]).some(x=>mission.eligibility==='active'||allowed.has(unit+':'+x.id_membership)||allowed.has(String(x.id_membership))))throw voucherError('ALUNO_NAO_ELEGIVEL');
     }
     const need=Number(goal.value);if(!Number.isFinite(need)||need<=0)throw voucherError('META_INVALIDA');
     if(await voucherMissionProgress(env,member,mission)<need)throw voucherError('META_AINDA_NAO_ATINGIDA');
