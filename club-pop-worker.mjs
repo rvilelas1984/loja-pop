@@ -1182,7 +1182,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           if(!starRow)return json({ok:false,error:"ALUNO_SEM_RANKING"},404);
           legacy=Number(starRow.legacy||0);actual=Number(starRow.actual||0);
         }else{
-          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,MAX((SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT)),COALESCE((SELECT baseline_count FROM bike_evo_historical_baseline b WHERE b.evo_member_id=CAST(m.evo_member_id AS TEXT)),0)+(SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT) AND a.attendance_date>'2026-10-19')) AS actual FROM members m WHERE m.id=?").bind(session.id).first();
+          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,MAX((SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT)),COALESCE((SELECT baseline_count FROM bike_evo_historical_baseline b WHERE b.evo_member_id=CAST(m.evo_member_id AS TEXT)),0)+(SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT) AND a.attendance_date>'2026-10-18')) AS actual FROM members m WHERE m.id=?").bind(session.id).first();
           legacy=Number(starRow?.legacy||0);actual=Number(starRow?.actual||0);
         }
         return json({ok:true,unit,memberId:session.id,name:[session.first_name,session.last_name].filter(Boolean).join(" ").trim()||"Aluno",stars:{legacy,actual,total:legacy+actual},source:"d1",evoRequestsMade:0});
@@ -1213,7 +1213,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           data.sessionDetails=await memberSessionDetails(env.DB,unit,evoId);
           await attachContractSessions(env.DB,unit,evoId,data);
           data.attendance={ok:true,period:{month},attendanceCount:rows.length,distinctDays:days.size,favoriteTime:top(times),favoriteActivity:top(acts),favoriteEquipment:favoriteEquipmentFromRows(rows,unit,top(acts)),currentWeek:{attendanceCount:week.length,distinctDays:new Set(week.map(a=>a.date)).size},attendance:rows};
-          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,(SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT)) AS current_count FROM members m WHERE m.id=?").bind(session.id).first();
+          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,MAX((SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT)),COALESCE((SELECT baseline_count FROM bike_evo_historical_baseline b WHERE b.evo_member_id=CAST(m.evo_member_id AS TEXT)),0)+(SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT) AND e.attendance_date>'2026-10-18')) AS current_count FROM members m WHERE m.id=?").bind(session.id).first();
           data.bikeStars={total:Number(starRow?.legacy||0)+Number(starRow?.current_count||0),legacy:Number(starRow?.legacy||0),current:Number(starRow?.current_count||0)};
           const sync=await env.DB.prepare("SELECT sync_time,last_sync_at FROM evo_sync_config WHERE unit='bike'").first();
           return json({ok:true,unit,cached:true,source:"d1",evoRequestsMade:0,updatedAt:cache?.updated_at||master?.synced_at||null,sync:{syncTime:sync?.sync_time||null,lastSyncAt:sync?.last_sync_at||null},data});
