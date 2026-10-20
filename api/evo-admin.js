@@ -22,7 +22,7 @@ async function handler(req,res){
    const base="https://evo-integracao-api.w12app.com.br";
    if(action==="schedule"&&req.method==="GET"){
      const date=String(req.query.date||"");
-     if(!/^20\\d{2}-\\d{2}-\\d{2}$/.test(date))return res.status(400).json({ok:false,error:"Data inválida"});
+     if(!/^20\d{2}-\d{2}-\d{2}$/.test(date))return res.status(400).json({ok:false,error:"Data inválida"});
      const q=new URLSearchParams({date,showFullWeek:"false",take:"100"});
      const x=await evo(base+"/api/v1/activities/schedule?"+q,headers);
      return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,items:x.items.map(a=>({idConfiguration:a.idConfiguration,idActivitySession:a.idActivitySession??a.idAtividadeSessao,activityDate:a.activityDate,name:a.name,startTime:a.startTime,instructor:a.instructor,capacity:a.capacity,ocupation:a.ocupation,spots:a.spots||[]}))});
@@ -42,7 +42,7 @@ async function handler(req,res){
    }
    if(action==="enroll"&&req.method==="POST"){
      const idConfiguration=Number(req.body?.idConfiguration),slotNumber=Number(req.body?.slotNumber),activityDate=String(req.body?.activityDate||"");
-     if(req.body?.confirm!==true||!Number.isInteger(idMember)||idMember<1||!Number.isInteger(idConfiguration)||idConfiguration<1||!Number.isInteger(slotNumber)||slotNumber<1||slotNumber>34||!/^20\\d{2}-\\d{2}-\\d{2}$/.test(activityDate))return res.status(400).json({ok:false,error:"Confirmação, aluno, configuração, data ou bike inválidos"});
+     if(req.body?.confirm!==true||!Number.isInteger(idMember)||idMember<1||!Number.isInteger(idConfiguration)||idConfiguration<1||!Number.isInteger(slotNumber)||slotNumber<1||slotNumber>34||!/^20\d{2}-\d{2}-\d{2}$/.test(activityDate))return res.status(400).json({ok:false,error:"Confirmação, aluno, configuração, data ou bike inválidos"});
      const q=new URLSearchParams({idConfiguration:String(idConfiguration),activityDate,slotNumber:String(slotNumber),idMember:String(idMember)});
      const x=await evoFetch(base+"/api/v1/activities/schedule/enroll?"+q,{method:"POST",headers,cache:"no-store"});
      const data=await parse(x);
