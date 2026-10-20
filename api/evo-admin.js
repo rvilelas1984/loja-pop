@@ -66,6 +66,21 @@ async function handler(req,res){
      walk(d,"",0);
      return res.status(x.ok?200:x.status||502).json({ok:x.ok,action,status:x.status,requestCount:1,memberId:idMember,sessionFields:fields,sessionBalanceConfirmed:false,note:"Campos encontrados não comprovam saldo até validação com EVO."});
    }
+   if(action==="balance_probe"&&req.method==="GET"){
+     if(idMember!==965062)return res.status(403).json({ok:false,error:"Teste restrito ao cadastro 965062",requestCount:0});
+     const endpoint=base+"/api/v2/members?idsMembers=965062&showMemberships=true&showActivityData=true&take=1&skip=0";
+     const x=await evo(endpoint,headers);
+     if(!x.ok)return res.status(x.status||502).json({ok:false,status:x.status,requestCount:1,endpoint,error:"Falha na consulta de sessões",evoError:String(x.data?.error?.message||x.data?.message||x.data?.error||"Erro sem mensagem").slice(0,600)});
+     const member=x.items.find(m=>Number(m.idMember)===965062);
+     const contracts=member?.memberships||member?.memberMemberships||[];
+     const contract=Array.isArray(contracts)?contracts.find(c=>Number(c.idMemberMembership??c.idMemberMemberShip)===7136713):null;
+     if(!contract)return res.status(200).json({ok:false,status:x.status,requestCount:1,endpoint,error:"Contrato 7136713 não encontrado no retorno do cadastro autorizado"});
+     const fields=["idMemberMembership","idMembership","membershipStatus","startDate","endDate","limitless","weeklyLimit","concludedSessions","pendingSessions","scheduledSessions","pendingRepositions","repositionsTotal","bonusSessions","sessions"];
+     const summary=Object.fromEntries(fields.map(k=>[k,contract[k]??null]));
+     const reference={pendingSessions:5,concludedSessions:3,scheduledSessions:0,pendingRepositions:0};
+     const matchesReference=Object.entries(reference).every(([k,v])=>summary[k]===v);
+     return res.json({ok:true,status:x.status,requestCount:1,endpoint,memberId:965062,contractId:7136713,summary,reference,matchesReference,checkedAt:new Date().toISOString(),balancePersisted:false,note:"Consulta somente de leitura. A referência é o print informado; divergências podem refletir alterações posteriores. Apenas o log técnico padrão da chamada é registrado."});
+   }
    if(action==="contract_sessions"&&req.method==="GET"){
      if(idMember!==965062)return res.status(403).json({ok:false,error:"Teste restrito ao perfil autorizado"});
      const contractId=Number(req.query.contractId||7136713);
