@@ -1711,6 +1711,22 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({ok:true,runs:rr.results||[]});
       }
 
+      // Histórico de contratos manuais; registra apenas metadados, sem consultar a EVO.
+      if(url.pathname==="/admin/evo-contracts-run-log"&&request.method==="POST"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||"");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const status=b.status==="done"?"done":"failed",requests=Math.max(0,Math.min(1000,Number(b.requests)||0)),records=Math.max(0,Math.min(1000000,Number(b.records)||0)),checkpoint=Math.max(0,Number(b.checkpoint)||0);
+        const detail=JSON.stringify({manual:true,requests,records,checkpoint,error:String(b.error||"").slice(0,150)});
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
+        const now=new Date(),stamp=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Sao_Paulo",dateStyle:"short",timeStyle:"medium"}).format(now).replace(" ","T");
+        await env.DB.prepare("INSERT INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status,detail) VALUES(?,'contract',?,?,?)").bind(unit,stamp+"-manual-"+crypto.randomUUID().slice(0,8),status,detail).run();
+        return json({ok:true});
+      }
+
       // Horários operacionais persistidos no D1. Consultar/salvar não chama a EVO.
       if (url.pathname === "/admin/evo-sync-schedules" && ["GET","PUT"].includes(request.method)) {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedules(unit TEXT NOT NULL,kind TEXT NOT NULL,times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind))").run();if(request.method==="PUT"){const q=await request.json().catch(()=>({})),kind=["student","attendance","contract"].includes(String(q.kind))?String(q.kind):"",times=Array.isArray(q.times)?[...new Set(q.times.map(String).filter(x=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(x)))].sort():[];if(!kind||times.length>12)return json({ok:false,error:"HORARIOS_INVALIDOS"},400);const days=Array.isArray(q.days)?[...new Set(q.days.map(Number))].sort((a,b)=>a-b):null;if(days!==null&&(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)))return json({ok:false,error:"DIAS_INVALIDOS"},400);await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind,JSON.stringify(times)).run();if(days!==null)await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind+"_days",JSON.stringify(days)).run();}const rr=await env.DB.prepare("SELECT kind,times_json FROM evo_sync_schedules WHERE unit=?").bind(unit).all(),out={student:[],attendance:[],contract:[],days:{student:[1,2,3,4,5,6],attendance:[1,2,3,4,5,6],contract:[1,2,3,4,5,6]}};for(const x of rr.results||[]){try{if(x.kind.endsWith("_days"))out.days[x.kind.slice(0,-5)]=JSON.parse(x.times_json||"[]");else out[x.kind]=JSON.parse(x.times_json||"[]")}catch{}}return json({ok:true,unit,...out});

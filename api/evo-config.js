@@ -421,6 +421,13 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
    return res.status(rr.status).json(d);
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_REINICIAR_CONTRATOS"})}
  }
+ if(req.query.route==="contracts-run-log"){
+  if(req.method!=="POST")return res.status(405).json({ok:false});
+  const unit=String(req.query.unit||req.body?.unit||"bike").toLowerCase();
+  if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false});
+  const rr=await fetch(WORKER+"/admin/evo-contracts-run-log",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({...req.body,unit})});
+  return res.status(rr.status).json(await rr.json().catch(()=>({ok:false,error:"FALHA_REGISTRO"})));
+ }
  if(req.query.route==="sync-contracts"){
   res.setHeader("Cache-Control","no-store"); if(req.method!=="POST")return res.status(405).json({ok:false});
   const body=typeof req.body==="string"?JSON.parse(req.body):req.body||{},unit=String(req.query.unit||body.unit||"bike").toLowerCase();
