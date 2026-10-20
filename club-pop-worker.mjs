@@ -1234,7 +1234,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           const name=String(raw.nameMembership??raw.name??x.membership_name??"").toUpperCase();
           const status=String(x.membership_status??raw.membershipStatus??"").toLowerCase();
           const start=String(raw.startDate??x.start_date??"").slice(0,10),end=String(raw.endDate??x.end_date??"9999-12-31").slice(0,10);
-          return status==="active"&&!/WELLHUB|GYMPASS|TOTAL\\s*PASS|TOTALPASS|MASSAGEM|SERVIÇO|SERVICO/.test(name)&&raw.limitless!==true&&Number(raw.concludedSessions)>0&&start<=date&&date<=end;
+          return status==="active"&&!/WELLHUB|GYMPASS|TOTAL\s*PASS|TOTALPASS|MASSAGEM|SERVIÇO|SERVICO/.test(name)&&raw.limitless!==true&&Number(raw.concludedSessions)>0&&start<=date&&date<=end;
         });
         const attributed=new Map();
         for(const absence of absences){
@@ -1246,7 +1246,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         }
         const projected=contractRecords.map(({row:x,raw})=>{
           const linked=attributed.get(String(x.id_member_membership||""))||[];
-          const isEligible=String(x.membership_status??raw.membershipStatus??"").toLowerCase()==="active"&&!/WELLHUB|GYMPASS|TOTAL\\s*PASS|TOTALPASS|MASSAGEM|SERVIÇO|SERVICO/.test(String(raw.nameMembership??raw.name??x.membership_name??"").toUpperCase())&&raw.limitless!==true;
+          const isEligible=String(x.membership_status??raw.membershipStatus??"").toLowerCase()==="active"&&!/WELLHUB|GYMPASS|TOTAL\s*PASS|TOTALPASS|MASSAGEM|SERVIÇO|SERVICO/.test(String(raw.nameMembership??raw.name??x.membership_name??"").toUpperCase())&&raw.limitless!==true;
           return {...raw,idMembership:raw.idMembership??x.id_membership,idMemberMembership:raw.idMemberMembership??x.id_member_membership,idCategoryMembership:raw.idCategoryMembership??x.category_id,nameMembership:raw.nameMembership??raw.name??x.membership_name,membershipStatus:raw.membershipStatus??raw.statusMemberMembership??x.membership_status,startDate:raw.startDate??x.start_date,endDate:raw.endDate??x.end_date,cancelDate:raw.cancelDate??x.cancel_date,saleDate:raw.saleDate??x.sale_date,flAdditionalMembership:raw.flAdditionalMembership??!!x.is_additional,absenceAudit:isEligible?{unjustified:linked.filter(a=>a.evo_status===1&&a.justified_absence===0).length,justified:linked.filter(a=>a.justified_absence===1).length,partial:true,attribution:"unique_eligible_contract_in_d1"}:null};
         }),unitMemberships=projected.length?projected:(Array.isArray(masterMemberships)?masterMemberships:[]);
         data.member={idMember:evoId,firstName:personal.firstName||cachedMember.firstName||fallbackFirst,lastName:personal.lastName||cachedMember.lastName||fallbackLast,branchName:unit==="gym"?"Studio Gym Pop":"Studio Bike Pop",membershipStatus:student?.membership_status||cachedMember.membershipStatus||null,memberships:unitMemberships};
