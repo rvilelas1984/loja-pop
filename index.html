@@ -144,11 +144,11 @@ function contractSessionsHTML(m,d){
  const valid=value=>value!==null&&value!==undefined&&value!==""&&Number.isSafeInteger(Number(value))&&Number(value)>=0;
  if(!keys.every(k=>valid(m[k])))return "";
  const contractId=String(m.idMemberMembership??'');
- if(contractId)contractReservationCards.set(contractId,m);
+ if(contractId)contractReservationCards.set(contractId,{...m,upcomingReservations:d.upcomingReservations,upcomingReservationsStatus:d.upcomingReservationsStatus});
  const metric=(value,label)=>'<div class="session-metric"><strong>'+Number(value)+'</strong><small>'+label+'</small></div>';
  return '<div class="contract-sessions" aria-label="Indicadores oficiais do contrato sincronizados no D1">'+
    metric(m.concludedSessions,"Aulas concluídas")+
-   (contractId?'<button type="button" class="session-metric session-reservations-button" data-contract-reservations="'+contractId.replace(/[^0-9]/g,'')+'" aria-label="Ver aulas agendadas deste contrato"><strong>'+Number(m.scheduledSessions)+'</strong><small>Agendadas ↗</small></button>':metric(m.scheduledSessions,"Agendadas"))+
+   (contractId?'<button type="button" class="session-metric session-reservations-button" data-contract-reservations="'+contractId.replace(/[^0-9]/g,'')+'" aria-label="Ver suas próximas aulas agendadas"><strong>'+Number(m.scheduledSessions)+'</strong><small>Agendadas ↗</small></button>':metric(m.scheduledSessions,"Agendadas"))+
    metric(m.pendingSessions,"Disponíveis")+'</div>';
 }
 const contractReservationCards=new Map();
@@ -157,9 +157,9 @@ function openContractReservations(id,opener){
  let dialog=document.getElementById('contractReservationsDialog');
  if(!dialog){dialog=document.createElement('dialog');dialog.id='contractReservationsDialog';dialog.className='contract-reservations-dialog';document.body.appendChild(dialog);dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close()});}
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- const rows=Array.isArray(m.contractReservations)?m.contractReservations:[];
+ const rows=Array.isArray(m.upcomingReservations)?m.upcomingReservations:[];
  dialog.setAttribute('aria-labelledby','contractReservationsTitle');
- dialog.innerHTML='<form method="dialog"><button class="reservation-close" aria-label="Fechar">×</button></form><small class="reservation-eyebrow">SUAS AULAS</small><h2 id="contractReservationsTitle">Agendamentos</h2><p>'+esc(m.nameMembership||m.membershipName||m.name||'Contrato')+'</p>'+(rows.length?rows.map(r=>'<article class="reservation-item"><strong>'+esc(dateBR(r.date))+' · '+esc(r.time)+'</strong><span>'+esc(r.activity||'Aula')+'</span>'+(r.instructor?'<small>Professor: '+esc(r.instructor)+'</small>':'')+'</article>').join(''):'<p class="reservation-empty">'+(m.sessionLinkStatus==='unavailable'?'Os detalhes estão temporariamente indisponíveis.':'Ainda não há aulas com vínculo confirmado a este contrato nos dados sincronizados.')+'</p>')+'<small class="reservation-footnote">Os detalhes podem estar em atualização. O saldo exibido é o informado pela EVO.</small>';
+ dialog.innerHTML='<form method="dialog"><button class="reservation-close" aria-label="Fechar">×</button></form><small class="reservation-eyebrow">SUAS AULAS</small><h2 id="contractReservationsTitle">Suas próximas aulas</h2><p class="reservation-empty" role="note">Estas são as suas próximas aulas registradas na EVO. Elas podem não estar relacionadas diretamente a este contrato.</p>'+(rows.length?rows.map(r=>'<article class="reservation-item"><strong>'+esc(dateBR(r.date))+' · '+esc(r.time)+'</strong><span>'+esc(r.activity||'Aula')+'</span>'+(r.instructor?'<small>Professor: '+esc(r.instructor)+'</small>':'')+'</article>').join(''):'<p class="reservation-empty">'+(m.upcomingReservationsStatus==='unavailable'?'Os detalhes estão temporariamente indisponíveis.':'Nenhuma aula futura encontrada nos dados sincronizados.')+'</p>')+'<small class="reservation-footnote">Lista informativa da unidade selecionada, conforme a última sincronização. Ela não altera os indicadores do contrato.</small>';
  dialog.onclose=()=>opener?.focus();dialog.showModal();
 }
 document.addEventListener('click',e=>{const button=e.target.closest('[data-contract-reservations]');if(button)openContractReservations(button.dataset.contractReservations,button)});

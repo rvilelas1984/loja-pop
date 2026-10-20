@@ -24,17 +24,17 @@ test('all inline dashboard scripts parse before commit',()=>{
  for(const [,attrs,code] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi))if(!/src=|application\/ld\+json/.test(attrs)&&code.trim()){const r=spawnSync(process.execPath,['--check','--input-type='+(/type=["']module/.test(attrs)?'module':'commonjs')],{input:code,encoding:'utf8'});assert.equal(r.status,0,r.stderr);count++;}
  assert.ok(count>0);assert.ok(!html.includes('function futureReservationsHTML'));
 });
-test('contract modal opens, escapes content and never displays another contract',async()=>{
+test('student schedule modal opens with unlinked-reservation notice and escaped content',async()=>{
  const {default:vm}=await import('node:vm');
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const code=html.slice(html.indexOf('const contractReservationCards='),html.indexOf('function renderContracts('));
  let dialog=null,click;
  const document={getElementById:()=>dialog,body:{appendChild:d=>{dialog=d}},addEventListener:(name,fn)=>{click=fn},createElement:()=>({addEventListener(){},setAttribute(){},showModal(){this.open=true},close(){this.open=false}})};
  const context=vm.createContext({document,dateBR:v=>v});vm.runInContext(code,context);
- vm.runInContext(`contractReservationCards.set('1',{name:'Pacote',contractReservations:[{date:'2026-10-22',time:'07:15',activity:'Bike <script>',instructor:'Douglas'}]});contractReservationCards.set('2',{name:'Outro',contractReservations:[{activity:'NÃO MOSTRAR'}]});openContractReservations('1');`,context);
- assert.equal(dialog.open,true);assert.ok(dialog.innerHTML.includes('Douglas'));assert.ok(dialog.innerHTML.includes('Bike &lt;script&gt;'));assert.ok(!dialog.innerHTML.includes('NÃO MOSTRAR'));
- vm.runInContext(`contractReservationCards.set('3',{name:'Sem confirmação',contractReservations:[]});openContractReservations('3');`,context);
- assert.ok(dialog.innerHTML.includes('Ainda não há aulas com vínculo confirmado'));assert.ok(!dialog.innerHTML.includes('Douglas'));assert.equal(typeof click,'function');
+ vm.runInContext(`contractReservationCards.set('1',{name:'Pacote',upcomingReservations:[{date:'2026-10-22',time:'07:15',activity:'Bike <script>',instructor:'Douglas'}]});contractReservationCards.set('2',{name:'Outro',upcomingReservations:[{activity:'NÃO MOSTRAR'}]});openContractReservations('1');`,context);
+ assert.equal(dialog.open,true);assert.ok(dialog.innerHTML.includes('podem não estar relacionadas diretamente a este contrato'));assert.ok(dialog.innerHTML.includes('Douglas'));assert.ok(dialog.innerHTML.includes('Bike &lt;script&gt;'));assert.ok(!dialog.innerHTML.includes('NÃO MOSTRAR'));
+ vm.runInContext(`contractReservationCards.set('3',{name:'Sem confirmação',upcomingReservations:[]});openContractReservations('3');`,context);
+ assert.ok(dialog.innerHTML.includes('Nenhuma aula futura encontrada'));assert.ok(!dialog.innerHTML.includes('Douglas'));assert.equal(typeof click,'function');
 });
 test('EVO v3 aliases merge with the detailed contract without creating a blank third card',async()=>{
  const {normalizeContracts}=await import('../lib/session-contracts.mjs');
@@ -48,4 +48,11 @@ test('EVO v3 aliases merge with the detailed contract without creating a blank t
  }
  assert.equal(normalizeContracts([{idMembership:112435}]).length,0);
  assert.equal(normalizeContracts([summary,{...detailed,cancelDate:'2026-10-21'}])[0].cancelDate,'2026-10-21');
+});
+
+test('informational schedule includes unlinked real reservations without changing balances',async()=>{
+ const {upcomingReservations}=await import('../lib/session-contracts.mjs');
+ const result=upcomingReservations([{...row,confidence:'probable_unique',contract_key:null},row,{...row,id_activity_session:'old',attendance_date:'2026-10-19'}],now);
+ assert.equal(result.length,1);assert.equal(result[0].id,'19373062');assert.equal(result[0].instructor,'Douglas');assert.equal(result[0].contract_key,undefined);
+ assert.equal(contract.pendingSessions,8);assert.equal(contract.scheduledSessions,0);
 });

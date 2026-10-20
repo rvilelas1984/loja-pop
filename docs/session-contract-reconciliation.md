@@ -1,3 +1,5 @@
+> Atualização: por decisão do usuário, o modal acessado em Agendadas agora mostra as próximas aulas do aluno na unidade selecionada, independentemente de contrato. Exibe aviso explícito de que essas aulas podem não estar relacionadas ao contrato. A lista `upcomingReservations` é lida diretamente dos estados D1 e não altera nenhum saldo. A descrição original abaixo registra a etapa anterior de investigação; a restrição do modal a vínculos confirmados foi substituída por esta apresentação informativa.
+
 # Sessões por contrato — 20/10/2026
 
 ## Entrega conservadora
