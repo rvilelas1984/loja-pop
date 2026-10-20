@@ -1210,6 +1210,9 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           for(const a of rows){days.add(a.date);if(a.startTime)times[a.startTime]=(times[a.startTime]||0)+1;if(a.activity)acts[a.activity]=(acts[a.activity]||0)+1}
           const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0]?.[0]||null,monday=new Date(today+"T00:00:00Z");monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);const week=rows.filter(a=>a.date>=monday.toISOString().slice(0,10)&&a.date<=today);
           data.sessionDetails=await memberSessionDetails(env.DB,unit,evoId);
+          // Reservas futuras verificadas na EVO e persistidas no D1; sem atribuir a contrato.
+          const future=await env.DB.prepare("SELECT id_activity_session,attendance_date,start_time,activity_name FROM evo_member_attendance_states WHERE unit=? AND evo_member_id=? AND attendance_date>=? AND json_extract(raw_json,'$.isFinalized')=0 ORDER BY attendance_date,start_time LIMIT 30").bind(unit,String(evoId),today).all();
+          data.futureReservations=(future.results||[]).map(r=>({id:String(r.id_activity_session),date:r.attendance_date,time:r.start_time,activity:r.activity_name}));
           data.attendance={ok:true,period:{month},attendanceCount:rows.length,distinctDays:days.size,favoriteTime:top(times),favoriteActivity:top(acts),favoriteEquipment:favoriteEquipmentFromRows(rows,unit,top(acts)),currentWeek:{attendanceCount:week.length,distinctDays:new Set(week.map(a=>a.date)).size},attendance:rows};
           const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,(SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT)) AS current_count FROM members m WHERE m.id=?").bind(session.id).first();
           data.bikeStars={total:Number(starRow?.legacy||0)+Number(starRow?.current_count||0),legacy:Number(starRow?.legacy||0),current:Number(starRow?.current_count||0)};
