@@ -228,10 +228,10 @@ async function refreshBikeStars(){
  const token=sessionStorage.getItem('clubpop_token');
  if(!token){card.style.display='none';return;}
  try{
-  const response=await fetch('/api/auth?route=evo-cache&unit=bike',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+  const response=await fetch('/api/auth?route=stars&unit=bike',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
   const result=await response.json();
-  if(!response.ok||!result.ok||!result.data?.bikeStars){card.style.display='none';return;}
-  const p=bikeStarProgress(result.data.bikeStars.total);
+  if(!response.ok||!result.ok||!result.stars || !Number.isFinite(result.stars.total) || result.stars.total < 0){card.style.display='none';return;}
+  const p=bikeStarProgress(result.stars.total);
   celebration.setData({total:p.total,title:p.title,name:String(JSON.parse(sessionStorage.getItem('clubpop')||'{}').firstName||'Aluno').trim().slice(0,40)||'Aluno'});
   document.getElementById('bikeStarsTotal').textContent=p.total.toLocaleString('pt-BR');
   document.getElementById('bikeStarsTitle').textContent=p.title;
