@@ -40,11 +40,15 @@ window.claimMission=async(mid,gid,btn)=>{
  if(!accepted)return;
  btn.disabled=true;
  const overlay=document.createElement("div");overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:#0009;display:grid;place-items:center;padding:20px";
- overlay.innerHTML='<div role="status" style="background:white;color:#162032;border-radius:20px;padding:30px;max-width:360px;width:100%;text-align:center;box-shadow:0 20px 60px #0004"><div style="font-size:34px">⏳</div><h2>Resgatando seu prêmio...</h2><p>Aguarde a confirmação dos seus Fitcoins.</p></div>';
+ overlay.innerHTML='<div role="status" style="background:white;color:#162032;border-radius:20px;padding:30px;max-width:360px;width:100%;text-align:center;box-shadow:0 20px 60px #0004"><div style="font-size:34px">⏳</div><h2>Resgatando seus prêmios...</h2><p>Aguarde a confirmação das recompensas.</p></div>';
  document.body.appendChild(overlay);
  try{
   const d=await missionApi("claim",{method:"POST",body:JSON.stringify({missionId:mid,goalId:gid})});
-  if(d.fitcoinsApplied&&(!d.requiresReview)){
+  if(d.multiReward){
+    const rows=(d.redemptions||[]).map(x=>'<div style="padding:9px 0;border-bottom:1px solid #ddd">'+(x.unit==="bike"?"Bike Pop":x.unit==="gym"?"Gym Pop":"Prêmio "+(x.index+1))+': '+(x.voucher?'Voucher '+esc(x.voucher):x.status==="review"?"Em conferência":x.status==="error"?"Pendente":"Já resgatado")+'</div>').join('');
+    overlay.firstChild.innerHTML='<div style="font-size:36px">🎁</div><h2>'+ (d.claimed?'Prêmios resgatados':'Resgate parcialmente concluído')+'</h2>'+rows+'<p>'+ (d.claimed?'Seus vouchers estão disponíveis.':'Os prêmios pendentes podem ser conferidos e retomados sem duplicar os já emitidos.')+'</p><button id="closePrizeModal" style="padding:12px 22px;border:0;border-radius:12px;background:#1284bb;color:white">CONCLUIR</button>';
+    overlay.querySelector("#closePrizeModal").onclick=()=>location.reload();
+  }else   if(d.fitcoinsApplied&&(!d.requiresReview)){
    overlay.firstChild.innerHTML='<div style="font-size:40px">🎉</div><h2>Parabéns!</h2><h3>+'+Number(d.amount||100)+' Fitcoins</h3><p>Seus Fitcoins já estão disponíveis!</p><button id="closePrizeModal" style="padding:12px 26px;border:0;border-radius:12px;background:#1284bb;color:white;font-weight:800">CONCLUIR</button>';
    overlay.querySelector("#closePrizeModal").onclick=()=>location.reload();btn.textContent="FITCOINS RESGATADOS ✓";
   }else if(d.requiresReview||d.warning){overlay.firstChild.innerHTML='<h2>Resgate em conferência</h2><p>Estamos verificando o crédito. Não tente resgatar novamente.</p><button id="closePrizeModal">ENTENDI</button>';overlay.querySelector("#closePrizeModal").onclick=()=>location.reload();}
