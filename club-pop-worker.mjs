@@ -471,25 +471,43 @@ async function runScheduledStudentSync(env) {
 
 async function backfillMissingAttendanceInstructors(env){
   if(!env.DB)return;
-  const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_instructor_backfill_attempts(unit TEXT NOT NULL,id_activity_session TEXT NOT NULL,attempted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL,detail TEXT,PRIMARY KEY(unit,id_activity_session))").run();
-  const rows=(await env.DB.prepare("SELECT s.unit,s.id_activity_session,s.activity_date FROM evo_attendance_sessions s LEFT JOIN evo_instructor_backfill_attempts a ON a.unit=s.unit AND a.id_activity_session=s.id_activity_session WHERE s.unit='bike' AND s.activity_date>='2026-10-01' AND s.activity_date<=? AND (s.instructor_name IS NULL OR trim(s.instructor_name)='') AND a.id_activity_session IS NULL ORDER BY s.activity_date,s.id_activity_session LIMIT 2").bind(today).all()).results||[];
-  if(!rows.length)return;
-  const cfg=await getEvoConfig(env,"bike");
-  for(const row of rows){
-    const endpoint="/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(row.id_activity_session);
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
+  const now=new Date(),today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(now);
+  const schedules=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='instructor_link'").all()).results||[],weekdays=await loadScheduledWeekdays(env.DB,"instructor_link");
+  for(const schedule of schedules){
+    const unit=schedule.unit==="gym"?"gym":"bike";
+    if(!scheduledDaysAllowed(weekdays.get(unit)||[1,2,3,4,5,6],now))continue;
+    let times=[];try{times=JSON.parse(schedule.times_json||"[]")}catch{}
+    const due=dueScheduledMinute(times,now);if(!due)continue;
+    const claim=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'instructor_link',?,'pending')").bind(unit,due).run();
+    if(!claim.meta?.changes)continue;
+    let checked=0,linked=0,requests=0,missing=0;
     try{
-      const response=await fetch("https://evo-integracao-api.w12app.com.br"+endpoint,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});
-      await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,'instructor_backfill','GET',?,?,?)").bind(row.unit,"/api/v1/activities/schedule/detail",response.status,response.ok?1:0).run();
-      if(!response.ok)throw Error("EVO_HTTP_"+response.status);
-      const payload=await response.json(),d=Array.isArray(payload)&&payload.length===1?payload[0]:payload;
-      if(String(d?.idActivitySession??d?.idActivitieSession??"")!==String(row.id_activity_session))throw Error("SESSION_ID_MISMATCH");
-      const instructor=attendanceInstructorName(d);
-      if(instructor)await env.DB.prepare("UPDATE evo_attendance_sessions SET instructor_name=? WHERE unit=? AND id_activity_session=? AND (instructor_name IS NULL OR trim(instructor_name)='')").bind(instructor,row.unit,row.id_activity_session).run();
-      await env.DB.prepare("INSERT OR REPLACE INTO evo_instructor_backfill_attempts(unit,id_activity_session,status,detail) VALUES(?,?,?,?)").bind(row.unit,row.id_activity_session,instructor?"found":"missing",instructor||"Professor ausente no detalhe").run();
-    }catch(error){
-      await env.DB.prepare("INSERT OR REPLACE INTO evo_instructor_backfill_attempts(unit,id_activity_session,status,detail) VALUES(?,?,'error',?)").bind(row.unit,row.id_activity_session,String(error?.message||error).slice(0,200)).run();
-    }
+      // Only consult EVO for sessions without a verified instructor; never overwrite an existing name.
+      const rows=(await env.DB.prepare("SELECT s.id_activity_session FROM evo_attendance_sessions s LEFT JOIN evo_instructor_backfill_attempts a ON a.unit=s.unit AND a.id_activity_session=s.id_activity_session WHERE s.unit=? AND s.activity_date>=date(?,'-14 days') AND s.activity_date<=? AND (s.instructor_name IS NULL OR trim(s.instructor_name)='') AND (a.id_activity_session IS NULL OR (a.status IN ('missing','error') AND a.attempted_at<datetime('now','-1 day'))) ORDER BY s.activity_date DESC,s.start_time DESC LIMIT 5").bind(unit,today,today).all()).results||[];
+      if(rows.length){
+        const cfg=await getEvoConfig(env,unit);
+        for(const row of rows){
+          checked++;
+          const endpoint="/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(row.id_activity_session);
+          try{
+            const response=await fetch("https://evo-integracao-api.w12app.com.br"+endpoint,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"},signal:AbortSignal.timeout(15000)});requests++;
+            await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,'instructor_backfill','GET',?,?,?)").bind(unit,"/api/v1/activities/schedule/detail",response.status,response.ok?1:0).run();
+            if(!response.ok)throw Error("EVO_HTTP_"+response.status);
+            const payload=await response.json(),d=Array.isArray(payload)&&payload.length===1?payload[0]:payload;
+            if(String(d?.idActivitySession??d?.idActivitieSession??"")!==String(row.id_activity_session))throw Error("SESSION_ID_MISMATCH");
+            const instructor=attendanceInstructorName(d);
+            if(instructor){const update=await env.DB.prepare("UPDATE evo_attendance_sessions SET instructor_name=? WHERE unit=? AND id_activity_session=? AND (instructor_name IS NULL OR trim(instructor_name)='')").bind(instructor,unit,row.id_activity_session).run();linked+=update.meta?.changes||0}
+            else missing++;
+            await env.DB.prepare("INSERT OR REPLACE INTO evo_instructor_backfill_attempts(unit,id_activity_session,attempted_at,status,detail) VALUES(?,?,CURRENT_TIMESTAMP,?,?)").bind(unit,row.id_activity_session,instructor?"found":"missing",instructor||"Professor ausente no detalhe").run();
+          }catch(error){
+            await env.DB.prepare("INSERT OR REPLACE INTO evo_instructor_backfill_attempts(unit,id_activity_session,attempted_at,status,detail) VALUES(?,?,CURRENT_TIMESTAMP,'error',?)").bind(unit,row.id_activity_session,String(error?.message||error).slice(0,200)).run();
+          }
+        }
+      }
+      await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='done',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='instructor_link' AND scheduled_minute=?").bind(JSON.stringify({checked,linked,missing,requests}),unit,due).run();
+    }catch(error){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='instructor_link' AND scheduled_minute=?").bind(JSON.stringify({checked,linked,requests,error:String(error.message||error)}),unit,due).run()}
   }
 }
 async function memberSessionDetails(db,unit,id){
@@ -1863,7 +1881,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
       // Horários operacionais persistidos no D1. Consultar/salvar não chama a EVO.
       if (url.pathname === "/admin/evo-sync-schedules" && ["GET","PUT"].includes(request.method)) {
-        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedules(unit TEXT NOT NULL,kind TEXT NOT NULL,times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind))").run();if(request.method==="PUT"){const q=await request.json().catch(()=>({})),kind=["student","attendance","contract","contract_catalog","service_catalog"].includes(String(q.kind))?String(q.kind):"",times=Array.isArray(q.times)?[...new Set(q.times.map(String).filter(x=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(x)))].sort():[];if(!kind||times.length>12)return json({ok:false,error:"HORARIOS_INVALIDOS"},400);const days=Array.isArray(q.days)?[...new Set(q.days.map(Number))].sort((a,b)=>a-b):null;if(days!==null&&(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)))return json({ok:false,error:"DIAS_INVALIDOS"},400);await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind,JSON.stringify(times)).run();if(days!==null)await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind+"_days",JSON.stringify(days)).run();}const rr=await env.DB.prepare("SELECT kind,times_json FROM evo_sync_schedules WHERE unit=?").bind(unit).all(),out={student:[],attendance:[],contract:[],contract_catalog:[],service_catalog:[],days:{student:[1,2,3,4,5,6],attendance:[1,2,3,4,5,6],contract:[1,2,3,4,5,6],contract_catalog:[1,2,3,4,5,6],service_catalog:[1,2,3,4,5,6]}};for(const x of rr.results||[]){try{if(x.kind.endsWith("_days"))out.days[x.kind.slice(0,-5)]=JSON.parse(x.times_json||"[]");else out[x.kind]=JSON.parse(x.times_json||"[]")}catch{}}return json({ok:true,unit,...out});
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedules(unit TEXT NOT NULL,kind TEXT NOT NULL,times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind))").run();if(request.method==="PUT"){const q=await request.json().catch(()=>({})),kind=["student","attendance","contract","contract_catalog","service_catalog","instructor_link"].includes(String(q.kind))?String(q.kind):"",times=Array.isArray(q.times)?[...new Set(q.times.map(String).filter(x=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(x)))].sort():[];if(!kind||times.length>12)return json({ok:false,error:"HORARIOS_INVALIDOS"},400);const days=Array.isArray(q.days)?[...new Set(q.days.map(Number))].sort((a,b)=>a-b):null;if(days!==null&&(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)))return json({ok:false,error:"DIAS_INVALIDOS"},400);await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind,JSON.stringify(times)).run();if(days!==null)await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind+"_days",JSON.stringify(days)).run();}const rr=await env.DB.prepare("SELECT kind,times_json FROM evo_sync_schedules WHERE unit=?").bind(unit).all(),out={student:[],attendance:[],contract:[],contract_catalog:[],service_catalog:[],instructor_link:[],days:{student:[1,2,3,4,5,6],attendance:[1,2,3,4,5,6],contract:[1,2,3,4,5,6],contract_catalog:[1,2,3,4,5,6],service_catalog:[1,2,3,4,5,6],instructor_link:[1,2,3,4,5,6]}};for(const x of rr.results||[]){try{if(x.kind.endsWith("_days"))out.days[x.kind.slice(0,-5)]=JSON.parse(x.times_json||"[]");else out[x.kind]=JSON.parse(x.times_json||"[]")}catch{}}return json({ok:true,unit,...out});
       }
       if (url.pathname === "/admin/mission-modalities" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
