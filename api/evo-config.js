@@ -446,7 +446,7 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
    if(!auth.ok||session.role!=="admin")return res.status(401).json({ok:false,error:"Sessão administrativa necessária"});
    const cp=await fetch(WORKER+"/admin/evo-contracts-checkpoint?unit="+unit,{headers:{"x-clubpop-admin-cookie":cookie},cache:"no-store"}),cd=await cp.json().catch(()=>({}));
    if(!cp.ok||!cd.ok)return res.status(cp.status||502).json({ok:false,error:cd.error||"FALHA_CHECKPOINT_CONTRATOS"});
-   const requestedSkip=Math.max(0,Number(body.skip)||0),skip=Math.max(requestedSkip,Number(cd.nextSkip)||0),take=600,evo=getEvoTransport(unit),rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v3/membermembership?statusMemberMembership=1&showVips=true&showAggregators=true&take="+take+"&skip="+skip);
+   const requestedSkip=Math.max(0,Number(body.skip)||0),skip=Math.max(requestedSkip,Number(cd.nextSkip)||0),take=600,evo=getEvoTransport(unit),rr=await evo.fetch("https://evo-integracao-api.w12app.com.br/api/v3/membermembership?showVips=true&showAggregators=true&take="+take+"&skip="+skip);
    if(rr.status===429)return res.json({ok:true,paused:true,skip,requests:1,checkpoint:skip});
    if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status,requests:1});
    const rows=await rr.json();if(!Array.isArray(rows)||rows.length>take)return res.status(502).json({ok:false,error:"EVO_RESPOSTA_INVALIDA",requests:1});
