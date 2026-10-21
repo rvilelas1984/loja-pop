@@ -469,7 +469,7 @@ async function runScheduledStudentSync(env) {
 }
 
 
-async function backfillMissingAttendanceInstructors(env,manualUnit=null){
+async function backfillMissingAttendanceInstructors(env,manualUnit=null,manualRunKey=null){
   if(!env.DB)return;
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_instructor_backfill_attempts(unit TEXT NOT NULL,id_activity_session TEXT NOT NULL,attempted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL,detail TEXT,PRIMARY KEY(unit,id_activity_session))").run();
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
@@ -479,7 +479,7 @@ async function backfillMissingAttendanceInstructors(env,manualUnit=null){
     const unit=schedule.unit==="gym"?"gym":"bike";
     if(!manualUnit&&!scheduledDaysAllowed(weekdays.get(unit)||[1,2,3,4,5,6],now))continue;
     let times=[];try{times=JSON.parse(schedule.times_json||"[]")}catch{}
-    const due=dueScheduledMinute(times,now);if(!due)continue;
+    const due=manualUnit?(manualRunKey||"manual-"+now.toISOString()+"-"+crypto.randomUUID()):dueScheduledMinute(times,now);if(!due)continue;
     const claim=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'instructor_link',?,'pending')").bind(unit,due).run();
     if(!claim.meta?.changes)continue;
     let checked=0,linked=0,requests=0,missing=0;
@@ -1856,8 +1856,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!vr.ok||!vd.authenticated||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
         const body=await request.json().catch(()=>({})),unit=String(body.unit||"");
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
-        await backfillMissingAttendanceInstructors(env,unit);
-        const row=await env.DB.prepare("SELECT status,detail,updated_at FROM evo_sync_schedule_runs WHERE unit=? AND kind='instructor_link' AND scheduled_minute LIKE 'manual-%' ORDER BY scheduled_minute DESC LIMIT 1").bind(unit).first();
+        const runKey="manual-"+new Date().toISOString()+"-"+crypto.randomUUID();
+        await backfillMissingAttendanceInstructors(env,unit,runKey);
+        const row=await env.DB.prepare("SELECT status,detail,updated_at FROM evo_sync_schedule_runs WHERE unit=? AND kind='instructor_link' AND scheduled_minute=?").bind(unit,runKey).first();
         const detail=JSON.parse(row?.detail||"{}");
         return json({ok:row?.status==="done",status:row?.status,...detail,updated_at:row?.updated_at});
       }
