@@ -3849,6 +3849,19 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
           await env.DB.batch(stm);return json({ok:true,claimed:true,rewardType:"currency",evoRequestsMade:0});
         }
         const voucherRewards=rewards.length?rewards:((goal.rewardType==="voucher"||(goal.rewardType==="manual"&&/^(bike|gym):\d+$/.test(String(goal.rewardId||""))))?[{type:"voucher",rewardId:goal.rewardId}]:[]);
+        if(voucherRewards.length>1 && voucherRewards.every(x=>x.type==="voucher")){
+          const results=[];let evoRequestsMade=0;
+          for(let i=0;i<voucherRewards.length;i++){
+            const rw=voucherRewards[i],subGoal={...goal,id:String(goal.id)+":voucher:"+i,rewardId:rw.rewardId};
+            try{
+              const result=await claimEvoMissionVoucher(env,member,mission,subGoal,[rw]);
+              evoRequestsMade+=Number(result.evoRequestsMade||0);
+              results.push({index:i,unit:String(rw.rewardId||"").split(":")[0],status:result.requiresReview?"review":result.alreadyClaimed?"already_claimed":"delivered",voucher:result.voucher||null});
+            }catch(error){results.push({index:i,status:"error",error:String(error.message||error)})}
+          }
+          const complete=results.every(x=>["delivered","already_claimed"].includes(x.status));
+          return json({ok:true,claimed:complete,multiReward:true,rewardType:"voucher",requiresReview:!complete,redemptions:results,evoRequestsMade});
+        }
         if(voucherRewards.some(x=>x.type==="voucher")){
           try{return json(await claimEvoMissionVoucher(env,member,mission,goal,voucherRewards));}
           catch(error){if(error.voucherError)return json({ok:false,error:error.message},error.status);throw error;}
