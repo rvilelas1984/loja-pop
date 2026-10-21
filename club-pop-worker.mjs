@@ -385,6 +385,7 @@ async function runScheduledContractSync(env){
     }
   }
 }
+async function recordCatalogManualRun(env,unit,kind,records,requests){await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();const key=new Date().toISOString().replace("Z","")+"-manual-"+crypto.randomUUID();await env.DB.prepare("INSERT INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status,detail) VALUES(?,?,?,'done',?)").bind(unit,kind,key,JSON.stringify({manual:true,records,requests})).run()}
 async function runScheduledCatalogSync(env){
  const now=new Date();
  for(const kind of ["contract_catalog","service_catalog"]){
@@ -2013,7 +2014,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         statements.push(env.DB.prepare("UPDATE evo_contract_catalog SET is_active=0,inactive_since=COALESCE(inactive_since,CURRENT_TIMESTAMP),last_synced_at=CURRENT_TIMESTAMP WHERE tenant_key=? AND unit=? AND evo_contract_id NOT IN ("+rows.map(()=>"?").join(",")+")").bind(tenant,unit,...rows.map(c=>c.id)));
         statements.push(env.DB.prepare("INSERT INTO evo_contract_catalog_sync(tenant_key,unit,last_attempt_at,last_success_at,last_result,last_count,last_error) VALUES(?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,'ok',?,NULL) ON CONFLICT(tenant_key,unit) DO UPDATE SET last_attempt_at=CURRENT_TIMESTAMP,last_success_at=CURRENT_TIMESTAMP,last_result='ok',last_count=excluded.last_count,last_error=NULL").bind(tenant,unit,rows.length));
         await env.DB.batch(statements);
-        return json({ok:true,unit,saved:rows.length,evoRequestsMade:0});
+        await recordCatalogManualRun(env,unit,"contract_catalog",rows.length,0);return json({ok:true,unit,saved:rows.length,evoRequestsMade:0});
       }
 
       if (url.pathname === "/admin/evo-product-catalog" && ["GET","POST"].includes(request.method)) {
@@ -2062,7 +2063,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         for(const p of normalized)writes.push(env.DB.prepare("INSERT INTO evo_product_catalog(tenant_key,unit,evo_product_id,name,sku,price_cents,stock_quantity,active,raw_json) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_key,unit,evo_product_id) DO UPDATE SET name=excluded.name,sku=excluded.sku,price_cents=excluded.price_cents,stock_quantity=excluded.stock_quantity,active=excluded.active,raw_json=excluded.raw_json,last_seen_at=CURRENT_TIMESTAMP,last_synced_at=CURRENT_TIMESTAMP").bind(tenant,unit,p.id,p.name,p.sku,p.price,p.stock,p.active,p.raw));
         writes.push(env.DB.prepare("INSERT INTO evo_product_sync(tenant_key,unit,last_attempt_at,last_success_at,last_count,last_error,request_count) VALUES(?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,NULL,?) ON CONFLICT(tenant_key,unit) DO UPDATE SET last_attempt_at=CURRENT_TIMESTAMP,last_success_at=CURRENT_TIMESTAMP,last_count=excluded.last_count,last_error=NULL,request_count=excluded.request_count").bind(tenant,unit,normalized.length,requests));
         await env.DB.batch(writes);
-        return json({ok:true,unit,saved:normalized.length,requests});
+        await recordCatalogManualRun(env,unit,"service_catalog",normalized.length,requests);return json({ok:true,unit,saved:normalized.length,requests});
       }
 
       if (url.pathname === "/admin/evo-service-catalog" && ["GET","POST"].includes(request.method)) {
