@@ -385,6 +385,61 @@ async function runScheduledContractSync(env){
     }
   }
 }
+async function runScheduledCatalogSync(env){
+ const now=new Date();
+ for(const kind of ["contract_catalog","service_catalog"]){
+  const days=await loadScheduledWeekdays(env.DB,kind);
+  const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind=?").bind(kind).all()).results||[];
+  for(const row of rows){
+   const unit=row.unit==="gym"?"gym":"bike";
+   if(!scheduledDaysAllowed(days.get(unit)||[1,2,3,4,5,6],now))continue;
+   let times=[];try{times=JSON.parse(row.times_json)}catch{}
+   const due=dueScheduledMinute(times,now);if(!due)continue;
+   const claim=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,?,?,'pending')").bind(unit,kind,due).run();
+   if(!claim.meta?.changes)continue;
+   let requests=0;
+   try{
+    const cfg=await getEvoConfig(env,unit),auth={Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"};
+    const all=[];
+    if(kind==="contract_catalog"){
+     const endpoint="/api/v3/membership?active=true&take=200&skip=0";
+     const r=await fetch("https://evo-integracao-api.w12app.com.br"+endpoint,{headers:auth,signal:AbortSignal.timeout(20000)});requests++;
+     await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,'contract_catalog_schedule','GET',?,?,?)").bind(unit,"/api/v3/membership",r.status,r.ok?1:0).run();
+     if(!r.ok)throw Error("EVO_HTTP_"+r.status);
+     const data=await r.json(),list=Array.isArray(data?.lista)?data.lista:Array.isArray(data?.list)?data.list:Array.isArray(data)?data:null;
+     if(!list||!list.length||list.length>200||Number(data?.qtde??list.length)!==list.length)throw Error("LISTA_CONTRATOS_INCOMPLETA");
+     for(const x of list)all.push({id:x.idMembership??x.id,name:x.nameMembership??x.name??x.description??x.displayName,categoryId:x.idCategoryMembership??x.idMembershipCategory??x.categoryId??x.category?.id??null,category:x.categoryName??x.nameCategory??x.category?.name??"Sem categoria"});
+    }else{
+     let done=false;
+     for(let skip=0;requests<20;skip+=50){
+      const r=await fetch("https://evo-integracao-api.w12app.com.br/api/v1/service?take=50&skip="+skip,{headers:auth,signal:AbortSignal.timeout(15000)});requests++;
+      await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,'services_catalog','GET',?,?,?)").bind(unit,"/api/v1/service",r.status,r.ok?1:0).run();
+      if(!r.ok)throw Error("EVO_HTTP_"+r.status);
+      const data=await r.json(),list=Array.isArray(data)?data:Array.isArray(data?.data)?data.data:Array.isArray(data?.items)?data.items:null;
+      if(!list||list.length>50)throw Error("SERVICOS_INVALIDOS");
+      all.push(...list);if(list.length<50){done=true;break}
+     }
+     if(!done)throw Error("PAGINACAO_INCOMPLETA");
+    }
+    if(!all.length)throw Error("CATALOGO_VAZIO");
+    const seen=new Set(),writes=[];
+    for(const x of all){
+     const id=String(kind==="contract_catalog"?x.id:x.idService??x.id??""),name=String(kind==="contract_catalog"?x.name:x.nameService??x.name??x.description??x.serviceName??"").trim();
+     if(!/^\d+$/.test(id)||!name||name.length>250||seen.has(id))throw Error("CATALOGO_INVALIDO");
+     seen.add(id);
+     if(kind==="contract_catalog")writes.push(env.DB.prepare("INSERT INTO evo_contract_catalog(tenant_key,unit,evo_contract_id,contract_name,category_id,category_name,is_active,last_seen_at,last_synced_at,inactive_since) VALUES('club-pop',?,?,?,?,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL) ON CONFLICT(tenant_key,unit,evo_contract_id) DO UPDATE SET contract_name=excluded.contract_name,category_id=excluded.category_id,category_name=excluded.category_name,is_active=1,last_seen_at=CURRENT_TIMESTAMP,last_synced_at=CURRENT_TIMESTAMP,inactive_since=NULL").bind(unit,id,name,x.categoryId==null?null:String(x.categoryId),String(x.category||"Sem categoria")));
+     else {const price=x.value??x.price??x.saleValue??null;writes.push(env.DB.prepare("INSERT INTO evo_service_catalog(unit,evo_service_id,service_name,price,is_active,raw_json,last_synced_at) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_service_id) DO UPDATE SET service_name=excluded.service_name,price=excluded.price,is_active=excluded.is_active,raw_json=excluded.raw_json,last_synced_at=CURRENT_TIMESTAMP").bind(unit,id,name,price===null?null:Number(price),x.inactive===true||x.active===false||x.isActive===false?0:1,JSON.stringify(x)))}
+    }
+    if(kind==="contract_catalog"){
+     writes.push(env.DB.prepare("UPDATE evo_contract_catalog SET is_active=0,inactive_since=COALESCE(inactive_since,CURRENT_TIMESTAMP) WHERE tenant_key='club-pop' AND unit=? AND evo_contract_id NOT IN ("+all.map(()=>"?").join(",")+")").bind(unit,...Array.from(seen)));
+     writes.push(env.DB.prepare("INSERT INTO evo_contract_catalog_sync(tenant_key,unit,last_attempt_at,last_success_at,last_result,last_count,last_error) VALUES('club-pop',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,'ok',?,NULL) ON CONFLICT(tenant_key,unit) DO UPDATE SET last_attempt_at=CURRENT_TIMESTAMP,last_success_at=CURRENT_TIMESTAMP,last_result='ok',last_count=excluded.last_count,last_error=NULL").bind(unit,all.length));
+    }else writes.push(env.DB.prepare("INSERT INTO evo_service_catalog_sync(unit,last_success_at,last_count) VALUES(?,CURRENT_TIMESTAMP,?) ON CONFLICT(unit) DO UPDATE SET last_success_at=CURRENT_TIMESTAMP,last_count=excluded.last_count").bind(unit,all.length));
+    await env.DB.batch(writes);
+    await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='done',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind=? AND scheduled_minute=?").bind(JSON.stringify({records:all.length,requests}),unit,kind,due).run();
+   }catch(e){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind=? AND scheduled_minute=?").bind(JSON.stringify({requests,error:String(e.message||e)}).slice(0,900),unit,kind,due).run()}
+  }
+ }
+}
 async function runScheduledStudentSync(env) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
   const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
@@ -570,7 +625,7 @@ async function whatsappBirthdayTick(env){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),runScheduledContractSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),runScheduledContractSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
@@ -1807,7 +1862,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
       // Horários operacionais persistidos no D1. Consultar/salvar não chama a EVO.
       if (url.pathname === "/admin/evo-sync-schedules" && ["GET","PUT"].includes(request.method)) {
-        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedules(unit TEXT NOT NULL,kind TEXT NOT NULL,times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind))").run();if(request.method==="PUT"){const q=await request.json().catch(()=>({})),kind=["student","attendance","contract"].includes(String(q.kind))?String(q.kind):"",times=Array.isArray(q.times)?[...new Set(q.times.map(String).filter(x=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(x)))].sort():[];if(!kind||times.length>12)return json({ok:false,error:"HORARIOS_INVALIDOS"},400);const days=Array.isArray(q.days)?[...new Set(q.days.map(Number))].sort((a,b)=>a-b):null;if(days!==null&&(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)))return json({ok:false,error:"DIAS_INVALIDOS"},400);await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind,JSON.stringify(times)).run();if(days!==null)await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind+"_days",JSON.stringify(days)).run();}const rr=await env.DB.prepare("SELECT kind,times_json FROM evo_sync_schedules WHERE unit=?").bind(unit).all(),out={student:[],attendance:[],contract:[],days:{student:[1,2,3,4,5,6],attendance:[1,2,3,4,5,6],contract:[1,2,3,4,5,6]}};for(const x of rr.results||[]){try{if(x.kind.endsWith("_days"))out.days[x.kind.slice(0,-5)]=JSON.parse(x.times_json||"[]");else out[x.kind]=JSON.parse(x.times_json||"[]")}catch{}}return json({ok:true,unit,...out});
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedules(unit TEXT NOT NULL,kind TEXT NOT NULL,times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind))").run();if(request.method==="PUT"){const q=await request.json().catch(()=>({})),kind=["student","attendance","contract","contract_catalog","service_catalog"].includes(String(q.kind))?String(q.kind):"",times=Array.isArray(q.times)?[...new Set(q.times.map(String).filter(x=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(x)))].sort():[];if(!kind||times.length>12)return json({ok:false,error:"HORARIOS_INVALIDOS"},400);const days=Array.isArray(q.days)?[...new Set(q.days.map(Number))].sort((a,b)=>a-b):null;if(days!==null&&(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)))return json({ok:false,error:"DIAS_INVALIDOS"},400);await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind,JSON.stringify(times)).run();if(days!==null)await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind+"_days",JSON.stringify(days)).run();}const rr=await env.DB.prepare("SELECT kind,times_json FROM evo_sync_schedules WHERE unit=?").bind(unit).all(),out={student:[],attendance:[],contract:[],contract_catalog:[],service_catalog:[],days:{student:[1,2,3,4,5,6],attendance:[1,2,3,4,5,6],contract:[1,2,3,4,5,6],contract_catalog:[1,2,3,4,5,6],service_catalog:[1,2,3,4,5,6]}};for(const x of rr.results||[]){try{if(x.kind.endsWith("_days"))out.days[x.kind.slice(0,-5)]=JSON.parse(x.times_json||"[]");else out[x.kind]=JSON.parse(x.times_json||"[]")}catch{}}return json({ok:true,unit,...out});
       }
       if (url.pathname === "/admin/mission-modalities" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
