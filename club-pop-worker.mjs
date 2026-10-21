@@ -386,9 +386,33 @@ async function runScheduledContractSync(env){
   }
 }
 async function recordCatalogManualRun(env,unit,kind,records,requests){await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();const key=new Date().toISOString().replace("Z","")+"-manual-"+crypto.randomUUID();await env.DB.prepare("INSERT INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status,detail) VALUES(?,?,?,'done',?)").bind(unit,kind,key,JSON.stringify({manual:true,records,requests})).run()}
+
+async function syncEvoModalities(env,unit){
+ const cfg=await getEvoConfig(env,unit),headers={Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"};
+ const all=[];let requests=0,complete=false;
+ for(let skip=0;requests<20;skip+=100){
+  const r=await fetch("https://evo-integracao-api.w12app.com.br/api/v1/activities?take=100&skip="+skip,{headers,signal:AbortSignal.timeout(20000)});requests++;
+  try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,'modalities_catalog','GET','/api/v1/activities',?,?)").bind(unit,r.status,r.ok?1:0).run()}catch{}
+  if(!r.ok)throw Error("EVO_MODALIDADES_HTTP_"+r.status);
+  const d=await r.json(),items=Array.isArray(d)?d:Array.isArray(d?.data)?d.data:Array.isArray(d?.items)?d.items:Array.isArray(d?.list)?d.list:Array.isArray(d?.lista)?d.lista:null;
+  if(!items||items.length>100)throw Error("FORMATO_MODALIDADES_DESCONHECIDO");
+  all.push(...items);if(items.length<100){complete=true;break}
+ }
+ if(!complete||!all.length)throw Error("CATALOGO_MODALIDADES_INCOMPLETO");
+ const seen=new Set(),writes=[env.DB.prepare("UPDATE evo_modalities_catalog SET is_active=0 WHERE unit=?").bind(unit)];
+ for(const x of all){
+  const id=String(x?.idActivity??x?.idActivitie??x?.id??"").trim(),name=String(x?.nameActivity??x?.name??x?.description??x?.activityName??"").trim();
+  if(!/^\d+$/.test(id)||!name||name.length>250||seen.has(id))throw Error("MODALIDADE_INVALIDA");
+  seen.add(id);const active=x?.active===false||x?.isActive===false||x?.inactive===true?0:1;
+  writes.push(env.DB.prepare("INSERT INTO evo_modalities_catalog(unit,evo_activity_id,activity_name,is_active,raw_json,last_synced_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,evo_activity_id) DO UPDATE SET activity_name=excluded.activity_name,is_active=excluded.is_active,raw_json=excluded.raw_json,last_synced_at=CURRENT_TIMESTAMP").bind(unit,id,name,active,JSON.stringify(x)));
+ }
+ writes.push(env.DB.prepare("INSERT INTO evo_modalities_catalog_sync(unit,last_success_at,last_count,last_requests) VALUES(?,CURRENT_TIMESTAMP,?,?) ON CONFLICT(unit) DO UPDATE SET last_success_at=excluded.last_success_at,last_count=excluded.last_count,last_requests=excluded.last_requests").bind(unit,all.length,requests));
+ await env.DB.batch(writes);return {saved:all.length,requests};
+}
+
 async function runScheduledCatalogSync(env){
  const now=new Date();
- for(const kind of ["contract_catalog","service_catalog"]){
+ for(const kind of ["contract_catalog","service_catalog","modalities_catalog"]){
   const days=await loadScheduledWeekdays(env.DB,kind);
   const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind=?").bind(kind).all()).results||[];
   for(const row of rows){
@@ -400,6 +424,7 @@ async function runScheduledCatalogSync(env){
    if(!claim.meta?.changes)continue;
    let requests=0;
    try{
+    if(kind==="modalities_catalog"){const result=await syncEvoModalities(env,unit);await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='done',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind=? AND scheduled_minute=?").bind(JSON.stringify(result),unit,kind,due).run();continue;}
     const cfg=await getEvoConfig(env,unit),auth={Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"};
     const all=[];
     if(kind==="contract_catalog"){
@@ -1907,7 +1932,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase();
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
-        const rows=await env.DB.prepare("SELECT DISTINCT TRIM(activity_name) AS name FROM evo_attendance_sessions WHERE unit=? AND activity_name IS NOT NULL AND TRIM(activity_name)<>'' UNION SELECT DISTINCT TRIM(activity_name) AS name FROM evo_member_attendance WHERE unit=? AND activity_name IS NOT NULL AND TRIM(activity_name)<>'' ORDER BY name").bind(unit,unit).all();
+        const rows=await env.DB.prepare("SELECT DISTINCT TRIM(activity_name) AS name FROM evo_attendance_sessions WHERE unit=? AND activity_name IS NOT NULL AND TRIM(activity_name)<>'' UNION SELECT DISTINCT TRIM(activity_name) AS name FROM evo_member_attendance WHERE unit=? AND activity_name IS NOT NULL AND TRIM(activity_name)<>'' UNION SELECT DISTINCT TRIM(activity_name) AS name FROM evo_modalities_catalog WHERE unit=? AND is_active=1 AND TRIM(activity_name)<>'' ORDER BY name").bind(unit,unit,unit).all();
         return json({ok:true,source:"d1",evoRequestsMade:0,unit,modalities:(rows.results||[]).map(x=>x.name)});
       }
       if (url.pathname === "/admin/evo-sync-summary" && request.method === "GET") {
@@ -2098,6 +2123,24 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         writes.push(env.DB.prepare("INSERT INTO evo_product_sync(tenant_key,unit,last_attempt_at,last_success_at,last_count,last_error,request_count) VALUES(?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,NULL,?) ON CONFLICT(tenant_key,unit) DO UPDATE SET last_attempt_at=CURRENT_TIMESTAMP,last_success_at=CURRENT_TIMESTAMP,last_count=excluded.last_count,last_error=NULL,request_count=excluded.request_count").bind(tenant,unit,normalized.length,requests));
         await env.DB.batch(writes);
         return json({ok:true,unit,saved:normalized.length,requests});
+      }
+
+
+      if(url.pathname==="/admin/evo-modalities-catalog"&&["GET","POST"].includes(request.method)){
+       const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+       if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+       const ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});
+       const au=await ar.json().catch(()=>({}));
+       if(!ar.ok||au.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
+       const unit=String(url.searchParams.get("unit")||"").toLowerCase();
+       if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+       if(request.method==="GET"){
+        const rows=await env.DB.prepare("SELECT evo_activity_id id,activity_name name,is_active active,last_synced_at syncedAt FROM evo_modalities_catalog WHERE unit=? ORDER BY lower(activity_name)").bind(unit).all();
+        const meta=await env.DB.prepare("SELECT last_success_at lastSuccessAt,last_count lastCount,last_requests lastRequests FROM evo_modalities_catalog_sync WHERE unit=?").bind(unit).first();
+        return json({ok:true,unit,modalities:rows.results||[],lastSyncAt:meta?.lastSuccessAt||null,lastCount:meta?.lastCount||0,lastRequests:meta?.lastRequests||0,requests:0});
+       }
+       try{const result=await syncEvoModalities(env,unit);await recordCatalogManualRun(env,unit,"modalities_catalog",result.saved,result.requests);return json({ok:true,unit,...result})}
+       catch(e){return json({ok:false,error:String(e?.message||e)},502)}
       }
 
       if (url.pathname === "/admin/evo-service-catalog" && ["GET","POST"].includes(request.method)) {
