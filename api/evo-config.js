@@ -191,6 +191,12 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   const valid=body.length<=8192&&verifyServiceRequest(body,String(req.headers["x-evo-timestamp"]||""),String(req.headers["x-evo-signature"]||""),process.env.ADMIN_KEY);
   return res.status(valid?200:401).json({ok:valid,serviceVerified:valid});
  }
+ if(req.query.route==="student-pin-reset"){
+  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const sess=adminSession(req),unit=String(req.body?.unit||"");
+  if(!sess||!["admin","reception"].includes(sess.role)||!["bike","gym"].includes(unit)||!sess.units?.includes(unit)||sess.role==="reception"&&!(sess.permissions||[]).some(p=>["*","/admin-alunos-evo.html"].includes(p)))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+  try{const r=await fetch(WORKER+"/admin/student-pin-reset",{method:"POST",headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),"content-type":"application/json"},body:JSON.stringify(req.body||{}),cache:"no-store"});res.status(r.status);res.setHeader("Cache-Control","no-store");return res.send(await r.text())}catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}
+ }
  if(req.query.route==="manual-activation"){
   if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=String(req.method==="GET"?req.query.unit:req.body?.unit||"bike");
