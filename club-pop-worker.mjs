@@ -838,7 +838,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!["bike","gym"].includes(unit)||!(admin.units||[]).includes(unit))return json({ok:false,error:"UNIDADE_NAO_PERMITIDA"},403);
         if(!/^\d{1,15}$/.test(evoId)||body.confirm!==true)return json({ok:false,error:"CONFIRMACAO_OU_ID_INVALIDO"},400);
         const column=unit==="bike"?"evo_member_id":"gym_client_id";
-        const member=await env.DB.prepare("SELECT id,first_name,last_name,pin_hash FROM members WHERE "+column+"=? LIMIT 1").bind(evoId).first();
+        const member=await env.DB.prepare("SELECT id,pin_hash FROM members WHERE "+column+"=? LIMIT 1").bind(evoId).first();
         if(!member||!member.pin_hash)return json({ok:false,error:"ALUNO_SEM_PIN_CADASTRADO"},404);
         const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);
         const pin=String(100000+(bytes[0]%900000));
