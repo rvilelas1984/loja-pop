@@ -826,6 +826,30 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
       }
 
       // Ativação pontual: pesquisa D1 antes de qualquer chamada EVO.
+      // Reset manual do PIN: apenas equipe autenticada e autorizada na página Alunos.
+      if(url.pathname==="/admin/student-pin-reset" && request.method==="POST"){
+        const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        let ar;try{ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"})}catch{return json({ok:false,error:"AUTENTICACAO_INDISPONIVEL"},502)}
+        const admin=await ar.json().catch(()=>({}));
+        if(!ar.ok||!["admin","reception"].includes(admin.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(admin.role!=="admin"&&!(admin.permissions||[]).some(p=>["*","/admin-alunos-evo.html"].includes(p)))return json({ok:false,error:"SEM_PERMISSAO_ALUNOS"},403);
+        const body=await readJson(request),unit=String(body.unit||""),evoId=String(body.evoMemberId||"").trim();
+        if(!["bike","gym"].includes(unit)||!(admin.units||[]).includes(unit))return json({ok:false,error:"UNIDADE_NAO_PERMITIDA"},403);
+        if(!/^\d{1,15}$/.test(evoId)||body.confirm!==true)return json({ok:false,error:"CONFIRMACAO_OU_ID_INVALIDO"},400);
+        const column=unit==="bike"?"evo_member_id":"gym_client_id";
+        const member=await env.DB.prepare("SELECT id,first_name,last_name,pin_hash FROM members WHERE "+column+"=? LIMIT 1").bind(evoId).first();
+        if(!member||!member.pin_hash)return json({ok:false,error:"ALUNO_SEM_PIN_CADASTRADO"},404);
+        const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);
+        const pin=String(100000+(bytes[0]%900000));
+        const salt=randomToken(16),hash=await hashPin(pin,salt);
+        await env.DB.batch([
+          env.DB.prepare("UPDATE members SET pin_hash=?,pin_salt=?,pin_created_at=CURRENT_TIMESTAMP,failed_login_attempts=0,locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(hash,salt,member.id),
+          env.DB.prepare("UPDATE auth_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE member_id=? AND revoked_at IS NULL").bind(member.id)
+        ]);
+        await audit(env,"ADMIN",String(admin.id||admin.name||"staff"),"STUDENT_PIN_RESET:"+String(member.id));
+        return json({ok:true,pin,memberId:member.id,message:"PIN atualizado. Copie agora; ele não será exibido novamente."});
+      }
       if(url.pathname==="/admin/manual-student-activation" && ["GET","POST"].includes(request.method)){
         const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
