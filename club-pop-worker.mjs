@@ -2428,45 +2428,14 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           }, 409);
         }
 
-        const evoMember = await findEvoMember(env, cpf);
-
-        if (!evoMember) {
-          await audit(env, "SYSTEM", null, "FIRST_ACCESS_MEMBER_NOT_FOUND");
-          return json({
-            ok: false,
-            error: "DADOS_NAO_CONFEREM",
-          }, 401);
-        }
-
-        const evoEmail = normalizeEmail(
-          evoMember.email ||
-          evoMember.emailAddress ||
-          evoMember.mail ||
-          ""
-        );
-
-        const evoBirth = normalizeDate(
-          evoMember.birthDate ||
-          evoMember.dateBirth ||
-          evoMember.birthdate ||
-          evoMember.birthday ||
-          ""
-        );
-
-        if (evoEmail !== email || evoBirth !== birthDate) {
-          await audit(
-            env,
-            "MEMBER",
-            String(evoMember.idMember || ""),
-            "FIRST_ACCESS_DATA_MISMATCH"
-          );
-
-          return json({
-            ok: false,
-            error: "DADOS_NAO_CONFEREM",
-          }, 401);
-        }
-
+        const local=await clubFindLocal(env,cpf,email,birthDate);
+        if(local.incomplete)return json({ok:false,error:"CADASTRO_INCOMPLETO",whatsappUrl:CLUB_DATA_URL},409);
+        if(!local.matched)return json({ok:false,error:"DADOS_NAO_CONFEREM"},401);
+        const bike=local.profiles.find(p=>p.unit==="bike");
+        const gym=local.profiles.find(p=>p.unit==="gym");
+        const evoMember={idMember:bike?.id||null,firstName:bike?.first||gym?.first||"",lastName:bike?.last||gym?.last||""};
+        const activeUnits=await clubActiveUnits(env,bike?.id,gym?.id);
+        // Conta pode ser criada mesmo sem contrato ativo; acesso é bloqueado no login e em /auth/me.
         const challenge = randomToken(32);
         const challengeHash = await sha256(challenge);
         const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -2480,7 +2449,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           evoMember.lastName ||
           "";
 
-        const evoId = Number(evoMember.idMember);
+        const evoId = bike?Number(bike.id):null;
 
         const target = existing || await env.DB.prepare("SELECT id FROM members WHERE evo_member_id = ? LIMIT 1").bind(evoId).first();
         if (target?.id) {
@@ -2535,6 +2504,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           LIMIT 1
         `).bind(cpfHash).first();
 
+        if(gym?.id)await env.DB.prepare("UPDATE members SET gym_client_id=? WHERE id=?").bind(Number(gym.id),member.id).run();
         // Reutilizamos auth_sessions para o desafio temporário.
         await env.DB.prepare(`
           INSERT INTO auth_sessions (
@@ -2561,6 +2531,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           validated: true,
           challenge,
           expiresIn: 600,
+          activeUnits,
           member: {
             firstName,
           },
@@ -2644,7 +2615,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           WHERE id = ?
         `).bind(session.id).run();
 
-        const auth = await createSession(env, session.member_id);
+        const registered=await env.DB.prepare("SELECT evo_member_id,gym_client_id FROM members WHERE id=?").bind(session.member_id).first();
+        const activeUnits=await clubActiveUnits(env,registered?.evo_member_id,registered?.gym_client_id);
+        const auth = activeUnits.length?await createSession(env, session.member_id):null;
 
         await audit(
           env,
@@ -2656,8 +2629,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({
           ok: true,
           accountCreated: true,
-          token: auth.token,
-          expiresAt: auth.expiresAt,
+          token: auth?.token||null,
+          expiresAt: auth?.expiresAt||null,
+          activeUnits,
+          accessBlocked:!activeUnits.length,
+          whatsappUrl:!activeUnits.length?CLUB_RECEPTION_URL:null,
         });
       }
 
@@ -2767,6 +2743,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           WHERE id = ?
         `).bind(member.id).run();
 
+        const activeUnits=await clubActiveUnits(env,member.evo_member_id,member.gym_client_id);
+        if(!activeUnits.length)return json({ok:false,error:"CONTRATO_INATIVO",whatsappUrl:CLUB_RECEPTION_URL},403);
         const auth = await createSession(env, member.id);
 
         await audit(
@@ -2780,7 +2758,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           ok: true,
           token: auth.token,
           expiresAt: auth.expiresAt,
-          member: publicMember(member),
+          member: {...publicMember(member),activeUnits},
         });
       }
 
@@ -2801,10 +2779,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           }, 401);
         }
 
-        return json({
-          ok: true,
-          member: publicMember(member),
-        });
+        const activeUnits=await clubActiveUnits(env,member.evo_member_id,member.gym_client_id);
+        if(!activeUnits.length)return json({ok:false,error:"CONTRATO_INATIVO",whatsappUrl:CLUB_RECEPTION_URL},403);
+        return json({ok:true,member:{...publicMember(member),activeUnits}});
       }
 
       // =====================================================
@@ -4039,6 +4016,40 @@ async function missionProgressValue(env,member,m){
 // =========================================================
 // EVO
 // =========================================================
+
+
+const CLUB_RECEPTION_URL="https://wa.me/551130521378?text="+encodeURIComponent("Olá estou tentando acessar o Club Pop mas está dizendo que meu contrato não esta ativo, pode me ajudar?");
+const CLUB_DATA_URL="https://wa.me/551130521378?text="+encodeURIComponent("Olá, estou tentando acessar o Club Pop, mas meu cadastro está com dados incompletos. Podem me ajudar a atualizar?");
+function clubJson(value,fallback={}){try{return JSON.parse(value||"")||fallback}catch{return fallback}}
+function clubDigits(value){return String(value||"").replace(/\\D/g,"")}
+function clubProfile(row){
+ const p=clubJson(row.personal_json),c=clubJson(row.contacts_json),raw=clubJson(row.raw_json);
+ return {unit:row.unit,id:String(row.evo_member_id),cpf:clubDigits(p.document||raw.document||raw["CPF (CIN)"]),email:normalizeEmail((!Array.isArray(c)&&c.email)||p.email||raw.email||raw["E-MAIL"]),birth:normalizeDate(p.birthDate||raw.birthDate||raw["DATA DE NASCIMENTO"]),first:p.firstName||raw.firstName||"",last:p.lastName||raw.lastName||""};
+}
+async function clubActiveUnits(env,bikeId,gymId){
+ const ids=[["bike",bikeId],["gym",gymId]].filter(x=>x[1]!=null&&String(x[1])!=="");
+ const active=[];
+ for(const [unit,id] of ids){
+  const found=await env.DB.prepare(`SELECT 1 FROM evo_member_contracts WHERE unit=? AND CAST(evo_member_id AS TEXT)=? AND lower(trim(membership_status))='active' AND (start_date IS NULL OR start_date='' OR substr(start_date,1,10)<=date('now','-3 hours')) AND (end_date IS NULL OR end_date='' OR substr(end_date,1,10)>=date('now','-3 hours')) AND (cancel_date IS NULL OR cancel_date='' OR substr(cancel_date,1,10)>date('now','-3 hours')) LIMIT 1`).bind(unit,String(id)).first();
+  if(found)active.push(unit);
+ }
+ return active;
+}
+async function clubFindLocal(env,cpf,email,birth){
+ const rows=(await env.DB.prepare("SELECT unit,evo_member_id,personal_json,contacts_json,raw_json FROM evo_member_master WHERE is_current=1 AND unit IN ('bike','gym')").all()).results||[];
+ const profiles=rows.map(clubProfile);
+ const exact=profiles.filter(p=>p.cpf===cpf);
+ if(exact.length){
+  const valid=exact.filter(p=>p.email===email&&p.birth===birth);
+  if(valid.length)return {profiles:valid,matched:true};
+  if(exact.some(p=>!p.email||!p.birth))return {incomplete:true};
+  return {mismatch:true};
+ }
+ // CPF ausente: apenas sinaliza dados incompletos quando os outros dois fatores são únicos.
+ const possible=profiles.filter(p=>!p.cpf&&p.email===email&&p.birth===birth);
+ if(possible.length===1)return {incomplete:true};
+ return {missing:true};
+}
 
 async function findEvoMember(env, cpf) {
   const cfg = await getEvoConfig(env, "bike");
