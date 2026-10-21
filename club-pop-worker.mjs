@@ -4021,7 +4021,7 @@ async function missionProgressValue(env,member,m){
 const CLUB_RECEPTION_URL="https://wa.me/551130521378?text="+encodeURIComponent("Olá estou tentando acessar o Club Pop mas está dizendo que meu contrato não esta ativo, pode me ajudar?");
 const CLUB_DATA_URL="https://wa.me/551130521378?text="+encodeURIComponent("Olá, estou tentando acessar o Club Pop, mas meu cadastro está com dados incompletos. Podem me ajudar a atualizar?");
 function clubJson(value,fallback={}){try{return JSON.parse(value||"")||fallback}catch{return fallback}}
-function clubDigits(value){return String(value||"").replace(/\\D/g,"")}
+function clubDigits(value){return String(value||"").replace(/[^0-9]/g,"")}
 function clubProfile(row){
  const p=clubJson(row.personal_json),c=clubJson(row.contacts_json),raw=clubJson(row.raw_json);
  return {unit:row.unit,id:String(row.evo_member_id),cpf:clubDigits(p.document||raw.document||raw["CPF (CIN)"]),email:normalizeEmail((!Array.isArray(c)&&c.email)||p.email||raw.email||raw["E-MAIL"]),birth:normalizeDate(p.birthDate||raw.birthDate||raw["DATA DE NASCIMENTO"]),first:p.firstName||raw.firstName||"",last:p.lastName||raw.lastName||""};
