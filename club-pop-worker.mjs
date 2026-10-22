@@ -701,7 +701,7 @@ async function whatsappBirthdayTick(env){
  }
 }
 
-async function runScheduledRegistrationSync(env,kind=kind){
+async function runScheduledRegistrationSync(env,kind="opportunity"){
  const db=env.DB,now=new Date(),days=await loadScheduledWeekdays(db,kind);
  const rows=(await db.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='"+kind+"'").all()).results||[];
  for(const row of rows){
