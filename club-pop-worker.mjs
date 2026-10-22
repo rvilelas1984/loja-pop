@@ -2139,7 +2139,31 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=r.unit AND c.evo_member_id=r.evo_id AND (c.category_id='5' OR upper(c.membership_name) LIKE '%TOTALPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) totalpassContract
           FROM evo_daily_registrations r LEFT JOIN evo_member_master mm ON mm.unit=r.unit AND mm.evo_member_id=r.evo_id AND mm.is_current=1
           WHERE r.unit=? AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ? ORDER BY CASE WHEN r.category='client' THEN 0 ELSE 1 END,r.register_at DESC LIMIT 500`).bind(unit,from,to).all()).results||[];
-        const seen=new Set();const students=rows.filter(r=>{const key=String(r.id);if(seen.has(key))return false;seen.add(key);return true}).map(r=>{const category=r.source==="opportunity"?"opportunity":r.totalpassId||r.totalpassContract?"totalpass":r.wellhubId||r.wellhubContract?"wellhub":"other";return {id:r.id,source:r.source,name:r.name,registeredAt:r.registeredAt,day:r.day,category,wellhubId:r.wellhubId||null,totalpassId:r.totalpassId||null,contractFound:category==="totalpass"?!!r.totalpassContract:category==="wellhub"?!!r.wellhubContract:null,contractAlert:category==="totalpass"?!!r.totalpassId&&!r.totalpassContract:category==="wellhub"?!!r.wellhubId&&!r.wellhubContract:false}});
+        const normalizeIdentity=v=>String(v||"").trim().toLowerCase();
+        const memberLookup=(await env.DB.prepare("SELECT evo_member_id id,personal_json details FROM evo_member_master WHERE unit=? AND is_current=1").bind(unit).all()).results||[];
+        const memberByDocument=new Map(),memberByEmail=new Map();
+        for(const member of memberLookup){
+          let details={};try{details=JSON.parse(member.details||"{}")}catch{}
+          const document=String(details.document||"").replace(/[^0-9]/g,"");
+          const email=normalizeIdentity(details.email);
+          for(const [map,key] of [[memberByDocument,document],[memberByEmail,email]]){
+            if(!key)continue;
+            if(!map.has(key))map.set(key,[]);
+            map.get(key).push(String(member.id));
+          }
+        }
+        const linkedMembers=new Map();
+        for(const candidate of rows.filter(x=>x.source==="opportunity")){
+          const record=await env.DB.prepare("SELECT payload_json FROM evo_daily_registrations WHERE unit=? AND category='opportunity' AND evo_id=?").bind(unit,String(candidate.id)).first();
+          let data={};try{data=JSON.parse(record?.payload_json||"{}")}catch{}
+          const document=String(data.document||data.cpf||"").replace(/[^0-9]/g,"");
+          const email=normalizeIdentity(data.email);
+          const docs=document.length===11?memberByDocument.get(document):null;
+          const mails=email.includes("@")?memberByEmail.get(email):null;
+          const ids=docs?.length?docs:mails;
+          if(ids?.length===1&&ids[0]!==String(candidate.id))linkedMembers.set(String(candidate.id),ids[0]);
+        }
+        const linkedClientIds=new Set(linkedMembers.values());const seen=new Set();const students=rows.filter(r=>{if(r.source==='client'&&linkedClientIds.has(String(r.id)))return false;const key=String(r.id);if(seen.has(key))return false;seen.add(key);return true}).map(r=>{const category=r.source==="opportunity"?"opportunity":r.totalpassId||r.totalpassContract?"totalpass":r.wellhubId||r.wellhubContract?"wellhub":"other";return {id:r.id,source:r.source,name:r.name,registeredAt:r.registeredAt,day:r.day,category,wellhubId:r.wellhubId||null,totalpassId:r.totalpassId||null,contractFound:category==="totalpass"?!!r.totalpassContract:category==="wellhub"?!!r.wellhubContract:null,contractAlert:category==="totalpass"?!!r.totalpassId&&!r.totalpassContract:category==="wellhub"?!!r.wellhubId&&!r.wellhubContract:false}});
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_prospect_reservations(unit TEXT NOT NULL,session_id TEXT NOT NULL,prospect_id TEXT NOT NULL,activity_date TEXT NOT NULL,start_time TEXT NOT NULL,activity_name TEXT,member_name TEXT,status TEXT,updated_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,session_id,prospect_id))").run();
         const [attendanceQuery,bookingQuery,contractQuery]=await Promise.all([
           env.DB.prepare("SELECT a.evo_member_id id,a.attendance_date day,a.start_time time,a.activity_name activity FROM evo_member_attendance a WHERE a.unit=? AND a.attendance_date>=? AND a.attendance_date<=date('now','-3 hours') AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=a.unit AND r.evo_id=a.evo_member_id AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ?) ORDER BY a.attendance_date,a.start_time").bind(unit,from,from,to).all(),
@@ -2153,9 +2177,13 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const now=new Date(Date.now()-3*3600000).toISOString().slice(0,10),days=(a,b)=>Math.floor((Date.parse(b+"T12:00:00Z")-Date.parse(a+"T12:00:00Z"))/86400000);
         const ranking=new Map();
         for(const st of students){
-          const attend=(attendanceBy.get(String(st.id))||[]).filter(x=>String(x.day)>=st.day);
+          const linkedId=linkedMembers.get(String(st.id));
+          const extraAttend=linkedId?(await env.DB.prepare("SELECT attendance_date day,start_time time,activity_name activity FROM evo_member_attendance WHERE unit=? AND evo_member_id=? AND attendance_date>=? ORDER BY attendance_date,start_time").bind(unit,linkedId,st.day).all()).results||[]:[];
+          const attend=[...(attendanceBy.get(String(st.id))||[]),...extraAttend].filter(x=>String(x.day)>=st.day);
           const bookings=[...(bookingBy.get(String(st.id))||[]),...(st.category==="opportunity"?(prospectBookingBy.get(String(st.id))||[]):[])].filter(x=>String(x.day)>=st.day).sort((a,b)=>String(a.day).localeCompare(String(b.day))||String(a.time).localeCompare(String(b.time)));
-          const contracts=(contractBy.get(String(st.id))||[]);
+          const extraContracts=linkedId?(await env.DB.prepare("SELECT membership_name name,membership_status status,start_date startDate,end_date endDate,cancel_date cancelDate,category_id category FROM evo_member_contracts WHERE unit=? AND evo_member_id=?").bind(unit,linkedId).all()).results||[]:[];
+          const contracts=[...(contractBy.get(String(st.id))||[]),...extraContracts];
+          st.convertedMemberId=linkedId||null;
           const first=attend[0]?.day||null,last=attend[attend.length-1]?.day||null;
           const future=bookings.filter(x=>String(x.day)>=now);
           const recent=attend.filter(x=>days(String(x.day),now)<=27);
