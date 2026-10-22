@@ -90,8 +90,11 @@ async function runContractsNow(){
 let reservationHistoryLimit=10,reservationStarting=false;
 function renderReservationRuns(){
  const area=document.getElementById('reservationRuns');if(!area)return;area.replaceChildren();
- const items=runs.filter(x=>x.kind==='reservation'),active=items.some(x=>x.status==='pending');
- const button=document.getElementById('runReservation');button.disabled=active||reservationStarting;button.textContent=active?'Em execução…':'Executar agora';
+ const items=runs.filter(x=>x.kind==='reservation');
+ // Historical pending rows are not proof that the Worker still holds an active lease.
+ // The server arbitrates new starts and refuses duplicates while a real job is running.
+ const active=items.some(x=>x.status==='pending' && (()=>{const t=Date.parse(String(x.updated_at||'').replace(' ','T')+'Z');return Number.isFinite(t)&&Date.now()-t<120000})());
+ const button=document.getElementById('runReservation');button.disabled=active||reservationStarting;button.textContent=active?'Em execução…':reservationStarting?'Iniciando…':'Executar agora';
  if(!items.length){area.textContent='Nenhuma execução registrada.';return;}
  for(const run of items.slice(0,reservationHistoryLimit)){
   let q={};try{q=JSON.parse(run.detail||'{}')}catch{}
