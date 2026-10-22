@@ -3293,9 +3293,21 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const unit = url.searchParams.get("unit") === "gym" ? "gym" : "bike";
         const evoId = String(unit === "gym" ? (member.gym_client_id || "") : (member.evo_member_id || ""));
         if (!evoId) return json({ok:true,reservation:null,source:"d1",evoRequestsMade:0});
-        const reservation = await env.DB.prepare(
-          "SELECT r.unit,r.session_id,r.activity_date,r.start_time,r.activity_name,CASE WHEN r.slot_number>0 THEN r.slot_number ELSE NULL END AS slot_number,r.updated_at,s.instructor_name FROM checkin_reservation_snapshots r LEFT JOIN evo_attendance_sessions s ON s.unit=r.unit AND CAST(s.id_activity_session AS TEXT)=r.session_id WHERE r.unit=? AND r.evo_member_id=? AND r.removed=0 AND (r.status IS NULL OR lower(r.status) NOT IN ('cancelled','canceled','cancelado','cancelada')) AND (r.activity_date || 'T' || r.start_time) >= ? ORDER BY r.activity_date ASC,r.start_time ASC LIMIT 1"
-        ).bind(unit,evoId,new Date(Date.now()-3*60*60*1000).toISOString().slice(0,16)).first();
+        const chatConfig=await env.DB.prepare("SELECT enabled,close_after,duration_minutes FROM class_chat_settings WHERE unit=?").bind(unit).first();
+        const nowLocal=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
+        const part=k=>nowLocal.find(x=>x.type===k)?.value||'';
+        const localMinute=part('year')+'-'+part('month')+'-'+part('day')+'T'+part('hour')+':'+part('minute');
+        const candidates=await env.DB.prepare(
+          "SELECT r.unit,r.session_id,r.activity_date,r.start_time,r.activity_name,CASE WHEN r.slot_number>0 THEN r.slot_number ELSE NULL END AS slot_number,r.updated_at,s.instructor_name FROM checkin_reservation_snapshots r LEFT JOIN evo_attendance_sessions s ON s.unit=r.unit AND CAST(s.id_activity_session AS TEXT)=r.session_id WHERE r.unit=? AND r.evo_member_id=? AND r.removed=0 AND (r.status IS NULL OR lower(r.status) NOT IN ('cancelled','canceled','cancelado','cancelada')) AND r.activity_date>=? ORDER BY r.activity_date ASC,r.start_time ASC LIMIT 40"
+        ).bind(unit,evoId,part('year')+'-'+part('month')+'-'+part('day')).all();
+        const reservation=(candidates.results||[]).find(r=>{
+          const start=String(r.activity_date||'')+'T'+String(r.start_time||'').slice(0,5);
+          if(start>=localMinute)return true;
+          if(!chatConfig?.enabled)return false;
+          const startMs=Date.parse(start+':00-03:00');
+          const closeMs=startMs+(Number(chatConfig.duration_minutes||50)+Number(chatConfig.close_after||0))*60000;
+          return Number.isFinite(startMs)&&Date.now()<closeMs;
+        })||null;
         return json({ok:true,reservation:reservation||null,source:"d1",evoRequestsMade:0});
       }
 
