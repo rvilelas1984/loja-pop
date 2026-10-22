@@ -3294,7 +3294,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const evoId = String(unit === "gym" ? (member.gym_client_id || "") : (member.evo_member_id || ""));
         if (!evoId) return json({ok:true,reservation:null,source:"d1",evoRequestsMade:0});
         const reservation = await env.DB.prepare(
-          "SELECT unit,session_id,activity_date,start_time,activity_name,CASE WHEN slot_number>0 THEN slot_number ELSE NULL END AS slot_number,updated_at FROM checkin_reservation_snapshots WHERE unit=? AND evo_member_id=? AND removed=0 AND (status IS NULL OR lower(status) NOT IN ('cancelled','canceled','cancelado','cancelada')) AND (activity_date || 'T' || start_time) >= ? ORDER BY activity_date ASC,start_time ASC LIMIT 1"
+          "SELECT r.unit,r.session_id,r.activity_date,r.start_time,r.activity_name,CASE WHEN r.slot_number>0 THEN r.slot_number ELSE NULL END AS slot_number,r.updated_at,s.instructor_name FROM checkin_reservation_snapshots r LEFT JOIN evo_attendance_sessions s ON s.unit=r.unit AND CAST(s.id_activity_session AS TEXT)=r.session_id WHERE r.unit=? AND r.evo_member_id=? AND r.removed=0 AND (r.status IS NULL OR lower(r.status) NOT IN ('cancelled','canceled','cancelado','cancelada')) AND (r.activity_date || 'T' || r.start_time) >= ? ORDER BY r.activity_date ASC,r.start_time ASC LIMIT 1"
         ).bind(unit,evoId,new Date(Date.now()-3*60*60*1000).toISOString().slice(0,16)).first();
         return json({ok:true,reservation:reservation||null,source:"d1",evoRequestsMade:0});
       }
