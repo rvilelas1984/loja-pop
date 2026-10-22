@@ -1,3 +1,4 @@
+import {equipmentMaintenance} from './lib/equipment-maintenance.mjs';
 import { ensureReservationSchema, startReservationSync, processReservationSync, saveReservationSnapshot, saveProspectReservationSnapshot, reservationTime } from './lib/reservation-sync.mjs';
 import { attachContractSessions } from './lib/session-contracts.mjs';
 import {usefulLinks} from './lib/useful-links-routes.mjs';
@@ -2152,6 +2153,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
       // Read-only new-student journey: category comes from EVO identifiers or existing contracts.
       // Contract status never removes a same-day registration from this cohort.
+      if (url.pathname === "/admin/equipment-maintenance") return equipmentMaintenance(request,env,url);
       if (url.pathname === "/admin/new-students" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
