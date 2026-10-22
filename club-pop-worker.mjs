@@ -2153,6 +2153,17 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           }
         }
         const memberPhone=new Map();
+        const normalizeBrazilPhone=raw=>{
+          const original=String(raw||'').trim(),digits=original.replace(/\D/g,'');
+          if(!digits)return {phoneOriginal:original||null,phoneNormalized:null,phoneStatus:'missing'};
+          let national=digits;
+          if(national.startsWith('0055'))national=national.slice(4);
+          else if(national.startsWith('55')&&(national.length===12||national.length===13))national=national.slice(2);
+          if(!/^\d{10,11}$/.test(national)||national[0]==='0'||national[1]==='0')return {phoneOriginal:original,phoneNormalized:null,phoneStatus:'invalid'};
+          const subscriber=national.slice(2);
+          if(subscriber.length===9&&subscriber[0]!=='9')return {phoneOriginal:original,phoneNormalized:null,phoneStatus:'invalid'};
+          return {phoneOriginal:original,phoneNormalized:'55'+national,phoneStatus:'valid'};
+        };
         const extractPhone=(...sources)=>{
           const valid=value=>{const digits=String(value||'').replace(/\D/g,'');return digits.length>=10&&digits.length<=13?String(value).trim():null};
           for(const source of sources){
@@ -2205,6 +2216,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const contracts=[...(contractBy.get(String(st.id))||[]),...extraContracts];
           let registrationPayload={};try{const rr=await env.DB.prepare("SELECT payload_json FROM evo_daily_registrations WHERE unit=? AND evo_id=? AND category=? ORDER BY register_at DESC LIMIT 1").bind(unit,String(st.id),st.category==='opportunity'?'opportunity':'client').first();registrationPayload=JSON.parse(rr?.payload_json||'{}')}catch{}
           st.phone=memberPhone.get(String(st.id))|| (linkedId?memberPhone.get(String(linkedId)):null)||extractPhone(registrationPayload);
+          Object.assign(st,normalizeBrazilPhone(st.phone));
           st.convertedMemberId=linkedId||null;
           const first=attend[0]?.day||null,last=attend[attend.length-1]?.day||null;
           const future=bookings.filter(x=>String(x.day)>=now);
