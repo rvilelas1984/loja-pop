@@ -473,25 +473,33 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   const b=typeof req.body==="string"?JSON.parse(req.body):req.body||{};
   const unit=b.unit==="gym"?"gym":"bike",category=b.category,from=String(b.from||""),to=String(b.to||"");
   if(!["client","opportunity"].includes(category)||!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return res.status(400).json({ok:false,error:"PERIODO_INVALIDO"});
-  const dates=[];for(let t=Date.parse(from+"T12:00:00Z"),end=Date.parse(to+"T12:00:00Z");t<=end;t+=86400000){dates.push(new Date(t).toISOString().slice(0,10));if(dates.length>31)return res.status(400).json({ok:false,error:"MAXIMO_31_DIAS"});}
+  const startMs=Date.parse(from+"T12:00:00Z"),endMs=Date.parse(to+"T12:00:00Z");
+  if(!Number.isFinite(startMs)||!Number.isFinite(endMs)||endMs-startMs>30*86400000)return res.status(400).json({ok:false,error:"MAXIMO_31_DIAS"});
   const evo=getEvoTransport(unit),endpoint=category==="client"?"/api/v2/members":"/api/v1/prospects",secret=String(process.env.AUTO_SYNC_SECRET||"");
   if(!secret)return res.status(503).json({ok:false,error:"AUTO_SYNC_SECRET_AUSENTE"});
-  let requests=0,found=0,inserted=0;const days=[];
+  let requests=0,found=0,inserted=0;const days=[],byDay=new Map();
   try{
-   for(const day of dates){
-    let all=[],complete=false;
-    for(let skip=0;skip<500;skip+=50){
-     const url="https://evo-integracao-api.w12app.com.br"+endpoint+"?registerDateStart="+day+"&registerDateEnd="+day+"&take=50&skip="+skip;
-     const rr=await evo.fetch(url);requests++;
-     if(!rr.ok)throw Error("EVO_HTTP_"+rr.status+" em "+day);
-     const payload=await rr.json(),rows=Array.isArray(payload)?payload:Array.isArray(payload?.data)?payload.data:Array.isArray(payload?.items)?payload.items:null;
-     if(!rows)throw Error("FORMATO_EVO_INVALIDO em "+day);
-     all.push(...rows);if(rows.length<50){complete=true;break;}
-    }
-    if(!complete)throw Error("LIMITE_PAGINACAO em "+day);
+   let all=[],complete=false;const take=600;
+   for(let skip=0;skip<60000;skip+=take){
+    const url="https://evo-integracao-api.w12app.com.br"+endpoint+"?registerDateStart="+from+"&registerDateEnd="+to+"&take="+take+"&skip="+skip;
+    const rr=await evo.fetch(url);requests++;
+    if(!rr.ok)throw Error("EVO_HTTP_"+rr.status);
+    const payload=await rr.json(),rows=Array.isArray(payload)?payload:Array.isArray(payload?.data)?payload.data:Array.isArray(payload?.items)?payload.items:null;
+    if(!rows||rows.length>take)throw Error("FORMATO_EVO_INVALIDO");
+    all.push(...rows);if(rows.length<take){complete=true;break;}
+   }
+   if(!complete)throw Error("LIMITE_PAGINACAO");
+   for(const row of all){
+    const raw=String(row?.registerDate??row?.registrationDate??row?.createdAt??row?.createDate??"");
+    const day=/^\d{4}-\d{2}-\d{2}/.test(raw)?raw.slice(0,10):/^\d{2}\/\d{2}\/\d{4}/.test(raw)?raw.slice(6,10)+"-"+raw.slice(3,5)+"-"+raw.slice(0,2):"";
+    if(!day||day<from||day>to)continue;
+    if(!byDay.has(day))byDay.set(day,[]);
+    byDay.get(day).push(row);
+   }
+   for(const [day,rows] of [...byDay].sort((a,b)=>a[0].localeCompare(b[0]))){
     let dayFound=0,dayInserted=0;
-    for(let i=0;i<Math.max(all.length,1);i+=100){
-     const wr=await fetch(WORKER+"/internal/evo-daily-registrations",{method:"POST",headers:{"Content-Type":"application/json","x-auto-sync-secret":secret},body:JSON.stringify({unit,category,day,rows:all.slice(i,i+100),requests:i===0?requests:0})});
+    for(let i=0;i<rows.length;i+=100){
+     const wr=await fetch(WORKER+"/internal/evo-daily-registrations",{method:"POST",headers:{"Content-Type":"application/json","x-auto-sync-secret":secret},body:JSON.stringify({unit,category,day,rows:rows.slice(i,i+100),requests:i===0?requests:0})});
      const data=await wr.json().catch(()=>({}));
      if(!wr.ok||!data.ok)throw Error(data.error||"FALHA_D1 em "+day);
      dayFound+=Number(data.found||0);dayInserted+=Number(data.inserted||0);
