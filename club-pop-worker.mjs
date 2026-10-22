@@ -467,6 +467,14 @@ async function runScheduledCatalogSync(env){
   }
  }
 }
+// Repair abandoned automatic-run records without triggering an EVO sync.
+// A run with no completion record must never be reported as successful.
+async function reconcileAbandonedAutomaticRuns(db){
+  const rows=(await db.prepare("SELECT unit,kind,scheduled_minute FROM evo_sync_schedule_runs WHERE status='pending' AND kind IN ('attendance','contract','contract_catalog','service_catalog','modalities_catalog','instructor_link') AND updated_at<datetime('now','-45 minutes') LIMIT 60").all()).results||[];
+  for(const row of rows){
+    await db.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind=? AND scheduled_minute=? AND status='pending'").bind(JSON.stringify({error:'EXECUCAO_INTERROMPIDA_SEM_CONFIRMACAO',note:'Execução sem conclusão registrada; nenhuma requisição EVO foi realizada para corrigir o histórico'}),row.unit,row.kind,row.scheduled_minute).run();
+  }
+}
 async function runScheduledStudentSync(env) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
   // Reconcile orphaned scheduled runs without calling EVO. An interrupted Worker can
@@ -692,7 +700,7 @@ async function whatsappBirthdayTick(env){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runScheduledStudentSync(env),runScheduledAttendanceSync(env),runScheduledReservationSync(env),runScheduledContractSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env),runScheduledAttendanceSync(env),runScheduledReservationSync(env),runScheduledContractSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
   async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
