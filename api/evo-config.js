@@ -462,6 +462,28 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_SYNC_CONTRATOS"})}
  }
  const runBikeDailyAddon=async(req,secret)=>{try{if(!secret)return {ok:false,error:"AUTO_SYNC_SECRET_AUSENTE"};const host=String(req.headers.host||"");if(!host)return {ok:false,error:"HOST_AUSENTE"};const protocol=host.includes("localhost")?"http":"https";const response=await fetch(protocol+"://"+host+"/api/evo-config?route=bike-daily-registrations",{method:"POST",headers:{"x-auto-sync-secret":secret},signal:AbortSignal.timeout(45000)});const data=await response.json().catch(()=>({ok:false,error:"RESPOSTA_INVALIDA"}));return {...data,ok:response.ok&&data.ok===true};}catch(e){return {ok:false,error:String(e.message||e)}}};
+ if(req.query.route==="sync-opportunities"){
+  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const unit=req.query.unit==="gym"?"gym":"bike",cookie=String(req.headers.cookie||"");
+  if(!cookie)return res.status(401).json({ok:false,error:"NAO_AUTORIZADO"});
+  const auth=await fetch((process.env.VERCEL_URL?"https://"+process.env.VERCEL_URL:"https://loja-pop-green.vercel.app")+"/api/admin-auth?route=me",{headers:{Cookie:cookie}});
+  const user=await auth.json().catch(()=>({}));if(!auth.ok||user.role!=="admin")return res.status(403).json({ok:false,error:"ACESSO_NEGADO"});
+  const day=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Sao_Paulo"}).format(new Date()),evo=getEvoTransport(unit);let requests=0,all=[];
+  try{
+   for(let skip=0;skip<500;skip+=50){
+    const url="https://evo-integracao-api.w12app.com.br/api/v1/prospects?registerDateStart="+day+"&registerDateEnd="+day+"&take=50&skip="+skip;
+    const rr=await evo.fetch(url);requests++;if(!rr.ok)throw Error("EVO_HTTP_"+rr.status);
+    const payload=await rr.json(),rows=Array.isArray(payload)?payload:Array.isArray(payload?.data)?payload.data:Array.isArray(payload?.items)?payload.items:null;
+    if(!rows)throw Error("FORMATO_EVO_INVALIDO");all.push(...rows);if(rows.length<50)break;
+   }
+   let saved=0;for(let i=0;i<all.length;i+=100){
+    const wr=await fetch(WORKER+"/internal/evo-daily-registrations",{method:"POST",headers:{"Content-Type":"application/json","x-auto-sync-secret":String(process.env.AUTO_SYNC_SECRET||"")},body:JSON.stringify({unit,category:"opportunity",day,rows:all.slice(i,i+100),requests:i===0?requests:0})});
+    const data=await wr.json().catch(()=>({}));if(!wr.ok||!data.ok)throw Error(data.error||"ERRO_GRAVACAO_D1");saved+=Number(data.found||0);
+   }
+   if(!all.length){const wr=await fetch(WORKER+"/internal/evo-daily-registrations",{method:"POST",headers:{"Content-Type":"application/json","x-auto-sync-secret":String(process.env.AUTO_SYNC_SECRET||"")},body:JSON.stringify({unit,category:"opportunity",day,rows:[],requests})});if(!wr.ok)throw Error("ERRO_GRAVACAO_D1")}
+   return res.json({ok:true,unit,day,found:all.length,saved,requests});
+  }catch(e){return res.status(502).json({ok:false,error:String(e.message||e),requests})}
+ }
  if(req.query.route==="bike-daily-registrations"){
   res.setHeader("Cache-Control","no-store");
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
