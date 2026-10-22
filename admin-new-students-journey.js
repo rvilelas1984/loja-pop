@@ -3,7 +3,7 @@
 let payload=null,unit="bike",category="all";
 const $=id=>document.getElementById(id),esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt=d=>/^\d{4}-\d{2}-\d{2}/.test(String(d||""))?String(d).slice(0,10).split("-").reverse().join("/"):"—";
-const tag=s=>s==="wellhub"?"Wellhub":s==="totalpass"?"TotalPass":"Clientes";
+const tag=s=>s==="wellhub"?"Wellhub":s==="totalpass"?"TotalPass":s==="opportunity"?"Oportunidade EVO":"Clientes";
 const status=s=>s==="high"?"🔴 14+ dias sem aula":s==="attention"?"🟠 7+ dias sem aula":s==="no-first-class"?"🟡 Ainda não fez aula":"🟢 Acompanhamento";
 const list=()=>payload?.students?.filter(s=>category==="all"||s.category===category)||[];
 const card=(label,value)=>'<div class="stat" style="margin:0">'+esc(label)+'<b>'+esc(value)+'</b></div>';
@@ -15,7 +15,7 @@ function paint(){
  if(!payload)return;
  const rows=list(),identified=rows.filter(s=>s.stage==="identified"),booked=rows.filter(s=>s.stage==="booking"),attended=rows.filter(s=>s.stage==="attendance"),converted=rows.filter(s=>s.converted);
  $("opportunityList").innerHTML=payload.opportunities?.length?payload.opportunities.map(o=>'<div style="padding:12px 0;border-top:1px solid #e7ebf0"><strong>'+esc(o.name||"Sem nome")+'</strong><br><small>EVO '+esc(o.id)+' · Cadastro '+fmt(o.day)+'</small></div>').join(""):'<p class="muted">Nenhuma oportunidade importada no período. Verifique a sincronização da EVO.</p>';
- $("journeySummary").textContent="Etapa atual de cada aluno, com histórico preservado. Reservas só aparecem quando já foram sincronizadas no D1.";
+ $("journeySummary").textContent="Etapa atual de cada aluno, com histórico preservado. Oportunidades também entram na jornada. Reservas aparecem quando vinculadas ao ID EVO e sincronizadas no D1.";
  const stats='<div class="stats" style="margin:10px 0">'+card("Aguardando agendamento",identified.length)+card("Agendaram, aguardando aula",booked.length)+card("Primeira presença realizada",attended.length)+card("Conversões para planos próprios",converted.length)+card("Com contrato ativo no D1",rows.filter(s=>s.contracts?.some(c=>c.active)).length)+'</div>';
  const stage=(title,arr,details)=>'<details open><summary>'+title+' ('+arr.length+')</summary>'+ (arr.length?arr.map(s=>item(s,details(s))).join(""):'<p class="muted">Nenhum aluno nesta etapa.</p>')+'</details>';
  const ranking={};for(const s of converted)if(s.firstContract)ranking[s.firstContract]=(ranking[s.firstContract]||0)+1;
