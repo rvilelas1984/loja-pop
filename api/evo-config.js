@@ -723,6 +723,13 @@ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return await logFailure(400,{ok:false,error
   const headers={"Content-Type":"application/json"}; if(!pub)headers["x-clubpop-admin-cookie"]=String(req.headers.cookie||"");
   try{const r=await fetch(WORKER+path+(qs.toString()?"?"+qs:""),{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:JSON.stringify(req.body||{})});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"Falha ao acessar gerenciamento da unidade"})}
  }
+ if(req.query.route==="equipment-maintenance"){
+  if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const unit=String(req.query.unit||req.body?.unit||"");
+  const session=adminSession(req);
+  if(!["bike","gym"].includes(unit)||!session||!["admin","reception"].includes(session.role)||!session.units?.includes(unit))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+  try{const r=await fetch(WORKER+"/admin/equipment-maintenance?unit="+unit,{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="POST"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});const t=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(t)}catch{return res.status(502).json({ok:false,error:"FALHA_COMUNICACAO_MANUTENCAO"})}
+ }
  if(req.query.route==="mission-modalities"){
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});
   const unit=String(req.query.unit||"bike").toLowerCase();
