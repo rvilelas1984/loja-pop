@@ -7,6 +7,7 @@ on:
     paths:
       - "club-pop-worker.mjs"
       - "lib/session-contracts.mjs"
+      - "lib/reservation-sync.mjs"
       - "lib/useful-links-routes.mjs"
       - "lib/hall-conquests.mjs"
       - "lib/teacher-view.mjs"
