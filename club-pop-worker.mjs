@@ -2093,6 +2093,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const day=String(url.searchParams.get("day")||"");
         const from=String(url.searchParams.get("from")||day),to=String(url.searchParams.get("to")||day);
         if(!from||!to||!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to||Math.round((Date.parse(to)-Date.parse(from))/86400000)>366)return json({ok:false,error:"PERIODO_INVALIDO"},400);
+        const opportunityRows=(await env.DB.prepare("SELECT evo_id id,register_day day,register_at registeredAt,display_name name FROM evo_daily_registrations WHERE unit=? AND category='opportunity' AND register_day BETWEEN ? AND ? ORDER BY register_at DESC LIMIT 500").bind(unit,from,to).all()).results||[];
+        const opportunities=opportunityRows.map(r=>({id:r.id,name:r.name,day:r.day,registeredAt:r.registeredAt}));
         const rows=(await env.DB.prepare(`SELECT r.category source,r.evo_id id,r.register_day day,r.register_at registeredAt,r.display_name name,
           COALESCE(NULLIF(json_extract(r.payload_json,'$.gympassId'),''),NULLIF(json_extract(mm.integrations_json,'$.gympassId'),'')) wellhubId,
           COALESCE(NULLIF(json_extract(r.payload_json,'$.codeTotalpass'),''),NULLIF(json_extract(mm.integrations_json,'$.codeTotalpass'),'')) totalpassId,
@@ -2133,7 +2135,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_new_student_interventions(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,evo_member_id TEXT NOT NULL,kind TEXT NOT NULL,note TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const logs=(await env.DB.prepare("SELECT evo_member_id id,kind,note,created_at at FROM club_new_student_interventions WHERE unit=? AND evo_member_id IN (SELECT evo_id FROM evo_daily_registrations WHERE unit=? AND category='client' AND register_day BETWEEN ? AND ?) ORDER BY created_at DESC LIMIT 500").bind(unit,unit,from,to).all().catch(()=>({results:[]}))).results||[];
         const logBy=byId(logs);for(const st of students)st.interventions=logBy.get(String(st.id))||[];
-        return json({ok:true,unit,from,to,students,metrics,counts:{total:students.length,wellhub:students.filter(x=>x.category==="wellhub").length,totalpass:students.filter(x=>x.category==="totalpass").length,other:students.filter(x=>x.category==="other").length},note:"Cadastro permanece na jornada independentemente do contrato. Disparos ChatPro nao sao executados por esta rota."});
+        return json({ok:true,unit,from,to,students,opportunities,metrics,counts:{total:students.length,wellhub:students.filter(x=>x.category==="wellhub").length,totalpass:students.filter(x=>x.category==="totalpass").length,other:students.filter(x=>x.category==="other").length},note:"Cadastro permanece na jornada independentemente do contrato. Disparos ChatPro nao sao executados por esta rota."});
       }
 
       if(url.pathname==="/admin/new-students/interventions"&&request.method==="POST"){
