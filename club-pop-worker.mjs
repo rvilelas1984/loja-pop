@@ -2101,9 +2101,55 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           FROM evo_daily_registrations r LEFT JOIN evo_member_master mm ON mm.unit=r.unit AND mm.evo_member_id=r.evo_id AND mm.is_current=1
           WHERE r.unit=? AND r.category='client' AND r.register_day BETWEEN ? AND ? ORDER BY r.register_at DESC LIMIT 500`).bind(unit,from,to).all()).results||[];
         const students=rows.map(r=>{const category=r.totalpassId||r.totalpassContract?"totalpass":r.wellhubId||r.wellhubContract?"wellhub":"other";return {id:r.id,name:r.name,registeredAt:r.registeredAt,day:r.day,category,wellhubId:r.wellhubId||null,totalpassId:r.totalpassId||null,contractFound:category==="totalpass"?!!r.totalpassContract:category==="wellhub"?!!r.wellhubContract:null,contractAlert:category==="totalpass"?!!r.totalpassId&&!r.totalpassContract:category==="wellhub"?!!r.wellhubId&&!r.wellhubContract:false}});
-        return json({ok:true,unit,from,to,students,counts:{total:students.length,wellhub:students.filter(x=>x.category==="wellhub").length,totalpass:students.filter(x=>x.category==="totalpass").length,other:students.filter(x=>x.category==="other").length},note:"Cadastro permanece na jornada independentemente do contrato. Disparos ChatPro nao sao executados por esta rota."});
+        const [attendanceQuery,bookingQuery,contractQuery]=await Promise.all([
+          env.DB.prepare("SELECT a.evo_member_id id,a.attendance_date day,a.start_time time,a.activity_name activity FROM evo_member_attendance a WHERE a.unit=? AND a.attendance_date>=? AND a.attendance_date<=date('now','-3 hours') AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=a.unit AND r.evo_id=a.evo_member_id AND r.category='client' AND r.register_day BETWEEN ? AND ?) ORDER BY a.attendance_date,a.start_time").bind(unit,from,from,to).all(),
+          env.DB.prepare("SELECT b.evo_member_id id,b.activity_date day,b.start_time time,b.activity_name activity,b.session_id session FROM checkin_reservation_snapshots b WHERE b.unit=? AND b.removed=0 AND (b.status IS NULL OR lower(b.status) NOT IN ('cancelled','canceled','cancelado','cancelada')) AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=b.unit AND r.evo_id=b.evo_member_id AND r.category='client' AND r.register_day BETWEEN ? AND ?) ORDER BY b.activity_date,b.start_time").bind(unit,from,to).all(),
+          env.DB.prepare("SELECT c.evo_member_id id,c.membership_name name,c.membership_status status,c.start_date startDate,c.end_date endDate,c.cancel_date cancelDate,c.category_id category FROM evo_member_contracts c WHERE c.unit=? AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=c.unit AND r.evo_id=c.evo_member_id AND r.category='client' AND r.register_day BETWEEN ? AND ?)").bind(unit,from,to).all()
+        ]);
+        const byId=(items)=>{const map=new Map();for(const x of items.results||[]){const k=String(x.id);if(!map.has(k))map.set(k,[]);map.get(k).push(x)}return map};
+        const attendanceBy=byId(attendanceQuery),bookingBy=byId(bookingQuery),contractBy=byId(contractQuery);
+        const now=new Date(Date.now()-3*3600000).toISOString().slice(0,10),days=(a,b)=>Math.floor((Date.parse(b+"T12:00:00Z")-Date.parse(a+"T12:00:00Z"))/86400000);
+        const ranking=new Map();
+        for(const st of students){
+          const attend=(attendanceBy.get(String(st.id))||[]).filter(x=>String(x.day)>=st.day);
+          const bookings=(bookingBy.get(String(st.id))||[]).filter(x=>String(x.day)>=st.day);
+          const contracts=(contractBy.get(String(st.id))||[]);
+          const first=attend[0]?.day||null,last=attend[attend.length-1]?.day||null;
+          const future=bookings.filter(x=>String(x.day)>=now);
+          const recent=attend.filter(x=>days(String(x.day),now)<=27);
+          const direct=contracts.filter(c=>!/(wellhub|gympass|total\s*pass)/i.test(String(c.name||""))&&!["4","5"].includes(String(c.category)));
+          const converted=direct.filter(c=>String(c.startDate||"").slice(0,10)>=st.day);
+          const active=contracts.filter(c=>["1","active","ativo"].includes(String(c.status||"").toLowerCase())&&(!c.startDate||String(c.startDate).slice(0,10)<=now)&&(!c.endDate||String(c.endDate).slice(0,10)>=now)&&(!c.cancelDate||String(c.cancelDate).slice(0,10)>now));
+          st.contractFound=st.category==="other"?active.length>0:st.contractFound;
+          st.contractAlert=st.category!=="other"&&!active.some(c=>st.category==="wellhub"?/(wellhub|gympass)/i.test(String(c.name||""))||String(c.category)==="4":/(total\s*pass)/i.test(String(c.name||""))||String(c.category)==="5");
+          st.booking=bookings[0]||null;st.nextBooking=future[0]||null;st.firstAttendance=first;st.lastAttendance=last;st.attendanceCount=attend.length;st.weeklyAverage=Math.round(recent.length/4*10)/10;st.daysSinceAttendance=last?days(last,now):null;st.followupDay=first?Math.max(0,days(first,now)):null;st.retention={day30:first&&days(first,now)>=30?attend.some(a=>days(first,String(a.day))>=23&&days(first,String(a.day))<=37):null,day60:first&&days(first,now)>=60?attend.some(a=>days(first,String(a.day))>=53&&days(first,String(a.day))<=67):null,day90:first&&days(first,now)>=90?attend.some(a=>days(first,String(a.day))>=83&&days(first,String(a.day))<=97):null};
+          st.stage=first?"attendance":bookings.length?"booking":"identified";
+          st.risk=first&&st.daysSinceAttendance>=14?"high":first&&st.daysSinceAttendance>=7?"attention":!first&&days(st.day,now)>=7?"no-first-class":"normal";
+          st.contracts=contracts.map(c=>({name:c.name,startDate:c.startDate,status:c.status,active:active.includes(c)}));
+          st.converted=converted.length>0;st.firstContract=converted[0]?.name||null;
+          if(st.converted)for(const c of converted){const name=String(c.name||"Plano não identificado");ranking.set(name,(ranking.get(name)||0)+1)}
+        }
+        const metrics={identified:students.filter(s=>s.stage==="identified").length,booked:students.filter(s=>s.stage==="booking").length,attended:students.filter(s=>s.stage==="attendance").length,everBooked:students.filter(s=>s.booking).length,everAttended:students.filter(s=>s.firstAttendance).length,converted:students.filter(s=>s.converted).length,activeContracts:students.filter(s=>s.contracts.some(c=>c.active)).length,opportunities:students.filter(s=>s.category==="other"&&!s.converted).length,attention:students.filter(s=>s.risk!=="normal").length,contractRanking:[...ranking.entries()].sort((a,b)=>b[1]-a[1]).map(([name,count])=>({name,count}))};
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_new_student_interventions(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,evo_member_id TEXT NOT NULL,kind TEXT NOT NULL,note TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const logs=(await env.DB.prepare("SELECT evo_member_id id,kind,note,created_at at FROM club_new_student_interventions WHERE unit=? AND evo_member_id IN (SELECT evo_id FROM evo_daily_registrations WHERE unit=? AND category='client' AND register_day BETWEEN ? AND ?) ORDER BY created_at DESC LIMIT 500").bind(unit,unit,from,to).all().catch(()=>({results:[]}))).results||[];
+        const logBy=byId(logs);for(const st of students)st.interventions=logBy.get(String(st.id))||[];
+        return json({ok:true,unit,from,to,students,metrics,counts:{total:students.length,wellhub:students.filter(x=>x.category==="wellhub").length,totalpass:students.filter(x=>x.category==="totalpass").length,other:students.filter(x=>x.category==="other").length},note:"Cadastro permanece na jornada independentemente do contrato. Disparos ChatPro nao sao executados por esta rota."});
       }
 
+      if(url.pathname==="/admin/new-students/interventions"&&request.method==="POST"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),actor=await vr.json().catch(()=>({}));
+        if(!vr.ok||!["admin","reception"].includes(String(actor.role||"")))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||""),id=String(b.id||""),kind=String(b.kind||""),note=String(b.note||"").trim();
+        if(!["bike","gym"].includes(unit)||!/^[0-9]{1,15}$/.test(id)||!["contact","survey","response","followup"].includes(kind)||!note||note.length>1000)return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        if(actor.units?.length&&!actor.units.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        const registered=await env.DB.prepare("SELECT 1 found FROM evo_daily_registrations WHERE unit=? AND evo_id=? AND category='client' LIMIT 1").bind(unit,id).first();
+        if(!registered)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_new_student_interventions(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,evo_member_id TEXT NOT NULL,kind TEXT NOT NULL,note TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        await env.DB.prepare("INSERT INTO club_new_student_interventions(unit,evo_member_id,kind,note) VALUES(?,?,?,?)").bind(unit,id,kind,note).run();
+        return json({ok:true});
+      }
       if (url.pathname === "/internal/evo-current-job" && request.method === "POST") {
         const secret=request.headers.get("x-auto-sync-secret")||"";if(!secret||secret!==String(env.AUTO_SYNC_SECRET||""))return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const result=await currentStudentJob(env,await request.json());return json(result,result.status||200);
