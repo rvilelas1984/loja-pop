@@ -1,4 +1,4 @@
-import { ensureReservationSchema, startReservationSync, processReservationSync, saveReservationSnapshot, reservationTime } from './lib/reservation-sync.mjs';
+import { ensureReservationSchema, startReservationSync, processReservationSync, saveReservationSnapshot, saveProspectReservationSnapshot, reservationTime } from './lib/reservation-sync.mjs';
 import { attachContractSessions } from './lib/session-contracts.mjs';
 import {usefulLinks} from './lib/useful-links-routes.mjs';
 import {adminBikeRanking} from './lib/admin-bike-ranking.mjs';
@@ -2140,6 +2140,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           FROM evo_daily_registrations r LEFT JOIN evo_member_master mm ON mm.unit=r.unit AND mm.evo_member_id=r.evo_id AND mm.is_current=1
           WHERE r.unit=? AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ? ORDER BY CASE WHEN r.category='client' THEN 0 ELSE 1 END,r.register_at DESC LIMIT 500`).bind(unit,from,to).all()).results||[];
         const seen=new Set();const students=rows.filter(r=>{const key=String(r.id);if(seen.has(key))return false;seen.add(key);return true}).map(r=>{const category=r.source==="opportunity"?"opportunity":r.totalpassId||r.totalpassContract?"totalpass":r.wellhubId||r.wellhubContract?"wellhub":"other";return {id:r.id,source:r.source,name:r.name,registeredAt:r.registeredAt,day:r.day,category,wellhubId:r.wellhubId||null,totalpassId:r.totalpassId||null,contractFound:category==="totalpass"?!!r.totalpassContract:category==="wellhub"?!!r.wellhubContract:null,contractAlert:category==="totalpass"?!!r.totalpassId&&!r.totalpassContract:category==="wellhub"?!!r.wellhubId&&!r.wellhubContract:false}});
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_prospect_reservations(unit TEXT NOT NULL,session_id TEXT NOT NULL,prospect_id TEXT NOT NULL,activity_date TEXT NOT NULL,start_time TEXT NOT NULL,activity_name TEXT,member_name TEXT,status TEXT,updated_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,session_id,prospect_id))").run();
         const [attendanceQuery,bookingQuery,contractQuery]=await Promise.all([
           env.DB.prepare("SELECT a.evo_member_id id,a.attendance_date day,a.start_time time,a.activity_name activity FROM evo_member_attendance a WHERE a.unit=? AND a.attendance_date>=? AND a.attendance_date<=date('now','-3 hours') AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=a.unit AND r.evo_id=a.evo_member_id AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ?) ORDER BY a.attendance_date,a.start_time").bind(unit,from,from,to).all(),
           env.DB.prepare("SELECT b.evo_member_id id,b.activity_date day,b.start_time time,b.activity_name activity,b.session_id session FROM checkin_reservation_snapshots b WHERE b.unit=? AND b.removed=0 AND (b.status IS NULL OR lower(b.status) NOT IN ('cancelled','canceled','cancelado','cancelada')) AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=b.unit AND r.evo_id=b.evo_member_id AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ?) ORDER BY b.activity_date,b.start_time").bind(unit,from,to).all(),
@@ -2147,11 +2148,13 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         ]);
         const byId=(items)=>{const map=new Map();for(const x of items.results||[]){const k=String(x.id);if(!map.has(k))map.set(k,[]);map.get(k).push(x)}return map};
         const attendanceBy=byId(attendanceQuery),bookingBy=byId(bookingQuery),contractBy=byId(contractQuery);
+        const prospectBookings=(await env.DB.prepare("SELECT p.prospect_id id,p.activity_date day,p.start_time time,p.activity_name activity,p.session_id session FROM evo_prospect_reservations p WHERE p.unit=? AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=p.unit AND r.category='opportunity' AND r.evo_id=p.prospect_id AND r.register_day BETWEEN ? AND ?) ORDER BY p.activity_date,p.start_time").bind(unit,from,to).all()).results||[];
+        const prospectBookingBy=byId({results:prospectBookings});
         const now=new Date(Date.now()-3*3600000).toISOString().slice(0,10),days=(a,b)=>Math.floor((Date.parse(b+"T12:00:00Z")-Date.parse(a+"T12:00:00Z"))/86400000);
         const ranking=new Map();
         for(const st of students){
           const attend=(attendanceBy.get(String(st.id))||[]).filter(x=>String(x.day)>=st.day);
-          const bookings=(bookingBy.get(String(st.id))||[]).filter(x=>String(x.day)>=st.day);
+          const bookings=[...(bookingBy.get(String(st.id))||[]),...(st.category==="opportunity"?(prospectBookingBy.get(String(st.id))||[]):[])].filter(x=>String(x.day)>=st.day).sort((a,b)=>String(a.day).localeCompare(String(b.day))||String(a.time).localeCompare(String(b.time)));
           const contracts=(contractBy.get(String(st.id))||[]);
           const first=attend[0]?.day||null,last=attend[attend.length-1]?.day||null;
           const future=bookings.filter(x=>String(x.day)>=now);
@@ -3592,7 +3595,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         try{
           await ensureReservationSchema(env.DB);
           time=reservationTime(session?.startTime);
-          snapshot=await saveReservationSnapshot(env.DB,{unit,sessionId:sid,date,time,name:session?.name,rows,observedAt:body.observedAt||Date.now()});
+          const observedAt=body.observedAt||Date.now();snapshot=await saveReservationSnapshot(env.DB,{unit,sessionId:sid,date,time,name:session?.name,rows,observedAt});if(!snapshot.superseded)await saveProspectReservationSnapshot(env.DB,{unit,sessionId:sid,date,time,name:session?.name,rows,observedAt});
         }catch(error){return json({ok:false,error:String(error.message||error)},422)}
         // O Check-in já consultou a EVO: reaproveitar o professor confirmado,
         // sem nova requisição e sem alterar aulas concluídas.
