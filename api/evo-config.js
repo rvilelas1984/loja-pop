@@ -472,7 +472,7 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   try{
    for(let skip=0;skip<500;skip+=50){
     const url="https://evo-integracao-api.w12app.com.br/api/v1/prospects?registerDateStart="+day+"&registerDateEnd="+day+"&take=50&skip="+skip;
-    const rr=await evo.fetch(url);requests++;if(!rr.ok)throw Error("EVO_HTTP_"+rr.status);
+    const rr=await evo.fetch(url);requests++;if(!rr.ok){const diagnostic=(await rr.text().catch(()=>"")).slice(0,500);throw Error("EVO_HTTP_"+rr.status+(diagnostic?" · "+diagnostic:""));}
     const payload=await rr.json(),rows=Array.isArray(payload)?payload:Array.isArray(payload?.data)?payload.data:Array.isArray(payload?.items)?payload.items:null;
     if(!rows)throw Error("FORMATO_EVO_INVALIDO");all.push(...rows);if(rows.length<50)break;
    }
