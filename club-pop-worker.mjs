@@ -121,6 +121,35 @@ async function claimStudentDispatch(env,b,phone,flow,enabledUnits){
  return {finish:async status=>env.DB.prepare("UPDATE student_management_dispatches SET status=?,updated_at=CURRENT_TIMESTAMP WHERE batch_id=? AND phone=?").bind(status,batch,phone).run()};
 }
 
+async function resolveChatproSubscriber(call,phone,options={}){
+ let sub;
+ try{sub=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/")}
+ catch(e){if(e.status!==404)throw Object.assign(new Error("CONSULTA_CONTATO: "+e.message),{status:e.status});}
+ if(sub?.id)return {id:String(sub.id),created:false};
+ if(options.allowCreate!==true)throw new Error("CONTATO_NAO_CADASTRADO_NO_CHATPRO");
+ if(options.hasOptIn!==true)throw new Error("AUTORIZACAO_WHATSAPP_NECESSARIA_PARA_CADASTRO");
+ const parts=String(options.name||"").trim().split(/\s+/).filter(Boolean);
+ if(!parts.length)throw new Error("NOME_NECESSARIO_PARA_CADASTRO");
+ let created=true;
+ try{await call("/subscriber/","POST",{phone,first_name:parts[0].slice(0,255),last_name:parts.slice(1).join(" ").slice(0,255),has_opt_in_whatsapp:true});}
+ catch(e){if(e.status!==401)throw new Error("CADASTRO_CONTATO: "+e.message);created=false;}
+ // The create response does not guarantee an ID; look up the exact phone again.
+ try{sub=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/")}
+ catch(e){throw new Error("CONFIRMACAO_CADASTRO: "+e.message);}
+ if(!sub?.id)throw new Error("CADASTRO_SEM_ID_CONFIRMADO");
+ return {id:String(sub.id),created};
+}
+async function recordJourneyChatproContact(env,b,flow){
+ if(b.journey!==true)return {contactRecorded:false};
+ const marker="[CHATPRO:"+b.batchId+":"+String(b.studentId)+"]";
+ const note=marker+" WhatsApp · Fluxo "+flow+" · Aceito pelo ChatPro (entrega não confirmada)"+(b.hasOptIn===true?" · Autorização WhatsApp confirmada pelo administrador":"");
+ try{
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_new_student_interventions(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,evo_member_id TEXT NOT NULL,kind TEXT NOT NULL,note TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+ await env.DB.prepare("INSERT INTO club_new_student_interventions(unit,evo_member_id,kind,note) SELECT ?,?,'contact',? WHERE NOT EXISTS(SELECT 1 FROM club_new_student_interventions WHERE unit=? AND evo_member_id=? AND note=?)").bind(b.unit,String(b.studentId),note,b.unit,String(b.studentId),note).run();
+ const row=await env.DB.prepare("SELECT created_at FROM club_new_student_interventions WHERE unit=? AND evo_member_id=? AND note=? ORDER BY id DESC LIMIT 1").bind(b.unit,String(b.studentId),note).first();
+ return {contactRecorded:true,contactAt:row?.created_at||null};
+ }catch{return {contactRecorded:false,contactWarning:"ENVIO_ACEITO_MAS_HISTORICO_NAO_REGISTRADO"};}
+}
 async function chatproAdminConfig(request,env,url,json){
  const respond=(data,status=200)=>json(data,status);
  const ck=request.headers.get("x-clubpop-admin-cookie")||"";
@@ -234,23 +263,26 @@ async function chatproAdminConfig(request,env,url,json){
   const call=async(path,method="GET",payload)=>{
    const r=await fetch(base+path,{method,redirect:"manual",headers:{"API-KEY":apiKey,"Accept":"application/json","Content-Type":"application/json"},body:payload===undefined?undefined:JSON.stringify(payload),signal:AbortSignal.timeout(10000)});
    if(r.status>=300&&r.status<400)throw new Error("REDIRECIONAMENTO_BLOQUEADO");
-   if(!r.ok)throw new Error("CHATPRO_HTTP_"+r.status);
+   if(!r.ok)throw Object.assign(new Error("CHATPRO_HTTP_"+r.status),{status:r.status});
    return await r.json();
   };
+  if(action==="send"&&b.journey===true&&(b.source!=="student-management"||!/^\d+$/.test(String(b.studentId||""))))return respond({ok:false,error:"ALUNO_DA_JORNADA_INVALIDO"},400);
   let dispatch;
   if(action==="send"&&b.source==="student-management"){
    dispatch=await claimStudentDispatch(env,b,phone,flow,enabledUnits);
    if(dispatch.error)return respond({ok:false,error:dispatch.error},dispatch.status);
-   if(dispatch.duplicate)return respond({ok:true,duplicate:true,flow});
+   if(dispatch.duplicate)return respond({ok:true,duplicate:true,flow,...await recordJourneyChatproContact(env,b,flow)});
   }
   try{
    if(action==="flows"){const flows=await call("/flows/");return respond({ok:true,flows})}
    if(action==="find"){const subscriber=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/");return respond({ok:true,subscriber})}
-   if(!sid){const sub=await call("/subscriber/get_by_phone/"+encodeURIComponent(phone)+"/");sid=String(sub.id||"")}
-   if(!sid){if(dispatch)await dispatch.finish("review");return respond({ok:false,error:"CONTATO_NAO_ENCONTRADO"},404)}
-   const result=await call("/subscriber/"+encodeURIComponent(sid)+"/send_flow/","POST",{flow});
-   if(dispatch)await dispatch.finish("accepted");
-   return respond({ok:true,subscriber_id:sid,flow,result});
+   let contactCreated=false;
+   if(!sid){const sub=await resolveChatproSubscriber(call,phone,{allowCreate:b.journey===true,hasOptIn:b.hasOptIn,name:b.studentName});sid=sub.id;contactCreated=sub.created;}
+   let result;try{result=await call("/subscriber/"+encodeURIComponent(sid)+"/send_flow/","POST",{flow});}catch(e){throw new Error("ENVIO_FLUXO: "+e.message);}
+   // Never turn a successful provider response into a retryable send failure.
+   let dispatchWarning;try{if(dispatch)await dispatch.finish("accepted");}catch{dispatchWarning="ENVIO_ACEITO_REGISTRO_DO_LOTE_PENDENTE";}
+   const contact=await recordJourneyChatproContact(env,b,flow);
+   return respond({ok:true,subscriber_id:sid,flow,result,contactCreated,dispatchWarning,...contact});
   }catch(e){if(dispatch)await dispatch.finish("review").catch(()=>{});return respond({ok:false,error:e.message||"CHATPRO_INDISPONIVEL"},502)}
  }
  if(request.method==="POST"&&action==="test"){
@@ -5220,3 +5252,4 @@ async function checkoutServiceVoucher(env,order,create){
   return {ok:true,status:"review_required",message:"Emissão requer conferência; nenhuma nova tentativa automática"};
  }
 }
+
