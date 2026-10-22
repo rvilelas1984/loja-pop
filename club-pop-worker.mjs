@@ -2153,7 +2153,24 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           }
         }
         const memberPhone=new Map();
-        const extractPhone=(...sources)=>{for(const source of sources){let v=source;if(typeof v==='string'&&v.trim().startsWith('{')){try{v=JSON.parse(v)}catch{}}if(!v||typeof v!=='object')continue;const candidates=[v.cellPhone,v.cellphone,v.mobile,v.mobilePhone,v.phone,v.phoneNumber,v.telephone,v.whatsapp,v.whatsApp,v.celular,v.telefone,v.phone1,v.phone2,v.contactPhone,v.contacts?.cellPhone,v.contacts?.mobile,v.contacts?.phone];for(const c of candidates){const raw=typeof c==='object'?(c?.number||c?.value):c;const digits=String(raw||'').replace(/\D/g,'');if(digits.length>=10&&digits.length<=13)return String(raw).trim()}}return null};
+        const extractPhone=(...sources)=>{
+          const valid=value=>{const digits=String(value||'').replace(/\D/g,'');return digits.length>=10&&digits.length<=13?String(value).trim():null};
+          for(const source of sources){
+            let v=source;
+            if(typeof v==='string'&&/^[\s]*[\[{]/.test(v)){try{v=JSON.parse(v)}catch{}}
+            if(!v||typeof v!=='object')continue;
+            const contacts=Array.isArray(v)?v:Array.isArray(v.contacts)?v.contacts:Array.isArray(v.phones)?v.phones:[];
+            for(const c of contacts){
+              const kind=String(c.contactType||c.type||'').toLowerCase();
+              if(/e-mail|email|mail/.test(kind))continue;
+              const phone=valid(c.description||c.number||c.value||c.phone);
+              if(phone&&(/cell|mobile|celular|whats|phone|telefone|fone/.test(kind)||Number(c.idContactType)===2))return phone;
+            }
+            const candidates=[v.cellPhone,v.cellphone,v.mobile,v.mobilePhone,v.phone,v.phoneNumber,v.telephone,v.whatsapp,v.whatsApp,v.celular,v.telefone,v.phone1,v.phone2,v.contactPhone,v.contacts?.cellPhone,v.contacts?.mobile,v.contacts?.phone];
+            for(const c of candidates){const phone=valid(typeof c==='object'?(c?.number||c?.value):c);if(phone)return phone}
+          }
+          return null
+        };
         for(const m of memberLookup){let p={},c={};try{p=JSON.parse(m.details||'{}')}catch{}try{c=JSON.parse(m.contacts||'{}')}catch{}const phone=extractPhone(c,p);if(phone)memberPhone.set(String(m.id),phone)}
         const linkedMembers=new Map();
         for(const candidate of rows.filter(x=>x.source==="opportunity")){
