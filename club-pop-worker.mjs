@@ -469,6 +469,14 @@ async function runScheduledCatalogSync(env){
 }
 async function runScheduledStudentSync(env) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
+  // Reconcile orphaned scheduled runs without calling EVO. An interrupted Worker can
+  // leave a run pending even if the Vercel endpoint completed successfully.
+  const orphaned=(await env.DB.prepare("SELECT unit,scheduled_minute,updated_at FROM evo_sync_schedule_runs WHERE kind='student' AND status='pending' AND updated_at<datetime('now','-30 minutes') LIMIT 40").all()).results||[];
+  for(const job of orphaned){
+    const state=await env.DB.prepare("SELECT last_sync_at,last_sync_status,last_sync_requests FROM evo_sync_config WHERE unit=?").bind(job.unit).first();
+    const completed=state?.last_sync_at&&Date.parse(String(state.last_sync_at).replace(' ','T')+'Z')>=Date.parse(String(job.updated_at).replace(' ','T')+'Z')&&String(state.last_sync_status||'').toLowerCase()==='ok';
+    await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status=?,detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='student' AND scheduled_minute=? AND status='pending'").bind(completed?'done':'failed',JSON.stringify(completed?{recoveredFromSyncState:true,requests:Number(state.last_sync_requests||0),note:'Concluída segundo estado de sincronização; execução original interrompida'}:{error:'EXECUCAO_INTERROMPIDA_SEM_CONFIRMACAO',note:'Worker não registrou conclusão; não foram feitas novas chamadas EVO'}),job.unit,job.scheduled_minute).run();
+  }
   const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
   const hm=get("hour")+":"+get("minute"), minuteKey=get("year")+"-"+get("month")+"-"+get("day")+"T"+hm;
   const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='student'").all()).results||[];const weekdays=await loadScheduledWeekdays(env.DB,"student");
