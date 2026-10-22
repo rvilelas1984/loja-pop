@@ -2140,7 +2140,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           FROM evo_daily_registrations r LEFT JOIN evo_member_master mm ON mm.unit=r.unit AND mm.evo_member_id=r.evo_id AND mm.is_current=1
           WHERE r.unit=? AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ? ORDER BY CASE WHEN r.category='client' THEN 0 ELSE 1 END,r.register_at DESC LIMIT 500`).bind(unit,from,to).all()).results||[];
         const normalizeIdentity=v=>String(v||"").trim().toLowerCase();
-        const memberLookup=(await env.DB.prepare("SELECT evo_member_id id,personal_json details FROM evo_member_master WHERE unit=? AND is_current=1").bind(unit).all()).results||[];
+        const memberLookup=(await env.DB.prepare("SELECT evo_member_id id,personal_json details,contacts_json contacts FROM evo_member_master WHERE unit=? AND is_current=1").bind(unit).all()).results||[];
         const memberByDocument=new Map(),memberByEmail=new Map();
         for(const member of memberLookup){
           let details={};try{details=JSON.parse(member.details||"{}")}catch{}
@@ -2152,6 +2152,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             map.get(key).push(String(member.id));
           }
         }
+        const memberPhone=new Map();
+        const extractPhone=(...sources)=>{for(const source of sources){let v=source;if(typeof v==='string'&&v.trim().startsWith('{')){try{v=JSON.parse(v)}catch{}}if(!v||typeof v!=='object')continue;const candidates=[v.cellPhone,v.cellphone,v.mobile,v.mobilePhone,v.phone,v.phoneNumber,v.telephone,v.whatsapp,v.whatsApp,v.celular,v.telefone,v.phone1,v.phone2,v.contactPhone,v.contacts?.cellPhone,v.contacts?.mobile,v.contacts?.phone];for(const c of candidates){const raw=typeof c==='object'?(c?.number||c?.value):c;const digits=String(raw||'').replace(/\D/g,'');if(digits.length>=10&&digits.length<=13)return String(raw).trim()}}return null};
+        for(const m of memberLookup){let p={},c={};try{p=JSON.parse(m.details||'{}')}catch{}try{c=JSON.parse(m.contacts||'{}')}catch{}const phone=extractPhone(c,p);if(phone)memberPhone.set(String(m.id),phone)}
         const linkedMembers=new Map();
         for(const candidate of rows.filter(x=>x.source==="opportunity")){
           const record=await env.DB.prepare("SELECT payload_json FROM evo_daily_registrations WHERE unit=? AND category='opportunity' AND evo_id=?").bind(unit,String(candidate.id)).first();
@@ -2183,6 +2186,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const bookings=[...(bookingBy.get(String(st.id))||[]),...(st.category==="opportunity"?(prospectBookingBy.get(String(st.id))||[]):[])].filter(x=>String(x.day)>=st.day).sort((a,b)=>String(a.day).localeCompare(String(b.day))||String(a.time).localeCompare(String(b.time)));
           const extraContracts=linkedId?(await env.DB.prepare("SELECT membership_name name,membership_status status,start_date startDate,end_date endDate,cancel_date cancelDate,category_id category FROM evo_member_contracts WHERE unit=? AND evo_member_id=?").bind(unit,linkedId).all()).results||[]:[];
           const contracts=[...(contractBy.get(String(st.id))||[]),...extraContracts];
+          let registrationPayload={};try{const rr=await env.DB.prepare("SELECT payload_json FROM evo_daily_registrations WHERE unit=? AND evo_id=? AND category=? ORDER BY register_at DESC LIMIT 1").bind(unit,String(st.id),st.category==='opportunity'?'opportunity':'client').first();registrationPayload=JSON.parse(rr?.payload_json||'{}')}catch{}
+          st.phone=memberPhone.get(String(st.id))|| (linkedId?memberPhone.get(String(linkedId)):null)||extractPhone(registrationPayload);
           st.convertedMemberId=linkedId||null;
           const first=attend[0]?.day||null,last=attend[attend.length-1]?.day||null;
           const future=bookings.filter(x=>String(x.day)>=now);
