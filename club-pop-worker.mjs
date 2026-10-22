@@ -2091,16 +2091,17 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase();
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
         const day=String(url.searchParams.get("day")||"");
-        if(day&&!/^\d{4}-\d{2}-\d{2}$/.test(day))return json({ok:false,error:"DATA_INVALIDA"},400);
+        const from=String(url.searchParams.get("from")||day),to=String(url.searchParams.get("to")||day);
+        if(!from||!to||!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to||Math.round((Date.parse(to)-Date.parse(from))/86400000)>366)return json({ok:false,error:"PERIODO_INVALIDO"},400);
         const rows=(await env.DB.prepare(`SELECT r.category source,r.evo_id id,r.register_day day,r.register_at registeredAt,r.display_name name,
           COALESCE(NULLIF(json_extract(r.payload_json,'$.gympassId'),''),NULLIF(json_extract(mm.integrations_json,'$.gympassId'),'')) wellhubId,
           COALESCE(NULLIF(json_extract(r.payload_json,'$.codeTotalpass'),''),NULLIF(json_extract(mm.integrations_json,'$.codeTotalpass'),'')) totalpassId,
           EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=r.unit AND c.evo_member_id=r.evo_id AND (c.category_id='4' OR upper(c.membership_name) LIKE '%WELLHUB%' OR upper(c.membership_name) LIKE '%GYMPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) wellhubContract,
           EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=r.unit AND c.evo_member_id=r.evo_id AND (c.category_id='5' OR upper(c.membership_name) LIKE '%TOTALPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) totalpassContract
           FROM evo_daily_registrations r LEFT JOIN evo_member_master mm ON mm.unit=r.unit AND mm.evo_member_id=r.evo_id AND mm.is_current=1
-          WHERE r.unit=? AND r.category='client' AND (?='' OR r.register_day=?) ORDER BY r.register_at DESC LIMIT 500`).bind(unit,day,day).all()).results||[];
+          WHERE r.unit=? AND r.category='client' AND r.register_day BETWEEN ? AND ? ORDER BY r.register_at DESC LIMIT 500`).bind(unit,from,to).all()).results||[];
         const students=rows.map(r=>{const category=r.totalpassId||r.totalpassContract?"totalpass":r.wellhubId||r.wellhubContract?"wellhub":"other";return {id:r.id,name:r.name,registeredAt:r.registeredAt,day:r.day,category,wellhubId:r.wellhubId||null,totalpassId:r.totalpassId||null,contractFound:category==="totalpass"?!!r.totalpassContract:category==="wellhub"?!!r.wellhubContract:null,contractAlert:category==="totalpass"?!!r.totalpassId&&!r.totalpassContract:category==="wellhub"?!!r.wellhubId&&!r.wellhubContract:false}});
-        return json({ok:true,unit,day:day||null,students,counts:{total:students.length,wellhub:students.filter(x=>x.category==="wellhub").length,totalpass:students.filter(x=>x.category==="totalpass").length,other:students.filter(x=>x.category==="other").length},note:"Cadastro permanece na jornada independentemente do contrato. Disparos ChatPro nao sao executados por esta rota."});
+        return json({ok:true,unit,from,to,students,counts:{total:students.length,wellhub:students.filter(x=>x.category==="wellhub").length,totalpass:students.filter(x=>x.category==="totalpass").length,other:students.filter(x=>x.category==="other").length},note:"Cadastro permanece na jornada independentemente do contrato. Disparos ChatPro nao sao executados por esta rota."});
       }
 
       if (url.pathname === "/internal/evo-current-job" && request.method === "POST") {
