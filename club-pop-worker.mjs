@@ -356,7 +356,7 @@ async function runScheduledContractSync(env){
     const unit=row.unit==="gym"?"gym":"bike";
     if(!scheduledDaysAllowed(days.get(unit)||[1,2,3,4,5,6],now))continue;
     let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}
-    const due=manualUnit?'manual-'+now.toISOString():dueScheduledMinute(times,now);if(!due)continue;
+    const due=dueScheduledMinute(times,now);if(!due)continue;
     const claim=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'contract',?,'pending')").bind(unit,due).run();
     if(!claim.meta?.changes)continue;
     let requests=0,skip=0,saved=0;
