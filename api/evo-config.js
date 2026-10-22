@@ -466,8 +466,8 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=req.query.unit==="gym"?"gym":"bike",cookie=String(req.headers.cookie||"");
   if(!cookie)return res.status(401).json({ok:false,error:"NAO_AUTORIZADO"});
-  const auth=await fetch((process.env.VERCEL_URL?"https://"+process.env.VERCEL_URL:"https://loja-pop-green.vercel.app")+"/api/admin-auth?route=me",{headers:{Cookie:cookie}});
-  const user=await auth.json().catch(()=>({}));if(!auth.ok||user.role!=="admin")return res.status(403).json({ok:false,error:"ACESSO_NEGADO"});
+  const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie,Accept:"application/json"}});
+  const user=await auth.json().catch(()=>({}));if(!auth.ok||user.role!=="admin")return res.status(403).json({ok:false,error:"ACESSO_NEGADO",authStatus:auth.status});
   const day=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Sao_Paulo"}).format(new Date()),evo=getEvoTransport(unit);let requests=0,all=[];
   try{
    for(let skip=0;skip<500;skip+=50){
