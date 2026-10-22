@@ -479,14 +479,18 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   if(!secret)return res.status(503).json({ok:false,error:"AUTO_SYNC_SECRET_AUSENTE"});
   let requests=0,found=0,inserted=0;const days=[],byDay=new Map();
   try{
-   let all=[],complete=false;const take=600;
-   for(let skip=0;skip<60000;skip+=take){
-    const url="https://evo-integracao-api.w12app.com.br"+endpoint+"?registerDateStart="+from+"&registerDateEnd="+to+"&take="+take+"&skip="+skip;
+   let all=[],complete=false,take=600,skip=0;
+   while(skip<60000){
+    const url="https://evo-integracao-api.w12app.com.br"+endpoint+"?registerDateStart="+encodeURIComponent(from)+"&registerDateEnd="+encodeURIComponent(to)+"&take="+take+"&skip="+skip;
     const rr=await evo.fetch(url);requests++;
-    if(!rr.ok)throw Error("EVO_HTTP_"+rr.status);
+    if(rr.status===400&&take>50){
+     const smaller=take===600?500:take===500?250:take===250?100:50;
+     take=smaller;continue;
+    }
+    if(!rr.ok){const diagnostic=(await rr.text().catch(()=>"")).slice(0,240);throw Error("EVO_HTTP_"+rr.status+(diagnostic?" · "+diagnostic:""));}
     const payload=await rr.json(),rows=Array.isArray(payload)?payload:Array.isArray(payload?.data)?payload.data:Array.isArray(payload?.items)?payload.items:null;
     if(!rows||rows.length>take)throw Error("FORMATO_EVO_INVALIDO");
-    all.push(...rows);if(rows.length<take){complete=true;break;}
+    all.push(...rows);skip+=rows.length;if(rows.length<take){complete=true;break;}
    }
    if(!complete)throw Error("LIMITE_PAGINACAO");
    for(const row of all){
