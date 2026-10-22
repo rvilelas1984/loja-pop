@@ -2064,6 +2064,23 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({ok:true,saved:true,nextSkip:Number(x.nextSkip||0),contracts:Number(x.contracts||0),vipCount:ids.length});
       }
 
+      // Additive daily registration snapshot: independent from the active student mirror.
+      if (url.pathname === "/internal/evo-daily-registrations" && request.method === "POST") {
+        const secret=request.headers.get("x-auto-sync-secret")||"";
+        if(!secret||secret!==String(env.AUTO_SYNC_SECRET||""))return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const body=await request.json().catch(()=>({}));
+        if(body.unit!=="bike"||!["client","opportunity"].includes(body.category)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(body.day||"")||!Array.isArray(body.rows)||body.rows.length>100)return json({ok:false,error:"PARAMETROS_INVALIDOS"},422);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_daily_registrations (unit TEXT NOT NULL, category TEXT NOT NULL, evo_id TEXT NOT NULL, register_day TEXT NOT NULL, register_at TEXT, display_name TEXT, payload_json TEXT NOT NULL, first_seen_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(unit,category,evo_id))").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_daily_registration_runs (id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,day TEXT NOT NULL,category TEXT NOT NULL,found INTEGER NOT NULL,inserted INTEGER NOT NULL,requests INTEGER NOT NULL,status TEXT NOT NULL,error TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)").run();
+        const clean=body.rows.map(m=>{const id=String(m?.idMember??m?.idProspect??m?.id??"");const date=String(m?.registerDate??m?.registrationDate??m?.createdAt??m?.createDate??"");return {id,date,name:[m?.firstName??m?.name??"",m?.lastName??""].filter(Boolean).join(" ").slice(0,200),raw:m}}).filter(m=>/^\\d+$/.test(m.id)&&m.date.slice(0,10)===body.day);
+        let inserted=0;
+        for(const m of clean){const prior=await env.DB.prepare("SELECT 1 FROM evo_daily_registrations WHERE unit=? AND category=? AND evo_id=?").bind(body.unit,body.category,m.id).first();if(!prior)inserted++;
+          await env.DB.prepare("INSERT INTO evo_daily_registrations(unit,category,evo_id,register_day,register_at,display_name,payload_json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(unit,category,evo_id) DO UPDATE SET register_day=excluded.register_day,register_at=excluded.register_at,display_name=excluded.display_name,payload_json=excluded.payload_json,updated_at=CURRENT_TIMESTAMP").bind(body.unit,body.category,m.id,body.day,m.date,m.name,JSON.stringify(m.raw)).run();
+        }
+        await env.DB.prepare("INSERT INTO evo_daily_registration_runs(unit,day,category,found,inserted,requests,status) VALUES(?,?,?,?,?,?,'ok')").bind(body.unit,body.day,body.category,clean.length,inserted,Number(body.requests||0)).run();
+        return json({ok:true,unit:body.unit,category:body.category,day:body.day,found:clean.length,inserted,requests:Number(body.requests||0)});
+      }
+
       if (url.pathname === "/internal/evo-current-job" && request.method === "POST") {
         const secret=request.headers.get("x-auto-sync-secret")||"";if(!secret||secret!==String(env.AUTO_SYNC_SECRET||""))return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const result=await currentStudentJob(env,await request.json());return json(result,result.status||200);
