@@ -1935,7 +1935,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const body=await request.json().catch(()=>({})),unit=body.unit;
         if(!['bike','gym'].includes(unit))return json({ok:false,error:'UNIDADE_INVALIDA'},400);
         const result=await startReservationSync(env.DB,unit,'manual-'+new Date().toISOString()+'-'+crypto.randomUUID(),true);
-        ctx.waitUntil(processReservationSync(env,unit,getEvoConfig,1));
+        ctx.waitUntil(processReservationSync(env,unit,getEvoConfig,12));
         return json(result,202);
       }
 
