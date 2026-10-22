@@ -482,10 +482,13 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
      all.push(...rows);
      if(rows.length<take)break;
     }
-    const wr=await fetch(WORKER+"/internal/evo-daily-registrations",{method:"POST",headers:{"Content-Type":"application/json","x-auto-sync-secret":secret},body:JSON.stringify({unit:"bike",category,day,rows:all,requests})});
-    const saved=await wr.json().catch(()=>({}));
-    if(!wr.ok||!saved.ok)throw Error(saved.error||"FALHA_D1");
-    results.stages[category]=saved;
+    for(let offset=0;offset<Math.max(all.length,1);offset+=100){
+     const wr=await fetch(WORKER+"/internal/evo-daily-registrations",{method:"POST",headers:{"Content-Type":"application/json","x-auto-sync-secret":secret},body:JSON.stringify({unit:"bike",category,day,rows:all.slice(offset,offset+100),requests:offset===0?requests:0})});
+     const saved=await wr.json().catch(()=>({}));
+     if(!wr.ok||!saved.ok)throw Error(saved.error||"FALHA_D1");
+     const prev=results.stages[category]||{found:0,inserted:0,requests:0};
+     results.stages[category]={...saved,found:Number(prev.found||0)+Number(saved.found||0),inserted:Number(prev.inserted||0)+Number(saved.inserted||0),requests:Number(prev.requests||0)+Number(saved.requests||0)};
+    }
    }catch(e){results.ok=false;results.stages[category]={ok:false,error:String(e.message||e),requests};}
   }
   return res.status(results.ok?200:207).json(results);
