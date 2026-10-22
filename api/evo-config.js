@@ -461,6 +461,35 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
    return res.json({...wd,requests:1,batch:rows.length,nextSkip:skip+rows.length,done:rows.length===0});
   }catch(e){return res.status(502).json({ok:false,error:e.message||"FALHA_SYNC_CONTRATOS"})}
  }
+ if(req.query.route==="bike-daily-registrations"){
+  res.setHeader("Cache-Control","no-store");
+  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const secret=String(req.headers["x-auto-sync-secret"]||"");
+  if(!secret||secret!==String(process.env.AUTO_SYNC_SECRET||""))return res.status(401).json({ok:false,error:"NAO_AUTORIZADO"});
+  const day=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  const evo=getEvoTransport("bike"),results={ok:true,unit:"bike",day,stages:{}};
+  for(const [category,endpoint] of [["client","/api/v2/members"],["opportunity","/api/v1/prospects"]]){
+   let requests=0;
+   try{
+    let all=[],take=50;
+    for(let skip=0;skip<500;skip+=take){
+     const url="https://evo-integracao-api.w12app.com.br"+endpoint+"?registerDateStart="+day+"&registerDateEnd="+day+"&take="+take+"&skip="+skip;
+     const rr=await evo.fetch(url);requests++;
+     if(!rr.ok)throw Error("EVO_HTTP_"+rr.status);
+     const payload=await rr.json();
+     const rows=Array.isArray(payload)?payload:Array.isArray(payload?.data)?payload.data:Array.isArray(payload?.items)?payload.items:null;
+     if(!rows)throw Error("FORMATO_EVO_INVALIDO");
+     all.push(...rows);
+     if(rows.length<take)break;
+    }
+    const wr=await fetch(WORKER+"/internal/evo-daily-registrations",{method:"POST",headers:{"Content-Type":"application/json","x-auto-sync-secret":secret},body:JSON.stringify({unit:"bike",category,day,rows:all,requests})});
+    const saved=await wr.json().catch(()=>({}));
+    if(!wr.ok||!saved.ok)throw Error(saved.error||"FALHA_D1");
+    results.stages[category]=saved;
+   }catch(e){results.ok=false;results.stages[category]={ok:false,error:String(e.message||e),requests};}
+  }
+  return res.status(results.ok?200:207).json(results);
+ }
  if(req.query.route==="auto-sync-students"){
   res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false});const secret=String(req.headers["x-auto-sync-secret"]||"");if(!secret||secret!==String(process.env.AUTO_SYNC_SECRET||""))return res.status(401).json({ok:false,error:"NAO_AUTORIZADO"});const unit=String(req.query.unit||"bike").toLowerCase();if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
   const job=async data=>{const r=await fetch(WORKER+"/internal/evo-current-job",{method:"POST",headers:{"Content-Type":"application/json","x-auto-sync-secret":secret},body:JSON.stringify({unit,...data})}),d=await r.json().catch(()=>({}));if(!r.ok||!d.ok){const e=new Error(d.error||"FALHA_ESPELHO");e.httpStatus=r.status;throw e}return d};let runId="",requests=0;
