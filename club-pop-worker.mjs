@@ -343,6 +343,7 @@ function dueScheduledMinute(times, now, timeZone="America/Sao_Paulo") {
 
 // Shared weekday rule for current and future scheduled tasks (0=Sunday, 6=Saturday).
 // No saved weekday row defaults to Monday-Saturday; no EVO request is made on skipped days.
+async function dueScheduledCombination(db,kind,unit,times,now){const row=await db.prepare("SELECT times_json FROM evo_sync_schedules WHERE unit=? AND kind=?").bind(unit,kind+"_combinations").first();if(!row)return dueScheduledMinute(times,now);let groups=[];try{groups=JSON.parse(row.times_json||"[]")}catch{return null}const day=scheduledWeekday(now);return dueScheduledMinute([...new Set(groups.filter(g=>Array.isArray(g.days)&&g.days.includes(day)).flatMap(g=>Array.isArray(g.times)?g.times:[]))].sort(),now)}
 function scheduledWeekday(now=new Date()){const weekday=new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",weekday:"short"}).format(now);return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(weekday)}
 function scheduledDaysAllowed(days,now=new Date()){return Array.isArray(days)&&days.includes(scheduledWeekday(now))}
 async function loadScheduledWeekdays(db,kind){const rows=(await db.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind=?").bind(kind+"_days").all()).results||[];const out=new Map();for(const r of rows){try{const days=JSON.parse(r.times_json);out.set(r.unit,Array.isArray(days)?days:[1,2,3,4,5,6])}catch{out.set(r.unit,[1,2,3,4,5,6])}}return out}
@@ -356,7 +357,7 @@ async function runScheduledContractSync(env){
     const unit=row.unit==="gym"?"gym":"bike";
     if(!scheduledDaysAllowed(days.get(unit)||[1,2,3,4,5,6],now))continue;
     let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}
-    const due=dueScheduledMinute(times,now);if(!due)continue;
+    const due=await dueScheduledCombination(env.DB,"contract",unit,times,now);if(!due)continue;
     const claim=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'contract',?,'pending')").bind(unit,due).run();
     if(!claim.meta?.changes)continue;
     let requests=0,skip=0,saved=0;
@@ -420,7 +421,7 @@ async function runScheduledCatalogSync(env){
    const unit=row.unit==="gym"?"gym":"bike";
    if(!scheduledDaysAllowed(days.get(unit)||[1,2,3,4,5,6],now))continue;
    let times=[];try{times=JSON.parse(row.times_json)}catch{}
-   const due=dueScheduledMinute(times,now);if(!due)continue;
+   const due=await dueScheduledCombination(env.DB,kind,unit,times,now);if(!due)continue;
    const claim=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,?,?,'pending')").bind(unit,kind,due).run();
    if(!claim.meta?.changes)continue;
    let requests=0;
@@ -488,7 +489,7 @@ async function runScheduledStudentSync(env) {
   const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
   const hm=get("hour")+":"+get("minute"), minuteKey=get("year")+"-"+get("month")+"-"+get("day")+"T"+hm;
   const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='student'").all()).results||[];const weekdays=await loadScheduledWeekdays(env.DB,"student");
-  for(const row of rows){if(!scheduledDaysAllowed(weekdays.get(row.unit)||[1,2,3,4,5,6],now))continue;let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=dueScheduledMinute(times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
+  for(const row of rows){if(!scheduledDaysAllowed(weekdays.get(row.unit)||[1,2,3,4,5,6],now))continue;let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=await dueScheduledCombination(env.DB,"student",row.unit,times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
     const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'student',?,'pending')").bind(unit,dueKey).run();if(!ins.meta?.changes)continue;
     try{
       const before=await env.DB.prepare("SELECT last_sync_at,last_sync_status,last_sync_requests FROM evo_sync_config WHERE unit=?").bind(unit).first();
@@ -521,7 +522,7 @@ async function backfillMissingAttendanceInstructors(env,manualUnit=null,manualRu
     const unit=schedule.unit==="gym"?"gym":"bike";
     if(!manualUnit&&!scheduledDaysAllowed(weekdays.get(unit)||[1,2,3,4,5,6],now))continue;
     let times=[];try{times=JSON.parse(schedule.times_json||"[]")}catch{}
-    const due=manualUnit?(manualRunKey||"manual-"+now.toISOString()+"-"+crypto.randomUUID()):dueScheduledMinute(times,now);if(!due)continue;
+    const due=manualUnit?(manualRunKey||"manual-"+now.toISOString()+"-"+crypto.randomUUID()):await dueScheduledCombination(env.DB,"instructor_link",unit,times,now);if(!due)continue;
     const claim=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'instructor_link',?,'pending')").bind(unit,due).run();
     if(!claim.meta?.changes)continue;
     let checked=0,linked=0,requests=0,missing=0;
@@ -565,7 +566,7 @@ async function runScheduledReservationSync(env) {
   for(const row of rows){
     if(!['bike','gym'].includes(row.unit)||!scheduledDaysAllowed(days.get(row.unit)||[1,2,3,4,5,6],now))continue;
     let times=[];try{times=JSON.parse(row.times_json)}catch{}
-    const due=dueScheduledMinute(times,now);
+    const due=await dueScheduledCombination(env.DB,"reservation",row.unit,times,now);
     if(due)await startReservationSync(env.DB,row.unit,due,false,now);
   }
   // Continue existing work even after its scheduled minute, without a browser open.
@@ -577,7 +578,7 @@ async function runScheduledAttendanceSync(env) {
   const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
   const hm=get("hour")+":"+get("minute"), date=get("year")+"-"+get("month")+"-"+get("day"), minuteKey=date+"T"+hm;
   const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='attendance'").all()).results||[];const weekdays=await loadScheduledWeekdays(env.DB,"attendance");
-  for(const row of rows){if(!scheduledDaysAllowed(weekdays.get(row.unit)||[1,2,3,4,5,6],now))continue;let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=dueScheduledMinute(times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
+  for(const row of rows){if(!scheduledDaysAllowed(weekdays.get(row.unit)||[1,2,3,4,5,6],now))continue;let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=await dueScheduledCombination(env.DB,"attendance",row.unit,times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
     const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'attendance',?,'pending')").bind(unit,dueKey).run();if(!ins.meta?.changes)continue;
     let requests=0,classesFound=0,newClasses=0,saved=0;
     try{
@@ -1989,7 +1990,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
       // Horários operacionais persistidos no D1. Consultar/salvar não chama a EVO.
       if (url.pathname === "/admin/evo-sync-schedules" && ["GET","PUT"].includes(request.method)) {
-        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedules(unit TEXT NOT NULL,kind TEXT NOT NULL,times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind))").run();if(request.method==="PUT"){const q=await request.json().catch(()=>({})),kind=["student","attendance","contract","contract_catalog","service_catalog","modalities_catalog","instructor_link","reservation"].includes(String(q.kind))?String(q.kind):"",times=Array.isArray(q.times)?[...new Set(q.times.map(String).filter(x=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(x)))].sort():[];if(!kind||times.length>12)return json({ok:false,error:"HORARIOS_INVALIDOS"},400);const days=Array.isArray(q.days)?[...new Set(q.days.map(Number))].sort((a,b)=>a-b):null;if(days!==null&&(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)))return json({ok:false,error:"DIAS_INVALIDOS"},400);await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind,JSON.stringify(times)).run();if(days!==null)await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind+"_days",JSON.stringify(days)).run();}const rr=await env.DB.prepare("SELECT kind,times_json FROM evo_sync_schedules WHERE unit=?").bind(unit).all(),out={student:[],attendance:[],contract:[],contract_catalog:[],service_catalog:[],modalities_catalog:[],instructor_link:[],reservation:[],days:{student:[1,2,3,4,5,6],attendance:[1,2,3,4,5,6],contract:[1,2,3,4,5,6],contract_catalog:[1,2,3,4,5,6],service_catalog:[1,2,3,4,5,6],modalities_catalog:[1,2,3,4,5,6],instructor_link:[1,2,3,4,5,6],reservation:[1,2,3,4,5,6]}};for(const x of rr.results||[]){try{if(x.kind.endsWith("_days"))out.days[x.kind.slice(0,-5)]=JSON.parse(x.times_json||"[]");else out[x.kind]=JSON.parse(x.times_json||"[]")}catch{}}return json({ok:true,unit,...out});
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedules(unit TEXT NOT NULL,kind TEXT NOT NULL,times_json TEXT NOT NULL DEFAULT '[]',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind))").run();if(request.method==="PUT"){const q=await request.json().catch(()=>({})),kind=["student","attendance","contract","contract_catalog","service_catalog","modalities_catalog","instructor_link","reservation"].includes(String(q.kind))?String(q.kind):"",times=Array.isArray(q.times)?[...new Set(q.times.map(String).filter(x=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(x)))].sort():[];if(!kind||times.length>12)return json({ok:false,error:"HORARIOS_INVALIDOS"},400);const days=Array.isArray(q.days)?[...new Set(q.days.map(Number))].sort((a,b)=>a-b):null;if(days!==null&&(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)))return json({ok:false,error:"DIAS_INVALIDOS"},400);await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind,JSON.stringify(times)).run();const combinations=q.combinations;if(combinations!==undefined){if(!Array.isArray(combinations)||combinations.length>20||combinations.some(g=>!Array.isArray(g.days)||!g.days.length||g.days.some(d=>!Number.isInteger(d)||d<0||d>6)||!Array.isArray(g.times)||!g.times.length||g.times.some(t=>typeof t!=="string"||!/^([01]\d|2[0-3]):[0-5]\d$/.test(t))))return json({ok:false,error:"COMBINACOES_INVALIDAS"},400);await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind+"_combinations",JSON.stringify(combinations)).run();}if(days!==null)await env.DB.prepare("INSERT INTO evo_sync_schedules(unit,kind,times_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,kind) DO UPDATE SET times_json=excluded.times_json,updated_at=CURRENT_TIMESTAMP").bind(unit,kind+"_days",JSON.stringify(days)).run();}const rr=await env.DB.prepare("SELECT kind,times_json FROM evo_sync_schedules WHERE unit=?").bind(unit).all(),out={student:[],attendance:[],contract:[],contract_catalog:[],service_catalog:[],modalities_catalog:[],instructor_link:[],reservation:[],combinations:{},days:{student:[1,2,3,4,5,6],attendance:[1,2,3,4,5,6],contract:[1,2,3,4,5,6],contract_catalog:[1,2,3,4,5,6],service_catalog:[1,2,3,4,5,6],modalities_catalog:[1,2,3,4,5,6],instructor_link:[1,2,3,4,5,6],reservation:[1,2,3,4,5,6]}};for(const x of rr.results||[]){try{if(x.kind.endsWith("_combinations"))out.combinations[x.kind.slice(0,-13)]=JSON.parse(x.times_json||"[]");else if(x.kind.endsWith("_days"))out.days[x.kind.slice(0,-5)]=JSON.parse(x.times_json||"[]");else out[x.kind]=JSON.parse(x.times_json||"[]")}catch{}}return json({ok:true,unit,...out});
       }
       if (url.pathname === "/admin/mission-modalities" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
