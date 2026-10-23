@@ -3565,7 +3565,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const unit = url.searchParams.get("unit") === "gym" ? "gym" : "bike";
         const evoId = String(unit === "gym" ? (member.gym_client_id || "") : (member.evo_member_id || ""));
         if (!evoId) return json({ok:true,reservation:null,source:"d1",evoRequestsMade:0});
-        const chatConfig=await env.DB.prepare("SELECT enabled,close_after,duration_minutes FROM class_chat_settings WHERE unit=?").bind(unit).first();
+        const chatConfig=await env.DB.prepare("SELECT enabled,open_before,close_after,duration_minutes FROM class_chat_settings WHERE unit=?").bind(unit).first();
         const nowLocal=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
         const part=k=>nowLocal.find(x=>x.type===k)?.value||'';
         const localMinute=part('year')+'-'+part('month')+'-'+part('day')+'T'+part('hour')+':'+part('minute');
@@ -3580,7 +3580,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const closeMs=startMs+(Number(chatConfig.duration_minutes||50)+Number(chatConfig.close_after||0))*60000;
           return Number.isFinite(startMs)&&Date.now()<closeMs;
         })||null;
-        return json({ok:true,reservation:reservation||null,source:"d1",evoRequestsMade:0});
+        return json({ok:true,reservation:reservation||null,reservations:(candidates.results||[]).filter(r=>{const start=Date.parse(String(r.activity_date)+"T"+String(r.start_time).slice(0,5)+":00-03:00");return Number.isFinite(start)&&Date.now()<=start+(Number(chatConfig?.duration_minutes||50)+Number(chatConfig?.close_after||0))*60000}),chatSettings:{enabled:!!chatConfig?.enabled,openBeforeMinutes:Number(chatConfig?.open_before??30),closeAfterMinutes:Number(chatConfig?.close_after??120),durationMinutes:Number(chatConfig?.duration_minutes??50)},source:"d1",evoRequestsMade:0});
       }
 
       // Chat da Aula — sem chamadas à EVO. A reserva e a autorização são validadas a cada ação.
