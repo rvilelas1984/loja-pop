@@ -135,15 +135,15 @@ async function refreshOfficialDrawExecution(){
  updateOfficialCountdown();
  if(!current){target.textContent='Selecione uma promoção para acompanhar a apuração.';return}
  const phases=[
-  ['Atualização dos alunos',['updating_data','starting']],
-  ['Atualização dos contratos',['validating_contracts']],
-  ['Conferência das presenças',['auditing_numbers']],
+  ['Atualização dos alunos',['syncing_data']],
+  ['Atualização dos contratos',['syncing_data']],
+  ['Conferência das presenças',['syncing_data']],
   ['Geração dos números da sorte',['generating_numbers','generation_completed']],
   ['Auditoria da elegibilidade',['audit_completed']],
   ['Consolidação dos números das duas unidades',['consolidating']],
   ['Sorteio e registro do vencedor',['completed']]
  ];
- const names={updating_data:'Atualizando informações da EVO',starting:'Iniciando auditoria',validating_contracts:'Verificando contratos',auditing_numbers:'Conferindo presenças e números',generating_numbers:'Gerando números da sorte',generation_completed:'Geração concluída',audit_completed:'Auditoria registrada',consolidating:'Consolidando números',completed:'Sorteio concluído',blocked:'Apuração bloqueada'};
+ const names={syncing_data:'Sincronizando dados com a EVO',updating_data:'Atualizando informações da EVO',starting:'Iniciando auditoria',validating_contracts:'Verificando contratos',auditing_numbers:'Conferindo presenças e números',generating_numbers:'Gerando números da sorte',generation_completed:'Geração concluída',audit_completed:'Auditoria registrada',consolidating:'Consolidando números',completed:'Sorteio concluído',blocked:'Apuração bloqueada'};
  const renderPhases=(events,stage,metrics={})=>{
   const observed=new Map();
   for(const e of events){
@@ -160,32 +160,34 @@ async function refreshOfficialDrawExecution(){
   const audited=observed.has('audit_completed')||completed;
   const generated=observed.has('generation_completed')||audited;
   const generationData=observed.get('generation_completed')||observed.get('generating_numbers')||{};
-  const rows=phases.map(([label,codes],index)=>{
-   const matched=codes.filter(code=>observed.has(code));
-   const active=stage!=='blocked'&&codes.includes(stage);
-   const last=matched.length?observed.get(matched.at(-1)):{};
-   let total=Number(last.total||last.totalParticipants||0);
-   let checked=Number(last.checked||last.processed||0);
-   let pct=0;
-   if(completed)pct=100;
-   else if(index===3){
-    total=Number(generationData.total||0);
-    checked=Number(generationData.checked||0);
-    pct=generated?100:(total>0?Math.min(99,Math.floor(checked/total*100)):0);
-   }else if(index===4){
-    const audit=observed.get('audit_completed')||observed.get('auditing_numbers')||{};
-    total=Number(audit.total||0);checked=Number(audit.checked||0);
-    pct=audited?100:(total>0?Math.min(99,Math.floor(checked/total*100)):0);
-   }else if(index===5)pct=observed.has('consolidating')?100:0;
-   else if(index===6)pct=0;
-   else if(index===0||index===1||index===2){
-    // No dedicated verified totals are emitted for these phases yet.
-    // Show 100% only after the backend has confirmed the audit.
-    pct=audited?100:0;
+  const syncSteps=[['student','bike'],['student','gym'],['contract','bike'],['contract','gym'],['attendance','bike'],['attendance','gym'],['attendance','bike'],['attendance','gym']];
+  const synced=Math.max(0,Math.min(8,Number(metrics.syncIndex||0)));
+  const current=metrics.current||{};
+  const syncStage=stage==='syncing_data';
+  const phaseProgress=index=>{
+   if(completed)return 100;
+   if(index<3){
+    if(syncStage)return [0,1,2].includes(index)?Math.round(Math.max(0,Math.min(2,synced-index*2))/2*100):0;
+    if(['updating_data','validating_contracts','auditing_numbers','generating_numbers','generation_completed','audit_completed','consolidating'].includes(stage))return 100;
+    return 0;
    }
+   if(index===3){const d=generationData;return generated?100:Number(d.total)>0?Math.min(99,Math.floor(Number(d.checked||0)/Number(d.total)*100)):0}
+   if(index===4)return audited?100:0;
+   if(index===5)return observed.has('consolidating')?100:0;
+   return 0;
+  };
+  const rows=phases.map(([label,codes],index)=>{
+   const pct=phaseProgress(index);
+   const active=stage!=='blocked'&&(syncStage?index===({'student':0,'contract':1,'attendance':2}[current.kind]??-1):codes.includes(stage)&&index>=3);
    const color=pct===100?'#16804a':active?'#1870ba':'#a5aab0';
-   const count=total>0&&(index===3||index===4)?' • '+checked+'/'+total+' registros':'';
-   return '<li style="list-style:none;margin:14px 0 20px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>'+drawSafe(label)+(active?' — em andamento':'')+'</span><strong style="color:'+color+'">'+pct+'%</strong></div><div role="progressbar" aria-label="'+drawSafe(label)+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:8px;background:#e8eaed;border-radius:10px;overflow:hidden;margin-top:8px"><div style="height:100%;width:'+pct+'%;background:'+color+';transition:width .3s"></div></div>'+(count?'<small style="opacity:.7">'+count+'</small>':'')+'</li>';
+   let detail='';
+   if(syncStage&&index<3){
+    const kind=['student','contract','attendance'][index];
+    const currentName=current.unit==='gym'?'Gym Pop':'Bike Pop';
+    if(current.kind===kind)detail=' — '+(kind==='attendance'?'Conferindo presenças':'Atualizando '+(kind==='student'?'alunos':'contratos'))+' no '+currentName+(current.date?' ('+current.date+')':'');
+   }
+   const count=index===3&&Number(generationData.total)>0?' • '+Number(generationData.checked||0)+'/'+Number(generationData.total)+' registros':'';
+   return '<li style="list-style:none;margin:14px 0 20px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>'+drawSafe(label+detail)+'</span><strong style="color:'+color+'">'+pct+'%</strong></div><div role="progressbar" aria-label="'+drawSafe(label)+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:8px;background:#e8eaed;border-radius:10px;overflow:hidden;margin-top:8px"><div style="height:100%;width:'+pct+'%;background:'+color+';transition:width .3s"></div></div>'+(count?'<small style="opacity:.7">'+count+'</small>':'')+'</li>';
   });
   steps.style.paddingLeft='0';steps.innerHTML=rows.join('');
  };
@@ -198,7 +200,7 @@ async function refreshOfficialDrawExecution(){
    renderPhases([],null);return;
   }
   const metrics=JSON.parse(d.run.details_json||'{}');
-  const pct=Math.max(0,Math.min(100,Number(metrics.percent)||0));
+  const pct=Math.max(0,Math.min(100,Number(stage==='syncing_data'?metrics.phasePercent:metrics.percent)||0));
   const stage=d.run.stage;
   target.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>'+drawSafe(names[stage]||stage)+'</strong><strong>'+pct+'%</strong></div><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:9px;background:#e8eaed;border-radius:9px;overflow:hidden;margin:12px 0"><div style="height:100%;width:'+pct+'%;background:#15803d"></div></div><div>'+Number(metrics.checked||0)+' de '+Number(metrics.total||0)+' participantes • '+Number(metrics.checkedNumbers||0)+' números conferidos • '+Number(metrics.evoRequests||0)+' requisições EVO</div>'+(stage==='blocked'?'<p style="color:#b42318;font-weight:700">Pendência: '+drawSafe(metrics.error||'Verificação necessária')+'</p>':'')+'<div style="font-size:12px;opacity:.75;margin-top:8px">Último evento: '+drawSafe(drawBRTime(events.at(-1)?.created_at||d.run.created_at))+' (Brasília)</div>';
   renderPhases(events,stage,metrics);
