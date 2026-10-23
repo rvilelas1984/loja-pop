@@ -119,7 +119,7 @@ const unit=()=>el("unitSelect")?.value||"bike";
 async function refresh(){const u=unit();if(u===lastUnit&&items.length)return;lastUnit=u;
  try{const r=await fetch(base+"/tv/campaigns?unit="+encodeURIComponent(u),{cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok)throw Error();items=(d.campaigns||[]).filter(x=>/^https:\/\//.test(x.imageUrl||""));index=0;shownId="";}catch{items=[]}
  el("cpPartnerTV").hidden=!items.length;document.querySelector(".checkin-wrap").classList.toggle("cp-has-tv-ads",!!items.length);if(items.length)show();}
-function show(){if(!items.length)return;const x=items[index];el("cpPartnerImage").src=x.imageUrl;el("cpPartnerImage").alt="Campanha de "+x.partnerName;el("cpPartnerCTA").textContent=x.cta;el("cpPartnerFooter").style.setProperty("--tv-footer-bg",x.footerColor);el("cpPartnerFooter").style.setProperty("--tv-footer-fg",x.footerTextColor);
+function show(){if(!items.length)return;const x=items[index];el("cpPartnerImage").src=x.imageUrl.startsWith("/tv/media?")?base+x.imageUrl:x.imageUrl;el("cpPartnerImage").alt="Campanha de "+x.partnerName;el("cpPartnerCTA").textContent=x.cta;el("cpPartnerFooter").style.setProperty("--tv-footer-bg",x.footerColor);el("cpPartnerFooter").style.setProperty("--tv-footer-fg",x.footerTextColor);
 const qr=el("cpPartnerQR");qr.replaceChildren();const link=base+"/tv/scan?id="+encodeURIComponent(x.id);
 if(typeof QRCode!=="undefined")new QRCode(qr,{text:link,width:116,height:116,correctLevel:QRCode.CorrectLevel.M});
 else qr.textContent="Acesse: "+link;

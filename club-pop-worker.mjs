@@ -879,12 +879,23 @@ export default {
         const route=url.pathname,unit=url.searchParams.get("unit")||"bike";
         const table=()=>env.DB.prepare("CREATE TABLE IF NOT EXISTS tv_campaign_events(id INTEGER PRIMARY KEY AUTOINCREMENT,campaign_id TEXT NOT NULL,kind TEXT NOT NULL,unit TEXT NOT NULL,visitor_key TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const config=async()=>{const c=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop' LIMIT 1").first();return JSON.parse(c?.content_json||"{}")};
+        function tvDriveId(value){try{const u=new URL(value);if(!["drive.google.com","docs.google.com"].includes(u.hostname))return "";return (u.pathname.match(/\\/file\\/d\\/([A-Za-z0-9_-]+)/)||u.pathname.match(/\\/d\\/([A-Za-z0-9_-]+)/))?.[1]||u.searchParams.get("id")||""}catch{return ""}}
         const campaigns=async()=>{const c=await config();return Array.isArray(c.partnerTvCampaigns)?c.partnerTvCampaigns:[]};
         const eligible=(c,u)=>c.active!==false&&(c.unit==="club"||c.unit===u)&&(!c.startDate||c.startDate<=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"}))&&(!c.endDate||c.endDate>=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"}));
+        if(route==="/tv/media"&&request.method==="GET"){
+          const id=url.searchParams.get("id")||"",fileId=tvDriveId(id);
+          if(!fileId)return new Response("Arquivo inválido",{status:400,headers:cors});
+          const allowed=(await campaigns()).some(c=>c.imageUrl===id&&["bike","gym"].some(u=>eligible(c,u)));
+          if(!allowed)return new Response("Mídia indisponível",{status:404,headers:cors});
+          try{const response=await fetch("https://drive.google.com/thumbnail?id="+encodeURIComponent(fileId)+"&sz=w2000",{redirect:"follow"});const type=response.headers.get("content-type")||"";
+          if(!response.ok||!type.startsWith("image/"))return new Response("Imagem do Drive indisponível",{status:502,headers:cors});
+          return new Response(response.body,{headers:{...cors,"Content-Type":type,"Cache-Control":"public,max-age=300","X-Content-Type-Options":"nosniff"}});
+          }catch{return new Response("Falha ao carregar imagem",{status:502,headers:cors})}
+        }
         if(route==="/tv/campaigns"&&request.method==="GET"){
           if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
           const all=await campaigns(),c=await config(),partners=c.partners||[];
-          return json({ok:true,campaigns:all.filter(x=>eligible(x,unit)&&partners.some(p=>String(p.id)===String(x.partnerId)&&p.active!==false)).map(x=>({id:x.id,partnerName:partners.find(p=>String(p.id)===String(x.partnerId))?.name||"Parceiro",imageUrl:x.imageUrl,cta:x.cta||"Aponte a câmera e saiba mais",footerColor:x.footerColor||"#ffffff",footerTextColor:x.footerTextColor||"#142334",seconds:Math.min(60,Math.max(5,Number(x.seconds)||10))}))});
+          return json({ok:true,campaigns:all.filter(x=>eligible(x,unit)&&partners.some(p=>String(p.id)===String(x.partnerId)&&p.active!==false)).map(x=>({id:x.id,partnerName:partners.find(p=>String(p.id)===String(x.partnerId))?.name||"Parceiro",imageUrl:tvDriveId(x.imageUrl)?"/tv/media?id="+encodeURIComponent(x.imageUrl):x.imageUrl,cta:x.cta||"Aponte a câmera e saiba mais",footerColor:x.footerColor||"#ffffff",footerTextColor:x.footerTextColor||"#142334",seconds:Math.min(60,Math.max(5,Number(x.seconds)||10))}))});
         }
         if(route==="/tv/scan"&&request.method==="GET"){
           const id=url.searchParams.get("id")||"",all=await campaigns(),c=all.find(x=>x.id===id),content=await config(),partner=(content.partners||[]).find(p=>String(p.id)===String(c?.partnerId));
