@@ -144,28 +144,50 @@ async function refreshOfficialDrawExecution(){
   ['Sorteio e registro do vencedor',['completed']]
  ];
  const names={updating_data:'Atualizando informações da EVO',starting:'Iniciando auditoria',validating_contracts:'Verificando contratos',auditing_numbers:'Conferindo presenças e números',generating_numbers:'Gerando números da sorte',generation_completed:'Geração concluída',audit_completed:'Auditoria registrada',consolidating:'Consolidando números',completed:'Sorteio concluído',blocked:'Apuração bloqueada'};
- const renderPhases=(events,stage)=>{
+ const renderPhases=(events,stage,metrics={})=>{
   const observed=new Map();
   for(const e of events){
    let data={};try{data=JSON.parse(e.details_json||'{}')}catch{}
    observed.set(e.stage,data);
   }
+  // Preparation is stored separately from the official audit event log.
+  // Do not claim completed work from the mere existence of an event.
+  if(stage==='generating_numbers'||stage==='generation_completed'||(stage==='blocked'&&metrics.units)){
+   observed.set('generating_numbers',metrics);
+   if(stage==='generation_completed')observed.set('generation_completed',metrics);
+  }
   const completed=stage==='completed';
-  const rows=phases.map(([label,codes])=>{
+  const audited=observed.has('audit_completed')||completed;
+  const generated=observed.has('generation_completed')||audited;
+  const generationData=observed.get('generation_completed')||observed.get('generating_numbers')||{};
+  const rows=phases.map(([label,codes],index)=>{
    const matched=codes.filter(code=>observed.has(code));
    const active=stage!=='blocked'&&codes.includes(stage);
    const last=matched.length?observed.get(matched.at(-1)):{};
-   const total=Number(last.total||last.totalParticipants||0);
-   const checked=Number(last.checked||last.processed||0);
-   const reported=Number(last.percent);
-   const partial=Number.isFinite(reported)&&reported>0?reported:(total>0?checked/total*100:0);
-   const pct=completed?100:active?Math.max(0,Math.min(99,Math.round(partial))):matched.length?(matched.includes('generation_completed')?100:Math.max(0,Math.min(100,Math.round(partial)))):0;
+   let total=Number(last.total||last.totalParticipants||0);
+   let checked=Number(last.checked||last.processed||0);
+   let pct=0;
+   if(completed)pct=100;
+   else if(index===3){
+    total=Number(generationData.total||0);
+    checked=Number(generationData.checked||0);
+    pct=generated?100:(total>0?Math.min(99,Math.floor(checked/total*100)):0);
+   }else if(index===4){
+    const audit=observed.get('audit_completed')||observed.get('auditing_numbers')||{};
+    total=Number(audit.total||0);checked=Number(audit.checked||0);
+    pct=audited?100:(total>0?Math.min(99,Math.floor(checked/total*100)):0);
+   }else if(index===5)pct=observed.has('consolidating')?100:0;
+   else if(index===6)pct=0;
+   else if(index===0||index===1||index===2){
+    // No dedicated verified totals are emitted for these phases yet.
+    // Show 100% only after the backend has confirmed the audit.
+    pct=audited?100:0;
+   }
    const color=pct===100?'#16804a':active?'#1870ba':'#a5aab0';
-   const count=total>0?' • '+checked+'/'+total+' registros':'';
+   const count=total>0&&(index===3||index===4)?' • '+checked+'/'+total+' registros':'';
    return '<li style="list-style:none;margin:14px 0 20px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>'+drawSafe(label)+(active?' — em andamento':'')+'</span><strong style="color:'+color+'">'+pct+'%</strong></div><div role="progressbar" aria-label="'+drawSafe(label)+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:8px;background:#e8eaed;border-radius:10px;overflow:hidden;margin-top:8px"><div style="height:100%;width:'+pct+'%;background:'+color+';transition:width .3s"></div></div>'+(count?'<small style="opacity:.7">'+count+'</small>':'')+'</li>';
   });
-  steps.style.paddingLeft='0';
-  steps.innerHTML=rows.join('');
+  steps.style.paddingLeft='0';steps.innerHTML=rows.join('');
  };
  try{
   const r=await fetch('/api/promo-numbers?route=lucky-draw-status&promotion='+encodeURIComponent(current.id),{cache:'no-store'});
@@ -179,7 +201,7 @@ async function refreshOfficialDrawExecution(){
   const pct=Math.max(0,Math.min(100,Number(metrics.percent)||0));
   const stage=d.run.stage;
   target.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>'+drawSafe(names[stage]||stage)+'</strong><strong>'+pct+'%</strong></div><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:9px;background:#e8eaed;border-radius:9px;overflow:hidden;margin:12px 0"><div style="height:100%;width:'+pct+'%;background:#15803d"></div></div><div>'+Number(metrics.checked||0)+' de '+Number(metrics.total||0)+' participantes • '+Number(metrics.checkedNumbers||0)+' números conferidos • '+Number(metrics.evoRequests||0)+' requisições EVO</div>'+(stage==='blocked'?'<p style="color:#b42318;font-weight:700">Pendência: '+drawSafe(metrics.error||'Verificação necessária')+'</p>':'')+'<div style="font-size:12px;opacity:.75;margin-top:8px">Último evento: '+drawSafe(drawBRTime(events.at(-1)?.created_at||d.run.created_at))+' (Brasília)</div>';
-  renderPhases(events,stage);
+  renderPhases(events,stage,metrics);
   if(stage==='completed'){
    const w=d.winner||{};
    winnerBox.innerHTML='<b>Vencedor: '+drawSafe([w.first_name,w.last_name].filter(Boolean).join(' ')||'Conferir registro')+'</b><p>Número: '+drawSafe(d.run.winner_code)+' • Unidade: '+drawSafe(d.run.winner_unit==='gym'?'Gym Pop':'Bike Pop')+'</p><p>Aula de origem: '+drawSafe(w.activity_name||'Não vinculada')+' • Data/hora: '+drawSafe(drawBRTime(w.occurred_at))+'</p>';
@@ -210,5 +232,7 @@ async function initializeDrawSelector(){
  if(!current){selectedInfo.textContent="Nenhuma promoção disponível.";return}
  promotionSelect.value=current;promotionSelect.onchange=()=>switchDrawPromotion(promotionSelect.value);switchDrawPromotion(current);
 }
-setInterval(()=>{if(!document.hidden)refreshOfficialDrawExecution()},7000);
+let officialDrawRefreshing=false;
+setInterval(async()=>{if(document.hidden||officialDrawRefreshing)return;officialDrawRefreshing=true;try{await refreshOfficialDrawExecution()}finally{officialDrawRefreshing=false}},3000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshOfficialDrawExecution()});
 </script></body></html>
