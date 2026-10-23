@@ -91,12 +91,14 @@ function pcReset(){pcEditing=null;$("pcCreate").textContent="CRIAR E PROGRAMAR P
 $("pcCancelEdit").addEventListener("click",pcReset);
 async function pcRefresh(){
  try{
- const data=await json(await fetch(endpoint,{credentials:"same-origin",cache:"no-store"}));pcDraws=Array.isArray(data.draws)?data.draws:[];
+ const data=await json(await fetch(endpoint,{credentials:"same-origin",cache:"no-store"}));pcDraws=(Array.isArray(data.draws)?data.draws:[]).filter(x=>x.status!=="cancelled");
  const scope=pcScope(),items=pcDraws.filter(x=>scope==="club"||x.unit===scope);
- $("pcRegistered").innerHTML='<h3 style="margin-top:18px">🎁 Sorteios por aula</h3>'+(items.length?items.map(x=>'<div class="promo" style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div><b>'+esc(x.title)+'</b><p>'+esc(x.unit==="gym"?"Studio Gym Pop":"Studio Bike Pop")+' • '+esc(x.prize_name)+' • Parceiro: '+esc(x.partner_name||"Não informado")+' • '+esc(x.status)+'</p></div><button type="button" class="mini" data-pcedit="'+esc(x.id)+'" '+(x.status!=="scheduled"?"disabled":"")+'>EDITAR</button></div>').join(""):'<p>Nenhum sorteio por aula nesta unidade.</p>');
+ $("pcRegistered").innerHTML='<h3 style="margin-top:18px">🎁 Sorteios por aula</h3>'+(items.length?items.map(x=>'<div class="promo" style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div><b>'+esc(x.title)+'</b><p>'+esc(x.unit==="gym"?"Studio Gym Pop":"Studio Bike Pop")+' • '+esc(x.prize_name)+' • Parceiro: '+esc(x.partner_name||"Não informado")+' • '+esc(x.status)+'</p></div><div class="actions"><button type="button" class="mini" data-pcedit="'+esc(x.id)+'" '+(x.status!=="scheduled"?"disabled":"")+'>EDITAR</button><button type="button" class="mini danger" data-pcdelete="'+esc(x.id)+'" '+(!["scheduled","draft"].includes(x.status)?"disabled":"")+'>EXCLUIR</button></div></div>').join(""):'<p>Nenhum sorteio por aula nesta unidade.</p>');
  $("pcRegistered").querySelectorAll("[data-pcedit]").forEach(b=>b.addEventListener("click",()=>pcEdit(b.dataset.pcedit)));
+ $("pcRegistered").querySelectorAll("[data-pcdelete]").forEach(b=>b.addEventListener("click",()=>pcDelete(b.dataset.pcdelete)));
  }catch(e){$("pcRegistered").textContent="Não foi possível consultar sorteios: "+e.message}
 }
+async function pcDelete(id){const draw=pcDraws.find(x=>x.id===id);if(!draw)return;if(!confirm('Excluir o sorteio por aula "'+draw.title+'"? Ele será cancelado e removido da lista, mantendo o histórico de auditoria.'))return;try{await json(await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"delete-class-promotion",id})}));if(pcEditing===id)pcReset();await pcRefresh();cpNotify("success","Sorteio excluído","O sorteio foi cancelado e retirado da lista.")}catch(e){cpNotify("error","Não foi possível excluir",e.message)}}
 async function pcEdit(id){
  const x=pcDraws.find(y=>y.id===id);if(!x||x.status!=="scheduled")return;
  pcEditing=id;$("popClassDrawBlock").classList.remove("closed");$("pcCreate").textContent="SALVAR ALTERAÇÕES";$("pcCancelEdit").style.display="";
