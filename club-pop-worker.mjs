@@ -4787,7 +4787,7 @@ function allowedEvoTarget(value, method) {
   if(path==="/api/v1/receivables")return /^\?idSale=[1-9]\d*$/.test(url.search)?url:null;
   if(/^\/api\/v2\/sales\/[1-9]\d*$/.test(path)&&!url.search)return url;
   if(path==="/api/v2/sales")return url.searchParams.size===5&&["idMember","startDate","endDate","take","skip"].every(k=>url.searchParams.has(k))&&/^\d+$/.test(url.searchParams.get("idMember")||"")&&/^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("startDate")||"")&&url.searchParams.get("startDate")===url.searchParams.get("endDate")&&url.searchParams.get("take")==="100"&&url.searchParams.get("skip")==="0"?url:null;
-  if (path==="/api/v1/prospects" || path==="/api/v2/members") {
+  if (path==="/api/v1/prospects" || (path==="/api/v2/members" && (url.searchParams.has("registerDateStart") || url.searchParams.has("registerDateEnd")))) {
     const p=url.searchParams,from=p.get("registerDateStart")||"",to=p.get("registerDateEnd")||"",take=p.get("take")||"",skip=p.get("skip")||"";
     if(p.size!==4||!["registerDateStart","registerDateEnd","take","skip"].every(k=>p.has(k))||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(from)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(to)||!/^(0|[1-9][0-9]*)$/.test(skip)||!["50","100","250","500","600"].includes(take))return null;
     const start=Date.parse(from+"T12:00:00Z"),end=Date.parse(to+"T12:00:00Z");
