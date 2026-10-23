@@ -1,4 +1,5 @@
 import {popDrawAdmin,popDrawTick} from './lib/pop-draws.mjs';
+import {luckyDrawTick,luckyDrawStatus} from './lib/lucky-draw-official.mjs';
 import {flashClasses} from './lib/flash-mission-classes.mjs';
 import {journeyAutomationAdmin} from './lib/journey-automations.mjs';
 import {journeyAutomationTick} from './lib/journey-engine.mjs';
@@ -801,7 +802,7 @@ async function runScheduledRegistrationSync(env,kind="opportunity"){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([popDrawTick(env),journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledAttendanceSync(env),runScheduledReservationSync(env),runScheduledContractSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([popDrawTick(env),luckyDrawTick(env),journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledAttendanceSync(env),runScheduledReservationSync(env),runScheduledContractSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
   async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
@@ -835,6 +836,7 @@ export default {
 
 
 
+      if(url.pathname==="/admin/lucky-draw-status")return luckyDrawStatus(request,env,url);
       if(url.pathname==="/admin/pop-draws")return popDrawAdmin(request,env,url);
       if(url.pathname.startsWith("/links-uteis/")) return usefulLinks(request,env,url);
       if(url.pathname==="/member/community-challenges") return communityChallenges(request,env,url);

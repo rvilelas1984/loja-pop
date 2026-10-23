@@ -5,9 +5,14 @@ function adminRole(req){const key=process.env.ADMIN_KEY;if(!key)return null;cons
 function adminValid(req){return !!adminRole(req)}
 export default async function handler(req,res){
  const route=String(req.query.route||"").trim(),isAdmin=route.startsWith("admin-")||route==="whatsapp"||route==="whatsapp-config";
- const allowed=new Set(["sync","mine","fitcoins","whatsapp","whatsapp-config","admin-list","admin-winner","admin-export","admin-review-status","admin-review","admin-early-close","admin-early-close-status","admin-sync-batch","admin-generate-batch","review-request","admin-review-list","admin-review-update","review-status","pop-draws"]);
+ const allowed=new Set(["sync","mine","fitcoins","whatsapp","whatsapp-config","admin-list","admin-winner","admin-export","admin-review-status","admin-review","admin-early-close","admin-early-close-status","admin-sync-batch","admin-generate-batch","review-request","admin-review-list","admin-review-update","review-status","pop-draws","lucky-draw-status"]);
  if(!allowed.has(route))return res.status(404).json({ok:false,error:"ROTA_NAO_ENCONTRADA"});
  const role=adminRole(req);
+ if(route==="lucky-draw-status"){
+  if(role!=="admin")return res.status(403).json({ok:false,error:"ACESSO_RESTRITO"});
+  try{const r=await fetch(WORKER+"/admin/lucky-draw-status?promotion="+encodeURIComponent(String(req.query.promotion||"")),{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}
+  catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ }
  if(route==="pop-draws"){
   if(role!=="admin")return res.status(403).json({ok:false,error:"ACESSO_RESTRITO"});
   if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});
