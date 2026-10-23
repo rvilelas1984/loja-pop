@@ -18,16 +18,18 @@ async function exportNumbers(){const r=await fetch("/api/promo-numbers?route=adm
 numbersHead.onclick=()=>numbersPanel.classList.toggle("collapsed");q.oninput=render;period.onchange=load;(async()=>{try{const r=await fetch('/api/admin-auth?route=me',{cache:'no-store'}),d=await r.json();if(d.role==='reception')document.querySelectorAll('.admin-only').forEach(x=>x.remove())}catch{}loadPromotions().then(()=>{updateStatus();initializeDrawSelector()})})();</script><script>
 const popEsc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function popApi(body){const r=await fetch("/api/promo-numbers?route=pop-draws",{method:body?"POST":"GET",headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined,cache:"no-store"});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||"Falha no sorteador");return d}
-let popDrawCache=[],popWinnerCache=[];
+let popDrawCache=[],popWinnerCache=[],legacyDrawRecords=[];
 const popLabels={scheduled:"Programado",completed:"Realizado",draft:"Rascunho",cancelled:"Cancelado"};
 function renderPopDraws(){
  const q=String(popSearch.value||"").toLocaleLowerCase("pt-BR"),status=popStatusFilter.value,unit=popUnitFilter.value;
  const rows=popDrawCache.filter(x=>(!status||x.status===status)&&(!unit||x.unit===unit)&&(!q||[x.title,x.prize_name,x.prize_location,x.partner_name,...popWinnerCache.filter(w=>w.draw_id===x.id).map(w=>w.member_name)].join(" ").toLocaleLowerCase("pt-BR").includes(q)));
- popDrawRows.innerHTML=rows.length?rows.map(x=>{
+ const classRows=rows.map(x=>{
  const winners=popWinnerCache.filter(w=>w.draw_id===x.id),when=new Date(x.draw_at).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"});
  const numberCount=Number(x.participants||0);
  return '<tr><td>'+popEsc(x.title)+'<div class="pop-detail">'+(x.unit==="gym"?"Studio Gym Pop":"Studio Bike Pop")+'</div></td><td>'+popEsc(x.partner_name||"Não vinculado")+'</td><td>'+popEsc(x.prize_name)+'<div class="pop-detail">'+popEsc(x.prize_location)+'</div></td><td>1 número por aluno com presença confirmada<div class="pop-detail">'+popEsc(x.winners_count)+' vencedor(es) • '+numberCount+' número(s)</div></td><td><b>'+numberCount+'</b><div class="pop-detail">Presenças confirmadas</div></td><td>'+popEsc(when)+'</td><td><span class="pop-state">'+popEsc(popLabels[x.status]||x.status)+'</span><div class="pop-detail">'+(x.automatic?"Automático":"Manual")+'</div></td><td>'+(winners.length?winners.map(w=>'<b>'+popEsc(w.member_name)+'</b><div class="pop-detail">Nº '+popEsc(w.number)+'</div>').join(""):"Aguardando apuração")+'</td><td>'+(x.status==="scheduled"?'<button class="btn" onclick="popAction(&quot;draw&quot;,&quot;'+popEsc(x.id)+'&quot;)">SORTEAR</button>':x.status==="draft"?'<button class="btn" onclick="popAction(&quot;schedule&quot;,&quot;'+popEsc(x.id)+'&quot;)">PROGRAMAR</button>':"—")+'</td></tr>';
- }).join(""):'<tr><td colspan="9">Nenhum sorteio encontrado para os filtros selecionados.</td></tr>';
+ }).join("");
+ const legacyRows=legacyDrawRecords.filter(x=>(!status||x.status===status)&&(!unit||x.unit===unit)&&(!q||[x.title,x.prize_name,x.partner_name].join(' ').toLocaleLowerCase('pt-BR').includes(q))).map(x=>'<tr><td>'+popEsc(x.title)+'<div class="pop-detail">'+(x.unit==='gym'?'Studio Gym Pop':'Studio Bike Pop')+'</div></td><td>'+popEsc(x.partner_name||'Sem parceiro')+'</td><td>'+popEsc(x.prize_name)+'</td><td>Regras oficiais da promoção<div class="pop-detail">Números já registrados no D1</div></td><td><b>'+popEsc(x.participants)+'</b><div class="pop-detail">'+popEsc(x.numbers)+' números gerados</div></td><td>'+popEsc(x.draw_at?new Date(x.draw_at).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'Não programado')+'</td><td><span class="pop-state">'+popEsc(x.status_label)+'</span></td><td>Apuração oficial</td><td><button class="btn" onclick="selectLegacyDraw('+JSON.stringify(x.id).replace(/"/g,'&quot;')+')">CONSULTAR</button> <button class="btn" onclick="location.href=\'/admin-promocoes.html\'">PROGRAMAR</button></td></tr>').join('');
+ popDrawRows.innerHTML=classRows+legacyRows||'<tr><td colspan="9">Nenhum sorteio encontrado para os filtros selecionados.</td></tr>';
  popWinners.innerHTML=popWinnerCache.length?popWinnerCache.map(x=>'<div class="update-line"><span><b>'+popEsc(x.member_name)+'</b> • '+popEsc(x.prize_name)+'</span><b>Nº '+popEsc(x.number)+'</b></div>').join(""):"Nenhum vencedor registrado.";
 }
 async function loadPopDraws(){try{const d=await popApi();popDrawCache=Array.isArray(d.draws)?d.draws:[];popWinnerCache=Array.isArray(d.winners)?d.winners:[];renderPopDraws()}catch(e){popDrawRows.innerHTML='<tr><td colspan="9">'+popEsc(e.message)+'</td></tr>'}}
@@ -49,6 +51,7 @@ function drawInitLayout(){
  // Existing iPhone tools retain their original IDs and event handlers; only their location changes.
  const apuracao=[...after.children].filter(x=>x.tagName==="SECTION"&&/Apuração do vencedor|Exportação para sorteio|Encerramento antecipado/.test(x.textContent||""));
  apuracao.forEach(el=>slot.appendChild(el));
+ const legacyTitle=document.createElement("h3");legacyTitle.textContent="Ferramentas oficiais — números da sorte";slot.prepend(legacyTitle);
  const original=document.getElementById("popMotor");document.getElementById("classMotorSlot").appendChild(original);
  original.classList.remove("panel");original.style.border="0";original.style.padding="0";
  legacy.querySelectorAll(".panel").forEach((el,i)=>{if(el.id==="numbersPanel"){el.classList.add("collapsed");return}if(!el.closest("#sharedMotor")){const h=el.querySelector(":scope > h2");if(h){const title=h.textContent;h.remove();const hd=document.createElement("div");hd.className="collapsible-head";hd.innerHTML="<h2>"+drawSafe(title)+"</h2><b>⌄</b>";hd.onclick=()=>el.classList.toggle("collapsed");el.prepend(hd);const body=document.createElement("div");body.className="section-body";while(hd.nextSibling)body.appendChild(hd.nextSibling);el.appendChild(body);el.classList.add("collapsed")}}});
@@ -57,14 +60,17 @@ function drawInitLayout(){
  document.getElementById("popMotorSource").remove();
  document.getElementById("sharedMotor").classList.add("collapsed");
 }
-function drawLegacyMotor(){
- const x=PROMOS.find(y=>String(y.id)===String(pid));if(!x)return;
- const row=document.getElementById("legacyDrawOverview")||document.createElement("div");
- row.id="legacyDrawOverview";
- const slot=document.getElementById("classMotorSlot");slot.hidden=false;
- if(!row.parentNode)slot.prepend(row);
- const scheduled=x.drawAt?new Date(x.drawAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"}):"Não programado";
- row.innerHTML='<h3>📱 '+drawSafe(x.name)+'</h3><div style="overflow:auto"><table class="pop-table" style="min-width:750px"><thead><tr><th>Promoção</th><th>Unidade</th><th>Prêmio</th><th>Parceiro</th><th>Números gerados</th><th>Participantes</th><th>Data do sorteio</th><th>Status</th></tr></thead><tbody><tr><td>'+drawSafe(x.name)+'</td><td>'+(x.unit==="gym"?"Studio Gym Pop":"Studio Bike Pop")+'</td><td>'+drawSafe(x.prizeName||x.name)+'</td><td>'+drawSafe(x.partnerName||"Sem parceiro")+'</td><td id="legacyDrawNumbers">'+drawSafe(total.textContent)+'</td><td id="legacyDrawPeople">'+drawSafe(people.textContent)+'</td><td>'+drawSafe(scheduled)+'</td><td>'+drawSafe(x.status)+'</td></tr></tbody></table></div><p class="note">Data configurada em Promoções. O resultado do iPhone continua vinculado à base oficial e à apuração já existente. Não executa sorteio automático sem a conferência final.</p>';
+async function refreshLegacyDrawRecords(){
+ const entries=await Promise.all(PROMOS.map(async x=>{
+ let numbers='—',participants='—';
+ try{const r=await fetch('/api/promo-numbers?route=admin-list&promotion='+encodeURIComponent(x.id),{cache:'no-store'});if(r.ok){const d=await r.json();numbers=d.total??d.numbers?.length??'—';participants=d.participants??'—'}}catch{}
+ return {id:String(x.id),title:x.name,unit:x.unit||'bike',prize_name:x.prizeName||x.name,partner_name:x.partnerName||'',numbers,participants,draw_at:x.drawAt||null,status:x.drawAt?'scheduled':'draft',status_label:x.drawAt?'Programado':'Aguardando data'};
+ }));
+ legacyDrawRecords=entries;renderPopDraws();
+}
+function selectLegacyDraw(id){
+ const option='legacy:'+id;if(![...promotionSelect.options].some(x=>x.value===option))return;
+ promotionSelect.value=option;switchDrawPromotion(option);document.getElementById('selectPanel').classList.remove('collapsed');
 }
 function drawClassView(){
  const x=classDraws.find(y=>"class:"+y.id===drawSelection);if(!x)return;
@@ -74,19 +80,17 @@ function drawClassView(){
  classSummaryBody.innerHTML='<div style="overflow:auto"><table class="pop-table" style="min-width:650px"><thead><tr><th>Promoção</th><th>Unidade</th><th>Prêmio</th><th>Parceiro</th><th>Studio / local</th><th>Data</th><th>Status</th></tr></thead><tbody><tr><td>'+drawSafe(x.title)+'</td><td>'+(x.unit==="gym"?"Gym Pop":"Bike Pop")+'</td><td>'+drawSafe(x.prize_name)+'</td><td>'+drawSafe(x.partner_name||"Não vinculado")+'</td><td>'+drawSafe(x.prize_location)+'</td><td>'+drawSafe(date)+'</td><td>'+drawSafe(classStatus.textContent)+'</td></tr></tbody></table></div><p class="note">Regra: um número por aluno com presença confirmada • '+Number(x.winners_count)+' vencedor(es).</p>';
  classParticipantsBody.innerHTML="<p><b>"+count+"</b> participante(s) confirmado(s) e número(s) registrados.</p><p class='muted'>A consulta individual de números depende da disponibilização da lista de participantes pela API do Sorteador POP. Não serão exibidos números fictícios.</p>";
  classHistoryBody.innerHTML=winners.length?winners.map(w=>"<p><b>"+drawSafe(w.member_name)+"</b> — número "+drawSafe(w.number)+"</p>").join(""):"Nenhum vencedor registrado até o momento.";
- popSearch.value="";popStatusFilter.value="";popUnitFilter.value=x.unit;renderPopDraws();
- const trs=[...popDrawRows.querySelectorAll("tr")];trs.forEach(tr=>{const name=tr.querySelector("td")?.textContent||"";tr.hidden=!name.startsWith(x.title)});
- popWinners.innerHTML=winners.length?winners.map(w=>"<p>"+drawSafe(w.member_name)+" — nº "+drawSafe(w.number)+"</p>").join(""):"Nenhum vencedor registrado.";
+ // O painel global mantém todas as promoções; a seleção superior não filtra o sorteador.
 }
 function switchDrawPromotion(value){
  drawSelection=value;const isClass=drawIsClass();
  document.getElementById("legacyView").hidden=isClass;document.getElementById("legacyAfterMotor").hidden=isClass;document.getElementById("historySlot").hidden=isClass;document.getElementById("classView").hidden=!isClass;
  document.getElementById("legacyMotorSlot").hidden=isClass;document.getElementById("classMotorSlot").hidden=false;
- document.getElementById("motorHint").textContent=isClass?"Execução e resultados do sorteio por aula selecionado.":"Apuração e exportação da promoção tradicional, preservadas sem alterações nas regras.";
+ document.getElementById("motorHint").textContent="Painel único com todas as promoções. As regras de cada modalidade são preservadas; a apuração do iPhone permanece vinculada à conferência oficial.";
  document.getElementById("sharedMotor").classList.add("collapsed");
- if(!isClass)drawLegacyMotor();
+
  document.getElementById("selectedInfo").textContent=promotionSelect.selectedOptions[0]?.textContent||"";
- if(isClass){document.getElementById("legacyDrawOverview")?.remove();drawClassView()}else{pid=value.slice(7);history.replaceState(null,"","?promotion="+encodeURIComponent(pid));period.value="";q.value="";review=null;load().then(()=>{updateStatus();drawLegacyMotor()})}
+ if(isClass){drawClassView()}else{pid=value.slice(7);history.replaceState(null,"","?promotion="+encodeURIComponent(pid));period.value="";q.value="";review=null;load().then(()=>{updateStatus();refreshLegacyDrawRecords()})}
 }
 async function initializeDrawSelector(){
  drawInitLayout();
@@ -94,6 +98,7 @@ async function initializeDrawSelector(){
  catch(e){document.getElementById("selectedInfo").textContent="Não foi possível carregar sorteios por aula: "+e.message}
  const traditional=PROMOS.map(x=>({value:"legacy:"+x.id,label:"📱 "+x.name}));
  const classes=classDraws.map(x=>({value:"class:"+x.id,label:"🎁 "+x.title+" — "+(x.unit==="gym"?"Gym Pop":"Bike Pop")}));
+ await refreshLegacyDrawRecords();
  const current=pid&&traditional.some(x=>x.value==="legacy:"+pid)?"legacy:"+pid:(traditional[0]?.value||classes[0]?.value||"");
  promotionSelect.innerHTML=[...traditional,...classes].map(x=>'<option value="'+drawSafe(x.value)+'">'+drawSafe(x.label)+'</option>').join("");
  if(!current){selectedInfo.textContent="Nenhuma promoção disponível.";return}
