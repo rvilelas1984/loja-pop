@@ -5,7 +5,7 @@ function adminRole(req){const key=process.env.ADMIN_KEY;if(!key)return null;cons
 function adminValid(req){return !!adminRole(req)}
 export default async function handler(req,res){
  const route=String(req.query.route||"").trim(),isAdmin=route.startsWith("admin-")||route==="whatsapp"||route==="whatsapp-config";
- const allowed=new Set(["sync","mine","fitcoins","whatsapp","whatsapp-config","admin-list","admin-winner","admin-export","admin-review-status","admin-review","admin-early-close","admin-early-close-status","admin-sync-batch","admin-generate-batch","review-request","admin-review-list","admin-review-update","review-status"]);
+ const allowed=new Set(["sync","mine","fitcoins","whatsapp","whatsapp-config","admin-list","admin-winner","admin-export","admin-review-status","admin-review","admin-early-close","admin-early-close-status","admin-sync-batch","admin-generate-batch","review-request","admin-review-list","admin-review-update","review-status","pop-draws"]);
  if(!allowed.has(route))return res.status(404).json({ok:false,error:"ROTA_NAO_ENCONTRADA"});
  const role=adminRole(req);
  if(route==="pop-draws"){
