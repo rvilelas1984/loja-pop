@@ -106,8 +106,28 @@ function drawClassView(){
  classHistoryBody.innerHTML=winners.length?winners.map(w=>"<p><b>"+drawSafe(w.member_name)+"</b> — número "+drawSafe(w.number)+"</p>").join(""):"Nenhum vencedor registrado até o momento.";
  // O painel global mantém todas as promoções; a seleção superior não filtra o sorteador.
 }
+let officialDrawPoll=null;
+async function refreshOfficialDrawExecution(){
+ const target=document.getElementById('officialDrawStatus'),steps=document.getElementById('officialDrawSteps'),winnerBox=document.getElementById('officialDrawWinner');
+ if(!target||!steps||!winnerBox)return;
+ const current=legacyDrawRecords.find(x=>String(x.id)===String(drawSelection))||legacyDrawRecords.find(x=>x.combined);
+ if(!current){target.textContent='Selecione uma promoção de números da sorte para acompanhar a apuração.';return}
+ try{
+  const r=await fetch('/api/promo-numbers?route=lucky-draw-status&promotion='+encodeURIComponent(current.id),{cache:'no-store'});
+  if(!r.ok)throw Error('Falha na consulta oficial ('+r.status+')');
+  const d=await r.json();
+  if(!d.run){target.textContent='Aguardando horário programado. O sorteio não pode ser antecipado.';steps.innerHTML='<li>Auditoria ainda não iniciada pelo backend.</li>';return}
+  const stages={starting:'Iniciando apuração',validating_contracts:'Verificando contratos do D1',auditing_numbers:'Auditando números e elegibilidade',consolidating:'Consolidando números das unidades',completed:'Sorteio concluído',blocked:'Apuração bloqueada — exige conferência'};
+  target.textContent=(stages[d.run.stage]||d.run.stage)+' • '+(d.run.created_at||'');
+  steps.innerHTML=(d.events||[]).map(e=>'<li><b>'+drawSafe(stages[e.stage]||e.stage)+'</b> — '+drawSafe(e.created_at||'')+'</li>').join('');
+  if(d.run.stage==='completed'){
+   const w=d.winner||{};
+   winnerBox.innerHTML='<b>Vencedor: '+drawSafe([w.first_name,w.last_name].filter(Boolean).join(' ')||'Conferir registro')+'</b><p>Número: '+drawSafe(d.run.winner_code)+' • Unidade: '+drawSafe(d.run.winner_unit==='gym'?'Gym Pop':'Bike Pop')+'</p><p>Aula de origem: '+drawSafe(w.activity_name||'Não vinculada diretamente ao número')+' • Data/hora: '+drawSafe(w.occurred_at||'Não informado')+'</p>';
+  }else if(d.run.stage==='blocked'){winnerBox.textContent='Apuração bloqueada. Nenhum vencedor foi selecionado.'}
+ }catch(e){target.textContent='Acompanhamento indisponível: '+String(e.message||e)}
+}
 function switchDrawPromotion(value){
- drawSelection=value;const isClass=drawIsClass();
+ drawSelection=value;const isClass=drawIsClass();refreshOfficialDrawExecution();
  document.getElementById("legacyView").hidden=isClass;document.getElementById("legacyAfterMotor").hidden=isClass;document.getElementById("historySlot").hidden=isClass;document.getElementById("classView").hidden=!isClass;
  document.getElementById("legacyToolsPanel").hidden=isClass;document.getElementById("classMotorSlot").hidden=false;
  document.getElementById("motorHint").textContent="Painel único com todas as promoções. As regras de cada modalidade são preservadas; a apuração do iPhone permanece vinculada à conferência oficial.";
@@ -128,4 +148,5 @@ async function initializeDrawSelector(){
  if(!current){selectedInfo.textContent="Nenhuma promoção disponível.";return}
  promotionSelect.value=current;promotionSelect.onchange=()=>switchDrawPromotion(promotionSelect.value);switchDrawPromotion(current);
 }
+setInterval(()=>{if(!document.hidden)refreshOfficialDrawExecution()},7000);
 </script></body></html>
