@@ -200,8 +200,8 @@ async function refreshOfficialDrawExecution(){
    renderPhases([],null);return;
   }
   const metrics=JSON.parse(d.run.details_json||'{}');
-  const pct=Math.max(0,Math.min(100,Number(stage==='syncing_data'?metrics.phasePercent:metrics.percent)||0));
   const stage=d.run.stage;
+  const pct=Math.max(0,Math.min(100,Number(stage==='syncing_data'?metrics.phasePercent:metrics.percent)||0));
   target.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>'+drawSafe(names[stage]||stage)+'</strong><strong>'+pct+'%</strong></div><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:9px;background:#e8eaed;border-radius:9px;overflow:hidden;margin:12px 0"><div style="height:100%;width:'+pct+'%;background:#15803d"></div></div><div>'+Number(metrics.checked||0)+' de '+Number(metrics.total||0)+' participantes • '+Number(metrics.checkedNumbers||0)+' números conferidos • '+Number(metrics.evoRequests||0)+' requisições EVO</div>'+(stage==='blocked'?'<p style="color:#b42318;font-weight:700">Pendência: '+drawSafe(metrics.error||'Verificação necessária')+'</p>':'')+'<div style="font-size:12px;opacity:.75;margin-top:8px">Último evento: '+drawSafe(drawBRTime(events.at(-1)?.created_at||d.run.created_at))+' (Brasília)</div>';
   renderPhases(events,stage,metrics);
   if(stage==='completed'){
