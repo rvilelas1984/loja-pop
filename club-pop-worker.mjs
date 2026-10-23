@@ -873,6 +873,47 @@ export default {
         const pages=Array.from(groups,([name,items])=>({name,online:unique(items.filter(x=>x.last_seen>=now-30)),visitors:unique(items),visits:items.length,averageSeconds:average(items)})).sort((a,b)=>b.visits-a.visits);
         return json({ok:true,unit,days,online:unique(active),visitors:unique(list),sessions:list.length,averageSeconds:average(list),pages,updatedAt:new Date().toISOString(),note:list.length===10000?"LIMITED_TO_10000_SESSIONS":null});
       }
+
+      // Partner TV campaigns: public active creatives, tracked QR redirects, authenticated reporting.
+      if(url.pathname.startsWith("/tv/")||url.pathname==="/admin/tv-campaigns"){
+        const route=url.pathname,unit=url.searchParams.get("unit")||"bike";
+        const table=()=>env.DB.prepare("CREATE TABLE IF NOT EXISTS tv_campaign_events(id INTEGER PRIMARY KEY AUTOINCREMENT,campaign_id TEXT NOT NULL,kind TEXT NOT NULL,unit TEXT NOT NULL,visitor_key TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const config=async()=>{const c=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop' LIMIT 1").first();return JSON.parse(c?.content_json||"{}")};
+        const campaigns=async()=>{const c=await config();return Array.isArray(c.partnerTvCampaigns)?c.partnerTvCampaigns:[]};
+        const eligible=(c,u)=>c.active!==false&&(c.unit==="club"||c.unit===u)&&(!c.startDate||c.startDate<=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"}))&&(!c.endDate||c.endDate>=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"}));
+        if(route==="/tv/campaigns"&&request.method==="GET"){
+          if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+          const all=await campaigns(),c=await config(),partners=c.partners||[];
+          return json({ok:true,campaigns:all.filter(x=>eligible(x,unit)&&partners.some(p=>String(p.id)===String(x.partnerId)&&p.active!==false)).map(x=>({id:x.id,partnerName:partners.find(p=>String(p.id)===String(x.partnerId))?.name||"Parceiro",imageUrl:x.imageUrl,cta:x.cta||"Aponte a câmera e saiba mais",footerColor:x.footerColor||"#ffffff",footerTextColor:x.footerTextColor||"#142334",seconds:Math.min(60,Math.max(5,Number(x.seconds)||10))}))});
+        }
+        if(route==="/tv/scan"&&request.method==="GET"){
+          const id=url.searchParams.get("id")||"",all=await campaigns(),c=all.find(x=>x.id===id),content=await config(),partner=(content.partners||[]).find(p=>String(p.id)===String(c?.partnerId));
+          if(!c||!partner||partner.active===false||!["bike","gym","club"].includes(c.unit)||!["bike","gym"].some(u=>eligible(c,u)))return new Response("Campanha indisponível",{status:404,headers:cors});
+          let dest;try{dest=new URL(c.destinationUrl);if(dest.protocol!=="https:")throw Error()}catch{return new Response("Destino inválido",{status:400,headers:cors})}
+          await table();const key=request.headers.get("cf-connecting-ip")||"unknown";const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(key+"|"+new Date().toISOString().slice(0,10)+"|"+id));const visitor=Array.from(new Uint8Array(digest)).slice(0,12).map(x=>x.toString(16).padStart(2,"0")).join("");
+          await env.DB.prepare("INSERT INTO tv_campaign_events(campaign_id,kind,unit,visitor_key) VALUES(?,'scan',?,?)").bind(id,c.unit,visitor).run();
+          return Response.redirect(dest.href,302);
+        }
+        if(route==="/admin/tv-campaigns"||route==="/tv/impression"){
+          const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+          if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+          let vr;try{vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck},cache:"no-store"})}catch{return json({ok:false,error:"AUTH_INDISPONIVEL"},502)}
+          const user=await vr.json().catch(()=>({}));if(!vr.ok||!["admin","reception"].includes(user.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+          await table();
+          if(route==="/tv/impression"&&request.method==="POST"){
+            const body=await request.json().catch(()=>({})),id=String(body.id||"").slice(0,120),u=String(body.unit||"");
+            if(!["bike","gym"].includes(u)||!(await campaigns()).some(x=>x.id===id&&eligible(x,u)))return json({ok:false,error:"CAMPANHA_INVALIDA"},400);
+            await env.DB.prepare("INSERT INTO tv_campaign_events(campaign_id,kind,unit) VALUES(?,'impression',?)").bind(id,u).run();return json({ok:true});
+          }
+          if(route==="/admin/tv-campaigns"&&request.method==="GET"){
+            if(user.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+            const month=url.searchParams.get("month")||new Date().toISOString().slice(0,7);
+            if(!/^\\d{4}-\\d{2}$/.test(month))return json({ok:false,error:"MES_INVALIDO"},400);
+            const result=await env.DB.prepare("SELECT campaign_id id,kind,COUNT(*) count,COUNT(DISTINCT CASE WHEN kind='scan' THEN visitor_key END) uniqueScans FROM tv_campaign_events WHERE substr(created_at,1,7)=? GROUP BY campaign_id,kind").bind(month).all();
+            return json({ok:true,rows:result.results||[],month});
+          }
+        }
+      }
       if(url.pathname==="/admin/lucky-draw-status")return luckyDrawStatus(request,env,url);
       if(url.pathname==="/admin/pop-draws")return popDrawAdmin(request,env,url);
       if(url.pathname.startsWith("/links-uteis/")) return usefulLinks(request,env,url);
