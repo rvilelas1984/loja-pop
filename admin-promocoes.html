@@ -46,7 +46,7 @@ async function pcLoadCatalog(){
   const response=await fetch(url,{cache:"no-store",credentials:"same-origin"}),data=await response.json();
   if(!response.ok||type==="voucher"&&!data.ok)throw Error(data.error||"Falha ao consultar catálogo");
   if(seq!==pcCatalogSeq||unit!==$("pcUnit").value||type!==$("pcPrizeType").value)return;
-  pcItems=type==="voucher"?(Array.isArray(data.models)?data.models:[]).filter(x=>x.unit===unit).map(x=>({id:String(x.id),name:String(x.publicName||x.name||"").trim()})):(Array.isArray(data.partners)?data.partners:[]).filter(x=>x.active!==false&&x.active!==0&&x.active!=="false"&&(!x.unit||x.unit==="club"||x.unit===unit)).map(x=>({id:String(x.id),name:String(x.name||"").trim()}));
+  pcItems=type==="voucher"?(Array.isArray(data.models)?data.models:[]).filter(x=>x.unit===unit).map(x=>({id:String(x.id),name:String(x.publicName||x.name||"").trim()})):(Array.isArray(data.partners)?data.partners:[]).filter(x=>x.active!==false&&x.active!==0&&x.active!=="false"&&(!x.unit||x.unit==="club"||x.unit===unit)).map(x=>({id:String(x.id),name:String(x.name||"").trim(),whatsapp:String(x.whatsapp||x.whatsApp||x.phone||"").trim()}));
   pcItems=pcItems.filter(x=>x.id&&x.name).sort((a,b)=>a.name.localeCompare(b.name,"pt-BR"));
   $("pcCatalog").innerHTML='<option value="">Selecione '+(type==="voucher"?"um voucher":"um parceiro")+'</option>'+pcItems.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("");
   $("pcCatalogStatus").textContent=pcItems.length+" "+(type==="voucher"?"voucher(s)":"parceiro(s)")+" disponível(is) para esta unidade.";
