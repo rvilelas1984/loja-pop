@@ -145,15 +145,24 @@ async function refreshOfficialDrawExecution(){
  ];
  const names={updating_data:'Atualizando informações da EVO',starting:'Iniciando auditoria',validating_contracts:'Verificando contratos',auditing_numbers:'Conferindo presenças e números',generating_numbers:'Gerando números da sorte',audit_completed:'Auditoria registrada',consolidating:'Consolidando números',completed:'Sorteio concluído',blocked:'Apuração bloqueada'};
  const renderPhases=(events,stage)=>{
-  const observed=new Set(events.map(e=>e.stage));
+  const observed=new Map();
+  for(const e of events){
+   let data={};try{data=JSON.parse(e.details_json||'{}')}catch{}
+   observed.set(e.stage,data);
+  }
   const completed=stage==='completed';
-  const rows=phases.map(([label,codes],index)=>{
-   const seen=codes.some(code=>observed.has(code));
+  const rows=phases.map(([label,codes])=>{
+   const matched=codes.filter(code=>observed.has(code));
    const active=stage!=='blocked'&&codes.includes(stage);
-   const done=completed||(seen&&!active);
-   const symbol=done?'✓':active?'◉':'○';
-   const color=done?'#167c43':active?'#1264aa':'#90979e';
-   return '<li style="list-style:none;display:flex;align-items:center;gap:10px;margin:12px 0;color:'+color+'"><span style="font-size:20px;font-weight:700" aria-hidden="true">'+symbol+'</span><span>'+drawSafe(label)+(active?' — em andamento':'')+'</span></li>';
+   const last=matched.length?observed.get(matched.at(-1)):{};
+   const total=Number(last.total||last.totalParticipants||0);
+   const checked=Number(last.checked||last.processed||0);
+   const reported=Number(last.percent);
+   const partial=Number.isFinite(reported)&&reported>0?reported:(total>0?checked/total*100:0);
+   const pct=completed?100:active?Math.max(0,Math.min(99,Math.round(partial))):matched.length?100:0;
+   const color=pct===100?'#16804a':active?'#1870ba':'#a5aab0';
+   const count=total>0?' • '+checked+'/'+total+' registros':'';
+   return '<li style="list-style:none;margin:14px 0 20px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>'+drawSafe(label)+(active?' — em andamento':'')+'</span><strong style="color:'+color+'">'+pct+'%</strong></div><div role="progressbar" aria-label="'+drawSafe(label)+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:8px;background:#e8eaed;border-radius:10px;overflow:hidden;margin-top:8px"><div style="height:100%;width:'+pct+'%;background:'+color+';transition:width .3s"></div></div>'+(count?'<small style="opacity:.7">'+count+'</small>':'')+'</li>';
   });
   steps.style.paddingLeft='0';
   steps.innerHTML=rows.join('');
