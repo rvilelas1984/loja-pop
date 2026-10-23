@@ -11,7 +11,7 @@ export default async function handler(req,res){
  if(route==="pop-draws"){
   if(role!=="admin")return res.status(403).json({ok:false,error:"ACESSO_RESTRITO"});
   if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_NAO_PERMITIDO"});
-  try{const upstream=await fetch(WORKER+"/admin/pop-draws",{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="POST"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(upstream.status).send(await upstream.text())}
+  try{const upstream=await fetch(WORKER+"/admin/pop-draws"+(req.query.action==="classes"?"?action=classes&unit="+encodeURIComponent(String(req.query.unit||""))+"&start="+encodeURIComponent(String(req.query.start||""))+"&end="+encodeURIComponent(String(req.query.end||"")):""),{method:req.method,headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="POST"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(upstream.status).send(await upstream.text())}
   catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
  }
  if(isAdmin&&!role)return res.status(401).json({ok:false,error:"Sessão administrativa inválida"});if(role==="reception"&&isAdmin&&route!=="admin-list")return res.status(403).json({ok:false,error:"Acesso restrito à consulta"});
