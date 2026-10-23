@@ -120,24 +120,63 @@ function updateOfficialCountdown(){
 }
 setInterval(updateOfficialCountdown,1000);
 let officialDrawPoll=null;
+const drawBRTime=value=>{
+ if(!value)return '—';
+ const raw=String(value).trim();
+ const iso=/^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/.test(raw)?raw.replace(' ','T')+'Z':raw;
+ const date=new Date(iso);
+ return Number.isFinite(date.getTime())?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(date):raw;
+};
 async function refreshOfficialDrawExecution(){
  const target=document.getElementById('officialDrawStatus'),steps=document.getElementById('officialDrawSteps'),winnerBox=document.getElementById('officialDrawWinner');
  if(!target||!steps||!winnerBox)return;
- const selectedId=String(drawSelection||'').replace(/^legacy:/,'');const current=legacyDrawRecords.find(x=>String(x.id)===selectedId);updateOfficialCountdown();
- if(!current){target.textContent='Selecione uma promoção de números da sorte para acompanhar a apuração.';return}
+ const selectedId=String(drawSelection||'').replace(/^legacy:/,'');
+ const current=legacyDrawRecords.find(x=>String(x.id)===selectedId);
+ updateOfficialCountdown();
+ if(!current){target.textContent='Selecione uma promoção para acompanhar a apuração.';return}
+ const phases=[
+  ['Atualização dos alunos',['updating_data','starting']],
+  ['Atualização dos contratos',['validating_contracts']],
+  ['Conferência das presenças',['auditing_numbers']],
+  ['Geração dos números da sorte',['generating_numbers']],
+  ['Auditoria da elegibilidade',['audit_completed']],
+  ['Consolidação dos números das duas unidades',['consolidating']],
+  ['Sorteio e registro do vencedor',['completed']]
+ ];
+ const names={updating_data:'Atualizando informações da EVO',starting:'Iniciando auditoria',validating_contracts:'Verificando contratos',auditing_numbers:'Conferindo presenças e números',generating_numbers:'Gerando números da sorte',audit_completed:'Auditoria registrada',consolidating:'Consolidando números',completed:'Sorteio concluído',blocked:'Apuração bloqueada'};
+ const renderPhases=(events,stage)=>{
+  const observed=new Set(events.map(e=>e.stage));
+  const completed=stage==='completed';
+  const rows=phases.map(([label,codes],index)=>{
+   const seen=codes.some(code=>observed.has(code));
+   const active=stage!=='blocked'&&codes.includes(stage);
+   const done=completed||(seen&&!active);
+   const symbol=done?'✓':active?'◉':'○';
+   const color=done?'#167c43':active?'#1264aa':'#90979e';
+   return '<li style="list-style:none;display:flex;align-items:center;gap:10px;margin:12px 0;color:'+color+'"><span style="font-size:20px;font-weight:700" aria-hidden="true">'+symbol+'</span><span>'+drawSafe(label)+(active?' — em andamento':'')+'</span></li>';
+  });
+  steps.style.paddingLeft='0';
+  steps.innerHTML=rows.join('');
+ };
  try{
   const r=await fetch('/api/promo-numbers?route=lucky-draw-status&promotion='+encodeURIComponent(current.id),{cache:'no-store'});
   if(!r.ok)throw Error('Falha na consulta oficial ('+r.status+')');
-  const d=await r.json();
-  if(!d.run){target.textContent=current.draw_at&&Date.now()>=Date.parse(current.draw_at)?'Horário programado atingido. Aguardando o backend registrar a execução; confira o agendamento do Worker se persistir.':'Aguardando horário programado. O sorteio não pode ser antecipado.';steps.innerHTML='<li>Auditoria ainda não iniciada pelo backend.</li>';return}
-  const stages={updating_data:'Atualizando dados necessários na EVO',audit_completed:'Auditoria concluída',starting:'Iniciando apuração',validating_contracts:'Verificando contratos do D1',auditing_numbers:'Auditando números e elegibilidade',consolidating:'Consolidando números das unidades',completed:'Sorteio concluído',blocked:'Apuração bloqueada — exige conferência'};
+  const d=await r.json(),events=d.events||[];
+  if(!d.run){
+   target.textContent=current.draw_at&&Date.now()>=Date.parse(current.draw_at)?'Horário atingido. Aguardando início registrado pelo backend.':'Aguardando horário programado.';
+   renderPhases([],null);return;
+  }
   const metrics=JSON.parse(d.run.details_json||'{}');
-  target.textContent=(stages[d.run.stage]||d.run.stage)+' • '+Number(metrics.percent||0)+'% • '+Number(metrics.checked||0)+'/'+Number(metrics.total||0)+' participantes • '+Number(metrics.checkedNumbers||0)+' números conferidos • '+Number(metrics.evoRequests||0)+' requisições EVO';
-  steps.innerHTML=(d.events||[]).map(e=>'<li><b>'+drawSafe(stages[e.stage]||e.stage)+'</b> — '+drawSafe(e.created_at||'')+'</li>').join('');
-  if(d.run.stage==='completed'){
+  const pct=Math.max(0,Math.min(100,Number(metrics.percent)||0));
+  const stage=d.run.stage;
+  target.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>'+drawSafe(names[stage]||stage)+'</strong><strong>'+pct+'%</strong></div><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:9px;background:#e8eaed;border-radius:9px;overflow:hidden;margin:12px 0"><div style="height:100%;width:'+pct+'%;background:#15803d"></div></div><div>'+Number(metrics.checked||0)+' de '+Number(metrics.total||0)+' participantes • '+Number(metrics.checkedNumbers||0)+' números conferidos • '+Number(metrics.evoRequests||0)+' requisições EVO</div>'+(stage==='blocked'?'<p style="color:#b42318;font-weight:700">Pendência: '+drawSafe(metrics.error||'Verificação necessária')+'</p>':'')+'<div style="font-size:12px;opacity:.75;margin-top:8px">Último evento: '+drawSafe(drawBRTime(events.at(-1)?.created_at||d.run.created_at))+' (Brasília)</div>';
+  renderPhases(events,stage);
+  if(stage==='completed'){
    const w=d.winner||{};
-   winnerBox.innerHTML='<b>Vencedor: '+drawSafe([w.first_name,w.last_name].filter(Boolean).join(' ')||'Conferir registro')+'</b><p>Número: '+drawSafe(d.run.winner_code)+' • Unidade: '+drawSafe(d.run.winner_unit==='gym'?'Gym Pop':'Bike Pop')+'</p><p>Aula de origem: '+drawSafe(w.activity_name||'Não vinculada diretamente ao número')+' • Data/hora: '+drawSafe(w.occurred_at||'Não informado')+'</p>';
-  }else if(d.run.stage==='blocked'){winnerBox.textContent='Apuração bloqueada: '+(metrics.error||'Conferência pendente')+'. Nenhum vencedor foi selecionado.'}
+   winnerBox.innerHTML='<b>Vencedor: '+drawSafe([w.first_name,w.last_name].filter(Boolean).join(' ')||'Conferir registro')+'</b><p>Número: '+drawSafe(d.run.winner_code)+' • Unidade: '+drawSafe(d.run.winner_unit==='gym'?'Gym Pop':'Bike Pop')+'</p><p>Aula de origem: '+drawSafe(w.activity_name||'Não vinculada')+' • Data/hora: '+drawSafe(drawBRTime(w.occurred_at))+'</p>';
+  }else{
+   winnerBox.innerHTML='<b>Vencedor: aguardando apuração oficial</b><p class="muted">'+(stage==='blocked'?'Apuração bloqueada até resolver a pendência.':'O resultado só será exibido após a conclusão da auditoria.')+'</p>';
+  }
  }catch(e){target.textContent='Acompanhamento indisponível: '+String(e.message||e)}
 }
 function switchDrawPromotion(value){
