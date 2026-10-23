@@ -144,7 +144,7 @@ async function refreshOfficialDrawExecution(){
   ['Sorteio e registro do vencedor',['completed']]
  ];
  const names={syncing_data:'Sincronizando dados com a EVO',updating_data:'Atualizando informações da EVO',starting:'Iniciando auditoria',validating_contracts:'Verificando contratos',auditing_numbers:'Conferindo presenças e números',generating_numbers:'Gerando números da sorte',generation_completed:'Geração concluída',audit_completed:'Auditoria registrada',consolidating:'Consolidando números',completed:'Sorteio concluído',blocked:'Apuração bloqueada'};
- const renderPhases=(events,stage,metrics={})=>{
+ const renderPhases=async(events,stage,metrics={})=>{
   const observed=new Map();
   for(const e of events){
    let data={};try{data=JSON.parse(e.details_json||'{}')}catch{}
@@ -190,6 +190,31 @@ async function refreshOfficialDrawExecution(){
    return '<li style="list-style:none;margin:14px 0 20px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>'+drawSafe(label+detail)+'</span><strong style="color:'+color+'">'+pct+'%</strong></div><div role="progressbar" aria-label="'+drawSafe(label)+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:8px;background:#e8eaed;border-radius:10px;overflow:hidden;margin-top:8px"><div style="height:100%;width:'+pct+'%;background:'+color+';transition:width .3s"></div></div>'+(count?'<small style="opacity:.7">'+count+'</small>':'')+'</li>';
   });
   steps.style.paddingLeft='0';steps.innerHTML=rows.join('');
+  // Identical read-only endpoints used by Central de Automação; no EVO requests.
+  const units=[['bike','Bike Pop'],['gym','Gym Pop']];
+  const routes=['students','contracts-summary','automation-runs'];
+  const details=await Promise.all(routes.flatMap((route,idx)=>units.map(async ([unit,label])=>{
+   try{
+    const response=await fetch('/api/evo-config?route='+route+'&unit='+unit,{cache:'no-store'});
+    const data=await response.json();
+    if(!response.ok||!data.ok)throw Error(data.error||'Indisponível');
+    let timestamp='',status='';
+    if(idx<2)timestamp=data.lastSyncAt||'';
+    else{
+     const last=(data.runs||[]).find(x=>x.kind==='attendance');
+     timestamp=last?.updated_at||'';
+     status=last?.status==='done'?' · concluída':last?.status==='failed'?' · falhou':last?.status==='pending'?' · em execução':'';
+    }
+    return {idx,label,text:timestamp?drawBRTime(timestamp)+status:'sem registro confirmado'};
+   }catch(e){return {idx,label,text:'consulta indisponível'}}
+  })));
+  steps.querySelectorAll('li').forEach((li,idx)=>{
+   if(idx>2)return;
+   const small=document.createElement('small');
+   small.style.cssText='display:block;font-size:11px;color:#737b85;line-height:1.5;margin-top:6px';
+   small.textContent='Última atualização (Central de Automação): '+details.filter(x=>x.idx===idx).map(x=>x.label+' — '+x.text).join(' | ');
+   li.appendChild(small);
+  });
  };
  try{
   const r=await fetch('/api/promo-numbers?route=lucky-draw-status&promotion='+encodeURIComponent(current.id),{cache:'no-store'});
@@ -197,13 +222,13 @@ async function refreshOfficialDrawExecution(){
   const d=await r.json(),events=d.events||[];
   if(!d.run){
    target.textContent=current.draw_at&&Date.now()>=Date.parse(current.draw_at)?'Horário atingido. Aguardando início registrado pelo backend.':'Aguardando horário programado.';
-   renderPhases([],null);return;
+   await renderPhases([],null);return;
   }
   const metrics=JSON.parse(d.run.details_json||'{}');
   const stage=d.run.stage;
   const pct=Math.max(0,Math.min(100,Number(stage==='syncing_data'?metrics.phasePercent:metrics.percent)||0));
   target.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>'+drawSafe(names[stage]||stage)+'</strong><strong>'+pct+'%</strong></div><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:9px;background:#e8eaed;border-radius:9px;overflow:hidden;margin:12px 0"><div style="height:100%;width:'+pct+'%;background:#15803d"></div></div><div>'+Number(metrics.checked||0)+' de '+Number(metrics.total||0)+' participantes • '+Number(metrics.checkedNumbers||0)+' números conferidos • '+Number(metrics.evoRequests||0)+' requisições EVO</div>'+(stage==='blocked'?'<p style="color:#b42318;font-weight:700">Pendência: '+drawSafe(metrics.error||'Verificação necessária')+'</p>':'')+'<div style="font-size:12px;opacity:.75;margin-top:8px">Último evento: '+drawSafe(drawBRTime(events.at(-1)?.created_at||d.run.created_at))+' (Brasília)</div>';
-  renderPhases(events,stage,metrics);
+  await renderPhases(events,stage,metrics);
   if(stage==='completed'){
    const w=d.winner||{};
    winnerBox.innerHTML='<b>Vencedor: '+drawSafe([w.first_name,w.last_name].filter(Boolean).join(' ')||'Conferir registro')+'</b><p>Número: '+drawSafe(d.run.winner_code)+' • Unidade: '+drawSafe(d.run.winner_unit==='gym'?'Gym Pop':'Bike Pop')+'</p><p>Aula de origem: '+drawSafe(w.activity_name||'Não vinculada')+' • Data/hora: '+drawSafe(drawBRTime(w.occurred_at))+'</p>';
