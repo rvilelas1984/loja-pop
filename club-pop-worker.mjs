@@ -802,7 +802,7 @@ async function runScheduledRegistrationSync(env,kind="opportunity"){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([popDrawTick(env),journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledAttendanceSync(env),runScheduledReservationSync(env),runScheduledContractSync(env).then(()=>luckyDrawTick(env)),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([popDrawTick(env),journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledAttendanceSync(env),runScheduledReservationSync(env),runScheduledContractSync(env).then(()=>luckyDrawTick(env,{profile:(id,unit,beforeRequest)=>evoProfile(env,id,unit,{beforeRequest}),attendance:(id,start,end,unit,beforeRequest)=>evoAttendance(env,id,start,end,null,unit,{beforeRequest,paginate:true})})),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
   async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
@@ -4347,21 +4347,36 @@ async function ensurePromotion(env,p){
   await env.DB.prepare("INSERT INTO promotions(slug,name,description,start_at,end_at,status,rules_json,banner_url) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(slug) DO UPDATE SET name=excluded.name,description=excluded.description,start_at=excluded.start_at,end_at=excluded.end_at,status=excluded.status,rules_json=excluded.rules_json,banner_url=excluded.banner_url,updated_at=CURRENT_TIMESTAMP").bind(slug,p.name||slug,p.dashboardText||"",p.start||"2000-01-01",p.end||"2099-12-31",p.status==="Ativo"?"ACTIVE":"INACTIVE",rules,p.bannerUrl||null).run();
   return await env.DB.prepare("SELECT * FROM promotions WHERE slug=? LIMIT 1").bind(slug).first();
 }
-async function evoProfile(env,id,unit="bike"){
-  unit=unit==="gym"?"gym":"bike";const cfg=await getEvoConfig(env,unit),auth=btoa(cfg.dns+":"+cfg.token),r=await fetch("https://evo-integracao-api.w12app.com.br/api/v2/members/"+encodeURIComponent(id)+"?showMemberships=true",{headers:{Authorization:"Basic "+auth,Accept:"application/json"}});
+async function evoProfile(env,id,unit="bike",options={}){
+  unit=unit==="gym"?"gym":"bike";const cfg=await getEvoConfig(env,unit),auth=btoa(cfg.dns+":"+cfg.token);
+  const record=options.beforeRequest?await options.beforeRequest():null;
+  const r=await fetch("https://evo-integracao-api.w12app.com.br/api/v2/members/"+encodeURIComponent(id)+"?showMemberships=true",{headers:{Authorization:"Basic "+auth,Accept:"application/json"}});
+  if(record)await record(r);
   if(!r.ok)throw new Error("EVO_PROFILE_"+r.status);const d=await r.json();return Array.isArray(d)?d[0]:d;
 }
 async function promotionEligible(env,member,p){
   if((p.eligibility?.mode||"any")==="any")return true;const manual=await env.DB.prepare("SELECT id FROM promotion_review_requests WHERE promotion_slug=? AND member_id=? AND status='APPROVED' ORDER BY id DESC LIMIT 1").bind(String(p.id),member.id).first();if(manual)return true;const unit=(p.unit||"bike")==="gym"?"gym":"bike",profile=await evoProfile(env,member.evo_member_id,unit),today=new Date().toISOString().slice(0,10),accepted=(p.eligibility?.acceptedContracts||[]).map(String);
   return (profile?.memberships||[]).some(x=>accepted.includes(String(x.idMembership))&&!x.cancelDate&&(!x.endDate||String(x.endDate).slice(0,10)>=today));
 }
-async function evoAttendance(env,id,start,end,memberId=null,unit="bike"){
+async function evoAttendance(env,id,start,end,memberId=null,unit="bike",options={}){
   unit=unit==="gym"?"gym":"bike";const startDate=String(start||"2026-01-01").slice(0,10),endDate=String(end||new Date().toISOString().slice(0,10)).slice(0,10);
   // EVO is the source of truth: always reconcile this range.
   const cfg=await getEvoConfig(env,unit),auth=btoa(cfg.dns+":"+cfg.token),qs=new URLSearchParams({idMember:String(id),dateStart:startDate+"T00:00:00",dateEnd:endDate+"T23:59:59",skip:"0",take:"200"});
-  const r=await fetch("https://evo-integracao-api.w12app.com.br/api/v2/activities/member/sessions?"+qs,{headers:{Authorization:"Basic "+auth,Accept:"application/json"}});
-  if(!r.ok)throw new Error("EVO_ATTENDANCE_"+r.status);
-  const d=await r.json(),a=(Array.isArray(d)?d:(d.items||d.data||[])).filter(x=>x?.presenca===true&&x?.isFinalized===true);
+  const collected=[],seen=new Set();
+  for(let page=0;;page++){
+    const record=options.beforeRequest?await options.beforeRequest():null;
+    qs.set("skip",String(page*200));
+    const r=await fetch("https://evo-integracao-api.w12app.com.br/api/v2/activities/member/sessions?"+qs,{headers:{Authorization:"Basic "+auth,Accept:"application/json"},signal:AbortSignal.timeout(25000)});
+    if(record)await record(r);
+    if(!r.ok)throw new Error("EVO_ATTENDANCE_"+r.status);
+    const d=await r.json(),rows=Array.isArray(d)?d:(d.items||d.data);
+    if(!Array.isArray(rows)||rows.length>200)throw Error("EVO_ATTENDANCE_RESPOSTA_INVALIDA");
+    const fingerprint=JSON.stringify(rows);if(rows.length&&seen.has(fingerprint))throw Error("EVO_ATTENDANCE_PAGINACAO_REPETIDA");seen.add(fingerprint);
+    collected.push(...rows);
+    if(!options.paginate||rows.length<200)break;
+    if(page>=49)throw Error("EVO_ATTENDANCE_PAGINACAO_INCOMPLETA");
+  }
+  const a=collected.filter(x=>x?.presenca===true&&x?.isFinalized===true);
   if(memberId){
     await env.DB.prepare("DELETE FROM attendance_history WHERE member_id=? AND unit=? AND attendance_date>=? AND attendance_date<=?").bind(memberId,unit,startDate,endDate).run();
     for(const x of a){

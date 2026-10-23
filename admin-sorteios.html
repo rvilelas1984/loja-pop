@@ -130,13 +130,14 @@ async function refreshOfficialDrawExecution(){
   if(!r.ok)throw Error('Falha na consulta oficial ('+r.status+')');
   const d=await r.json();
   if(!d.run){target.textContent=current.draw_at&&Date.now()>=Date.parse(current.draw_at)?'Horário programado atingido. Aguardando o backend registrar a execução; confira o agendamento do Worker se persistir.':'Aguardando horário programado. O sorteio não pode ser antecipado.';steps.innerHTML='<li>Auditoria ainda não iniciada pelo backend.</li>';return}
-  const stages={starting:'Iniciando apuração',validating_contracts:'Verificando contratos do D1',auditing_numbers:'Auditando números e elegibilidade',consolidating:'Consolidando números das unidades',completed:'Sorteio concluído',blocked:'Apuração bloqueada — exige conferência'};
-  target.textContent=(stages[d.run.stage]||d.run.stage)+' • '+(d.run.created_at||'');
+  const stages={updating_data:'Atualizando dados necessários na EVO',audit_completed:'Auditoria concluída',starting:'Iniciando apuração',validating_contracts:'Verificando contratos do D1',auditing_numbers:'Auditando números e elegibilidade',consolidating:'Consolidando números das unidades',completed:'Sorteio concluído',blocked:'Apuração bloqueada — exige conferência'};
+  const metrics=JSON.parse(d.run.details_json||'{}');
+  target.textContent=(stages[d.run.stage]||d.run.stage)+' • '+Number(metrics.percent||0)+'% • '+Number(metrics.checked||0)+'/'+Number(metrics.total||0)+' participantes • '+Number(metrics.checkedNumbers||0)+' números conferidos • '+Number(metrics.evoRequests||0)+' requisições EVO';
   steps.innerHTML=(d.events||[]).map(e=>'<li><b>'+drawSafe(stages[e.stage]||e.stage)+'</b> — '+drawSafe(e.created_at||'')+'</li>').join('');
   if(d.run.stage==='completed'){
    const w=d.winner||{};
    winnerBox.innerHTML='<b>Vencedor: '+drawSafe([w.first_name,w.last_name].filter(Boolean).join(' ')||'Conferir registro')+'</b><p>Número: '+drawSafe(d.run.winner_code)+' • Unidade: '+drawSafe(d.run.winner_unit==='gym'?'Gym Pop':'Bike Pop')+'</p><p>Aula de origem: '+drawSafe(w.activity_name||'Não vinculada diretamente ao número')+' • Data/hora: '+drawSafe(w.occurred_at||'Não informado')+'</p>';
-  }else if(d.run.stage==='blocked'){winnerBox.textContent='Apuração bloqueada. Nenhum vencedor foi selecionado.'}
+  }else if(d.run.stage==='blocked'){winnerBox.textContent='Apuração bloqueada: '+(metrics.error||'Conferência pendente')+'. Nenhum vencedor foi selecionado.'}
  }catch(e){target.textContent='Acompanhamento indisponível: '+String(e.message||e)}
 }
 function switchDrawPromotion(value){
