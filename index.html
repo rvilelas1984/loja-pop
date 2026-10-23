@@ -140,7 +140,9 @@ async function loadHighlights(){try{const c=await(await fetch("/api/content",{ca
  await Promise.all(missions.filter(m=>m.type==="challenge").map(async m=>{try{const token=sessionStorage.getItem("clubpop_token");if(!token)return;const response=await fetch("/api/mission-redemptions?route=progress&mission="+encodeURIComponent(m.id),{headers:{Authorization:"Bearer "+token},cache:"no-store"});const data=await response.json();if(response.ok&&data.ok)challengeProgress[m.id]=data}catch(e){console.warn("Progresso do desafio indisponível",e)}}));
  const dashboardMissions=missions.filter(m=>challengeProgress[m.id]?.redemption?.status!=="COMPLETED").sort((a,b)=>Number(challengeProgress[b.id]?.completed===true)-Number(challengeProgress[a.id]?.completed===true));
  const fragments=[];
- for(const m of dashboardMissions){try{fragments.push(window.ClubMissionCard.render(m,{attendanceCount:n,weekDays:w,completedWeeks:Number(u.currentWeek?.completedWeeks||0),challengeProgress},c,{compact:true}))}catch(e){console.error("Falha no card da missão",m.id,e)}}
+ const nextReservation=window.clubNextClassReservation?.unit===unit?window.clubNextClassReservation.reservation:null;
+ const flashBookingIds=nextReservation?dashboardMissions.filter(m=>m.type==="flash").flatMap(m=>(m.flashGroups||[{classes:m.flashClasses||[]}]).flatMap(g=>g.classes||[]).filter(x=>String(x.id)===String(nextReservation.session_id)||String(x.date)===String(nextReservation.activity_date)&&String(x.time||"").slice(0,5)===String(nextReservation.start_time||"").slice(0,5)).map(x=>String(x.id))):[];
+ for(const m of dashboardMissions){try{fragments.push(window.ClubMissionCard.render(m,{attendanceCount:n,weekDays:w,completedWeeks:Number(u.currentWeek?.completedWeeks||0),challengeProgress,flashBookingIds,flashDataVerified:!!window.clubNextClassReservation&&window.clubNextClassReservation.unit===unit},c,{compact:true}))}catch(e){console.error("Falha no card da missão",m.id,e)}}
  for(const m of upcomingMissions){try{fragments.push('<section class="cp-upcoming-mission"><div class="cp-upcoming-notice"><strong>EM BREVE</strong><span>Começa em '+dateBR(m.start)+'</span></div><div class="cp-upcoming-preview" inert>'+window.ClubMissionCard.render(m,{attendanceCount:0,weekDays:0,completedWeeks:0,challengeProgress:{}},c,{compact:true})+'</div></section>')}catch(e){console.error("Falha na prévia da missão",m.id,e)}}
  shared.innerHTML=fragments.join("");
  const success=fragments.length>0;
@@ -242,6 +244,8 @@ async function loadNextClassCard(unit){
   const d=await authFetch("/auth/student-next-class?unit="+encodeURIComponent(unit));
   if(unit!==currentUnit)return;
   const x=d.reservation;
+  window.clubNextClassReservation={unit,reservation:x||null};
+  if(document.querySelector("#clubMissionShared .club-mission-card"))loadHighlights().catch(console.warn);
   if(!x){title.textContent=unit==="gym"?"Gym Pop":"Bike Pop";box.textContent="Nenhuma próxima aula encontrada nas reservas sincronizadas.";hint.textContent="Reservou agora? Aguarde a sincronização e toque em Atualizar.";status.textContent="Sem reserva";return}
   const dateParts=String(x.activity_date||"").split("-").map(Number),dt=new Date(dateParts[0],(dateParts[1]||1)-1,dateParts[2]||1);
   const validDate=!Number.isNaN(dt.getTime()),today=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
