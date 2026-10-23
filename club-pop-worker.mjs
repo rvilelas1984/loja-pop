@@ -1,4 +1,5 @@
 import {journeyAutomationAdmin} from './lib/journey-automations.mjs';
+import {journeyAutomationTick} from './lib/journey-engine.mjs';
 import {equipmentMaintenance} from './lib/equipment-maintenance.mjs';
 import { ensureReservationSchema, startReservationSync, processReservationSync, saveReservationSnapshot, saveProspectReservationSnapshot, reservationTime } from './lib/reservation-sync.mjs';
 import { attachContractSessions } from './lib/session-contracts.mjs';
@@ -152,6 +153,37 @@ async function recordJourneyChatproContact(env,b,flow){
  return {contactRecorded:true,contactAt:row?.created_at||null};
  }catch{return {contactRecorded:false,contactWarning:"ENVIO_ACEITO_MAS_HISTORICO_NAO_REGISTRADO"};}
 }
+// Transport shared with manual flow delivery; automation never changes credentials.
+async function chatproRequest(base,apiKey,path,method="GET",payload){
+ const r=await fetch(base.replace(/\/$/,"")+path,{method,redirect:"manual",headers:{"API-KEY":apiKey,Accept:"application/json","Content-Type":"application/json"},body:payload===undefined?undefined:JSON.stringify(payload),signal:AbortSignal.timeout(10000)});
+ if(r.status>=300&&r.status<400)throw Error("REDIRECIONAMENTO_BLOQUEADO");
+ if(!r.ok)throw Object.assign(Error("CHATPRO_HTTP_"+r.status),{status:r.status});
+ // A successful empty body is still accepted; do not turn it into a retry.
+ const text=await r.text();if(!text)return {};try{return JSON.parse(text)}catch{return {accepted:true}};
+}
+function journeyChatproAdapters(env){
+ const transport=async(unit)=>{
+  const cfg=await env.DB.prepare('SELECT * FROM club_chatpro_config WHERE id=1').first();
+  let units=[];try{units=JSON.parse(cfg?.enabled_units||'[]')}catch{}
+  if(!cfg?.enabled||!units.includes(unit))throw Error('CHATPRO_UNIDADE_NAO_ATIVADA');
+  if(!chatproSafeApiUrl(cfg.base_url))throw Error('URL_API_INVALIDA');
+  if(!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)throw Error('CHAVE_CRIPTOGRAFIA_NAO_CONFIGURADA');
+  const decode=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0)),key=await crypto.subtle.importKey('raw',decode(env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY),'AES-GCM',false,['decrypt']);
+  const [iv,cipher]=cfg.api_key_cipher.split('.'),apiKey=new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(iv),additionalData:new TextEncoder().encode('chatpro:config')},key,decode(cipher)));
+  return (path,method,payload)=>chatproRequest(cfg.base_url,apiKey,path,method,payload);
+ };
+ return {
+  async validateFlow(unit,flow){const call=await transport(unit),data=await call('/flows/');const items=Array.isArray(data)?data:data.results||data.flows||data.data||[];if(!Array.isArray(items)||!items.some(x=>String(x.id||x.flow_id)===String(flow)))throw Error('FLUXO_NAO_ENCONTRADO_NO_CHATPRO');},
+  async send(b,beforeSend){
+   let call,sub;
+   try{call=await transport(b.unit);await beforeSend();sub=await resolveChatproSubscriber(call,b.phone,{allowCreate:true,hasOptIn:b.hasOptIn,name:b.studentName});await beforeSend();}
+   catch(e){e.beforeSend=true;throw e;}
+   // Once send_flow begins, every ambiguous failure requires manual review.
+   await call('/subscriber/'+encodeURIComponent(sub.id)+'/send_flow/','POST',{flow:b.flow});return {contactCreated:sub.created};
+  },
+  recordContact:(b,flow)=>recordJourneyChatproContact(env,b,flow)
+ };
+}
 async function chatproAdminConfig(request,env,url,json){
  const respond=(data,status=200)=>json(data,status);
  const ck=request.headers.get("x-clubpop-admin-cookie")||"";
@@ -262,12 +294,7 @@ async function chatproAdminConfig(request,env,url,json){
   if(action==="send"&&(!Number.isSafeInteger(flow)||flow<=0))return respond({ok:false,error:"FLUXO_INVALIDO"},400);
   let apiKey;try{apiKey=await decrypt(record.api_key_cipher)}catch{return respond({ok:false,error:"FALHA_DESCRIPTOGRAFIA"},500)}
   const base=record.base_url.replace(/\/$/,"");
-  const call=async(path,method="GET",payload)=>{
-   const r=await fetch(base+path,{method,redirect:"manual",headers:{"API-KEY":apiKey,"Accept":"application/json","Content-Type":"application/json"},body:payload===undefined?undefined:JSON.stringify(payload),signal:AbortSignal.timeout(10000)});
-   if(r.status>=300&&r.status<400)throw new Error("REDIRECIONAMENTO_BLOQUEADO");
-   if(!r.ok)throw Object.assign(new Error("CHATPRO_HTTP_"+r.status),{status:r.status});
-   return await r.json();
-  };
+  const call=(path,method="GET",payload)=>chatproRequest(base,apiKey,path,method,payload);
   if(action==="send"&&b.journey===true&&(b.source!=="student-management"||!/^\d+$/.test(String(b.studentId||""))))return respond({ok:false,error:"ALUNO_DA_JORNADA_INVALIDO"},400);
   let dispatch;
   if(action==="send"&&b.source==="student-management"){
@@ -772,7 +799,7 @@ async function runScheduledRegistrationSync(env,kind="opportunity"){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledAttendanceSync(env),runScheduledReservationSync(env),runScheduledContractSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledAttendanceSync(env),runScheduledReservationSync(env),runScheduledContractSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
   async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
@@ -2155,7 +2182,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       // Read-only new-student journey: category comes from EVO identifiers or existing contracts.
       // Contract status never removes a same-day registration from this cohort.
       if (url.pathname === "/admin/equipment-maintenance") return equipmentMaintenance(request,env,url);
-      if(url.pathname==="/admin/journey-automations")return journeyAutomationAdmin(request,env,url);
+      if(url.pathname==="/admin/journey-automations")return journeyAutomationAdmin(request,env,url,journeyChatproAdapters(env));
       if (url.pathname === "/admin/new-students" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -5256,4 +5283,5 @@ async function checkoutServiceVoucher(env,order,create){
   return {ok:true,status:"review_required",message:"Emissão requer conferência; nenhuma nova tentativa automática"};
  }
 }
+
 
