@@ -189,7 +189,15 @@ async function refreshOfficialDrawExecution(){
    const count=index===3&&Number(generationData.total)>0?' • '+Number(generationData.checked||0)+'/'+Number(generationData.total)+' registros':'';
    return '<li style="list-style:none;margin:14px 0 20px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>'+drawSafe(label+detail)+'</span><strong style="color:'+color+'">'+pct+'%</strong></div><div role="progressbar" aria-label="'+drawSafe(label)+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:8px;background:#e8eaed;border-radius:10px;overflow:hidden;margin-top:8px"><div style="height:100%;width:'+pct+'%;background:'+color+';transition:width .3s"></div></div>'+(count?'<small style="opacity:.7">'+count+'</small>':'')+'</li>';
   });
+  // Preserve last confirmed D1 summaries while the 3-second status poll runs.
   steps.style.paddingLeft='0';steps.innerHTML=rows.join('');
+  for(let idx=0;idx<3;idx++){
+   const small=document.createElement('small');
+   small.className='draw-sync-last';
+   small.style.cssText='display:block;font-size:11px;color:#737b85;line-height:1.5;margin-top:6px';
+   small.textContent=window.__drawSyncSummary?.[idx]||'Consultando última atualização da Central de Automação…';
+   steps.children[idx]?.appendChild(small);
+  }
   // Identical read-only endpoints used by Central de Automação; no EVO requests.
   const units=[['bike','Bike Pop'],['gym','Gym Pop']];
   const routes=['students','contracts-summary','automation-runs'];
@@ -208,11 +216,14 @@ async function refreshOfficialDrawExecution(){
     return {idx,label,text:timestamp?drawBRTime(timestamp)+status:'sem registro confirmado'};
    }catch(e){return {idx,label,text:'consulta indisponível'}}
   })));
+  const summaries=[0,1,2].map(idx=>'Última atualização (Central de Automação): '+details.filter(x=>x.idx===idx).map(x=>x.label+' — '+x.text).join(' | '));
+  window.__drawSyncSummary=summaries.map((value,idx)=>value.includes('consulta indisponível')&&window.__drawSyncSummary?.[idx]?window.__drawSyncSummary[idx]:value);
   steps.querySelectorAll('li').forEach((li,idx)=>{
    if(idx>2)return;
    const small=document.createElement('small');
    small.style.cssText='display:block;font-size:11px;color:#737b85;line-height:1.5;margin-top:6px';
-   small.textContent='Última atualização (Central de Automação): '+details.filter(x=>x.idx===idx).map(x=>x.label+' — '+x.text).join(' | ');
+   small.textContent=window.__drawSyncSummary[idx];
+   li.querySelector('.draw-sync-last')?.remove();
    li.appendChild(small);
   });
  };
