@@ -1,3 +1,4 @@
+import {flashClasses} from './lib/flash-mission-classes.mjs';
 import {journeyAutomationAdmin} from './lib/journey-automations.mjs';
 import {journeyAutomationTick} from './lib/journey-engine.mjs';
 import {equipmentMaintenance} from './lib/equipment-maintenance.mjs';
@@ -2182,6 +2183,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       // Read-only new-student journey: category comes from EVO identifiers or existing contracts.
       // Contract status never removes a same-day registration from this cohort.
       if (url.pathname === "/admin/equipment-maintenance") return equipmentMaintenance(request,env,url);
+      if(url.pathname==="/admin/flash-mission-classes")return flashClasses(request,env,url);
       if(url.pathname==="/admin/journey-automations")return journeyAutomationAdmin(request,env,url,journeyChatproAdapters(env));
       if (url.pathname === "/admin/new-students" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
