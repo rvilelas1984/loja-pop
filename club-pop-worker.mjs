@@ -802,7 +802,7 @@ async function runScheduledRegistrationSync(env,kind="opportunity"){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([popDrawTick(env),luckyDrawTick(env),journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledAttendanceSync(env),runScheduledReservationSync(env),runScheduledContractSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([popDrawTick(env),journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledAttendanceSync(env),runScheduledReservationSync(env),runScheduledContractSync(env).then(()=>luckyDrawTick(env)),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
   async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
