@@ -1836,6 +1836,16 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         return json({ok:true,id:inserted.meta?.last_row_id},201);
       }
       // Desempenho semanal: leitura de aulas confirmadas no D1, sem EVO.
+      if(url.pathname==="/admin/class-performance"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"}),vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=url.searchParams.get("unit"),start=url.searchParams.get("start"),end=url.searchParams.get("end");
+        if(!["bike","gym"].includes(unit)||!/^\d{4}-\d{2}-\d{2}$/.test(start||"")||!/^\d{4}-\d{2}-\d{2}$/.test(end||"")||start>end||Date.parse(end)-Date.parse(start)>366*86400000)return json({ok:false,error:"FILTROS_INVALIDOS"},400);
+        const q=await env.DB.prepare("SELECT activity_date date,start_time time,COALESCE(attendance_count,0) count,id_activity_session sessionId,activity_name name FROM evo_attendance_sessions WHERE unit=? AND status='done' AND activity_date>=? AND activity_date<=? ORDER BY activity_date,start_time LIMIT 10000").bind(unit,start,end).all();
+        return json({ok:true,unit,start,end,source:"D1",classes:q.results||[],truncated:(q.results||[]).length===10000});
+      }
       if(url.pathname==="/admin/weekly-attendance"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -5311,9 +5321,9 @@ async function checkoutServiceVoucher(env,order,create){
   const items=JSON.parse(content?.content_json||'{}').services||[];
   const item=items.find(x=>String(x.id)===String(order.item_id)&&String(x.unit||'bike')===order.unit);
   const serviceId=Number(item?.evoServiceId);
-  if(!Number.isSafeInteger(serviceId)||serviceId<1)throw new Error("SERVICO_EVO_NAO_CONFIGURADO");
+  if(!item||item.deliveryMethod!=="voucher")throw new Error("SERVICO_SEM_ENTREGA_VOUCHER");
   const models=(await db.prepare("SELECT * FROM club_voucher_models WHERE unit=? AND enabled=1").bind(order.unit).all()).results||[];
-  const model=models.find(m=>{const sel=voucherSelection(m.contract_ids_json);return sel.kind==="service"&&sel.ids.includes(serviceId)});
+  const model=item.voucherModelId?models.find(m=>String(m.id)===String(item.voucherModelId)&&voucherSelection(m.contract_ids_json).kind==="service"):models.find(m=>{const sel=voucherSelection(m.contract_ids_json);return Number.isSafeInteger(serviceId)&&serviceId>0&&sel.kind==="service"&&sel.ids.includes(serviceId)});
   if(!model)throw new Error("MODELO_VOUCHER_SERVICO_NAO_ENCONTRADO");
   const settings=await voucherSettings(env,order.unit,"service");
   await db.prepare("INSERT INTO club_voucher_requests(unit,model_id,member_id,source_type,source_id,idempotency_key,delivery_mode,status) VALUES(?,?,?,'SHOP',?,? ,?,'pending') ON CONFLICT(idempotency_key) DO NOTHING").bind(order.unit,model.id,order.member_id,order.id,key,settings.enabled?'batch':'immediate').run();
