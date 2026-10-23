@@ -138,12 +138,12 @@ async function refreshOfficialDrawExecution(){
   ['Atualização dos alunos',['updating_data','starting']],
   ['Atualização dos contratos',['validating_contracts']],
   ['Conferência das presenças',['auditing_numbers']],
-  ['Geração dos números da sorte',['generating_numbers']],
+  ['Geração dos números da sorte',['generating_numbers','generation_completed']],
   ['Auditoria da elegibilidade',['audit_completed']],
   ['Consolidação dos números das duas unidades',['consolidating']],
   ['Sorteio e registro do vencedor',['completed']]
  ];
- const names={updating_data:'Atualizando informações da EVO',starting:'Iniciando auditoria',validating_contracts:'Verificando contratos',auditing_numbers:'Conferindo presenças e números',generating_numbers:'Gerando números da sorte',audit_completed:'Auditoria registrada',consolidating:'Consolidando números',completed:'Sorteio concluído',blocked:'Apuração bloqueada'};
+ const names={updating_data:'Atualizando informações da EVO',starting:'Iniciando auditoria',validating_contracts:'Verificando contratos',auditing_numbers:'Conferindo presenças e números',generating_numbers:'Gerando números da sorte',generation_completed:'Geração concluída',audit_completed:'Auditoria registrada',consolidating:'Consolidando números',completed:'Sorteio concluído',blocked:'Apuração bloqueada'};
  const renderPhases=(events,stage)=>{
   const observed=new Map();
   for(const e of events){
@@ -159,7 +159,7 @@ async function refreshOfficialDrawExecution(){
    const checked=Number(last.checked||last.processed||0);
    const reported=Number(last.percent);
    const partial=Number.isFinite(reported)&&reported>0?reported:(total>0?checked/total*100:0);
-   const pct=completed?100:active?Math.max(0,Math.min(99,Math.round(partial))):matched.length?100:0;
+   const pct=completed?100:active?Math.max(0,Math.min(99,Math.round(partial))):matched.length?(matched.includes('generation_completed')?100:Math.max(0,Math.min(100,Math.round(partial)))):0;
    const color=pct===100?'#16804a':active?'#1870ba':'#a5aab0';
    const count=total>0?' • '+checked+'/'+total+' registros':'';
    return '<li style="list-style:none;margin:14px 0 20px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>'+drawSafe(label)+(active?' — em andamento':'')+'</span><strong style="color:'+color+'">'+pct+'%</strong></div><div role="progressbar" aria-label="'+drawSafe(label)+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:8px;background:#e8eaed;border-radius:10px;overflow:hidden;margin-top:8px"><div style="height:100%;width:'+pct+'%;background:'+color+';transition:width .3s"></div></div>'+(count?'<small style="opacity:.7">'+count+'</small>':'')+'</li>';
