@@ -836,6 +836,38 @@ export default {
 
 
 
+
+      // First-party, authenticated application analytics. No EVO calls.
+      if(url.pathname==="/member/app-analytics"&&request.method==="POST"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const body=await request.json().catch(()=>({}));
+        const unit=body.unit==="gym"?"gym":body.unit==="bike"?"bike":null;
+        const sid=String(body.sessionId||"");
+        const page=String(body.page||"dashboard").replace(/[^a-z0-9_-]/gi,"").slice(0,48);
+        if(!unit||!/^[a-f0-9-]{36}$/i.test(sid))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_app_analytics (session_id TEXT PRIMARY KEY, member_id TEXT NOT NULL, unit TEXT NOT NULL, first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, page TEXT NOT NULL, page_views INTEGER NOT NULL DEFAULT 1)").run();
+        const now=Math.floor(Date.now()/1000);
+        await env.DB.prepare("INSERT INTO club_app_analytics(session_id,member_id,unit,first_seen,last_seen,page) VALUES(?,?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET last_seen=excluded.last_seen,page=excluded.page,page_views=page_views+CASE WHEN page<>excluded.page THEN 1 ELSE 0 END WHERE member_id=excluded.member_id AND unit=excluded.unit").bind(sid,String(member.id),unit,now,now,page).run();
+        return json({ok:true});
+      }
+      if(url.pathname==="/admin/app-analytics"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        let ar;try{ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"})}catch{return json({ok:false,error:"AUTH_INDISPONIVEL"},502)}
+        const au=await ar.json().catch(()=>({}));
+        if(!ar.ok||au.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=url.searchParams.get("unit")||"club",days=Math.min(30,Math.max(1,Number(url.searchParams.get("days"))||1));
+        if(!["bike","gym","club"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        if(unit!=="club"&&!(au.units||[]).includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_app_analytics (session_id TEXT PRIMARY KEY, member_id TEXT NOT NULL, unit TEXT NOT NULL, first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, page TEXT NOT NULL, page_views INTEGER NOT NULL DEFAULT 1)").run();
+        const now=Math.floor(Date.now()/1000),from=now-days*86400,filter=unit==="club"?"":" AND unit=?";
+        const params=unit==="club"?[from]:[from,unit];
+        const rows=await env.DB.prepare("SELECT session_id,member_id,unit,first_seen,last_seen,page,page_views FROM club_app_analytics WHERE last_seen>=?"+filter+" ORDER BY last_seen DESC LIMIT 10000").bind(...params).all();
+        const list=rows.results||[],active=list.filter(x=>x.last_seen>=now-120),members=new Set(list.map(x=>x.member_id)),activeMembers=new Set(active.map(x=>x.member_id)),duration=list.map(x=>Math.max(0,x.last_seen-x.first_seen)),pages={};
+        for(const x of list)pages[x.page]=(pages[x.page]||0)+Number(x.page_views||1);
+        return json({ok:true,unit,days,online:activeMembers.size,visitors:members.size,sessions:list.length,averageSeconds:duration.length?Math.round(duration.reduce((a,b)=>a+b,0)/duration.length):0,pages:Object.entries(pages).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,views])=>({name,views})),updatedAt:new Date().toISOString(),note:list.length===10000?"LIMITED_TO_10000_SESSIONS":null});
+      }
       if(url.pathname==="/admin/lucky-draw-status")return luckyDrawStatus(request,env,url);
       if(url.pathname==="/admin/pop-draws")return popDrawAdmin(request,env,url);
       if(url.pathname.startsWith("/links-uteis/")) return usefulLinks(request,env,url);

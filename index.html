@@ -338,4 +338,13 @@ async function refreshBikeStars(){
 document.addEventListener('click',e=>{if(e.target.closest('[data-unit]'))setTimeout(refreshBikeStars,300)});
 window.addEventListener('focus',refreshBikeStars);
 setTimeout(refreshBikeStars,1000);
-</script><script src="/student-onboarding-tour.js" defer></script></body></html>
+</script><script src="/student-onboarding-tour.js" defer></script>
+<script>
+/* First-party analytics: authenticated sessions, no EVO traffic. */
+(()=>{let id=null,lastUnit="",busy=false;const key="clubpop_app_analytics_session";
+function unit(){const v=localStorage.getItem("clubpop_active_unit")||"bike";return v==="gym"?"gym":"bike"}
+function session(){const u=unit();if(!id||lastUnit!==u){lastUnit=u;try{const v=JSON.parse(sessionStorage.getItem(key)||"null");id=v?.unit===u&&/^[a-f0-9-]{36}$/i.test(v.id)?v.id:crypto.randomUUID();sessionStorage.setItem(key,JSON.stringify({id,unit:u}))}catch{id=crypto.randomUUID()}}return id}
+async function ping(){if(busy||document.visibilityState!=="visible")return;const token=sessionStorage.getItem("clubpop_token");if(!token)return;busy=true;try{await fetch("/api/auth?route=app-analytics",{method:"POST",headers:{"content-type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({sessionId:session(),unit:unit(),page:"dashboard"}),cache:"no-store"})}catch{}finally{busy=false}}
+setInterval(ping,60000);document.addEventListener("visibilitychange",ping);window.addEventListener("focus",ping);setTimeout(ping,2000);
+})();
+</script></body></html>
