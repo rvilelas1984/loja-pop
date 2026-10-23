@@ -414,14 +414,14 @@ async function loadScheduledWeekdays(db,kind){const rows=(await db.prepare("SELE
 
 // Scheduled contract refresh: starts at skip=0 on every run; uses the same EVO
 // query and the same D1 ingestion endpoint as manual synchronization.
-async function runScheduledContractSync(env){
+async function runScheduledContractSync(env,forceUnit=null,forceKey=null){
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
-  const now=new Date(),rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='contract'").all()).results||[],days=await loadScheduledWeekdays(env.DB,"contract");
+  const now=new Date(),rows=(forceUnit?[{unit:forceUnit,times_json:'[]'}]:(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='contract'").all()).results||[]),days=await loadScheduledWeekdays(env.DB,"contract");
   for(const row of rows){
     const unit=row.unit==="gym"?"gym":"bike";
-    if(!scheduledDaysAllowed(days.get(unit)||[1,2,3,4,5,6],now))continue;
+    if(!forceUnit&&!scheduledDaysAllowed(days.get(unit)||[1,2,3,4,5,6],now))continue;
     let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}
-    const due=await dueScheduledCombination(env.DB,"contract",unit,times,now);if(!due)continue;
+    const due=forceKey||await dueScheduledCombination(env.DB,"contract",unit,times,now);if(!due)continue;
     const claim=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'contract',?,'pending')").bind(unit,due).run();
     if(!claim.meta?.changes)continue;
     let requests=0,skip=0,saved=0;
@@ -540,7 +540,7 @@ async function reconcileAbandonedAutomaticRuns(db){
     await db.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind=? AND scheduled_minute=? AND status='pending'").bind(JSON.stringify({error:'EXECUCAO_INTERROMPIDA_SEM_CONFIRMACAO',note:'Execução sem conclusão registrada; nenhuma requisição EVO foi realizada para corrigir o histórico'}),row.unit,row.kind,row.scheduled_minute).run();
   }
 }
-async function runScheduledStudentSync(env) {
+async function runScheduledStudentSync(env,forceUnit=null,forceKey=null) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
   // Reconcile orphaned scheduled runs without calling EVO. An interrupted Worker can
   // leave a run pending even if the Vercel endpoint completed successfully.
@@ -552,8 +552,8 @@ async function runScheduledStudentSync(env) {
   }
   const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
   const hm=get("hour")+":"+get("minute"), minuteKey=get("year")+"-"+get("month")+"-"+get("day")+"T"+hm;
-  const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='student'").all()).results||[];const weekdays=await loadScheduledWeekdays(env.DB,"student");
-  for(const row of rows){if(!scheduledDaysAllowed(weekdays.get(row.unit)||[1,2,3,4,5,6],now))continue;let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=await dueScheduledCombination(env.DB,"student",row.unit,times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
+  const rows=(forceUnit?[{unit:forceUnit,times_json:'[]'}]:(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='student'").all()).results||[]);const weekdays=await loadScheduledWeekdays(env.DB,"student");
+  for(const row of rows){if(!forceUnit&&!scheduledDaysAllowed(weekdays.get(row.unit)||[1,2,3,4,5,6],now))continue;let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=forceKey||await dueScheduledCombination(env.DB,"student",row.unit,times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
     const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'student',?,'pending')").bind(unit,dueKey).run();if(!ins.meta?.changes)continue;
     try{
       const before=await env.DB.prepare("SELECT last_sync_at,last_sync_status,last_sync_requests FROM evo_sync_config WHERE unit=?").bind(unit).first();
@@ -637,12 +637,12 @@ async function runScheduledReservationSync(env) {
   for(const unit of ['bike','gym'])await processReservationSync(env,unit,getEvoConfig);
 }
 
-async function runScheduledAttendanceSync(env) {
+async function runScheduledAttendanceSync(env,forceUnit=null,forceKey=null,forceDate=null) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
   const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
-  const hm=get("hour")+":"+get("minute"), date=get("year")+"-"+get("month")+"-"+get("day"), minuteKey=date+"T"+hm;
-  const rows=(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='attendance'").all()).results||[];const weekdays=await loadScheduledWeekdays(env.DB,"attendance");
-  for(const row of rows){if(!scheduledDaysAllowed(weekdays.get(row.unit)||[1,2,3,4,5,6],now))continue;let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=await dueScheduledCombination(env.DB,"attendance",row.unit,times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
+  const hm=get("hour")+":"+get("minute"), date=forceDate||get("year")+"-"+get("month")+"-"+get("day"), minuteKey=date+"T"+hm;
+  const rows=(forceUnit?[{unit:forceUnit,times_json:'[]'}]:(await env.DB.prepare("SELECT unit,times_json FROM evo_sync_schedules WHERE kind='attendance'").all()).results||[]);const weekdays=await loadScheduledWeekdays(env.DB,"attendance");
+  for(const row of rows){if(!forceUnit&&!scheduledDaysAllowed(weekdays.get(row.unit)||[1,2,3,4,5,6],now))continue;let times=[];try{times=JSON.parse(row.times_json||"[]")}catch{}const dueKey=forceKey||await dueScheduledCombination(env.DB,"attendance",row.unit,times,now);if(!dueKey)continue;const unit=row.unit==="gym"?"gym":"bike";
     const ins=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'attendance',?,'pending')").bind(unit,dueKey).run();if(!ins.meta?.changes)continue;
     let requests=0,classesFound=0,newClasses=0,saved=0;
     try{
@@ -802,7 +802,7 @@ async function runScheduledRegistrationSync(env,kind="opportunity"){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([popDrawTick(env),journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env).then(()=>runScheduledContractSync(env)).then(()=>runScheduledAttendanceSync(env)).then(()=>luckyDrawTick(env,{profile:(id,unit,beforeRequest)=>evoProfile(env,id,unit,{beforeRequest}),attendance:(id,start,end,unit,beforeRequest)=>evoAttendance(env,id,start,end,null,unit,{beforeRequest,paginate:true})})),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledReservationSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([popDrawTick(env),journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env).then(()=>runScheduledContractSync(env)).then(()=>runScheduledAttendanceSync(env)).then(()=>luckyDrawTick(env,{profile:(id,unit,beforeRequest)=>evoProfile(env,id,unit,{beforeRequest}),attendance:(id,start,end,unit,beforeRequest)=>evoAttendance(env,id,start,end,null,unit,{beforeRequest,paginate:true}),syncNow:async(kind,unit,key,date)=>{if(kind==="student")await runScheduledStudentSync(env,unit,key);else if(kind==="contract")await runScheduledContractSync(env,unit,key);else if(kind==="attendance")await runScheduledAttendanceSync(env,unit,key,date);const row=await env.DB.prepare("SELECT status,detail FROM evo_sync_schedule_runs WHERE unit=? AND kind=? AND scheduled_minute=?").bind(unit,kind,key).first();if(row?.status!=="done")throw Error("SINCRONIZACAO_"+kind+"_"+unit+"_"+String(row?.detail||row?.status||"SEM_RESULTADO").slice(0,180));return row;}})),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledReservationSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
   async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
