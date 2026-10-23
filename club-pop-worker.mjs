@@ -879,7 +879,7 @@ export default {
         const route=url.pathname,unit=url.searchParams.get("unit")||"bike";
         const table=()=>env.DB.prepare("CREATE TABLE IF NOT EXISTS tv_campaign_events(id INTEGER PRIMARY KEY AUTOINCREMENT,campaign_id TEXT NOT NULL,kind TEXT NOT NULL,unit TEXT NOT NULL,visitor_key TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const config=async()=>{const c=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop' LIMIT 1").first();return JSON.parse(c?.content_json||"{}")};
-        function tvDriveId(value){try{const u=new URL(value);if(!["drive.google.com","docs.google.com"].includes(u.hostname))return "";return (u.pathname.match(/\\/file\\/d\\/([A-Za-z0-9_-]+)/)||u.pathname.match(/\\/d\\/([A-Za-z0-9_-]+)/))?.[1]||u.searchParams.get("id")||""}catch{return ""}}
+        function tvDriveId(value){try{const u=new URL(value);if(!["drive.google.com","docs.google.com"].includes(u.hostname))return "";const parts=u.pathname.split("/");const i=parts.indexOf("d");return (i>=0&&parts[i+1])||u.searchParams.get("id")||""}catch{return ""}}
         const campaigns=async()=>{const c=await config();return Array.isArray(c.partnerTvCampaigns)?c.partnerTvCampaigns:[]};
         const eligible=(c,u)=>c.active!==false&&(c.unit==="club"||c.unit===u)&&(!c.startDate||c.startDate<=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"}))&&(!c.endDate||c.endDate>=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"}));
         if(route==="/tv/media"&&request.method==="GET"){
