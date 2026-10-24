@@ -201,7 +201,11 @@ async function refreshOfficialDrawExecution(){
     const data=await response.json();
     if(!response.ok||!data.ok)throw Error(data.error||'Indisponível');
     let timestamp='',status='';
-    if(idx<2)timestamp=data.lastSyncAt||'';
+    if(idx<2){
+     const confirmed=(metrics.sync||[]).filter(x=>x.kind===['student','contract'][idx]&&x.unit===unit&&x.done&&x.run?.status==='done').map(x=>x.run.updated_at).sort().at(-1);
+     timestamp=data.lastSyncAt||confirmed||'';
+     if(confirmed)status=' · concluída';
+    }
     else{
      const last=(data.runs||[]).find(x=>x.kind==='attendance');
      timestamp=last?.updated_at||'';
@@ -215,6 +219,7 @@ async function refreshOfficialDrawExecution(){
   steps.querySelectorAll('li').forEach((li,idx)=>{
    if(idx>2)return;
    const small=document.createElement('small');
+   small.className='draw-sync-last';
    small.style.cssText='display:block;font-size:11px;color:#737b85;line-height:1.5;margin-top:6px';
    small.textContent=window.__drawSyncSummary[idx];
    li.querySelector('.draw-sync-last')?.remove();
@@ -231,8 +236,15 @@ async function refreshOfficialDrawExecution(){
   }
   const metrics={...JSON.parse(d.preparation?.details_json||'{}'),...JSON.parse(d.run.details_json||'{}')};
   const stage=d.run.stage;
-  const pct=stage==='completed'?100:stage==='syncing_data'?(metrics.syncSteps?.length?Math.floor((metrics.sync||[]).filter(x=>x.done).length/metrics.syncSteps.length*100):0):Math.max(0,Math.min(100,Number(metrics.percent)||0));
-  target.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>'+drawSafe(names[stage]||stage)+'</strong><strong>'+pct+'%</strong></div><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:9px;background:#e8eaed;border-radius:9px;overflow:hidden;margin:12px 0"><div style="height:100%;width:'+pct+'%;background:#15803d"></div></div><div>'+Number(metrics.checked||0)+' de '+Number(metrics.total||0)+' participantes • '+Number(metrics.checkedNumbers||0)+' números conferidos • '+Number(metrics.evoRequests||0)+' requisições EVO</div>'+(stage==='blocked'?'<p style="color:#b42318;font-weight:700">Pendência: '+drawSafe(metrics.error||'Verificação necessária')+'</p>':'')+'<div style="font-size:12px;opacity:.75;margin-top:8px">Último evento: '+drawSafe(drawBRTime(events.at(-1)?.created_at||d.run.created_at))+' (Brasília)</div>';
+  const generation=Object.values(metrics.generation||{});
+  const generating=stage==='generating_numbers'||stage==='generation_completed';
+  const checked=generating?generation.reduce((n,g)=>n+Number(g.checked||0),0):Number(metrics.checked||0);
+  const total=generating?generation.reduce((n,g)=>n+Number(g.total||0),0):Number(metrics.total||0);
+  const pct=stage==='completed'?100:generating?(metrics.generationCompleted?100:total?Math.min(99,Math.floor(checked/total*100)):0):stage==='syncing_data'?(metrics.syncSteps?.length?Math.floor((metrics.sync||[]).filter(x=>x.done).length/metrics.syncSteps.length*100):0):Math.max(0,Math.min(100,Number(metrics.percent)||0));
+  const generated=generation.reduce((n,g)=>n+Number(g.generated||0),0);
+  const syncRequests=(metrics.sync||[]).reduce((n,s)=>{try{return n+Number(JSON.parse(s.run?.detail||'{}').requests||0)}catch{return n}},0);
+  const operation=(generating?'Atualizando números da sorte':names[stage]||stage)+(generating&&metrics.current?.unit?' — '+(metrics.current.unit==='gym'?'Gym Pop':'Bike Pop'):'');
+  target.innerHTML='<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>'+drawSafe(operation)+'</strong><strong>'+pct+'%</strong></div><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" style="height:9px;background:#e8eaed;border-radius:9px;overflow:hidden;margin:12px 0"><div style="height:100%;width:'+pct+'%;background:#15803d"></div></div><div>'+Number(metrics.checked||0)+' de '+Number(metrics.total||0)+' participantes • '+Number(metrics.checkedNumbers||0)+' números conferidos • '+Number(metrics.evoRequests||0)+' requisições EVO</div>'+(stage==='blocked'?'<p style="color:#b42318;font-weight:700">Pendência: '+drawSafe(metrics.error||'Verificação necessária')+'</p>':'')+'<div style="font-size:12px;opacity:.75;margin-top:8px">Último evento: '+drawSafe(drawBRTime(events.at(-1)?.created_at||d.run.created_at))+' (Brasília)</div>';
   await renderPhases(events,stage,metrics);
   if(stage==='completed'){
    const w=d.winner||{};
