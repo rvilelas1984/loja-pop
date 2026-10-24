@@ -17,6 +17,12 @@
  <div id="cpAnalyticsCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin:16px 0"><div>Carregando...</div></div>
  <details style="border-top:1px solid #ddd;padding-top:12px" open><summary style="cursor:pointer;font-weight:700">Desempenho por Página</summary>
  <div style="overflow-x:auto;margin:12px 0"><table style="width:100%;text-align:left;border-collapse:collapse"><thead><tr><th>Página</th><th>Online</th><th>Tempo médio</th><th>Visitas</th><th>Alunos únicos</th></tr></thead><tbody id="cpAnalyticsPages"><tr><td colspan="5">Carregando...</td></tr></tbody></table></div></details>
+ <section id="cpMemberAccesses" style="margin:20px 0;border:1px solid #e6e8ee;border-radius:16px;padding:16px;background:#fff">
+ <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3 style="margin:0 0 4px">Acessos dos Alunos</h3><small>Primeiro acesso, último login e atividade recente · D1</small></div><span id="cpMemberAccessUpdated" style="font-size:12px;color:#667085"></span></div>
+ <div style="overflow-x:auto;margin-top:14px"><table style="width:100%;border-collapse:collapse;text-align:left;min-width:650px"><thead><tr style="background:#f7f8fa"><th style="padding:11px">Aluno</th><th>Primeiro acesso</th><th>Último acesso</th><th>Última atividade</th><th>Status</th></tr></thead><tbody id="cpMemberAccessRows"><tr><td colspan="5" style="padding:12px">Carregando...</td></tr></tbody></table></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px"><small id="cpMemberAccessCount">Últimos 10 alunos</small><button type="button" id="cpMemberAccessMore" style="border:1px solid #d0d5dd;background:white;padding:9px 15px;border-radius:9px;cursor:pointer">Ver mais 10</button></div>
+ <small style="display:block;margin-top:10px;color:#667085">Online = sessão válida com atividade autenticada nos últimos 5 minutos. Último acesso corresponde ao login; atividade recente é exibida separadamente.</small>
+ </section>
  <small>Online = sinal nos últimos 30 segundos; atividade enviada a cada 15 segundos enquanto a página estiver visível e em uso. Tempo de permanência estimado. Sem requisições EVO.</small>
  </div>
 </section>
@@ -207,4 +213,18 @@ const populate=(el,values)=>{const before=selected(el);el.innerHTML=values.map(v
 async function load(){const unit=window.cpAdminScope?.get?.()||"club",id=++requestId;if(unit==="club"){loadedUnit="";data=[];$("cpPerfSummary").textContent="Selecione Bike Pop ou Gym Pop.";return}if(!start.value||!end.value||start.value>end.value){$("cpPerfSummary").textContent="Confira o período selecionado.";return}loadedUnit=unit;$("cpPerfSummary").textContent="Consultando D1...";try{const r=await fetch("/api/admin-auth?route=class-performance&unit="+unit+"&start="+start.value+"&end="+end.value,{cache:"no-store"}),j=await r.json();if(id!==requestId)return;if(!r.ok||!j.ok)throw Error(j.error||"Consulta indisponível");data=j.classes||[];populate(classes,[...new Set(data.map(x=>String(x.name||"Sem modalidade")))].sort());populate(times,[...new Set(data.map(x=>String(x.time||"").slice(0,5)))].filter(Boolean).sort());draw()}catch(e){if(id===requestId)$("cpPerfSummary").textContent="Falha ao consultar D1: "+e.message}};
 $("cpPerfApply").onclick=load;classes.onchange=draw;times.onchange=draw;document.querySelectorAll(".chip[data-scope]").forEach(b=>b.addEventListener("click",()=>setTimeout(load,150)));setTimeout(load,700);
 })();
-</script><script src="/admin-common.js"></script><script src="/admin-conquistas.js"></script></body></html>
+</script><script src="/admin-common.js"></script><script src="/admin-conquistas.js"></script><script>
+(()=>{const body=document.getElementById("cpMemberAccessRows"),more=document.getElementById("cpMemberAccessMore"),count=document.getElementById("cpMemberAccessCount"),updated=document.getElementById("cpMemberAccessUpdated");if(!body)return;
+let offset=0,scope="",loading=false;
+const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const date=x=>x?new Date(String(x).includes("T")?x:String(x).replace(" ","T")+"Z").toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+async function load(reset=false){if(loading||document.visibilityState!=="visible")return;const u=window.cpAdminScope?.get?.()||"club";if(reset||u!==scope){offset=0;scope=u;}loading=true;
+try{const r=await fetch("/api/auth?route=member-accesses-admin&unit="+encodeURIComponent(scope)+"&limit=10&offset="+offset,{cache:"no-store"});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||"Indisponível");
+const html=d.students.map(a=>'<tr style="border-top:1px solid #eceef2"><td style="padding:11px 8px;font-weight:600">'+esc(a.name||"Aluno #"+a.id)+'</td><td>'+esc(date(a.firstAccess))+'</td><td>'+esc(date(a.lastAccess))+'</td><td>'+esc(date(a.lastActivity))+'</td><td><span style="font-weight:700;color:'+(a.status==="online"?"#16803c":"#667085")+'">'+(a.status==="online"?"● Online":"○ Offline")+'</span></td></tr>').join("");
+if(offset===0)body.innerHTML=html||'<tr><td colspan="5" style="padding:12px">Nenhum acesso registrado.</td></tr>';else body.insertAdjacentHTML("beforeend",html);
+offset+=d.students.length;count.textContent=offset+" aluno(s) exibido(s)";more.disabled=d.students.length<10;more.style.display=d.students.length<10?"none":"";updated.textContent="Atualizado "+new Date(d.updatedAt).toLocaleTimeString("pt-BR",{timeZone:"America/Sao_Paulo"});
+}catch(e){if(offset===0)body.innerHTML='<tr><td colspan="5" style="padding:12px">Acessos indisponíveis: '+esc(e.message)+'</td></tr>'}finally{loading=false}}
+more.addEventListener("click",()=>load(false));document.querySelectorAll(".chip[data-scope]").forEach(b=>b.addEventListener("click",()=>setTimeout(()=>load(true),150)));setInterval(()=>load(true),30000);load(true);
+})();
+</script>
+</body></html>
