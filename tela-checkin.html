@@ -133,9 +133,26 @@ const us=document.getElementById("unitSelect");if(us){us.value=(window.cpCheckin
 const el=id=>document.getElementById(id),base="https://club-pop-api.renato-vilelas-personal.workers.dev";
 const unit=()=>el("unitSelect")?.value||"bike";
 async function refresh(){const u=unit();if(u===lastUnit&&items.length)return;lastUnit=u;
- try{const r=await fetch(base+"/tv/campaigns?unit="+encodeURIComponent(u),{cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok)throw Error();items=(d.campaigns||[]).filter(x=>/^https:\/\//.test(x.imageUrl||"")||String(x.imageUrl||"").startsWith("/tv/media?"));index=0;shownId="";}catch{items=[]}
- if(!items.length){el("cpPartnerVideo").pause();el("cpPartnerVideo").removeAttribute("src");el("cpPartnerVideo").load()}el("cpPartnerTV").hidden=!items.length;document.querySelector(".checkin-wrap").classList.toggle("cp-has-tv-ads",!!items.length);if(items.length)show();}
-function show(){if(!items.length)return;const x=items[index],video=el("cpPartnerVideo"),img=el("cpPartnerImage"),source=x.imageUrl.startsWith("/tv/media?")?base+x.imageUrl:x.imageUrl;video.pause();video.removeAttribute("src");video.load();video.hidden=x.mediaType!=="video";img.hidden=x.mediaType==="video";if(x.mediaType==="video"){video.src=source;video.muted=true;video.play().catch(()=>{})}else img.src=source;el("cpPartnerImage").alt="Campanha de "+x.partnerName;el("cpPartnerCTA").textContent=x.cta;el("cpPartnerFooter").style.setProperty("--tv-footer-bg",x.footerColor);el("cpPartnerFooter").style.setProperty("--tv-footer-fg",x.footerTextColor);
+ let failure="";
+ try{
+   const r=await fetch(base+"/tv/campaigns?unit="+encodeURIComponent(u)+"&_="+Date.now(),{cache:"no-store",mode:"cors"});
+   if(!r.ok)throw Error("HTTP "+r.status);
+   const d=await r.json();if(!d.ok)throw Error(d.error||"RESPOSTA_INVALIDA");
+   items=(Array.isArray(d.campaigns)?d.campaigns:[]).filter(x=>typeof x.imageUrl==="string"&&(/^(https?:\/\/)/i.test(x.imageUrl)||x.imageUrl.startsWith("/tv/")));
+   index=0;shownId="";
+ }catch(e){items=[];failure=e?.message||"Falha de conexão";console.warn("[Club Pop] Publicidade: ",failure)}
+ const panel=el("cpPartnerTV"),wrap=document.querySelector(".checkin-wrap");
+ if(!items.length){el("cpPartnerVideo").pause();el("cpPartnerVideo").removeAttribute("src");el("cpPartnerVideo").load()}
+ panel.hidden=!items.length;wrap.classList.toggle("cp-has-tv-ads",!!items.length);
+ let diagnostic=el("cpPartnerDiagnostic");
+ if(!diagnostic){diagnostic=document.createElement("div");diagnostic.id="cpPartnerDiagnostic";diagnostic.setAttribute("role","status");diagnostic.style.cssText="display:none;margin:12px auto;padding:12px;max-width:360px;border:1px solid #526273;border-radius:12px;background:#0b1721;color:#c8d9e7;font:12px Arial,sans-serif;text-align:center";wrap.appendChild(diagnostic)}
+ const mobile=window.matchMedia("(max-width:760px)").matches;
+ diagnostic.style.display=!items.length&&mobile?"block":"none";
+ diagnostic.textContent=failure?"Publicidade indisponível: "+failure+" · Toque para tentar novamente.":"Nenhuma campanha ativa disponível para "+(u==="bike"?"Bike Pop":"Gym Pop")+". Toque para atualizar.";
+ diagnostic.onclick=()=>{lastUnit="";refresh()};
+ if(items.length)show();
+}
+function show(){if(!items.length)return;const x=items[index],video=el("cpPartnerVideo"),img=el("cpPartnerImage"),source=x.imageUrl.startsWith("/tv/")?base+x.imageUrl:x.imageUrl;video.pause();video.removeAttribute("src");video.load();video.hidden=x.mediaType!=="video";img.hidden=x.mediaType==="video";if(x.mediaType==="video"){video.src=source;video.muted=true;video.play().catch(()=>{})}else img.src=source;el("cpPartnerImage").alt="Campanha de "+x.partnerName;el("cpPartnerCTA").textContent=x.cta;el("cpPartnerFooter").style.setProperty("--tv-footer-bg",x.footerColor);el("cpPartnerFooter").style.setProperty("--tv-footer-fg",x.footerTextColor);
 const qr=el("cpPartnerQR");qr.replaceChildren();const link=base+"/tv/scan?id="+encodeURIComponent(x.id);
 if(typeof QRCode!=="undefined")new QRCode(qr,{text:link,width:116,height:116,correctLevel:QRCode.CorrectLevel.M});
 else qr.textContent="Acesse: "+link;
