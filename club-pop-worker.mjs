@@ -4552,7 +4552,7 @@ function clubProfile(row){
  return {unit:row.unit,id:String(row.evo_member_id),cpf:clubDigits(p.document||raw.document||raw["CPF (CIN)"]),email:normalizeEmail((Array.isArray(c)?c.find(x=>String(x.contactType||"").toLowerCase().includes("mail"))?.description: c?.email)||p.email||raw.email||raw["E-MAIL"]),birth:normalizeDate(p.birthDate||raw.birthDate||raw["DATA DE NASCIMENTO"]),first:p.firstName||raw.firstName||"",last:p.lastName||raw.lastName||""};
 }
 async function clubActiveUnits(env,bikeId,gymId){
- const ids=[["bike",bikeId],["gym",gymId]].filter(x=>x[1]!=null&&String(x[1])!=="").map(([unit,id])=>[unit,/^\\d+\\.0+$/.test(String(id))?String(id).replace(/\\.0+$/,""):String(id)]);
+ const ids=[["bike",bikeId],["gym",gymId]].filter(x=>x[1]!=null&&String(x[1])!=="").map(([unit,id])=>[unit,/^\d+\.0+$/.test(String(id))?String(id).replace(/\.0+$/,""):String(id)]);
  const active=[];
  for(const [unit,id] of ids){
   const found=await env.DB.prepare(`SELECT 1 FROM evo_member_contracts WHERE unit=? AND CAST(evo_member_id AS TEXT)=? AND lower(trim(membership_status)) IN ('active','1') AND (start_date IS NULL OR start_date='' OR substr(start_date,1,10)<=date('now','-3 hours')) AND (end_date IS NULL OR end_date='' OR substr(end_date,1,10)>=date('now','-3 hours')) AND (cancel_date IS NULL OR cancel_date='' OR substr(cancel_date,1,10)>date('now','-3 hours')) LIMIT 1`).bind(unit,String(id)).first();
