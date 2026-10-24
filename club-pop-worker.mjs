@@ -855,6 +855,40 @@ export default {
         await env.DB.prepare("INSERT INTO club_app_page_sessions(session_id,member_id,unit,page,first_seen,last_seen) VALUES(?,?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET last_seen=excluded.last_seen WHERE member_id=excluded.member_id AND unit=excluded.unit AND page=excluded.page").bind(sid,String(member.id),unit,page,now,now).run();
         return json({ok:true});
       }
+      // Member access ledger for administrative Analytics. Uses existing login sessions
+      // and first-party page activity; no EVO calls and no extra member polling.
+      if(url.pathname==="/admin/member-accesses"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        let ar;try{ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"})}catch{return json({ok:false,error:"AUTH_INDISPONIVEL"},502)}
+        const au=await ar.json().catch(()=>({}));
+        if(!ar.ok||au.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=url.searchParams.get("unit")||"club";
+        if(!["bike","gym","club"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        if(unit!=="club"&&!(au.units||[]).includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        const limit=Math.min(100,Math.max(1,Number(url.searchParams.get("limit"))||10));
+        const offset=Math.max(0,Number(url.searchParams.get("offset"))||0);
+        const where=unit==="bike"?"WHERE m.evo_member_id IS NOT NULL":unit==="gym"?"WHERE m.gym_client_id IS NOT NULL":"";
+        const query=`SELECT m.id,m.first_name,m.last_name,m.evo_member_id,m.gym_client_id,
+          MIN(s.created_at) AS first_access,MAX(s.created_at) AS last_access,
+          MAX(CASE WHEN s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP THEN 1 ELSE 0 END) AS valid_session
+          FROM members m JOIN auth_sessions s ON s.member_id=m.id ${where}
+          GROUP BY m.id ORDER BY last_access DESC LIMIT ? OFFSET ?`;
+        const rows=await env.DB.prepare(query).bind(limit,offset).all();
+        // An unexpired login is NOT proof of being online. Activity must be recent.
+        const now=Math.floor(Date.now()/1000);
+        const list=[];
+        for(const m of rows.results||[]){
+          let lastActivity=null;
+          try{
+            const a=await env.DB.prepare("SELECT MAX(last_seen) AS seen FROM club_app_page_sessions WHERE member_id=?"+(unit==="club"?"":" AND unit=?")).bind(...(unit==="club"?[String(m.id)]:[String(m.id),unit])).first();
+            lastActivity=a?.seen??null;
+          }catch{}
+          list.push({id:m.id,name:[m.first_name,m.last_name].filter(Boolean).join(" "),evoMemberId:m.evo_member_id,gymMemberId:m.gym_client_id,firstAccess:m.first_access,lastAccess:m.last_access,lastActivity:lastActivity?new Date(Number(lastActivity)*1000).toISOString():null,status:m.valid_session&&lastActivity&&Number(lastActivity)>=now-300?"online":"offline"});
+        }
+        return json({ok:true,unit,limit,offset,students:list,updatedAt:new Date().toISOString(),onlineRule:"authenticated activity in last 5 minutes",historicalNote:"First and last access derived from existing auth_sessions"});
+      }
+
       if(url.pathname==="/admin/app-analytics"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
