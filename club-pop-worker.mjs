@@ -2938,7 +2938,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
         const evoId = bike?Number(bike.id):null;
 
-        const target = existing || await env.DB.prepare("SELECT id FROM members WHERE evo_member_id = ? LIMIT 1").bind(evoId).first();
+        const target = existing || await env.DB.prepare("SELECT id FROM members WHERE evo_member_id = ? OR (? IS NOT NULL AND CAST(gym_client_id AS INTEGER)=?) LIMIT 1").bind(evoId,gym?.id||null,gym?.id?Number(gym.id):null).first();
         if (target?.id) {
           await env.DB.prepare(`
             UPDATE members
@@ -2991,7 +2991,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           LIMIT 1
         `).bind(cpfHash).first();
 
-        if(gym?.id)await env.DB.prepare("UPDATE members SET gym_client_id=? WHERE id=?").bind(Number(gym.id),member.id).run();
+        if(gym?.id)await env.DB.prepare("UPDATE members SET gym_client_id=? WHERE id=?").bind(clubCanonicalId(gym.id),member.id).run();
         // Reutilizamos auth_sessions para o desafio temporário.
         await env.DB.prepare(`
           INSERT INTO auth_sessions (
@@ -4547,12 +4547,13 @@ const CLUB_RECEPTION_URL="https://wa.me/551130521378?text="+encodeURIComponent("
 const CLUB_DATA_URL="https://wa.me/551130521378?text="+encodeURIComponent("Olá, estou tentando acessar o Club Pop, mas meu cadastro está com dados incompletos. Podem me ajudar a atualizar?");
 function clubJson(value,fallback={}){try{return JSON.parse(value||"")||fallback}catch{return fallback}}
 function clubDigits(value){return String(value||"").replace(/[^0-9]/g,"")}
+function clubCanonicalId(id){const value=String(id??"").trim();return /^\d+\.0+$/.test(value)?value.replace(/\.0+$/,""):value;}
 function clubProfile(row){
  const p=clubJson(row.personal_json),c=clubJson(row.contacts_json),raw=clubJson(row.raw_json);
- return {unit:row.unit,id:String(row.evo_member_id),cpf:clubDigits(p.document||raw.document||raw["CPF (CIN)"]),email:normalizeEmail((Array.isArray(c)?c.find(x=>String(x.contactType||"").toLowerCase().includes("mail"))?.description: c?.email)||p.email||raw.email||raw["E-MAIL"]),birth:normalizeDate(p.birthDate||raw.birthDate||raw["DATA DE NASCIMENTO"]),first:p.firstName||raw.firstName||"",last:p.lastName||raw.lastName||""};
+ return {unit:row.unit,id:clubCanonicalId(row.evo_member_id),cpf:clubDigits(p.document||raw.document||raw["CPF (CIN)"]),email:normalizeEmail((Array.isArray(c)?c.find(x=>String(x.contactType||"").toLowerCase().includes("mail"))?.description: c?.email)||p.email||raw.email||raw["E-MAIL"]),birth:normalizeDate(p.birthDate||raw.birthDate||raw["DATA DE NASCIMENTO"]),first:p.firstName||raw.firstName||"",last:p.lastName||raw.lastName||""};
 }
 async function clubActiveUnits(env,bikeId,gymId){
- const ids=[["bike",bikeId],["gym",gymId]].filter(x=>x[1]!=null&&String(x[1])!=="").map(([unit,id])=>[unit,/^\d+\.0+$/.test(String(id))?String(id).replace(/\.0+$/,""):String(id)]);
+ const ids=[["bike",bikeId],["gym",gymId]].filter(x=>x[1]!=null&&String(x[1])!=="").map(([unit,id])=>[unit,clubCanonicalId(id)]);
  const active=[];
  for(const [unit,id] of ids){
   const found=await env.DB.prepare(`SELECT 1 FROM evo_member_contracts WHERE unit=? AND CAST(evo_member_id AS TEXT)=? AND lower(trim(membership_status)) IN ('active','1') AND (start_date IS NULL OR start_date='' OR substr(start_date,1,10)<=date('now','-3 hours')) AND (end_date IS NULL OR end_date='' OR substr(end_date,1,10)>=date('now','-3 hours')) AND (cancel_date IS NULL OR cancel_date='' OR substr(cancel_date,1,10)>date('now','-3 hours')) LIMIT 1`).bind(unit,String(id)).first();
