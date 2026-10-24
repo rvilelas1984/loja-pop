@@ -147,6 +147,11 @@ async function refresh(){const u=unit();if(u===lastUnit&&items.length)return;las
  let diagnostic=el("cpPartnerDiagnostic");
  if(!diagnostic){diagnostic=document.createElement("div");diagnostic.id="cpPartnerDiagnostic";diagnostic.setAttribute("role","status");diagnostic.style.cssText="display:none;margin:12px auto;padding:12px;max-width:360px;border:1px solid #526273;border-radius:12px;background:#0b1721;color:#c8d9e7;font:12px Arial,sans-serif;text-align:center";wrap.appendChild(diagnostic)}
  const mobile=window.matchMedia("(max-width:760px)").matches;
+ let viewButton=el("cpViewPartnerAd");
+ if(!viewButton){viewButton=document.createElement("button");viewButton.id="cpViewPartnerAd";viewButton.type="button";viewButton.textContent="📢 VER PUBLICIDADE";viewButton.style.cssText="display:none;width:min(360px,calc(100% - 16px));margin:14px auto;padding:15px 18px;border:1px solid #2ce1e9;border-radius:13px;background:#102b37;color:#fff;font:900 14px Arial,sans-serif;cursor:pointer;min-height:50px";panel.before(viewButton)}
+ viewButton.style.display=mobile?"block":"none";
+ viewButton.onclick=async()=>{viewButton.disabled=true;viewButton.textContent="CARREGANDO PUBLICIDADE…";lastUnit="";await refresh();viewButton.disabled=false;viewButton.textContent="📢 VER PUBLICIDADE";if(items.length){panel.hidden=false;panel.scrollIntoView({behavior:"smooth",block:"start"})}else{diagnostic.style.display="block";diagnostic.scrollIntoView({behavior:"smooth",block:"center"})}};
+
  diagnostic.style.display=!items.length&&mobile?"block":"none";
  diagnostic.textContent=failure?"Publicidade indisponível: "+failure+" · Toque para tentar novamente.":"Nenhuma campanha ativa disponível para "+(u==="bike"?"Bike Pop":"Gym Pop")+". Toque para atualizar.";
  diagnostic.onclick=()=>{lastUnit="";refresh()};
