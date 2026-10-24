@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import worker from '../club-pop-worker.mjs';
 import {timestamp,recent,validateTickets,auditParticipants} from '../lib/lucky-draw-audit.mjs';
-import {luckyDrawTick} from '../lib/lucky-draw-official.mjs';
+import {luckyDrawTick,luckyDrawStatus} from '../lib/lucky-draw-official.mjs';
 import {drawCandidates,acquireDrawLease,releaseDrawLease} from '../lib/lucky-draw-data.mjs';
 export function fixture(){
  const sql=new DatabaseSync(':memory:');
@@ -55,3 +55,11 @@ test('explicit legacy aliases combine attendance once and retain eligible contra
 test('multi-batch generation resumes automatically without skipping or duplicating participants',async()=>{const f=fixture();for(let n=2;n<=47;n++)f.add('bike',String(1000+n),n);await f.run();assert.equal(f.sql.prepare('SELECT stage FROM lucky_draw_preparation').get().stage,'generating_numbers');assert.equal(f.sql.prepare('SELECT count(*) n FROM lucky_numbers').get().n,40);await f.run();assert.equal(f.sql.prepare('SELECT stage FROM lucky_draw_runs').get().stage,'completed');assert.equal(f.sql.prepare('SELECT count(*) n FROM lucky_draw_pool').get().n,47);assert.equal(f.calls.length,4)});
 test('expired and future contracts are excluded and approved exception is honored',async()=>{const f=fixture();f.add('bike','222',2);f.add('bike','333',3);f.sql.exec("UPDATE evo_member_contracts SET end_date='2000-01-01' WHERE evo_member_id='222';UPDATE evo_member_contracts SET start_date='2099-01-01' WHERE evo_member_id='333';INSERT INTO promotion_review_requests VALUES('p-bike',2,'APPROVED')");await f.run();assert.equal(f.sql.prepare('SELECT count(*) n FROM lucky_draw_pool').get().n,2);assert.equal(f.sql.prepare("SELECT count(*) n FROM lucky_draw_pool WHERE evo_id='333'").get().n,0)});
 test('valid contract missing from students is included using its verified EVO identity',async()=>{const f=fixture();f.sql.exec(`INSERT INTO evo_member_contracts VALUES('bike','444','10','1',NULL,NULL,NULL,'{"idMember":444,"name":"Fixture Four"}');INSERT INTO evo_member_attendance VALUES('bike','444','2026-01-01','55','55','{}')`);await f.run();assert.equal(f.sql.prepare('SELECT count(*) n FROM lucky_draw_pool').get().n,2)});
+
+test('winner details come from its audited promotion when another promotion has the same code',async()=>{
+ const f=fixture();await f.run();
+ // Recreate the same participant's code in an older promotion with a different source date.
+ f.sql.exec("INSERT INTO promotions(id,slug) VALUES(-1,'older');INSERT INTO promotion_participants VALUES(-1,-1,1);INSERT INTO promotion_attendance(id,promotion_id,participant_id,occurred_at) VALUES(-1,-1,-1,'2000-01-01');INSERT INTO lucky_numbers SELECT -1,-1,-1,code,status,studio,reference_month,origin,-1,NULL,NULL FROM lucky_numbers LIMIT 1;");
+ const original=globalThis.fetch;globalThis.fetch=async()=>new Response(JSON.stringify({role:'admin'}));
+ try{const url=new URL('https://example.test/lucky-draw-status?promotion=p-bike');const response=await luckyDrawStatus(new Request(url,{headers:{'x-clubpop-admin-cookie':'fixture'}}),f.env,url);const data=await response.json();assert.equal(data.run.stage,'completed');assert.equal(data.winner.occurred_at.slice(0,10),'2026-01-01')}finally{globalThis.fetch=original}
+});
