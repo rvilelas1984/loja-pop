@@ -1,3 +1,4 @@
+import { partnerMedia } from "./lib/partner-media.mjs";
 import {popDrawAdmin,popDrawTick} from './lib/pop-draws.mjs';
 import {luckyDrawTick,luckyDrawStatus} from './lib/lucky-draw-official.mjs';
 import {flashClasses} from './lib/flash-mission-classes.mjs';
@@ -874,6 +875,8 @@ export default {
         return json({ok:true,unit,days,online:unique(active),visitors:unique(list),sessions:list.length,averageSeconds:average(list),pages,updatedAt:new Date().toISOString(),note:list.length===10000?"LIMITED_TO_10000_SESSIONS":null});
       }
 
+      if(url.pathname === "/admin/media-token" || url.pathname === "/tv/upload" || url.pathname.startsWith("/tv/files/")) return partnerMedia(request,env,json,cors);
+
       // Partner TV campaigns: public active creatives, tracked QR redirects, authenticated reporting.
       if(url.pathname.startsWith("/tv/")||url.pathname==="/admin/tv-campaigns"){
         const route=url.pathname,unit=url.searchParams.get("unit")||"bike";
@@ -895,7 +898,7 @@ export default {
         if(route==="/tv/campaigns"&&request.method==="GET"){
           if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
           const all=await campaigns(),c=await config(),partners=c.partners||[];
-          return json({ok:true,campaigns:all.filter(x=>eligible(x,unit)&&partners.some(p=>String(p.id)===String(x.partnerId)&&p.active!==false)).map(x=>({id:x.id,partnerName:partners.find(p=>String(p.id)===String(x.partnerId))?.name||"Parceiro",imageUrl:tvDriveId(x.imageUrl)?"/tv/media?id="+encodeURIComponent(x.imageUrl):x.imageUrl,cta:x.cta||"Aponte a câmera e saiba mais",footerColor:x.footerColor||"#ffffff",footerTextColor:x.footerTextColor||"#142334",seconds:Math.min(60,Math.max(5,Number(x.seconds)||10))}))});
+          return json({ok:true,campaigns:all.filter(x=>eligible(x,unit)&&partners.some(p=>String(p.id)===String(x.partnerId)&&p.active!==false)).map(x=>({id:x.id,mediaType:x.mediaType === "video" ? "video" : "image",partnerName:partners.find(p=>String(p.id)===String(x.partnerId))?.name||"Parceiro",imageUrl:tvDriveId(x.imageUrl)?"/tv/media?id="+encodeURIComponent(x.imageUrl):x.imageUrl,cta:x.cta||"Aponte a câmera e saiba mais",footerColor:x.footerColor||"#ffffff",footerTextColor:x.footerTextColor||"#142334",seconds:Math.min(60,Math.max(5,Number(x.seconds)||10))}))});
         }
         if(route==="/tv/scan"&&request.method==="GET"){
           const id=url.searchParams.get("id")||"",all=await campaigns(),c=all.find(x=>x.id===id),content=await config(),partner=(content.partners||[]).find(p=>String(p.id)===String(c?.partnerId));

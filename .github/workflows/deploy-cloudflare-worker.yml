@@ -7,6 +7,7 @@ on:
     paths:
       - "club-pop-worker.mjs"
       - "lib/pop-draws.mjs"
+      - "lib/partner-media.mjs"
       - "lib/lucky-draw-official.mjs"
       - "lib/lucky-draw-audit.mjs"
       - "lib/session-contracts.mjs"
