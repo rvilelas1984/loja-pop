@@ -886,7 +886,8 @@ export default {
         const config=async()=>{const c=await env.DB.prepare("SELECT content_json FROM app_content WHERE content_key='club-pop' LIMIT 1").first();return JSON.parse(c?.content_json||"{}")};
         function tvDriveId(value){try{const u=new URL(value);if(!["drive.google.com","docs.google.com"].includes(u.hostname))return "";const parts=u.pathname.split("/");const i=parts.indexOf("d");return (i>=0&&parts[i+1])||u.searchParams.get("id")||""}catch{return ""}}
         const campaigns=async()=>{const c=await config();return Array.isArray(c.partnerTvCampaigns)?c.partnerTvCampaigns:[]};
-        const eligible=(c,u)=>c.active!==false&&(c.unit==="club"||c.unit===u)&&(!c.startDate||c.startDate<=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"}))&&(!c.endDate||c.endDate>=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"}));
+        const tvToday=()=>{const parts=new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return p.year+"-"+p.month+"-"+p.day};
+        const eligible=(c,u)=>{const today=tvToday();return c.active!==false&&(c.unit==="club"||c.unit===u)&&(!c.startDate||String(c.startDate).slice(0,10)<=today)&&(!c.endDate||String(c.endDate).slice(0,10)>=today)};
         if(route==="/tv/media"&&request.method==="GET"){
           const id=url.searchParams.get("id")||"",fileId=tvDriveId(id);
           if(!fileId)return new Response("Arquivo inválido",{status:400,headers:cors});
