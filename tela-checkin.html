@@ -135,7 +135,7 @@ const unit=()=>el("unitSelect")?.value||"bike";
 async function refresh(){const u=unit();if(u===lastUnit&&items.length)return;lastUnit=u;
  let failure="";
  try{
-   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),9000);let r;try{r=await fetch(base+"/tv/campaigns?unit="+encodeURIComponent(u)+"&_="+Date.now(),{cache:"no-store",mode:"cors",signal:controller.signal})}finally{clearTimeout(timeout)}
+   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),9000);let r;try{r=await fetch("/api/tv-campaigns?unit="+encodeURIComponent(u)+"&_="+Date.now(),{cache:"no-store",mode:"cors",signal:controller.signal})}finally{clearTimeout(timeout)}
    if(!r.ok)throw Error("HTTP "+r.status);
    const d=await r.json();if(!d.ok)throw Error(d.error||"RESPOSTA_INVALIDA");
    items=(Array.isArray(d.campaigns)?d.campaigns:[]).filter(x=>typeof x.imageUrl==="string"&&(/^(https?:\/\/)/i.test(x.imageUrl)||x.imageUrl.startsWith("/tv/")));
@@ -161,7 +161,7 @@ async function refresh(){const u=unit();if(u===lastUnit&&items.length)return;las
  diagnostic.onclick=()=>{lastUnit="";refresh()};
  if(items.length)show();
 }
-function show(){if(!items.length)return;const x=items[index],video=el("cpPartnerVideo"),img=el("cpPartnerImage"),source=x.imageUrl.startsWith("/tv/")?base+x.imageUrl:x.imageUrl;video.pause();video.removeAttribute("src");video.load();video.hidden=x.mediaType!=="video";img.hidden=x.mediaType==="video";if(x.mediaType==="video"){video.src=source;video.muted=true;video.play().catch(()=>{})}else img.src=source;el("cpPartnerImage").alt="Campanha de "+x.partnerName;el("cpPartnerCTA").textContent=x.cta;el("cpPartnerFooter").style.setProperty("--tv-footer-bg",x.footerColor);el("cpPartnerFooter").style.setProperty("--tv-footer-fg",x.footerTextColor);
+function show(){if(!items.length)return;const x=items[index],video=el("cpPartnerVideo"),img=el("cpPartnerImage"),source=x.imageUrl.startsWith("/tv/media?")?"/api/tv-media?"+x.imageUrl.split("?")[1]:(x.imageUrl.startsWith("/tv/")?base+x.imageUrl:x.imageUrl);video.pause();video.removeAttribute("src");video.load();video.hidden=x.mediaType!=="video";img.hidden=x.mediaType==="video";if(x.mediaType==="video"){video.src=source;video.muted=true;video.play().catch(()=>{})}else img.src=source;el("cpPartnerImage").alt="Campanha de "+x.partnerName;el("cpPartnerCTA").textContent=x.cta;el("cpPartnerFooter").style.setProperty("--tv-footer-bg",x.footerColor);el("cpPartnerFooter").style.setProperty("--tv-footer-fg",x.footerTextColor);
 const qr=el("cpPartnerQR");qr.replaceChildren();const link=base+"/tv/scan?id="+encodeURIComponent(x.id);
 if(typeof QRCode!=="undefined")new QRCode(qr,{text:link,width:116,height:116,correctLevel:QRCode.CorrectLevel.M});
 else qr.textContent="Acesse: "+link;

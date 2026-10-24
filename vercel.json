@@ -7,6 +7,14 @@
   },
   "rewrites": [
     {
+      "source": "/api/tv-campaigns",
+      "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/tv/campaigns"
+    },
+    {
+      "source": "/api/tv-media",
+      "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/tv/media"
+    },
+    {
       "source": "/api/links-uteis/:action",
       "destination": "/api/evo-config?route=links-uteis&action=:action"
     },
