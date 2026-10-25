@@ -17,12 +17,26 @@
  <div id="cpAnalyticsCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin:16px 0"><div>Carregando...</div></div>
  <details style="border-top:1px solid #ddd;padding-top:12px" open><summary style="cursor:pointer;font-weight:700">Desempenho por Página</summary>
  <div style="overflow-x:auto;margin:12px 0"><table style="width:100%;text-align:left;border-collapse:collapse"><thead><tr><th>Página</th><th>Online</th><th>Tempo médio</th><th>Visitas</th><th>Alunos únicos</th></tr></thead><tbody id="cpAnalyticsPages"><tr><td colspan="5">Carregando...</td></tr></tbody></table></div></details>
- <section id="cpMemberAccesses" class="cp-access-panel">
+ <section class="cp-access-panel" id="cpClubAccessSummary" aria-label="Resumo de acessos ao Club Pop">
+ <div class="cp-access-head"><div><h3>👥 Acessos ao Club Pop</h3><small>Alunos únicos que já fizeram login · dados do D1</small></div></div>
+ <div class="cp-access-summary">
+  <div><small>Alunos que acessaram</small><strong id="cpAccessTotal">—</strong></div>
+  <div><small>Último aluno</small><strong id="cpAccessLastStudent">—</strong></div>
+  <div><small>Data</small><strong id="cpAccessLastDate">—</strong></div>
+  <div><small>Horário</small><strong id="cpAccessLastTime">—</strong></div>
+ </div>
+</section>
+<section id="cpMemberAccesses" class="cp-access-panel">
  <div class="cp-access-head"><div><h3>Acessos dos Alunos</h3><small>Primeiro acesso, último login e atividade recente · D1</small></div><span id="cpMemberAccessUpdated" aria-live="polite"></span></div>
  <div class="cp-access-table-wrap"><table class="cp-access-table"><thead><tr><th>Aluno</th><th>Status</th><th>Primeiro acesso</th><th>Último acesso</th><th>Última atividade</th></tr></thead><tbody id="cpMemberAccessRows"><tr><td colspan="5">Carregando...</td></tr></tbody></table></div>
  <div class="cp-access-footer"><small id="cpMemberAccessCount">Últimos 10 alunos</small><button type="button" id="cpMemberAccessMore">Ver mais 10</button></div>
  <small class="cp-access-note">Atualização a cada 10 segundos enquanto este painel estiver aberto. Online = sessão válida e atividade autenticada nos últimos 5 minutos. Sem requisições EVO.</small>
  </section><style>
+.cp-access-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
+.cp-access-summary>div{background:#f7f8fc;border:1px solid #e9edf3;border-radius:12px;padding:12px;min-width:0}
+.cp-access-summary small{display:block;color:#667085;font-size:12px;margin-bottom:7px}
+.cp-access-summary strong{display:block;font-size:clamp(15px,2vw,23px);color:#182338;overflow-wrap:anywhere}
+@media(max-width:680px){.cp-access-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .cp-access-panel{margin:20px 0;border:1px solid #e6e8ee;border-radius:16px;padding:clamp(12px,2vw,20px);background:#fff;min-width:0;max-width:100%;overflow:hidden}
 .cp-access-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
 .cp-access-head h3{margin:0 0 5px;font-size:20px}.cp-access-head small,.cp-access-note,#cpMemberAccessUpdated{color:#667085;font-size:12px}
@@ -250,6 +264,8 @@ const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const date=x=>x?new Date(String(x).includes("T")?x:String(x).replace(" ","T")+"Z").toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
 async function load(reset=false){if(loading||document.visibilityState!=="visible"||!panel.getClientRects().length)return;const u=window.cpAdminScope?.get?.()||"club";if(reset||u!==scope){shown=10;scope=u;}loading=true;
 try{const r=await fetch("/api/auth?route=member-accesses-admin&unit="+encodeURIComponent(scope)+"&limit="+shown+"&offset=0",{cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||"Indisponível");
+const total=document.getElementById("cpAccessTotal"),last=document.getElementById("cpAccessLastStudent"),day=document.getElementById("cpAccessLastDate"),time=document.getElementById("cpAccessLastTime");
+if(total){total.textContent=Number(d.summary?.total||0).toLocaleString("pt-BR");last.textContent=d.summary?.lastStudent||"—";const raw=d.summary?.lastAccess;const parsed=raw?new Date(String(raw).includes("T")?raw:String(raw).replace(" ","T")+"Z"):null;const valid=parsed&&Number.isFinite(+parsed);day.textContent=valid?parsed.toLocaleDateString("pt-BR",{timeZone:"America/Sao_Paulo"}):"—";time.textContent=valid?parsed.toLocaleTimeString("pt-BR",{timeZone:"America/Sao_Paulo",hour:"2-digit",minute:"2-digit"}):"—";}
 body.innerHTML=d.students.length?d.students.map(a=>'<tr><td>'+esc(a.name||"Aluno #"+a.id)+'</td><td><span class="cp-access-status '+(a.status==="online"?"online":"offline")+'">'+(a.status==="online"?"● Online":"○ Offline")+'</span></td><td>'+esc(date(a.firstAccess))+'</td><td>'+esc(date(a.lastAccess))+'</td><td>'+esc(date(a.lastActivity))+'</td></tr>').join(""):'<tr><td colspan="5">Nenhum acesso registrado.</td></tr>';
 count.textContent=d.students.length+" aluno(s) exibido(s)";more.disabled=d.students.length<shown;more.style.display=d.students.length<shown?"none":"";updated.textContent="Atualizado "+new Date(d.updatedAt).toLocaleTimeString("pt-BR",{timeZone:"America/Sao_Paulo"});
 }catch(e){body.innerHTML='<tr><td colspan="5">Acessos indisponíveis: '+esc(e.message)+'</td></tr>'}finally{loading=false}}
