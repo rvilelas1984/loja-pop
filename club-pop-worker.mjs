@@ -184,7 +184,7 @@ function journeyChatproAdapters(env){
    try{call=await transport(b.unit);await beforeSend();sub=await resolveChatproSubscriber(call,b.phone,{allowCreate:true,hasOptIn:b.hasOptIn,name:b.studentName});await beforeSend();}
    catch(e){e.beforeSend=true;throw e;}
    // Once send_flow begins, every ambiguous failure requires manual review.
-   await call('/subscriber/'+encodeURIComponent(sub.id)+'/send_flow/','POST',{flow:b.flow});return {contactCreated:sub.created};
+   const result=await call('/subscriber/'+encodeURIComponent(sub.id)+'/send_flow/','POST',{flow:b.flow});return {contactCreated:sub.created,providerId:result?.message_id||result?.id||null};
   },
   recordContact:(b,flow)=>recordJourneyChatproContact(env,b,flow)
  };
