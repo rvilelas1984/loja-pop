@@ -886,7 +886,14 @@ export default {
           }catch{}
           list.push({id:m.id,name:[m.first_name,m.last_name].filter(Boolean).join(" "),evoMemberId:m.evo_member_id,gymMemberId:m.gym_client_id,firstAccess:m.first_access,lastAccess:m.last_access,lastActivity:lastActivity?new Date(Number(lastActivity)*1000).toISOString():null,status:m.valid_session&&lastActivity&&Number(lastActivity)>=now-300?"online":"offline"});
         }
-        return json({ok:true,unit,limit,offset,students:list,updatedAt:new Date().toISOString(),onlineRule:"authenticated activity in last 5 minutes",historicalNote:"First and last access derived from existing auth_sessions"});
+        // Aggregate independently from pagination: distinct members who have logged in.
+        const summary=await env.DB.prepare(`SELECT COUNT(DISTINCT m.id) AS total,
+          MAX(s.created_at) AS last_access
+          FROM members m JOIN auth_sessions s ON s.member_id=m.id ${where}`).first();
+        const latest=list[0]||null;
+        return json({ok:true,unit,limit,offset,students:list,
+          summary:{total:Number(summary?.total||0),lastStudent:latest?.name||null,lastAccess:summary?.last_access||null},
+          updatedAt:new Date().toISOString(),onlineRule:"authenticated activity in last 5 minutes",historicalNote:"First and last access derived from existing auth_sessions"});
       }
 
       if(url.pathname==="/admin/app-analytics"&&request.method==="GET"){
