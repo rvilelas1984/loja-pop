@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "club-pop-worker.mjs"
+      - "lib/journey-plan.mjs"
       - "lib/journey-data.mjs"
       - "lib/journey-engine.mjs"
       - "lib/journey-automations.mjs"
