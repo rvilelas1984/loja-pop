@@ -162,7 +162,7 @@ async function waRefreshRecipientCounts(){
 function waCountCell(x){
  const c=waRecipientCounts[x.id];if(!c)return '<p role="status" class="wa-hint">Conferindo eventos no D1…</p>';
  if(c.error)return '<p role="alert">Não foi possível conferir os destinatários: '+clean(c.error)+'</p><button class="wa-btn secondary" onclick="waRefreshRecipientCounts()">Tentar novamente</button>';
- return '<div class="wa-metrics">'+[['Na etapa',c.inStage],['Programados hoje',c.today],['Autorizados hoje',c.authorized],['Impedidos hoje',c.blocked],['Aceitos pelo ChatPro',c.sent],['Futuros',c.future]].map(([k,v])=>'<div><strong>'+v+'</strong><span>'+k+'</span></div>').join('');
+ return '<div class="wa-metrics">'+[['Na etapa',c.inStage],['Programados hoje',c.today],['Autorizados hoje',c.authorized],['Impedidos hoje',c.blocked],['Aceitos pelo ChatPro',c.sent],['Futuros',c.future]].map(([k,v])=>'<div><strong>'+v+'</strong><span>'+k+'</span></div>').join('')+'</div>';
 }
 function waRenderAutos(){
  if(!$('waAutomations'))return;
