@@ -127,16 +127,27 @@ function waScheduleLabel(x){return (x.schedules||[{days:x.days,time:x.time}]).ma
 async function waAutoRequest(payload){const unit=currentUnit;const r=await fetch(waAutoApi(),{method:payload?'POST':'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',cache:'no-store',body:payload?JSON.stringify(payload):undefined}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Falha na automação');if(unit!==currentUnit)return null;if(d.automations){waAutos=d.automations;waAutoRuns=d.runs||[];waEngineInfo=d.engine;waRenderAutos()}return d}
 let waRecipientCounts={},waCountsRequest=0;
 async function waLoadAutos(){try{await waAutoRequest();waRefreshRecipientCounts()}catch(e){notify('Automações não carregadas: '+e.message)}}
+async function waRecipientRequest(action,id,timeoutMs=12000){
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+ try{
+  const response=await fetch(waAutoApi(),{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',cache:'no-store',signal:controller.signal,body:JSON.stringify({action,id})});
+  const data=await response.json();
+  if(!response.ok||!data.ok)throw Error(data.error||'Falha na consulta');
+  return data;
+ }catch(e){if(e.name==='AbortError')throw Error('TEMPO_LIMITE_DA_CONSULTA');throw e;}
+ finally{clearTimeout(timer)}
+}
 async function waRefreshRecipientCounts(){
  const unit=currentUnit,request=++waCountsRequest;
  waRecipientCounts={};waRenderAutos();
- for(const a of waAutos.filter(x=>x.enabled)){
+ const autos=waAutos.filter(x=>x.enabled);
+ await Promise.all(autos.map(async a=>{
   try{
    let data;
-   try{data=await waAutoRequest({action:'dispatch-plan',id:a.id});}
+   try{data=await waRecipientRequest('dispatch-plan',a.id);}
    catch(e){
     if(!String(e.message).includes('ACAO_INVALIDA'))throw e;
-    const preview=await waAutoRequest({action:'preview',id:a.id});
+    const preview=await waRecipientRequest('preview',a.id,15000);
     data={fallback:true,preview:preview.preview||[]};
    }
    if(unit!==currentUnit||request!==waCountsRequest)return;
@@ -149,12 +160,12 @@ async function waRefreshRecipientCounts(){
    }
   }catch(e){if(unit===currentUnit&&request===waCountsRequest)waRecipientCounts[a.id]={error:String(e.message||e)};}
   if(unit===currentUnit&&request===waCountsRequest)waRenderAutos();
- }
+ }));
 }
 function waCountCell(x){
  if(!x.enabled)return '<span class="wa-hint">Pausada</span>';
  const c=waRecipientCounts[x.id];if(!c)return '<span class="wa-hint">Calculando…</span>';
- if(c.error)return '<span class="wa-hint" title="'+clean(c.error)+'">Consulta indisponível</span>';if(c.fallback)return '<div class="wa-counts"><b>'+c.total+' na condição</b><small>'+c.consented+' com consentimento</small><small>'+c.blocked+' impedidos</small><small>Prévia; não é lista de envio</small></div>';
+ if(c.error)return '<div class="wa-counts"><small>Contagem indisponível</small><button class="wa-btn secondary" onclick="waRefreshRecipientCounts()">Tentar novamente</button></div>';if(c.fallback)return '<div class="wa-counts"><b>'+c.total+' na condição</b><small>'+c.consented+' com consentimento</small><small>'+c.blocked+' impedidos</small><small>Prévia; não é lista de envio</small></div>';
  return '<div class="wa-counts"><b>'+c.eligible+' elegíveis</b><small>'+c.sent+' já aceitos</small><small>'+c.pending+' pendentes hoje</small><small>'+c.future+' futuros</small></div>';
 }
 function waRenderAutos(){
