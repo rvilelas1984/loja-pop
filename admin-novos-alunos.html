@@ -162,10 +162,17 @@ async function waRefreshRecipientCounts(){
   if(unit===currentUnit&&request===waCountsRequest)waRenderAutos();
  }));
 }
+function waJourneyStageCount(x){
+ if(x.rule!=='attended')return null;
+ // Reuse the same normalized records and stage classification as "5. Primeira aula realizada".
+ // This is a journey-stage count, not a claim of WhatsApp eligibility or event-day scheduling.
+ const cohort=globalData().filter(p=>p.stage===4);
+ return {total:cohort.length,people:cohort};
+}
 function waCountCell(x){
  if(!x.enabled)return '<span class="wa-hint">Pausada</span>';
- const c=waRecipientCounts[x.id];if(!c)return '<span class="wa-hint">Calculando…</span>';
- if(c.error)return '<div class="wa-counts"><small>Contagem indisponível</small><button class="wa-btn secondary" onclick="waRefreshRecipientCounts()">Tentar novamente</button></div>';if(c.fallback)return '<div class="wa-counts"><b>'+c.total+' na condição</b><small>'+c.consented+' com consentimento</small><small>'+c.blocked+' impedidos</small><small>Prévia; não é lista de envio</small></div>';
+ const c=waRecipientCounts[x.id];if(!c){const stage=waJourneyStageCount(x);if(stage)return '<div class="wa-counts"><b>'+stage.total+' na etapa 5</b><small>Validando destinatários…</small></div>';return '<span class="wa-hint">Calculando…</span>';}
+ if(c.error){const stage=waJourneyStageCount(x);if(stage)return '<div class="wa-counts"><b>'+stage.total+' na etapa 5</b><small>Fonte: jornada Novos Alunos</small><small>Envio ainda não validado</small></div>';return '<div class="wa-counts"><small>Contagem indisponível</small><button class="wa-btn secondary" onclick="waRefreshRecipientCounts()">Tentar novamente</button></div>';}if(c.fallback)return '<div class="wa-counts"><b>'+c.total+' na condição</b><small>'+c.consented+' com consentimento</small><small>'+c.blocked+' impedidos</small><small>Prévia; não é lista de envio</small></div>';
  return '<div class="wa-counts"><b>'+c.eligible+' elegíveis</b><small>'+c.sent+' já aceitos</small><small>'+c.pending+' pendentes hoje</small><small>'+c.future+' futuros</small></div>';
 }
 function waRenderAutos(){
