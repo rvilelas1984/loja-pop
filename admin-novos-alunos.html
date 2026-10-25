@@ -156,7 +156,7 @@ async function waRefreshRecipientCounts(){
     waRecipientCounts[a.id]={fallback:true,total:people.length,consented:people.filter(p=>!p.reason).length,blocked:people.filter(p=>!!p.reason).length};
    }else{
     const items=data.items||[],history=data.history||[];
-    waRecipientCounts[a.id]={eligible:items.filter(p=>p.status==='pendente').length,sent:items.filter(p=>p.status==='accepted').length,pending:items.filter(p=>p.status==='pendente'&&p.group==='today').length,future:items.filter(p=>p.status==='pendente'&&p.group==='future').length,history:history.length};
+    waRecipientCounts[a.id]={candidates:items.length,eligible:items.filter(p=>p.status==='pendente').length,blocked:items.filter(p=>p.status!=='pendente'&&p.status!=='accepted').length,sent:items.filter(p=>p.status==='accepted').length,pending:items.filter(p=>p.status==='pendente'&&p.group==='today').length,future:items.filter(p=>p.status==='pendente'&&p.group==='future').length,history:history.length};
    }
   }catch(e){if(unit===currentUnit&&request===waCountsRequest)waRecipientCounts[a.id]={error:String(e.message||e)};}
   if(unit===currentUnit&&request===waCountsRequest)waRenderAutos();
