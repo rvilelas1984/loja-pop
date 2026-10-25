@@ -166,7 +166,7 @@ function waCountCell(x){
  if(!x.enabled)return '<span class="wa-hint">Pausada</span>';
  const c=waRecipientCounts[x.id];if(!c)return '<span class="wa-hint">Consultando eventos da automação…</span>';
  if(c.error)return '<div class="wa-counts"><small>Destinatários não verificados</small><small>API da automação indisponível</small><button class="wa-btn secondary" onclick="waRefreshRecipientCounts()">Tentar novamente</button></div>';if(c.fallback)return '<div class="wa-counts"><small>Prévia sem data do evento</small><small>Não é contagem de envio</small></div>';
- return '<div class="wa-counts"><b>'+c.eligible+' elegíveis</b><small>'+c.sent+' já aceitos</small><small>'+c.pending+' pendentes hoje</small><small>'+c.future+' futuros</small></div>';
+ return '<div class="wa-counts"><b>'+c.candidates+' na etapa/data do evento</b><small>'+c.eligible+' autorizados para envio</small><small>'+c.blocked+' impedidos (ver lista)</small><small>'+c.sent+' já aceitos</small><small>'+c.pending+' pendentes hoje · '+c.future+' futuros</small></div>';
 }
 function waRenderAutos(){
  if(!$('waAutomations'))return;
