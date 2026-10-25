@@ -199,7 +199,7 @@ function waRenderAutos(){
  <button class="wa-btn secondary" onclick="waDeleteAuto(${i})">Excluir</button>
  <button class="wa-btn secondary" onclick="waDispatchPlan(${i},'history')">Histórico</button>
  <button class="wa-btn secondary" onclick="waPreviewAuto(${i})">Diagnóstico / autorizações</button>
- <button class="wa-btn secondary" onclick="waAutoAction('retry',${i})">Reprocessar falhas seguras</button>
+ <span class="wa-hint">Reenvio individual disponível no histórico de execução.</span>
  </div></details>
  </div></article>`).join('')+'</div>':'Nenhuma automação configurada.';
  const status={queued:'Na fila',running:'Em execução',completed:'Concluída',error:'Erro',cancelled:'Cancelada'};
@@ -277,7 +277,23 @@ async function waSaveConsent(){try{const d=await waAutoRequest({action:'consent'
 async function waLoadConsents(){try{const d=await waAutoRequest({action:'consents'});if(!d)return;$('waConsents').innerHTML=d.consents.length?'<table class="wa-table"><tr><th>Aluno / telefone</th><th>Evidência</th><th>Validade</th><th>Ação</th></tr>'+d.consents.map(c=>'<tr><td>#'+clean(c.studentId)+' / '+clean(c.phone)+'</td><td>'+clean(c.evidence)+'</td><td>'+waDate(c.consentedAt)+' até '+waDate(c.expiresAt)+'</td><td>'+(c.revokedAt?'Revogada':new Date(c.expiresAt)<new Date()?'Expirada':'<button class="wa-btn secondary" onclick="waRevokeConsent('+c.id+')">Revogar</button>')+'</td></tr>').join('')+'</table>':'Nenhuma autorização registrada.'}catch(e){notify(e.message)}}
 async function waRevokeConsent(id){if(!confirm('Revogar esta autorização?'))return;try{await waAutoRequest({action:'revoke',id});await waLoadConsents()}catch(e){notify(e.message)}}
 async function waOlderRuns(){try{const d=await waAutoRequest({action:'executions',offset:waAutoRuns.length});if(!d)return;if(!d.runs.length)return notify('Todo o histórico foi carregado.');waAutoRuns.push(...d.runs);waRenderAutos()}catch(e){notify(e.message)}}
-async function waRunDetail(id,offset){try{const d=await waAutoRequest({action:'history',runId:id,offset});if(!d)return;const names={accepted:'Aceito pelo ChatPro',blocked:'Bloqueado',ignored:'Ignorado',failed:'Falha anterior ao envio',uncertain:'Resultado incerto — conferir ChatPro'};$('waAutoDetail').innerHTML='<h4>Execução #'+id+'</h4><p>Unidade: '+clean(d.run.unit)+' · Programada: '+clean(d.run.slot)+'<br>Início: '+waDate(d.run.startedAt)+' · Término: '+waDate(d.run.finished_at)+'<br>Candidatos: '+(d.run.candidates??'—')+' · Autorizados: '+d.run.eligible+' · Aceitos: '+d.run.accepted+' · Impedidos: '+d.run.ignored+' · Falhas: '+d.run.failed+'</p><p>'+clean(d.run.detail||'Aceitação pelo ChatPro não confirma entrega no WhatsApp.')+'</p><table class="wa-table"><tr><th>Aluno</th><th>Resultado</th><th>Motivo</th></tr>'+d.history.map(x=>{let detail;try{detail=JSON.parse(x.detail)}catch{detail={reason:x.detail}}return '<tr><td>'+clean(detail.name||x.studentId)+'</td><td>'+clean(names[x.status]||x.status)+'</td><td>'+clean(detail.reason||'—')+'</td></tr>'}).join('')+'</table>'+(offset?'<button class="wa-btn secondary" onclick="waRunDetail('+id+','+Math.max(0,offset-100)+')">Anterior</button>':'')+(d.history.length===100?'<button class="wa-btn secondary" onclick="waRunDetail('+id+','+(offset+100)+')">Próxima página</button>':'')}catch(e){notify(e.message)}}
+async function waRetryStudent(automationId,deliveryId,runId){
+ if(!confirm('Reenviar somente este aluno?'))return;
+ try{const d=await waAutoRequest({action:'retry',id:automationId,deliveryId,confirm:true});if(!d)return;notify(d.note||'Reenvio agendado');await waRunDetail(runId,0)}catch(e){notify(e.message)}
+}
+async function waRunDetail(id,offset){
+ try{
+  const d=await waAutoRequest({action:'history',runId:id,offset});if(!d)return;
+  const labels={accepted:'Aceito pelo ChatPro',blocked:'Bloqueado',ignored:'Ignorado',failed:'Falha',uncertain:'Resultado incerto — conferir ChatPro'};
+  const section=(rows,title)=>'<h5>'+title+' ('+rows.length+')</h5><table class="wa-table"><tr><th>Aluno</th><th>Resultado</th><th>Motivo</th><th>Ação</th></tr>'+rows.map(x=>{
+   let info;try{info=JSON.parse(x.detail)}catch{info={reason:x.detail}}
+   const retry=x.deliveryStatus==='failed_before_send'&&x.deliveryId;
+   return '<tr><td>'+clean(info.name||x.studentId)+'</td><td>'+clean(labels[x.status]||x.status)+'</td><td>'+clean(info.reason||'—')+'</td><td>'+(retry?'<button class="wa-btn secondary" onclick="waRetryStudent('+d.run.automation_id+','+Number(x.deliveryId)+','+id+')">Tentar novamente</button>':x.status==='uncertain'?'Conferir ChatPro':'—')+'</td></tr>';
+  }).join('')+'</table>';
+  const pending=d.history.filter(x=>x.status!=='accepted'),sent=d.history.filter(x=>x.status==='accepted');
+  $('waAutoDetail').innerHTML='<h4>Execução #'+id+'</h4><p>Unidade: '+clean(d.run.unit)+' · Programada: '+clean(d.run.slot)+'<br>Início: '+waDate(d.run.startedAt)+' · Término: '+waDate(d.run.finished_at)+'</p>'+section(pending,'Pendentes e erros')+section(sent,'Enviados — aceitos pelo ChatPro')+(offset?'<button class="wa-btn secondary" onclick="waRunDetail('+id+','+Math.max(0,offset-100)+')">Anterior</button>':'')+(d.history.length===100?'<button class="wa-btn secondary" onclick="waRunDetail('+id+','+(offset+100)+')">Próxima página</button>':'');
+ }catch(e){notify(e.message)}
+}
 function syncNewStudentsScope(scope){const unit=scope==='gym'?'gym':scope==='bike'?'bike':null;if(!unit)return;const picker=$('unit');if(picker.value!==unit){picker.value=unit;loadD1();}}
 window.addEventListener('cp:scopechange',event=>syncNewStudentsScope(event.detail?.scope));
 waInit();const initialScope=window.cpAdminScope?.get?.()||new URLSearchParams(location.search).get('scope');if(initialScope==='gym'||initialScope==='bike')$('unit').value=initialScope;loadD1();
