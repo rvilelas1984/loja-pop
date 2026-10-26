@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/tv-upload",
+      "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/tv/upload"
+    },
+    {
       "source": "/api/tv-campaigns",
       "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/tv/campaigns"
     },
