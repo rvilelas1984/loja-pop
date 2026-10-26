@@ -605,11 +605,19 @@ async function reconcileHistoricalInstructors(env,unit,date){
    if(before.toLocaleLowerCase("pt-BR")===name.toLocaleLowerCase("pt-BR")){unchanged++;continue}
    const override=await env.DB.prepare("SELECT teacher_name FROM teacher_payment_overrides WHERE unit=? AND id_activity_session=?").bind(unit,id).first();
    const updated=await env.DB.prepare("UPDATE evo_attendance_sessions SET instructor_name=? WHERE unit=? AND id_activity_session=? AND COALESCE(instructor_name,'')=?").bind(name,unit,id,row.instructor_name||"").run();
-   if(updated.meta?.changes){corrected++;changes.push({id,time:row.start_time,from:before,to:name,paymentOverride:override?.teacher_name||null})}
+   if(updated.meta?.changes){
+    corrected++;
+    let financialUpdated=false;
+    if(override&&String(override.teacher_name||"").trim().toLocaleLowerCase("pt-BR")!==name.toLocaleLowerCase("pt-BR")){
+      await env.DB.prepare("UPDATE teacher_payment_overrides SET teacher_name=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND id_activity_session=?").bind(name,unit,id).run();
+      financialUpdated=true;
+    }
+    changes.push({id,time:row.start_time,from:before,to:name,paymentOverride:override?.teacher_name||null,financialUpdated});
+   }
    else errors.push({id,error:"ALTERADO_CONCORRENTEMENTE"});
   }catch(error){errors.push({id,error:String(error?.message||error).slice(0,120)})}
  }
- return {date,unit,total:rows.length,checked,corrected,unchanged,missing,requests,changes,errors,financialReviewRequired:changes.some(x=>x.paymentOverride)};
+ return {date,unit,total:rows.length,checked,corrected,unchanged,missing,requests,changes,errors,financialReviewRequired:changes.some(x=>x.paymentOverride&&!x.financialUpdated),financialUpdated:changes.filter(x=>x.financialUpdated).length};
 }
 async function backfillMissingAttendanceInstructors(env,manualUnit=null,manualRunKey=null){
   if(!env.DB)return;
