@@ -385,6 +385,7 @@ function attendanceInstructorName(d){for(const v of [d?.instructor,d?.instructor
 function attendanceClassFinished(date,time,now=new Date()) {const x=String(time||"").trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);if(!x||!/^\d{4}-\d{2}-\d{2}$/.test(String(date)))return false;let h=Number(x[1]),minute=Number(x[2]);if(x[3]){if(h<1||h>12)return false;h=h%12+(x[3].toUpperCase()==="PM"?12:0)}if(h>23||minute>59)return false;const local=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),v=t=>local.find(p=>p.type===t)?.value||"";const today=v("year")+"-"+v("month")+"-"+v("day");if(date<today)return true;if(date>today)return false;return h*60+minute+60<=Number(v("hour"))*60+Number(v("minute"));}
 const ALLOWED_ORIGINS = new Set([
   "https://loja-pop-green.vercel.app",
+  "https://adm.clubpopfit.com.br",
   "http://localhost:3000",
   "http://localhost:5173",
 ]);
