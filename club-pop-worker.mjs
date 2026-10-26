@@ -4416,6 +4416,10 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
         headers: {
           "Content-Type": "application/json; charset=utf-8",
           "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": ALLOWED_ORIGINS.has(request.headers.get("Origin")) ? request.headers.get("Origin") : "https://loja-pop-green.vercel.app",
+          "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Vary": "Origin",
         },
       });
     }
