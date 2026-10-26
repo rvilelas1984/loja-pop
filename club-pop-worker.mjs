@@ -581,6 +581,36 @@ async function runScheduledStudentSync(env,forceUnit=null,forceKey=null) {
 }
 
 
+async function reconcileHistoricalInstructors(env,unit,date){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date+"T12:00:00Z"))||new Date(date+"T12:00:00Z").toISOString().slice(0,10)!==date)throw Error("DATA_INVALIDA");
+ const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+ if(date>today)throw Error("DATA_FUTURA");
+ const rows=(await env.DB.prepare("SELECT id_activity_session,instructor_name,activity_date,start_time FROM evo_attendance_sessions WHERE unit=? AND activity_date=? ORDER BY start_time,id_activity_session LIMIT 101").bind(unit,date).all()).results||[];
+ if(rows.length>100)throw Error("LIMITE_AULAS_EXCEDIDO");
+ const cfg=await getEvoConfig(env,unit);
+ const changes=[],errors=[];let checked=0,corrected=0,unchanged=0,missing=0,requests=0;
+ for(const row of rows){
+  const id=String(row.id_activity_session||"");if(!id){errors.push({id,error:"ID_AULA_AUSENTE"});continue}
+  const endpoint="/api/v1/activities/schedule/detail?idActivitySession="+encodeURIComponent(id);
+  try{
+   const response=await fetch("https://evo-integracao-api.w12app.com.br"+endpoint,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"},signal:AbortSignal.timeout(15000)});
+   requests++;
+   await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,'instructor_historical','GET',?,?,?)").bind(unit,"/api/v1/activities/schedule/detail",response.status,response.ok?1:0).run();
+   if(!response.ok)throw Error("EVO_HTTP_"+response.status);
+   const payload=await response.json(),d=Array.isArray(payload)&&payload.length===1?payload[0]:payload;
+   if(String(d?.idActivitySession??d?.idActivitieSession??"")!==id)throw Error("SESSION_ID_MISMATCH");
+   const name=attendanceInstructorName(d);
+   if(!name){missing++;continue}
+   const before=String(row.instructor_name||"").trim();checked++;
+   if(before.toLocaleLowerCase("pt-BR")===name.toLocaleLowerCase("pt-BR")){unchanged++;continue}
+   const override=await env.DB.prepare("SELECT teacher_name FROM teacher_payment_overrides WHERE unit=? AND id_activity_session=?").bind(unit,id).first();
+   const updated=await env.DB.prepare("UPDATE evo_attendance_sessions SET instructor_name=? WHERE unit=? AND id_activity_session=? AND COALESCE(instructor_name,'')=?").bind(name,unit,id,row.instructor_name||"").run();
+   if(updated.meta?.changes){corrected++;changes.push({id,time:row.start_time,from:before,to:name,paymentOverride:override?.teacher_name||null})}
+   else errors.push({id,error:"ALTERADO_CONCORRENTEMENTE"});
+  }catch(error){errors.push({id,error:String(error?.message||error).slice(0,120)})}
+ }
+ return {date,unit,total:rows.length,checked,corrected,unchanged,missing,requests,changes,errors,financialReviewRequired:changes.some(x=>x.paymentOverride)};
+}
 async function backfillMissingAttendanceInstructors(env,manualUnit=null,manualRunKey=null){
   if(!env.DB)return;
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_instructor_backfill_attempts(unit TEXT NOT NULL,id_activity_session TEXT NOT NULL,attempted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL,detail TEXT,PRIMARY KEY(unit,id_activity_session))").run();
@@ -2197,6 +2227,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!vr.ok||!vd.authenticated||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
         const body=await request.json().catch(()=>({})),unit=String(body.unit||"");
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        if(body.date){try{const detail=await reconcileHistoricalInstructors(env,unit,String(body.date));const runKey="historical-"+body.date+"-"+crypto.randomUUID();await env.DB.prepare("INSERT INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status,detail,updated_at) VALUES(?,'instructor_link',?,'done',?,CURRENT_TIMESTAMP)").bind(unit,runKey,JSON.stringify(detail)).run();return json({ok:true,...detail})}catch(e){return json({ok:false,error:String(e?.message||e)},400)}}
         const runKey="manual-"+new Date().toISOString()+"-"+crypto.randomUUID();
         await backfillMissingAttendanceInstructors(env,unit,runKey);
         const row=await env.DB.prepare("SELECT status,detail,updated_at FROM evo_sync_schedule_runs WHERE unit=? AND kind='instructor_link' AND scheduled_minute=?").bind(unit,runKey).first();
