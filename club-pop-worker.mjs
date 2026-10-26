@@ -2007,6 +2007,18 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const inserted=await env.DB.prepare("INSERT INTO student_tutorial_videos(title,description,category,unit,drive_file_id,sort_order,published) VALUES(?,?,?,?,?,?,?)").bind(title,description,category,unit,driveId,sortOrder,published).run();
         return json({ok:true,id:inserted.meta?.last_row_id},201);
       }
+      // TV POP: grade de aulas futuras e realizadas, exclusivamente D1.
+      if(url.pathname==="/admin/tv-pop-classes"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=url.searchParams.get("unit"),start=url.searchParams.get("start"),end=url.searchParams.get("end");
+        if(!["bike","gym"].includes(unit)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(start||"")||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(end||"")||start>end||Date.parse(end)-Date.parse(start)>31*86400000)return json({ok:false,error:"FILTROS_INVALIDOS"},400);
+        const q=await env.DB.prepare("SELECT id_activity_session sessionId,activity_date date,start_time time,activity_name name,instructor_name instructor,status FROM evo_attendance_sessions WHERE unit=? AND activity_date>=? AND activity_date<=? ORDER BY activity_date,start_time LIMIT 2000").bind(unit,start,end).all();
+        return json({ok:true,unit,source:"D1",classes:q.results||[]});
+      }
       // Desempenho semanal: leitura de aulas confirmadas no D1, sem EVO.
       if(url.pathname==="/admin/class-performance"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
