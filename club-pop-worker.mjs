@@ -602,7 +602,7 @@ async function reconcileHistoricalInstructors(env,unit,date){
    const name=attendanceInstructorName(d);
    if(!name){missing++;continue}
    const before=String(row.instructor_name||"").trim();checked++;
-   if(before.toLocaleLowerCase("pt-BR")===name.toLocaleLowerCase("pt-BR")){unchanged++;continue}
+   if(before.toLocaleLowerCase("pt-BR")===name.toLocaleLowerCase("pt-BR")){unchanged++;const o=await env.DB.prepare("SELECT teacher_name FROM teacher_payment_overrides WHERE unit=? AND id_activity_session=?").bind(unit,id).first();if(o&&String(o.teacher_name||"").trim().toLocaleLowerCase("pt-BR")!==name.toLocaleLowerCase("pt-BR")){await env.DB.prepare("UPDATE teacher_payment_overrides SET teacher_name=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND id_activity_session=?").bind(name,unit,id).run();corrected++;changes.push({id,time:row.start_time,from:before,to:name,paymentOverride:o.teacher_name,financialUpdated:true,financialOnly:true})}continue}
    const override=await env.DB.prepare("SELECT teacher_name FROM teacher_payment_overrides WHERE unit=? AND id_activity_session=?").bind(unit,id).first();
    const updated=await env.DB.prepare("UPDATE evo_attendance_sessions SET instructor_name=? WHERE unit=? AND id_activity_session=? AND COALESCE(instructor_name,'')=?").bind(name,unit,id,row.instructor_name||"").run();
    if(updated.meta?.changes){
