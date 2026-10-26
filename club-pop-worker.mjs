@@ -1,3 +1,4 @@
+import {canonicalEvoId,normalizeMemberIds,resolveEvoClubMember,memberAttendanceHistory} from './lib/member-identity.mjs';
 import {drawCandidates,ensureDrawMember,drawAttendance,ticketSession,acquireDrawLease,releaseDrawLease} from './lib/lucky-draw-data.mjs';
 import { partnerMedia } from "./lib/partner-media.mjs";
 import {popDrawAdmin,popDrawTick} from './lib/pop-draws.mjs';
@@ -1561,6 +1562,13 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(vd.role==="reception"&&(!(vd.permissions||[]).some(p=>p==="*"||p==="/admin-alunos-evo.html")||!(vd.units||[]).includes("gym")))return json({ok:false,error:"SEM_PERMISSAO_ALUNOS"},403);
         return json(await adminGymRanking(env.DB,url.searchParams));
       }
+      if(url.pathname==='/member/attendance-history'&&request.method==='GET'){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:'NAO_AUTORIZADO'},401);
+        const unit=url.searchParams.get('unit')==='gym'?'gym':'bike';
+        const data=await memberAttendanceHistory(env.DB,member,unit,url.searchParams.get('offset'));
+        return json(data,data.ok?200:404);
+      }
       // Student-only lifetime stars, read from D1; never calls EVO.
       if (url.pathname === "/member/stars" && request.method === "GET") {
         const auth=request.headers.get("Authorization")||"";
@@ -1568,6 +1576,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const tokenHash=await sha256(auth.slice(7));
         const session=await env.DB.prepare("SELECT m.id,m.evo_member_id,COALESCE(NULLIF(m.gym_client_id,''),g.gym_client_id) AS gym_client_id,m.first_name,m.last_name FROM auth_sessions s JOIN members m ON m.id=s.member_id LEFT JOIN gym_member_links g ON g.member_id=m.id AND g.status='ACTIVE' WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP LIMIT 1").bind(tokenHash).first();
         if(!session)return json({ok:false,error:"SESSAO_INVALIDA"},401);
+        Object.assign(session,normalizeMemberIds(session));
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
         const evoId=unit==="gym"?session.gym_client_id:session.evo_member_id;
         if(!evoId)return json({ok:false,error:"UNIDADE_NAO_VINCULADA"},404);
@@ -1577,7 +1586,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           if(!starRow)return json({ok:false,error:"ALUNO_SEM_RANKING"},404);
           legacy=Number(starRow.legacy||0);actual=Number(starRow.actual||0);
         }else{
-          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,MAX((SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT)),COALESCE((SELECT baseline_count FROM bike_evo_historical_baseline b WHERE b.evo_member_id=CAST(m.evo_member_id AS TEXT)),0)+(SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT) AND a.attendance_date>'2026-10-18')) AS actual FROM members m WHERE m.id=?").bind(session.id).first();
+          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,MAX((SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT)),COALESCE((SELECT baseline_count FROM bike_evo_historical_baseline b WHERE b.evo_member_id=CAST(m.evo_member_id AS TEXT) AND NOT EXISTS(SELECT 1 FROM club_settings review WHERE review.key='attendance_baseline_review:bike:'||b.evo_member_id AND json_extract(review.value,'$.status')='pending')),0)+(SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT) AND a.attendance_date>'2026-10-18')) AS actual FROM members m WHERE m.id=?").bind(session.id).first();
           legacy=Number(starRow?.legacy||0);actual=Number(starRow?.actual||0);
         }
         return json({ok:true,unit,memberId:session.id,name:[session.first_name,session.last_name].filter(Boolean).join(" ").trim()||"Aluno",stars:{legacy,actual,total:legacy+actual},source:"d1",evoRequestsMade:0});
@@ -1588,6 +1597,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const tokenHash=await sha256(auth.slice(7));
         const session=await env.DB.prepare("SELECT m.id,m.evo_member_id,COALESCE(m.gym_client_id,g.gym_client_id) AS gym_client_id FROM auth_sessions s JOIN members m ON m.id=s.member_id LEFT JOIN gym_member_links g ON g.member_id=m.id AND g.status='ACTIVE' WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP LIMIT 1").bind(tokenHash).first();
         if(!session)return json({ok:false,error:"SESSAO_INVALIDA"},401);
+        Object.assign(session,normalizeMemberIds(session));
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike",evoId=unit==="gym"?session.gym_client_id:session.evo_member_id;
         if(!evoId)return json({ok:false,error:"UNIDADE_NAO_VINCULADA"},404);
         if(unit==="bike"){
@@ -1608,7 +1618,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           data.sessionDetails=await memberSessionDetails(env.DB,unit,evoId);
           await attachContractSessions(env.DB,unit,evoId,data);
           data.attendance={ok:true,period:{month},attendanceCount:rows.length,distinctDays:days.size,favoriteTime:top(times),favoriteActivity:top(acts),favoriteEquipment:favoriteEquipmentFromRows(rows,unit,top(acts)),currentWeek:{attendanceCount:week.length,distinctDays:new Set(week.map(a=>a.date)).size},attendance:rows};
-          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,MAX((SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT)),COALESCE((SELECT baseline_count FROM bike_evo_historical_baseline b WHERE b.evo_member_id=CAST(m.evo_member_id AS TEXT)),0)+(SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT) AND e.attendance_date>'2026-10-18')) AS current_count FROM members m WHERE m.id=?").bind(session.id).first();
+          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,MAX((SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT)),COALESCE((SELECT baseline_count FROM bike_evo_historical_baseline b WHERE b.evo_member_id=CAST(m.evo_member_id AS TEXT) AND NOT EXISTS(SELECT 1 FROM club_settings review WHERE review.key='attendance_baseline_review:bike:'||b.evo_member_id AND json_extract(review.value,'$.status')='pending')),0)+(SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT) AND e.attendance_date>'2026-10-18')) AS current_count FROM members m WHERE m.id=?").bind(session.id).first();
           data.bikeStars={total:Number(starRow?.legacy||0)+Number(starRow?.current_count||0),legacy:Number(starRow?.legacy||0),current:Number(starRow?.current_count||0)};
           const sync=await env.DB.prepare("SELECT sync_time,last_sync_at FROM evo_sync_config WHERE unit='bike'").first();
           return json({ok:true,unit,cached:true,source:"d1",evoRequestsMade:0,updatedAt:cache?.updated_at||master?.synced_at||null,sync:{syncTime:sync?.sync_time||null,lastSyncAt:sync?.last_sync_at||null},data});
@@ -3299,8 +3309,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(member.gym_client_id)return json({ok:true,alreadyLinked:true,linked:true,member:base});
         const gymMember=await findGymEvoMember(env,cpf);
         if(!gymMember?.idMember)return json({ok:false,error:"GYM_CADASTRO_NAO_ENCONTRADO",member:base},404);
-        const gymId=Number(gymMember.idMember);
-        if(!Number.isFinite(gymId))return json({ok:false,error:"GYM_ID_INVALIDO"},502);
+        const gymId=canonicalEvoId(gymMember.idMember);
+        if(! /^[1-9]\d*$/.test(gymId))return json({ok:false,error:"GYM_ID_INVALIDO"},502);
         const collision=await env.DB.prepare("SELECT id FROM members WHERE gym_client_id=? AND id<>? LIMIT 1").bind(gymId,member.id).first();
         if(collision)return json({ok:false,error:"GYM_JA_VINCULADO_A_OUTRA_CONTA"},409);
         await env.DB.prepare("UPDATE members SET gym_client_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(gymId,member.id).run();
@@ -3341,8 +3351,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           return json({ ok: false, error: "GYM_CADASTRO_NAO_ENCONTRADO" }, 404);
         }
 
-        const gymId = Number(gymMember.idMember);
-        if (!Number.isFinite(gymId)) {
+        const gymId = canonicalEvoId(gymMember.idMember);
+        if (! /^[1-9]\d*$/.test(gymId)) {
           return json({ ok: false, error: "GYM_ID_INVALIDO" }, 502);
         }
 
@@ -4157,7 +4167,7 @@ if(url.pathname==="/content-store"){
       // PROMOTION NUMBERS + MISSION REDEMPTIONS
       // =====================================================
       
-if(url.pathname==="/promotion-numbers/admin/sync-batch"&&request.method==="POST"){const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});if(!vr.ok)return json({ok:false,error:"NAO_AUTORIZADO"},401);const body=await readJson(request),key=String(body.promotionId||""),skip=Math.max(0,Number(body.skip||0)),promo=await clubContentItem(env,"promotion",key);if(!promo||promo.status!=="Ativo"||promo.promotionType!=="lucky_number"||!promo.luckyNumber?.enabled)return json({ok:false,error:"PROMOCAO_INVALIDA"},400);const accepted=new Set((promo.eligibility?.acceptedContracts||[]).map(String));if((promo.eligibility?.mode||"any")!=="active_contract"||!accepted.size)return json({ok:false,error:"PROMOCAO_SEM_CONTRATOS_ELEGIVEIS"},400);const promoUnit=(promo.unit||"bike")==="gym"?"gym":"bike",cfg=await getEvoConfig(env,promoUnit),auth="Basic "+btoa(cfg.dns+":"+cfg.token),take=25,ep="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?take="+take+"&skip="+skip+"&statusMemberMembership=1&showAggregators=true&showVips=true",er=await fetch(ep,{headers:{Authorization:auth,Accept:"application/json"}});if(!er.ok)return json({ok:false,error:"EVO_CONTRATOS_HTTP_"+er.status},502);const ed=await er.json(),items=Array.isArray(ed)?ed:(ed.items||ed.data||ed.lista||ed.list||[]),eligible=[...new Map(items.filter(x=>Number(x.statusMemberMembership||1)===1&&accepted.has(String(x.idMembership))).filter(x=>Number(x.idMember)>0).map(x=>[String(x.idMember),x])).values()];let participating=0,generated=0,attendance=0,errors=[];for(const x of eligible){try{const evoId=Number(x.idMember);let member=await env.DB.prepare("SELECT * FROM members WHERE evo_member_id=? LIMIT 1").bind(evoId).first();if(!member){const parts=String(x.name||"Aluno").trim().split(/\s+/),first=parts.shift()||"Aluno",last=parts.join(" ");await env.DB.prepare("INSERT INTO members(evo_member_id,cpf_hash,first_name,last_name,status) VALUES(?,?,?,?,'ACTIVE')").bind(evoId,"evo-placeholder:"+evoId,first,last).run();member=await env.DB.prepare("SELECT * FROM members WHERE evo_member_id=? LIMIT 1").bind(evoId).first()}await evoAttendance(env,evoId,promo.start,promo.end,member.id,promoUnit);const ac=Number((await env.DB.prepare("SELECT COUNT(*) n FROM attendance_history WHERE member_id=? AND unit=? AND attendance_date BETWEEN ? AND ?").bind(member.id,promo.unit||"bike",promo.start,promo.end).first())?.n||0);attendance+=ac;if(ac<1)continue;participating++;const before=Number((await env.DB.prepare("SELECT COUNT(*) n FROM lucky_numbers l JOIN promotion_participants pp ON pp.id=l.participant_id JOIN promotions pr ON pr.id=l.promotion_id WHERE pr.slug=? AND pp.member_id=? AND l.status='ACTIVE'").bind(key,member.id).first())?.n||0);await syncLuckyMember(env,member,promo);const after=Number((await env.DB.prepare("SELECT COUNT(*) n FROM lucky_numbers l JOIN promotion_participants pp ON pp.id=l.participant_id JOIN promotions pr ON pr.id=l.promotion_id WHERE pr.slug=? AND pp.member_id=? AND l.status='ACTIVE'").bind(key,member.id).first())?.n||0);generated+=Math.max(0,after-before)}catch(e){errors.push({idMember:x.idMember,error:String(e.message||e).slice(0,160)})}}const nextSkip=items.length===take?skip+take:null;if(nextSkip==null){await env.DB.prepare("CREATE TABLE IF NOT EXISTS promotion_sync_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,promotion_slug TEXT NOT NULL,unit TEXT NOT NULL,processed INTEGER NOT NULL DEFAULT 0,eligible INTEGER NOT NULL DEFAULT 0,participating INTEGER NOT NULL DEFAULT 0,attendance INTEGER NOT NULL DEFAULT 0,generated INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();const t=body.totals||{};await env.DB.prepare("INSERT INTO promotion_sync_runs(promotion_slug,unit,processed,eligible,participating,attendance,generated,errors) VALUES(?,?,?,?,?,?,?,?)").bind(key,promo.unit||"bike",Number(t.processed||0)+items.length,Number(t.eligible||0)+eligible.length,Number(t.participating||0)+participating,Number(t.attendance||0)+attendance,Number(t.generated||0)+generated,Number(t.errors||0)+errors.length).run()}return json({ok:true,promotion:{id:key,name:promo.name},batch:{skip,processed:items.length,eligible:eligible.length,participating,attendance,generated,errors},nextSkip,done:nextSkip==null})}
+if(url.pathname==="/promotion-numbers/admin/sync-batch"&&request.method==="POST"){const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});if(!vr.ok)return json({ok:false,error:"NAO_AUTORIZADO"},401);const body=await readJson(request),key=String(body.promotionId||""),skip=Math.max(0,Number(body.skip||0)),promo=await clubContentItem(env,"promotion",key);if(!promo||promo.status!=="Ativo"||promo.promotionType!=="lucky_number"||!promo.luckyNumber?.enabled)return json({ok:false,error:"PROMOCAO_INVALIDA"},400);const accepted=new Set((promo.eligibility?.acceptedContracts||[]).map(String));if((promo.eligibility?.mode||"any")!=="active_contract"||!accepted.size)return json({ok:false,error:"PROMOCAO_SEM_CONTRATOS_ELEGIVEIS"},400);const promoUnit=(promo.unit||"bike")==="gym"?"gym":"bike",cfg=await getEvoConfig(env,promoUnit),auth="Basic "+btoa(cfg.dns+":"+cfg.token),take=25,ep="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?take="+take+"&skip="+skip+"&statusMemberMembership=1&showAggregators=true&showVips=true",er=await fetch(ep,{headers:{Authorization:auth,Accept:"application/json"}});if(!er.ok)return json({ok:false,error:"EVO_CONTRATOS_HTTP_"+er.status},502);const ed=await er.json(),items=Array.isArray(ed)?ed:(ed.items||ed.data||ed.lista||ed.list||[]),eligible=[...new Map(items.filter(x=>Number(x.statusMemberMembership||1)===1&&accepted.has(String(x.idMembership))).filter(x=>Number(x.idMember)>0).map(x=>[String(x.idMember),x])).values()];let participating=0,generated=0,attendance=0,errors=[];for(const x of eligible){try{const evoId=Number(x.idMember);let member=await resolveEvoClubMember(env.DB,promoUnit,evoId);if(!member){member=await ensureDrawMember(env.DB,{unit:promoUnit,id:key},{members:[],evo_member_id:String(evoId),display_name:x.name||"Aluno"})}await evoAttendance(env,evoId,promo.start,promo.end,member.id,promoUnit);const ac=Number((await env.DB.prepare("SELECT COUNT(*) n FROM attendance_history WHERE member_id=? AND unit=? AND attendance_date BETWEEN ? AND ?").bind(member.id,promo.unit||"bike",promo.start,promo.end).first())?.n||0);attendance+=ac;if(ac<1)continue;participating++;const before=Number((await env.DB.prepare("SELECT COUNT(*) n FROM lucky_numbers l JOIN promotion_participants pp ON pp.id=l.participant_id JOIN promotions pr ON pr.id=l.promotion_id WHERE pr.slug=? AND pp.member_id=? AND l.status='ACTIVE'").bind(key,member.id).first())?.n||0);await syncLuckyMember(env,member,promo);const after=Number((await env.DB.prepare("SELECT COUNT(*) n FROM lucky_numbers l JOIN promotion_participants pp ON pp.id=l.participant_id JOIN promotions pr ON pr.id=l.promotion_id WHERE pr.slug=? AND pp.member_id=? AND l.status='ACTIVE'").bind(key,member.id).first())?.n||0);generated+=Math.max(0,after-before)}catch(e){errors.push({idMember:x.idMember,error:String(e.message||e).slice(0,160)})}}const nextSkip=items.length===take?skip+take:null;if(nextSkip==null){await env.DB.prepare("CREATE TABLE IF NOT EXISTS promotion_sync_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,promotion_slug TEXT NOT NULL,unit TEXT NOT NULL,processed INTEGER NOT NULL DEFAULT 0,eligible INTEGER NOT NULL DEFAULT 0,participating INTEGER NOT NULL DEFAULT 0,attendance INTEGER NOT NULL DEFAULT 0,generated INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();const t=body.totals||{};await env.DB.prepare("INSERT INTO promotion_sync_runs(promotion_slug,unit,processed,eligible,participating,attendance,generated,errors) VALUES(?,?,?,?,?,?,?,?)").bind(key,promo.unit||"bike",Number(t.processed||0)+items.length,Number(t.eligible||0)+eligible.length,Number(t.participating||0)+participating,Number(t.attendance||0)+attendance,Number(t.generated||0)+generated,Number(t.errors||0)+errors.length).run()}return json({ok:true,promotion:{id:key,name:promo.name},batch:{skip,processed:items.length,eligible:eligible.length,participating,attendance,generated,errors},nextSkip,done:nextSkip==null})}
 
 if(url.pathname==="/promotion-numbers/admin/generate-batch"&&request.method==="POST")return generatePromotionBatch(request,env,json);
 
@@ -4559,7 +4569,7 @@ const CLUB_RECEPTION_URL="https://wa.me/551130521378?text="+encodeURIComponent("
 const CLUB_DATA_URL="https://wa.me/551130521378?text="+encodeURIComponent("Olá, estou tentando acessar o Club Pop, mas meu cadastro está com dados incompletos. Podem me ajudar a atualizar?");
 function clubJson(value,fallback={}){try{return JSON.parse(value||"")||fallback}catch{return fallback}}
 function clubDigits(value){return String(value||"").replace(/[^0-9]/g,"")}
-function clubCanonicalId(id){const value=String(id??"").trim();return /^\d+\.0+$/.test(value)?value.replace(/\.0+$/,""):value;}
+const clubCanonicalId=canonicalEvoId;
 function clubProfile(row){
  const p=clubJson(row.personal_json),c=clubJson(row.contacts_json),raw=clubJson(row.raw_json);
  return {unit:row.unit,id:clubCanonicalId(row.evo_member_id),cpf:clubDigits(p.document||raw.document||raw["CPF (CIN)"]),email:normalizeEmail((Array.isArray(c)?c.find(x=>String(x.contactType||"").toLowerCase().includes("mail"))?.description: c?.email)||p.email||raw.email||raw["E-MAIL"]),birth:normalizeDate(p.birthDate||raw.birthDate||raw["DATA DE NASCIMENTO"]),first:p.firstName||raw.firstName||"",last:p.lastName||raw.lastName||""};
@@ -4691,7 +4701,7 @@ async function authenticatedMember(request, env) {
 
   const tokenHash = await sha256(token);
 
-  return await env.DB.prepare(`
+  const member=await env.DB.prepare(`
     SELECT m.*
     FROM auth_sessions s
     JOIN members m ON m.id = s.member_id
@@ -4704,6 +4714,7 @@ async function authenticatedMember(request, env) {
     tokenHash,
     new Date().toISOString()
   ).first();
+  return normalizeMemberIds(member);
 }
 
 async function createSession(env, memberId) {
@@ -5003,7 +5014,7 @@ async function runAutoLinkD1(env,{trigger="manual",actorType="SYSTEM",force=fals
       m=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first();
       if(!m){skipped++;continue}
     }
-    if((m.evo_member_id&&String(m.evo_member_id)!==String(x.bike_id))||(m.gym_client_id&&String(m.gym_client_id)!==String(x.gym_id))){conflicts++;continue}
+    if((m.evo_member_id&&String(m.evo_member_id)!==String(x.bike_id))||(m.gym_client_id&&canonicalEvoId(m.gym_client_id)!==canonicalEvoId(x.gym_id))){conflicts++;continue}
     const collision=await env.DB.prepare("SELECT id FROM members WHERE CAST(gym_client_id AS TEXT)=? AND id<>? LIMIT 1").bind(String(x.gym_id),m.id).first();if(collision){conflicts++;continue}
     const priorLink=await env.DB.prepare("SELECT member_id,status FROM gym_member_links WHERE gym_client_id=? LIMIT 1").bind(String(x.gym_id)).first();
   const isNewLink=!priorLink||priorLink.status!=="ACTIVE"||Number(priorLink.member_id)!==Number(m.id);

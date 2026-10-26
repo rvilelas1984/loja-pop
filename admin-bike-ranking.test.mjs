@@ -3,6 +3,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {adminBikeRanking} from './lib/admin-bike-ranking.mjs';
 const db=new DatabaseSync(':memory:');
 db.exec(`CREATE TABLE members(id INTEGER,evo_member_id INTEGER,presencas_legadas_bike INTEGER,first_name TEXT,last_name TEXT);
+CREATE TABLE bike_evo_historical_baseline(evo_member_id TEXT,baseline_count INTEGER);
+CREATE TABLE club_settings(key TEXT,value TEXT);
 CREATE TABLE evo_member_master(unit TEXT,evo_member_id TEXT,personal_json TEXT);
 CREATE TABLE evo_member_attendance(unit TEXT,evo_member_id TEXT,attendance_date TEXT);
 INSERT INTO members VALUES(1,101,10,'Ana','Teste'),(2,102,12,'Bia','Teste'),(3,999,0,'Gym','Only');
@@ -21,3 +23,6 @@ db.prepare('UPDATE members SET presencas_legadas_bike=21 WHERE id=1').run();
 r=await run('q=Ana');assert.equal(r.summary.near,1);assert.equal(r.upcoming[0].remaining,1);
 assert.equal(Object.hasOwn(r.rows[0],'cpf'),false);
 console.log('Ranking: same-day classes, Gym isolation, ties, CPF, filters, pagination and milestones OK');
+
+db.exec("INSERT INTO bike_evo_historical_baseline VALUES('101',48); INSERT INTO club_settings VALUES('attendance_baseline_review:bike:101','{\"status\":\"pending\"}')");
+r=await run('q=Ana');assert.equal(r.rows[0].actual,2);assert.equal(db.prepare('SELECT baseline_count FROM bike_evo_historical_baseline').get().baseline_count,48);

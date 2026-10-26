@@ -3,6 +3,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {adminGymRanking} from './lib/admin-gym-ranking.mjs';
 const db=new DatabaseSync(':memory:');
 db.exec(`CREATE TABLE members(id INTEGER,evo_member_id INTEGER,gym_client_id TEXT,presencas_legadas_gym INTEGER,first_name TEXT,last_name TEXT);
+CREATE TABLE club_settings(key TEXT PRIMARY KEY,value TEXT);
 CREATE TABLE evo_member_master(unit TEXT,evo_member_id TEXT,personal_json TEXT);
 CREATE TABLE evo_member_attendance(unit TEXT,evo_member_id TEXT,attendance_key TEXT,id_activity_session TEXT,attendance_date TEXT);
 INSERT INTO members VALUES(1,101,'201',0,'Aluno','A'),(2,201,NULL,48,'Aluno','A'),(3,102,'202',61,'Aluno','B'),(4,103,'203',46,'Aluno','C'),(5,203,NULL,0,'Aluno','C');`);
