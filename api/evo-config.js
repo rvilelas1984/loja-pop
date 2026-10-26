@@ -9,6 +9,14 @@ import { verifyServiceRequest, getEvoTransport } from "../lib/evo-transport.js";
 const WORKER="https://club-pop-api.renato-vilelas-personal.workers.dev";
 function proxyAuth(req,unit,route){const sess=adminSession(req);if(!sess||!(unit==="all"&&route==="teacher-view"?sess.units?.some(u=>u==="bike"||u==="gym"):sess.units?.includes(unit))||!["admin","reception","teacher"].includes(sess.role))return null;const secret=process.env.AUTO_SYNC_SECRET;if(!secret)return null;const claims=Buffer.from(JSON.stringify({role:sess.role,units:sess.units,permissions:sess.permissions||[],id:sess.id||null,name:sess.name||"",teacherId:sess.teacherId||null,t:Date.now(),unit,route,method:req.method})).toString("base64url");return claims+"."+crypto.createHmac("sha256",secret).update(claims).digest("hex")}
 export default async function handler(req,res){
+ if(req.query.route==="admin-star-adjust"){
+ const unit=String(req.query.unit||"");const user=adminSession(req);
+ if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+ if(!["bike","gym"].includes(unit)||!user||user.role!=="admin"||!user.units?.includes(unit))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+ const signed=proxyAuth(req,unit,"admin-star-adjust");if(!signed)return res.status(503).json({ok:false,error:"ASSINATURA_INDISPONIVEL"});
+ const query=new URLSearchParams({unit,q:String(req.query.q||"").slice(0,100)});
+ try{const r=await fetch(WORKER+"/admin/star-adjust?"+query,{method:req.method,headers:{"x-clubpop-proxy-auth":signed,"Content-Type":"application/json"},...(req.method==="POST"?{body:JSON.stringify(req.body||{})}:{}),cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ }
  if(req.query.route==="links-uteis") return linksUteisHandler(req,res);
  if(req.query.route==="checkin-stars"){
  const unit=String(req.query.unit||"");const user=adminSession(req);

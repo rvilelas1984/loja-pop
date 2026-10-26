@@ -1582,6 +1582,30 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!["club","bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
         try{return json(await adminCommunityMissions(env.DB,unit,url.searchParams.get("id")||""))}catch(e){return json({ok:false,error:"RELATORIO_INDISPONIVEL"},500)}
       }
+      if(url.pathname==="/admin/star-adjust"&&["GET","POST"].includes(request.method)){
+        const unit=url.searchParams.get("unit");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        const actor=await verifyProxyAuth(request,env,unit,"admin-star-adjust");
+        if(!actor||actor.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const ranking=unit==="gym"?adminGymRanking:adminBikeRanking;
+        if(request.method==="GET"){
+          const q=String(url.searchParams.get("q")||"").trim();
+          if(q.length<2)return json({ok:false,error:"INFORME_NOME_OU_ID"},400);
+          const data=await ranking(env.DB,new URLSearchParams({q,page:"1"}));
+          return json({ok:true,unit,rows:data.rows.map(x=>({id:x.id,evoMemberId:x.evo_member_id,name:x.name,legacy:x.legacy,actual:x.actual,stars:x.stars})),total:data.total});
+        }
+        const body=await readJson(request),id=String(body.evoMemberId||"").trim();
+        const stars=body.stars,reason=String(body.reason||"").trim().slice(0,300);
+        if(!/^\d{1,18}$/.test(id)||!Number.isSafeInteger(stars)||stars<0||stars>100000||reason.length<5)return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const data=await ranking(env.DB,new URLSearchParams({q:id,page:"1"}));
+        const row=data.rows.find(x=>String(x.evo_member_id)===id);
+        if(!row)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
+        const key="manual_stars:"+unit+":"+id;
+        const value=JSON.stringify({stars,reason,previous:row.stars,actorId:actor.id||null,actorName:actor.name||"",updatedAt:new Date().toISOString()});
+        await env.DB.prepare("INSERT INTO club_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(key,value).run();
+        try{await audit(env,"ADMIN",String(actor.id||actor.name||"admin"),"MANUAL_STARS_UPDATE","MEMBER",id,{unit,previous:row.stars,stars,reason})}catch(e){console.error("STAR_AUDIT_FAILED",e)}
+        return json({ok:true,unit,evoMemberId:id,previous:row.stars,stars});
+      }
       if(url.pathname==="/admin/bike-stars"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
