@@ -919,7 +919,7 @@ export default {
         return json({ok:true,unit,days,online:unique(active),visitors:unique(list),sessions:list.length,averageSeconds:average(list),pages,updatedAt:new Date().toISOString(),note:list.length===10000?"LIMITED_TO_10000_SESSIONS":null});
       }
 
-      if(url.pathname === "/admin/media-token" || url.pathname === "/tv/upload" || url.pathname.startsWith("/tv/files/")) return partnerMedia(request,env,json,cors);
+      if(url.pathname === "/admin/media-token" || url.pathname === "/admin/media-delete" || url.pathname === "/tv/upload" || url.pathname.startsWith("/tv/files/")) return partnerMedia(request,env,json,cors);
 
       // Partner TV campaigns: public active creatives, tracked QR redirects, authenticated reporting.
       if(url.pathname.startsWith("/tv/")||url.pathname==="/admin/tv-campaigns"){
