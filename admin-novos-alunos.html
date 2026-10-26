@@ -79,6 +79,8 @@ const today=()=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{tim
 function contactDay(v){if(!v)return '';const raw=String(v),d=new Date(/Z$|[+-]\d\d:\d\d$/.test(raw)?raw:raw.replace(' ','T')+'Z');if(Number.isNaN(d.getTime()))return '';const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d).map(x=>[x.type,x.value]));return p.year+'-'+p.month+'-'+p.day;}
 // A jornada é progressiva e não depende de conversão comercial ou do status do contrato.
 function journeyStage(s){
+ // Contrato ativo tem prioridade absoluta: o aluno entra imediatamente em Retenção.
+ if(Array.isArray(s.contracts)&&s.contracts.some(contract=>contract.active))return 7;
  const registered=dateOnly(s.day);
  const age=registered?Math.max(0,Math.floor((Date.parse(today()+'T12:00:00Z')-Date.parse(registered+'T12:00:00Z'))/86400000)):0;
  // Após 90 dias do cadastro, o aluno chega à Retenção, mesmo sem contratar.
