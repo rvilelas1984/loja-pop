@@ -46,7 +46,7 @@ function layoutRowValues(){return layoutRows.value.split(/[,;+ ]+/).map(Number).
 function drawLayout(){const rs=layoutRowValues();layoutPreview.innerHTML=rs.map((n,ri)=>'<div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap">'+Array.from({length:n},(_,i)=>'<span style="width:28px;height:24px;border:1px solid #22dce9;border-radius:6px;color:#fff;font-size:9px;display:grid;place-items:center">'+(rs.slice(0,ri).reduce((a,b)=>a+b,0)+i+1)+'</span>').join("")+'</div>').join("");layoutCapacity.value=rs.reduce((a,b)=>a+b,0)||layoutCapacity.value}
 layoutRows.addEventListener("input",drawLayout);
 const layoutRefreshActivities=document.getElementById("layoutRefreshActivities"),layoutRefreshStamp=document.getElementById("layoutRefreshStamp");
-let layoutFetchVersion=0;
+
 const layoutShape=document.getElementById("layoutShape");
 const cpShapeKey=(unit,name)=>'cp-checkin-shape:'+unit+':'+String(name||'').trim().toLocaleLowerCase('pt-BR');
 let layoutFetchVersion=0;
