@@ -387,6 +387,7 @@ function attendanceClassFinished(date,time,now=new Date()) {const x=String(time|
 const ALLOWED_ORIGINS = new Set([
   "https://loja-pop-green.vercel.app",
   "https://adm.clubpopfit.com.br",
+  "https://admin.clubpopfit.com.br",
   "http://localhost:3000",
   "http://localhost:5173",
 ]);
