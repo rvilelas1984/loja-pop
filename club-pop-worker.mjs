@@ -2007,6 +2007,23 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const inserted=await env.DB.prepare("INSERT INTO student_tutorial_videos(title,description,category,unit,drive_file_id,sort_order,published) VALUES(?,?,?,?,?,?,?)").bind(title,description,category,unit,driveId,sortOrder,published).run();
         return json({ok:true,id:inserted.meta?.last_row_id},201);
       }
+      // TV POP: shared unit settings, persisted in D1 (media bytes remain in R2).
+      if(url.pathname==="/admin/tv-pop-config"&&["GET","PUT"].includes(request.method)){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=url.searchParams.get("unit");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS tv_pop_config(unit TEXT PRIMARY KEY,config_json TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        if(request.method==="GET"){const row=await env.DB.prepare("SELECT config_json,updated_at FROM tv_pop_config WHERE unit=?").bind(unit).first();return json({ok:true,unit,config:row?JSON.parse(row.config_json):null,updatedAt:row?.updated_at||null})}
+        const body=await readJson(request),config=body?.config;
+        if(!config||typeof config!=="object"||Array.isArray(config)||JSON.stringify(config).length>300000)return json({ok:false,error:"CONFIGURACAO_INVALIDA"},400);
+        for(const field of ["contents","trailers","windows"]){if(!Array.isArray(config[field])||config[field].length>500)return json({ok:false,error:"LISTA_INVALIDA_"+field},400)}
+        await env.DB.prepare("INSERT INTO tv_pop_config(unit,config_json,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit) DO UPDATE SET config_json=excluded.config_json,updated_at=CURRENT_TIMESTAMP").bind(unit,JSON.stringify(config)).run();
+        return json({ok:true,unit});
+      }
       // TV POP: grade de aulas futuras e realizadas, exclusivamente D1.
       if(url.pathname==="/admin/tv-pop-classes"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
