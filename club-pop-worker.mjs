@@ -1007,7 +1007,7 @@ export default {
           if(route==="/admin/tv-campaigns"&&request.method==="GET"){
             if(user.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
             const month=url.searchParams.get("month")||new Date().toISOString().slice(0,7);
-            if(!/^\\d{4}-\\d{2}$/.test(month))return json({ok:false,error:"MES_INVALIDO"},400);
+            if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return json({ok:false,error:"MES_INVALIDO"},400);
             const result=await env.DB.prepare("SELECT campaign_id id,kind,COUNT(*) count,COUNT(DISTINCT CASE WHEN kind='scan' THEN visitor_key END) uniqueScans FROM tv_campaign_events WHERE substr(created_at,1,7)=? GROUP BY campaign_id,kind").bind(month).all();
             return json({ok:true,rows:result.results||[],month});
           }
