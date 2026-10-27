@@ -4294,6 +4294,16 @@ if(url.pathname==="/promotion-numbers/mine"&&request.method==="GET"){
   if(trustedHash&&trustedHash!==hash)continue;
   trustedHash=hash;
  }
+ if(!trustedHash && !validHash(member.cpf_hash)){
+  // Some legacy accounts stored a Gym EVO ID in the Bike field. Resolve against the
+  // authoritative Gym master only when its full document agrees with the login CPF suffix.
+  const legacyId=canonicalEvoId(member.evo_member_id);
+  if(/^[1-9]\\d*$/.test(legacyId||"") && member.cpf_last4){
+   const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit='gym' AND evo_member_id=?").bind(legacyId).first();
+   let doc="";try{const p=JSON.parse(master?.personal_json||"{}");doc=String(p.document||p.cpf||"").replace(/\\D/g,"")}catch{}
+   if(/^\\d{11}$/.test(doc) && doc.endsWith(String(member.cpf_last4)))trustedHash=await sha256(doc);
+  }
+ }
  if(trustedHash){
   const matches=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash,cpf_last4 FROM members WHERE cpf_hash=? AND status='ACTIVE'").bind(trustedHash).all();
   for(const m of matches.results||[])verified.add(Number(m.id));
