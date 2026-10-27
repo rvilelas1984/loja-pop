@@ -208,8 +208,11 @@ async function refresh(){const u=unit();if(u===lastUnit&&items.length)return;las
    const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),9000);let r;try{r=await fetch("/api/tv-campaigns?unit="+encodeURIComponent(u)+"&_="+Date.now(),{cache:"no-store",mode:"cors",signal:controller.signal})}finally{clearTimeout(timeout)}
    if(!r.ok)throw Error("HTTP "+r.status);
    const d=await r.json();if(!d.ok)throw Error(d.error||"RESPOSTA_INVALIDA");
-   items=(Array.isArray(d.campaigns)?d.campaigns:[]).filter(x=>typeof x.imageUrl==="string"&&(/^(https?:\/\/)/i.test(x.imageUrl)||x.imageUrl.startsWith("/tv/")));
-   index=0;shownId="";
+   const previousId=items[index]?.id||"";const next=(Array.isArray(d.campaigns)?d.campaigns:[]).filter(x=>typeof x.imageUrl==="string"&&(/^(https?:\/\/)/i.test(x.imageUrl)||x.imageUrl.startsWith("/tv/")));
+   const previousSignature=items.map(x=>x.id+"|"+x.imageUrl+"|"+x.seconds).join(";");
+   const nextSignature=next.map(x=>x.id+"|"+x.imageUrl+"|"+x.seconds).join(";");
+   items=next;
+   if(previousSignature!==nextSignature){const preserved=items.findIndex(x=>x.id===previousId);index=preserved>=0?preserved:0;shownId="";}else index=Math.max(0,Math.min(index,items.length-1));
  }catch(e){items=[];failure=e?.name==="AbortError"?"Tempo limite da API (9 segundos)":(e?.message||"Falha de conexão");console.warn("[Club Pop] Publicidade: ",failure)}
  const panel=el("cpPartnerTV"),wrap=document.querySelector(".checkin-wrap");
  if(!items.length){el("cpPartnerVideo").pause();el("cpPartnerVideo").removeAttribute("src");el("cpPartnerVideo").load()}
@@ -229,7 +232,7 @@ async function refresh(){const u=unit();if(u===lastUnit&&items.length)return;las
  diagnostic.style.display=!items.length&&mobile?"block":"none";
  diagnostic.textContent=failure?"Publicidade indisponível: "+failure+" · Toque para tentar novamente.":"Nenhuma campanha ativa disponível para "+(u==="bike"?"Bike Pop":"Gym Pop")+". Toque para atualizar.";
  diagnostic.onclick=()=>{lastUnit="";refresh()};
- if(items.length)show();
+ if(items.length&&(shownId!==items[index]?.id||!last))show();
 }
 function show(){if(!items.length)return;const x=items[index],video=el("cpPartnerVideo"),img=el("cpPartnerImage"),source=x.imageUrl.startsWith("/tv/media?")?"/api/tv-media?"+x.imageUrl.split("?")[1]:(x.imageUrl.startsWith("/tv/")?base+x.imageUrl:x.imageUrl);video.pause();video.removeAttribute("src");video.load();video.hidden=x.mediaType!=="video";img.hidden=x.mediaType==="video";if(x.mediaType==="video"){video.src=source;video.muted=true;video.play().catch(()=>{})}else img.src=source;el("cpPartnerImage").alt="Campanha de "+x.partnerName;for(const [id,value] of [["cpPartnerBadge",x.badge],["cpPartnerHeadline",x.headline],["cpPartnerSubtitle",x.subtitle]]){const node=el(id);node.textContent=value||"";node.hidden=!value}el("cpPartnerCTA").textContent=x.cta||(!x.headline&&!x.subtitle?"Aponte a câmera e aproveite!":"");el("cpPartnerFooter").style.setProperty("--tv-footer-bg",x.footerColor);el("cpPartnerFooter").style.setProperty("--tv-footer-fg",x.footerTextColor);
 const qr=el("cpPartnerQR");qr.replaceChildren();const link=base+"/tv/scan?id="+encodeURIComponent(x.id);
