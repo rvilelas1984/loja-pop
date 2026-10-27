@@ -4298,7 +4298,7 @@ if(url.pathname==="/promotion-numbers/mine"&&request.method==="GET"){
   const matches=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash,cpf_last4 FROM members WHERE cpf_hash=? AND status='ACTIVE'").bind(trustedHash).all();
   for(const m of matches.results||[])verified.add(Number(m.id));
   // Legacy placeholder accounts can be linked only through a verified EVO master document for their exact unit and ID.
-  const legacy=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash FROM members WHERE status='ACTIVE' AND (cpf_hash IS NULL OR length(cpf_hash)<>64 OR cpf_hash NOT GLOB '[0-9a-f]*') AND id<>?").bind(member.id).all();
+  const legacy=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash FROM members WHERE status='ACTIVE' AND cpf_last4=? AND (cpf_hash IS NULL OR length(cpf_hash)<>64 OR cpf_hash NOT GLOB '[0-9a-f]*') AND id<>?").bind(member.cpf_last4,member.id).all();
   for(const m of legacy.results||[]){
    const links=[["bike",canonicalEvoId(m.evo_member_id)],["gym",canonicalEvoId(m.gym_client_id)]].filter(x=>/^[1-9]\d*$/.test(x[1]||""));
    for(const [u,id] of links){
