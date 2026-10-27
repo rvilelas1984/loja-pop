@@ -64,6 +64,33 @@ body:fullscreen .checkin-wrap.cp-has-tv-ads{display:grid;grid-template-columns:m
 .cp-shape-circle .row,.cp-shape-horizontal .row{align-items:center}
 @media(max-width:760px){.cp-shape-settings{position:static;margin:6px 8px}.cp-shape-circle .bike{height:auto;min-height:0}.cp-shape-horizontal .bike{height:auto;min-height:55px}}
 html.tvpop-embed .cp-shape-settings{display:none!important}
+</style><style id="cp-checkin-fullscreen-center-fix">
+/* The fullscreen target is .checkin-wrap, not body. Reset its old admin layout. */
+.checkin-wrap:fullscreen,.checkin-wrap:-webkit-full-screen{
+ width:100vw!important;max-width:100vw!important;height:100vh!important;
+ margin:0!important;padding:12px!important;box-sizing:border-box!important;
+ background:#02080d!important;overflow:hidden!important;
+}
+.checkin-wrap:fullscreen:not(.cp-has-tv-ads),.checkin-wrap:-webkit-full-screen:not(.cp-has-tv-ads){
+ display:flex!important;align-items:stretch!important;justify-content:center!important;
+}
+.checkin-wrap:fullscreen.cp-has-tv-ads,.checkin-wrap:-webkit-full-screen.cp-has-tv-ads{
+ display:grid!important;grid-template-columns:minmax(0,1fr) minmax(185px,23%)!important;
+ gap:12px!important;align-items:stretch!important;
+}
+.checkin-wrap:fullscreen>.screen,.checkin-wrap:-webkit-full-screen>.screen{
+ width:100%!important;min-width:0!important;max-width:100%!important;
+ height:100%!important;min-height:0!important;margin:0 auto!important;
+ box-sizing:border-box!important;overflow:hidden!important;
+}
+.checkin-wrap:fullscreen .map,.checkin-wrap:-webkit-full-screen .map{width:100%!important;min-width:0!important}
+.checkin-wrap:fullscreen .row,.checkin-wrap:-webkit-full-screen .row{
+ width:100%!important;min-width:0!important;justify-content:center!important;
+ grid-template-columns:repeat(var(--cp-fullscreen-cols,8),minmax(0,1fr))!important;
+}
+.checkin-wrap:fullscreen .bike,.checkin-wrap:-webkit-full-screen .bike{min-width:0!important}
+.checkin-wrap:fullscreen .admin-side,.checkin-wrap:fullscreen .controls,
+.checkin-wrap:-webkit-full-screen .admin-side,.checkin-wrap:-webkit-full-screen .controls{display:none!important}
 </style></head><body><details class="cp-shape-settings" id="cpShapeSettings"><summary>⚙ Formato dos lugares por aula</summary><p>Opcional. Sem escolha, permanece o layout padrão.</p><label for="cpClassShape">Formato da aula exibida</label><select id="cpClassShape"><option value="">Usar padrão da unidade</option><option value="vertical">Retângulo vertical</option><option value="horizontal">Retângulo horizontal</option><option value="circle">Círculo</option></select><p id="cpShapeClassName">Carregando aula...</p><p>Esta preferência se repete para a modalidade no mesmo navegador.</p></details><div class="admin-shell"><aside class="admin-side"><div class="admin-logo">CLUB <span>POP</span><small>ADMINISTRATIVO</small></div><nav class="admin-nav" id="roleNav"></nav><div class="admin-foot" id="roleFoot">CLUB POP • Carregando acesso…</div></aside><div class="checkin-wrap"><main class="screen"><header class="top"><div class="info"><label style="font-size:.65vw;color:#91a4b3">UNIDADE <select id="unitSelect" style="background:#07141d;color:#fff;border:1px solid #3d5968;border-radius:7px;padding:4px"><option value="bike">Bike Pop</option><option value="gym">Gym Pop</option></select></label><br>AULA EXIBIDA<strong id="time">--:--</strong><span id="activity">BIKE POP</span></div><div class="brand"><div class="stage">PALCO</div><h1 id="unitBrand"><b>BIKE</b> <span>POP</span></h1></div><div class="info right">PROFESSOR<strong id="teacher">—</strong><span id="date"></span></div></header><div class="hint" id="hint">ENCONTRE SEU NOME E SIGA PARA SUA BIKE</div><section class="map" id="map"></section><section class="cp-tv-conquests" id="cpConquestTV" aria-live="off"><h2>🏆 DESTAQUES DA AULA</h2><div class="cp-tv-conquest-grid" id="cpConquestCards"></div></section><footer class="foot"><span class="door exit">PORTA SAÍDA</span><span id="next">CARREGANDO PRÓXIMA AULA…</span><span class="door">PORTA ENTRADA</span></footer></main><aside class="cp-partner-tv" id="cpPartnerTV" hidden><div class="cp-partner-head">PARCEIROS CLUB POP</div><div class="cp-partner-story"><div class="cp-partner-creative"><img id="cpPartnerImage" alt="Publicidade do parceiro"><video id="cpPartnerVideo" muted autoplay playsinline loop hidden style="width:100%;height:100%;object-fit:contain"></video></div><div class="cp-partner-footer" id="cpPartnerFooter"><div class="cp-partner-copy"><span id="cpPartnerBadge" class="cp-partner-badge" hidden></span><strong id="cpPartnerHeadline" class="cp-partner-headline" hidden></strong><span id="cpPartnerSubtitle" class="cp-partner-subtitle" hidden></span><span id="cpPartnerCTA" class="cp-partner-instruction"></span></div><div id="cpPartnerQR" class="cp-partner-qr"></div></div></div><div class="cp-partner-dots" id="cpPartnerDots"></div></aside><div class="status" id="status">Conectando ao EVO…</div><div class="controls"><button id="back">← VOLTAR</button><button id="prev">‹ ANTERIOR</button><button id="nextClass">PRÓXIMA ›</button><button id="refresh"><span class="spin">↻</span> ATUALIZAR</button><button id="gradeRefresh">↻ GRADE</button><button id="fs">⛶ TELA CHEIA</button></div></div></div><script src="/admin-common.js"></script><script>
 const tvParams=new URLSearchParams(location.search),tvEmbedded=tvParams.get('tvpop')==='1',tvSession=tvParams.get('session')||'',tvUnit=tvParams.get('unit')==='gym'?'gym':'bike';
 async function loadTVCheckin(){
@@ -151,7 +178,8 @@ setInterval(()=>{const now=Date.now(),screen=document.querySelector(".screen");i
  }
 },1000);
 setInterval(cpRefreshConquests,60000);
-const us=document.getElementById("unitSelect");if(us){us.value=tvEmbedded?tvUnit:(window.cpCheckinAllowedUnits||["bike"]).includes(sessionStorage.getItem("cpCheckinUnit"))?sessionStorage.getItem("cpCheckinUnit"):(window.cpCheckinAllowedUnits||["bike"])[0]||"bike";applyUnitIdentity(us.value);us.onchange=()=>{sessionStorage.setItem("cpCheckinUnit",us.value);applyUnitIdentity(us.value);load("initial")}}if(tvEmbedded)loadTVCheckin();else load("initial");setInterval(watchClassChange,15000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)watchClassChange()});document.querySelector("#back").onclick=()=>location.href="/admin-resgates.html";document.querySelector("#refresh").onclick=()=>load("manual");document.querySelector("#gradeRefresh").onclick=()=>refreshGrade();document.querySelector("#prev").onclick=()=>navigateClass(-1);document.querySelector("#nextClass").onclick=()=>navigateClass(1);document.querySelector("#fs").onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.querySelector(".checkin-wrap").requestFullscreen()}catch{}};
+const us=document.getElementById("unitSelect");if(us){us.value=tvEmbedded?tvUnit:(window.cpCheckinAllowedUnits||["bike"]).includes(sessionStorage.getItem("cpCheckinUnit"))?sessionStorage.getItem("cpCheckinUnit"):(window.cpCheckinAllowedUnits||["bike"])[0]||"bike";applyUnitIdentity(us.value);us.onchange=()=>{sessionStorage.setItem("cpCheckinUnit",us.value);applyUnitIdentity(us.value);load("initial")}}if(tvEmbedded)loadTVCheckin();else load("initial");setInterval(watchClassChange,15000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)watchClassChange()});document.querySelector("#back").onclick=()=>location.href="/admin-resgates.html";document.querySelector("#refresh").onclick=()=>load("manual");document.querySelector("#gradeRefresh").onclick=()=>refreshGrade();document.querySelector("#prev").onclick=()=>navigateClass(-1);document.querySelector("#nextClass").onclick=()=>navigateClass(1);document.addEventListener('fullscreenchange',()=>{const wrap=document.querySelector('.checkin-wrap');if(!wrap)return;wrap.style.setProperty('--cp-fullscreen-cols',String(Math.max(1,...[...wrap.querySelectorAll('.map .row')].map(row=>row.children.length))));});
+document.querySelector("#fs").onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.querySelector(".checkin-wrap").requestFullscreen()}catch{}};
 </script><script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script><script>
 (()=>{"use strict";let items=[],index=0,last=0,shownId="",lastUnit="",timer=null;
 const el=id=>document.getElementById(id),base="https://club-pop-api.renato-vilelas-personal.workers.dev";
