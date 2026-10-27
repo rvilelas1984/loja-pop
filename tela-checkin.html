@@ -93,13 +93,15 @@ html.tvpop-embed .cp-shape-settings{display:none!important}
 .checkin-wrap:fullscreen .admin-side,.checkin-wrap:-webkit-full-screen .admin-side{display:none!important}
 .checkin-wrap:fullscreen .controls,.checkin-wrap:-webkit-full-screen .controls{
  display:flex!important;position:fixed!important;right:14px!important;bottom:12px!important;
- left:auto!important;z-index:2147483646!important;opacity:.85!important;
+ left:auto!important;z-index:2147483646!important;opacity:.20!important;transition:opacity .25s ease!important;
  visibility:visible!important;pointer-events:auto!important;
- background:rgba(2,8,13,.85)!important;padding:6px!important;border-radius:12px!important;
+ background:rgba(2,8,13,.55)!important;padding:6px!important;border-radius:12px!important;
  flex-wrap:wrap!important;max-width:calc(100vw - 20px)!important
 }
-.checkin-wrap:fullscreen .controls:hover,.checkin-wrap:fullscreen .controls:focus-within,
-.checkin-wrap:-webkit-full-screen .controls:hover,.checkin-wrap:-webkit-full-screen .controls:focus-within{opacity:1!important}
+@media(hover:hover) and (pointer:fine){
+ .checkin-wrap:fullscreen .controls:hover,.checkin-wrap:-webkit-full-screen .controls:hover{opacity:1!important}
+}
+.checkin-wrap:fullscreen .controls:active,.checkin-wrap:-webkit-full-screen .controls:active{opacity:1!important}
 @media(max-width:760px){
  .checkin-wrap:fullscreen .controls,.checkin-wrap:-webkit-full-screen .controls{
   left:8px!important;right:8px!important;bottom:8px!important;justify-content:center!important
