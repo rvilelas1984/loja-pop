@@ -1,4 +1,4 @@
-import {loadJourneyPeople,loadJourneyFacts} from './lib/journey-data.mjs';
+import {loadJourneyPeople,loadJourneyFacts,auditJourneyIdentities} from './lib/journey-data.mjs';
 import {journeyConversion,currentJourneyStage,contractCategory} from './lib/journey-conversion.mjs';
 import {captureConquestEvents} from './lib/conquest-events.mjs';
 import {eventParams,readEventCenter,ensureEventSourceCapture} from './lib/event-center.mjs';
@@ -2459,6 +2459,19 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       if (url.pathname === "/admin/equipment-maintenance") return equipmentMaintenance(request,env,url);
       if(url.pathname==="/admin/flash-mission-classes")return flashClasses(request,env,url);
       if(url.pathname==="/admin/journey-automations")return journeyAutomationAdmin(request,env,url,journeyChatproAdapters(env));
+      if (url.pathname === "/admin/new-students-identity-audit" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||!["admin","reception"].includes(String(vd.role||"")))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase();
+        const from=String(url.searchParams.get("from")||""),to=String(url.searchParams.get("to")||"");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        if(!/^20\d{2}-\d{2}-\d{2}$/.test(from)||!/^20\d{2}-\d{2}-\d{2}$/.test(to)||from>to)return json({ok:false,error:"PERIODO_INVALIDO"},400);
+        const people=await loadJourneyPeople(env.DB,unit);
+        return json({ok:true,unit,from,to,audit:auditJourneyIdentities(people,{from,to})});
+      }
       if (url.pathname === "/admin/new-students" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -2578,6 +2591,48 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           st.firstContract=st.conversionContract?.name||null;
           if(st.converted)for(const c of converted){const name=String(c.name||"Plano não identificado");ranking.set(name,(ranking.get(name)||0)+1)}
         }
+        // Reconcile the legacy journey response with the canonical identity graph.
+        // Only identities already linked by trusted CPF/email/explicit EVO aliases
+        // may collapse; ambiguous identities remain separate and flagged.
+        const canonicalPeople=await loadJourneyPeople(env.DB,unit);
+        const canonicalById=new Map();
+        for(const person of canonicalPeople)if(!person.ambiguous&&!person.identityReason)
+          for(const id of person.ids)canonicalById.set(String(id),person);
+        const mergedGroups=new Map();
+        for(const student of students){
+          const canonical=canonicalById.get(String(student.id));
+          const key=canonical?'person:'+canonical.id:'evo:'+student.source+':'+student.id;
+          if(!mergedGroups.has(key))mergedGroups.set(key,[]);
+          mergedGroups.get(key).push(student);
+        }
+        const uniqueStudents=[];
+        for(const group of mergedGroups.values()){
+          if(group.length===1){uniqueStudents.push(group[0]);continue;}
+          // Keep the earliest registration as the cohort date, but prefer
+          // a confirmed conversion and complete member profile for display.
+          const ordered=[...group].sort((a,b)=>Number(!!b.converted)-Number(!!a.converted)||
+            Number(!!b.contractFound)-Number(!!a.contractFound)||
+            Number(b.attendanceCount||0)-Number(a.attendanceCount||0)||
+            Number(b.source==='client')-Number(a.source==='client'));
+          const primary={...ordered[0]};
+          const earliest=[...group].sort((a,b)=>String(a.day).localeCompare(String(b.day)))[0];
+          primary.day=earliest.day;primary.registeredAt=earliest.registeredAt;
+          primary.linkedEvoIds=[...new Set(group.flatMap(x=>[String(x.id),...(x.linkedEvoIds||[])]))];
+          primary.contracts=group.flatMap(x=>x.contracts||[]).filter((c,i,all)=>all.findIndex(v=>JSON.stringify(v)===JSON.stringify(c))===i);
+          primary.attendanceCount=Math.max(...group.map(x=>Number(x.attendanceCount||0)));
+          primary.firstAttendance=group.map(x=>x.firstAttendance).filter(Boolean).sort()[0]||null;
+          primary.lastAttendance=group.map(x=>x.lastAttendance).filter(Boolean).sort().at(-1)||null;
+          primary.booking=group.map(x=>x.booking).filter(Boolean).sort((a,b)=>String(a.day).localeCompare(String(b.day)))[0]||null;
+          primary.converted=group.some(x=>x.converted);
+          if(primary.converted){
+            const conversion=ordered.find(x=>x.converted);
+            Object.assign(primary,{conversionContract:conversion.conversionContract,conversionCategory:conversion.conversionCategory,conversionFollowupDay:conversion.conversionFollowupDay,conversionPending:conversion.conversionPending,contractFound:true,category:conversion.category});
+          }
+          primary.journeyStage=currentJourneyStage(primary);
+          primary.stage=primary.firstAttendance?'attendance':primary.booking?'booking':'identified';
+          uniqueStudents.push(primary);
+        }
+        students.splice(0,students.length,...uniqueStudents);
         const metrics={identified:students.filter(s=>s.stage==="identified").length,booked:students.filter(s=>s.stage==="booking").length,attended:students.filter(s=>s.stage==="attendance").length,everBooked:students.filter(s=>s.booking).length,everAttended:students.filter(s=>s.firstAttendance).length,converted:students.filter(s=>s.converted).length,activeContracts:students.filter(s=>s.contracts.some(c=>c.active)).length,opportunities:students.filter(s=>s.category==="other"&&!s.converted).length,attention:students.filter(s=>s.risk!=="normal").length,contractRanking:[...ranking.entries()].sort((a,b)=>b[1]-a[1]).map(([name,count])=>({name,count}))};
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_new_student_interventions(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,evo_member_id TEXT NOT NULL,kind TEXT NOT NULL,note TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const logs=(await env.DB.prepare("SELECT evo_member_id id,kind,note,created_at at FROM club_new_student_interventions WHERE unit=? AND evo_member_id IN (SELECT evo_id FROM evo_daily_registrations WHERE unit=? AND category IN ('client','opportunity') AND register_day BETWEEN ? AND ?) ORDER BY created_at DESC LIMIT 500").bind(unit,unit,from,to).all().catch(()=>({results:[]}))).results||[];
