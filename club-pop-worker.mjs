@@ -1,3 +1,5 @@
+import {loadJourneyPeople,loadJourneyFacts} from './lib/journey-data.mjs';
+import {journeyConversion,currentJourneyStage,contractCategory} from './lib/journey-conversion.mjs';
 import {captureConquestEvents} from './lib/conquest-events.mjs';
 import {eventParams,readEventCenter,ensureEventSourceCapture} from './lib/event-center.mjs';
 import {canonicalEvoId,normalizeMemberIds,resolveEvoClubMember,memberAttendanceHistory} from './lib/member-identity.mjs';
@@ -304,6 +306,16 @@ async function chatproAdminConfig(request,env,url,json){
   const base=record.base_url.replace(/\/$/,"");
   const call=(path,method="GET",payload)=>chatproRequest(base,apiKey,path,method,payload);
   if(action==="send"&&b.journey===true&&(b.source!=="student-management"||!/^\d+$/.test(String(b.studentId||""))))return respond({ok:false,error:"ALUNO_DA_JORNADA_INVALIDO"},400);
+  if(action==='send'&&b.journey===true){
+   const person=(await loadJourneyPeople(env.DB,String(b.unit))).find(p=>p.ids.includes(String(b.studentId)));
+   if(!person||person.ambiguous||person.identityReason||person.phone!==phone)return respond({ok:false,error:'IDENTIDADE_OU_TELEFONE_ALTERADO'},409);
+   const facts=await loadJourneyFacts(env.DB,String(b.unit),person);
+   const stage=currentJourneyStage({...facts.conversion,attendanceCount:facts.present.length,booking:facts.bookings[0]});
+   if(!Number.isInteger(b.expectedStage)||b.expectedStage!==stage)return respond({ok:false,error:'FASE_ALTERADA_ATUALIZE_A_LISTA'},409);
+   if(facts.contacts.some(c=>String(c.note).startsWith('[REMOVIDO_DA_JORNADA_NOVOS_ALUNOS]')))return respond({ok:false,error:'REMOVIDO_DA_JORNADA'},409);
+   if(facts.contacts.some(c=>/não deseja contato|nao deseja contato|revogou.*whatsapp/i.test(c.note||'')))return respond({ok:false,error:'CLIENTE_SOLICITOU_NAO_RECEBER_CONTATOS'},409);
+   if(b.hasOptIn!==true)return respond({ok:false,error:'AUTORIZACAO_WHATSAPP_NECESSARIA'},403);
+  }
   let dispatch;
   if(action==="send"&&b.source==="student-management"){
    dispatch=await claimStudentDispatch(env,b,phone,flow,enabledUnits);
@@ -2457,7 +2469,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const day=String(url.searchParams.get("day")||"");
         const from=String(url.searchParams.get("from")||day),to=String(url.searchParams.get("to")||day);
         if(!from||!to||!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to||Math.round((Date.parse(to)-Date.parse(from))/86400000)>366)return json({ok:false,error:"PERIODO_INVALIDO"},400);
-        const opportunityRows=(await env.DB.prepare("SELECT evo_id id,register_day day,register_at registeredAt,display_name name FROM evo_daily_registrations WHERE unit=? AND category='opportunity' AND register_day BETWEEN ? AND ? ORDER BY register_at DESC LIMIT 500").bind(unit,from,to).all()).results||[];
+        const opportunityRows=(await env.DB.prepare("SELECT evo_id id,register_day day,register_at registeredAt,display_name name FROM evo_daily_registrations WHERE unit=? AND category='opportunity' AND register_day BETWEEN ? AND ? ORDER BY register_at DESC").bind(unit,from,to).all()).results||[];
         const opportunities=opportunityRows.map(r=>({id:r.id,name:r.name,day:r.day,registeredAt:r.registeredAt}));
         const rows=(await env.DB.prepare(`SELECT r.category source,r.evo_id id,r.register_day day,r.register_at registeredAt,r.display_name name,
           COALESCE(NULLIF(json_extract(r.payload_json,'$.gympassId'),''),NULLIF(json_extract(mm.integrations_json,'$.gympassId'),'')) wellhubId,
@@ -2465,9 +2477,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=r.unit AND c.evo_member_id=r.evo_id AND (c.category_id='4' OR upper(c.membership_name) LIKE '%WELLHUB%' OR upper(c.membership_name) LIKE '%GYMPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) wellhubContract,
           EXISTS(SELECT 1 FROM evo_member_contracts c WHERE c.unit=r.unit AND c.evo_member_id=r.evo_id AND (c.category_id='5' OR upper(c.membership_name) LIKE '%TOTALPASS%') AND lower(COALESCE(c.membership_status,'')) IN ('active','1') AND (c.end_date IS NULL OR date(c.end_date)>=date('now','-3 hours'))) totalpassContract
           FROM evo_daily_registrations r LEFT JOIN evo_member_master mm ON mm.unit=r.unit AND mm.evo_member_id=r.evo_id AND mm.is_current=1
-          WHERE r.unit=? AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ? ORDER BY CASE WHEN r.category='client' THEN 0 ELSE 1 END,r.register_at DESC LIMIT 500`).bind(unit,from,to).all()).results||[];
+          WHERE r.unit=? AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ? ORDER BY CASE WHEN r.category='client' THEN 0 ELSE 1 END,r.register_at DESC`).bind(unit,from,to).all()).results||[];
         const normalizeIdentity=v=>String(v||"").trim().toLowerCase();
-        const memberLookup=(await env.DB.prepare("SELECT evo_member_id id,personal_json details,contacts_json contacts FROM evo_member_master WHERE unit=? AND is_current=1").bind(unit).all()).results||[];
+        const memberLookup=(await env.DB.prepare("SELECT evo_member_id id,personal_json details,contacts_json contacts,integrations_json integrations FROM evo_member_master WHERE unit=? AND is_current=1").bind(unit).all()).results||[];
         const memberByDocument=new Map(),memberByEmail=new Map();
         for(const member of memberLookup){
           let details={};try{details=JSON.parse(member.details||"{}")}catch{}
@@ -2536,6 +2548,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const ranking=new Map();
         for(const st of students){
           const linkedId=linkedMembers.get(String(st.id));
+          const master=memberLookup.find(m=>String(m.id)===String(linkedId||st.id));
+          let integration={};try{integration=JSON.parse(master?.integrations||'{}')}catch{}
+          st.wellhubId=st.wellhubId||integration.gympassId||null;st.totalpassId=st.totalpassId||integration.codeTotalpass||null;
           const extraAttend=linkedId?(await env.DB.prepare("SELECT attendance_date day,start_time time,activity_name activity FROM evo_member_attendance WHERE unit=? AND evo_member_id=? AND attendance_date>=? ORDER BY attendance_date,start_time").bind(unit,linkedId,st.day).all()).results||[]:[];
           const attend=[...(attendanceBy.get(String(st.id))||[]),...extraAttend].filter(x=>String(x.day)>=st.day);
           const bookings=[...(bookingBy.get(String(st.id))||[]),...(st.category==="opportunity"?(prospectBookingBy.get(String(st.id))||[]):[])].filter(x=>String(x.day)>=st.day).sort((a,b)=>String(a.day).localeCompare(String(b.day))||String(a.time).localeCompare(String(b.time)));
@@ -2556,8 +2571,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           st.booking=bookings[0]||null;st.nextBooking=future[0]||null;st.firstAttendance=first;st.lastAttendance=last;st.attendanceCount=attend.length;st.weeklyAverage=Math.round(recent.length/4*10)/10;st.daysSinceAttendance=last?days(last,now):null;st.followupDay=first?Math.max(0,days(first,now)):null;st.retention={day30:first&&days(first,now)>=30?attend.some(a=>days(first,String(a.day))>=23&&days(first,String(a.day))<=37):null,day60:first&&days(first,now)>=60?attend.some(a=>days(first,String(a.day))>=53&&days(first,String(a.day))<=67):null,day90:first&&days(first,now)>=90?attend.some(a=>days(first,String(a.day))>=83&&days(first,String(a.day))<=97):null};
           st.stage=first?"attendance":bookings.length?"booking":"identified";
           st.risk=first&&st.daysSinceAttendance>=14?"high":first&&st.daysSinceAttendance>=7?"attention":!first&&days(st.day,now)>=7?"no-first-class":"normal";
-          st.contracts=contracts.map(c=>({name:c.name,startDate:c.startDate,status:c.status,active:active.includes(c)}));
-          st.converted=converted.length>0;st.firstContract=converted[0]?.name||null;
+          st.contracts=contracts.map(c=>({...c,contractCategory:contractCategory(c),active:active.includes(c)}));
+          Object.assign(st,journeyConversion(st,st.contracts,now));
+          st.journeyStage=currentJourneyStage(st);
+          st.contractAlert=!!st.conversionPending;st.contractFound=st.converted;
+          st.firstContract=st.conversionContract?.name||null;
           if(st.converted)for(const c of converted){const name=String(c.name||"Plano não identificado");ranking.set(name,(ranking.get(name)||0)+1)}
         }
         const metrics={identified:students.filter(s=>s.stage==="identified").length,booked:students.filter(s=>s.stage==="booking").length,attended:students.filter(s=>s.stage==="attendance").length,everBooked:students.filter(s=>s.booking).length,everAttended:students.filter(s=>s.firstAttendance).length,converted:students.filter(s=>s.converted).length,activeContracts:students.filter(s=>s.contracts.some(c=>c.active)).length,opportunities:students.filter(s=>s.category==="other"&&!s.converted).length,attention:students.filter(s=>s.risk!=="normal").length,contractRanking:[...ranking.entries()].sort((a,b)=>b[1]-a[1]).map(([name,count])=>({name,count}))};
