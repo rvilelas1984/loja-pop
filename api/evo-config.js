@@ -821,6 +821,16 @@ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return await logFailure(400,{ok:false,error
    return res.status(200).json({ok:true,unit,results,checkedAt:new Date().toISOString()});
   }catch{return res.status(502).json({ok:false,error:"FALHA_CONSULTA_EVO"})}
  }
+ if(req.query.route==="new-students-identity-merge"){
+  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const sess=adminSession(req),unit=String(req.body?.unit||"");
+  if(!sess||sess.role!=="admin"||!["bike","gym"].includes(unit)||!sess.units?.includes(unit))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+  try{
+   const r=await fetch(WORKER+"/admin/new-students-identity-merge",{method:"POST",headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),"content-type":"application/json"},body:JSON.stringify(req.body||{}),cache:"no-store"});
+   res.status(r.status).setHeader("Cache-Control","no-store").setHeader("Content-Type","application/json; charset=utf-8");
+   return res.send(await r.text());
+  }catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ }
  if(req.query.route==="new-students-identity-delete"){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const sess=adminSession(req),unit=String(req.body?.unit||"");
