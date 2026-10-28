@@ -64,3 +64,10 @@ test('status cancelado prevalece sobre booleano ativo divergente',()=>{
 test('status numérico não é convertido em ativo por flag legada',()=>{
  assert.deepEqual(access([contract({status:'2',isActive:true})],[rule()]).units,[]);
 });
+
+test('membershipEnd vencido impede acesso mesmo com status ativo',()=>{
+ assert.deepEqual(access([contract({membershipEnd:'2026-10-27'})],[rule()]).units,[]);
+});
+test('membershipStart futuro impede acesso mesmo com status ativo',()=>{
+ assert.deepEqual(access([contract({membershipStart:'2026-10-29'})],[rule()]).units,[]);
+});
