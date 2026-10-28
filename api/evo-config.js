@@ -157,11 +157,11 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}
  }
  if(req.query.route==="journey-item-classification"){
-  if(!["GET","PUT"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  if(!["GET","PUT","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=String(req.query.unit||"").toLowerCase();
   if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
   try{
-   const r=await fetch(WORKER+"/admin/journey-item-classification?unit="+unit,{method:req.method,headers:{"content-type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="PUT"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});
+   const r=await fetch(WORKER+"/admin/journey-item-classification?unit="+unit,{method:req.method,headers:{"content-type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method!=="GET"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});
    res.setHeader("Cache-Control","no-store");return res.status(r.status).json(await r.json());
   }catch{return res.status(502).json({ok:false,error:"FALHA_CLASSIFICACAO"})}
  }
