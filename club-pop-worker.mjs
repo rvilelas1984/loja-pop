@@ -2667,6 +2667,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const prospectBookings=(await env.DB.prepare("SELECT p.prospect_id id,p.activity_date day,p.start_time time,p.activity_name activity,p.session_id session FROM evo_prospect_reservations p WHERE p.unit=? AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=p.unit AND r.category='opportunity' AND r.evo_id=p.prospect_id AND r.register_day BETWEEN ? AND ?) ORDER BY p.activity_date,p.start_time").bind(unit,from,to).all()).results||[];
         const prospectBookingBy=byId({results:prospectBookings});
         const now=new Date(Date.now()-3*3600000).toISOString().slice(0,10),days=(a,b)=>Math.floor((Date.parse(b+"T12:00:00Z")-Date.parse(a+"T12:00:00Z"))/86400000);
+        await ensureServiceSalesTables(env.DB);
         const ranking=new Map();
         for(const st of students){
           const linkedId=linkedMembers.get(String(st.id));
@@ -2678,7 +2679,6 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const bookings=[...(bookingBy.get(String(st.id))||[]),...(st.category==="opportunity"?(prospectBookingBy.get(String(st.id))||[]):[])].filter(x=>String(x.day)>=st.day).sort((a,b)=>String(a.day).localeCompare(String(b.day))||String(a.time).localeCompare(String(b.time)));
           const extraContracts=linkedId?(await env.DB.prepare("SELECT membership_name name,membership_status status,start_date startDate,end_date endDate,cancel_date cancelDate,category_id category,id_membership membershipId,sale_date saleDate FROM evo_member_contracts WHERE unit=? AND evo_member_id=?").bind(unit,linkedId).all()).results||[]:[];
           const contracts=[...(contractBy.get(String(st.id))||[]),...extraContracts];
-          await ensureServiceSalesTables(env.DB);
           const memberIds=[String(st.id),...(linkedId?[String(linkedId)]:[])];
           const serviceRows=(await env.DB.prepare("SELECT id_service serviceId,service_name name,sale_date saleDate,id_sale saleId,removed FROM evo_member_service_sales WHERE unit=? AND evo_member_id IN ("+memberIds.map(()=>"?").join(",")+") AND removed=0 ORDER BY sale_date").bind(unit,...memberIds).all()).results||[];
           st.servicePurchases=serviceRows;
