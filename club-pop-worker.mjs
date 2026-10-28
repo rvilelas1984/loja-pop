@@ -2486,7 +2486,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         ]);
         return json({ok:true,unit,id,deletedRegistrations:rows.length,backup:true,scope:"cadastros da jornada; outros dados D1 preservados"});
       }
-      if(url.pathname==="/admin/journey-item-classification"&&["GET","PUT"].includes(request.method)){
+      if(url.pathname==="/admin/journey-item-classification"&&["GET","PUT","POST"].includes(request.method)){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
@@ -2495,12 +2495,29 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const unit=String(url.searchParams.get("unit")||"").toLowerCase();
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS journey_item_classification(unit TEXT NOT NULL,item_type TEXT NOT NULL,item_id TEXT NOT NULL,classification TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,item_type,item_id))").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS journey_classification_categories(unit TEXT NOT NULL,category_id TEXT NOT NULL,label TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,category_id))").run();
         if(request.method==="GET"){
           const rows=await env.DB.prepare("SELECT item_type type,item_id id,classification category,updated_at updatedAt FROM journey_item_classification WHERE unit=? ORDER BY item_type,item_id").bind(unit).all();
-          return json({ok:true,unit,items:rows.results||[]});
+          const categories=await env.DB.prepare("SELECT category_id id,label FROM journey_classification_categories WHERE unit=? ORDER BY created_at,category_id").bind(unit).all();
+          return json({ok:true,unit,items:rows.results||[],categories:categories.results||[]});
+        }
+        if(request.method==="POST"){
+          const body=await request.json().catch(()=>({}));
+          const label=String(body.label||"").trim().replace(/\\s+/g," ");
+          if(label.length<2||label.length>60)return json({ok:false,error:"NOME_CLASSIFICACAO_INVALIDO"},400);
+          const existing=(await env.DB.prepare("SELECT category_id id,label FROM journey_classification_categories WHERE unit=?").bind(unit).all()).results||[];
+          const builtins=["Não classificado","Contrato recorrente","Pacote de aulas","Aula experimental","Aula avulsa"];
+          if([...existing.map(x=>x.label),...builtins].some(x=>x.toLocaleLowerCase("pt-BR")===label.toLocaleLowerCase("pt-BR")))return json({ok:false,error:"CLASSIFICACAO_JA_EXISTE"},409);
+          if(existing.length>=50)return json({ok:false,error:"LIMITE_CLASSIFICACOES"},409);
+          const categoryId="custom:"+crypto.randomUUID();
+          await env.DB.prepare("INSERT INTO journey_classification_categories(unit,category_id,label) VALUES(?,?,?)").bind(unit,categoryId,label).run();
+          return json({ok:true,unit,id:categoryId,label});
         }
         const body=await request.json().catch(()=>({})),type=String(body.type||""),id=String(body.id||""),category=String(body.category||"");
-        if(!["contract","service"].includes(type)||!/^[0-9]{1,20}$/.test(id)||!["recurring","package","trial","single","unclassified"].includes(category))return json({ok:false,error:"CLASSIFICACAO_INVALIDA"},400);
+        if(!["contract","service"].includes(type)||!/^[0-9]{1,20}$/.test(id))return json({ok:false,error:"CLASSIFICACAO_INVALIDA"},400);
+        if(!["recurring","package","trial","single","unclassified"].includes(category)){
+          if(!category.startsWith("custom:")||!(await env.DB.prepare("SELECT 1 valid FROM journey_classification_categories WHERE unit=? AND category_id=?").bind(unit,category).first()))return json({ok:false,error:"CLASSIFICACAO_INVALIDA"},400);
+        }
         if(category==="unclassified")await env.DB.prepare("DELETE FROM journey_item_classification WHERE unit=? AND item_type=? AND item_id=?").bind(unit,type,id).run();
         else await env.DB.prepare("INSERT INTO journey_item_classification(unit,item_type,item_id,classification,updated_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,item_type,item_id) DO UPDATE SET classification=excluded.classification,updated_at=CURRENT_TIMESTAMP").bind(unit,type,id,category).run();
         return json({ok:true,unit,type,id,category});
