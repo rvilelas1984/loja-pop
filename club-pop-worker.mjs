@@ -2486,6 +2486,25 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         ]);
         return json({ok:true,unit,id,deletedRegistrations:rows.length,backup:true,scope:"cadastros da jornada; outros dados D1 preservados"});
       }
+      if(url.pathname==="/admin/journey-item-classification"&&["GET","PUT"].includes(request.method)){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const actor=await vr.json().catch(()=>({}));
+        if(!vr.ok||actor.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=String(url.searchParams.get("unit")||"").toLowerCase();
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS journey_item_classification(unit TEXT NOT NULL,item_type TEXT NOT NULL,item_id TEXT NOT NULL,classification TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,item_type,item_id))").run();
+        if(request.method==="GET"){
+          const rows=await env.DB.prepare("SELECT item_type type,item_id id,classification category,updated_at updatedAt FROM journey_item_classification WHERE unit=? ORDER BY item_type,item_id").bind(unit).all();
+          return json({ok:true,unit,items:rows.results||[]});
+        }
+        const body=await request.json().catch(()=>({})),type=String(body.type||""),id=String(body.id||""),category=String(body.category||"");
+        if(!["contract","service"].includes(type)||!/^[0-9]{1,20}$/.test(id)||!["recurring","package","trial","single","unclassified"].includes(category))return json({ok:false,error:"CLASSIFICACAO_INVALIDA"},400);
+        if(category==="unclassified")await env.DB.prepare("DELETE FROM journey_item_classification WHERE unit=? AND item_type=? AND item_id=?").bind(unit,type,id).run();
+        else await env.DB.prepare("INSERT INTO journey_item_classification(unit,item_type,item_id,classification,updated_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,item_type,item_id) DO UPDATE SET classification=excluded.classification,updated_at=CURRENT_TIMESTAMP").bind(unit,type,id,category).run();
+        return json({ok:true,unit,type,id,category});
+      }
       if (url.pathname === "/admin/new-students-identity-audit" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
