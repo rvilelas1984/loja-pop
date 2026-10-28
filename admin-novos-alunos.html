@@ -109,6 +109,19 @@ async function refreshAuditStudent(name){
  }catch(e){if(box)box.textContent='Erro: '+e.message;}
  finally{auditActionBusy=false;}
 }
+async function deleteAuditStudent(id,name){
+ if(auditActionBusy)return;
+ const answer=prompt('Excluir o cadastro '+id+' ('+name+') da base de novos alunos no D1? Somente registros sem histórico e sem IDs vinculados podem ser excluídos. Digite EXCLUIR '+id+' para confirmar.');
+ if(answer!=='EXCLUIR '+id)return;
+ auditActionBusy=true;const box=$('identityAuditResult');
+ try{
+  const r=await fetch('/api/evo-config?route=new-students-identity-delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({unit:$('unit').value,id:String(id),confirm:answer}),cache:'no-store'});
+  const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Exclusão bloqueada');
+  await loadD1();
+  if($('identityAuditResult'))$('identityAuditResult').textContent='Cadastro '+id+' excluído da base de novos alunos. Backup de auditoria registrado; outros dados D1 preservados.';
+ }catch(e){if(box)box.textContent='Exclusão não realizada: '+e.message;}
+ finally{auditActionBusy=false;}
+}
 async function loadIdentityAudit(){
  const seq=++identityAuditSeq,unit=$('unit').value==='gym'?'gym':'bike',from=$('start').value,to=$('end').value;
  const body=$('identityAuditBody'),count=$('identityAuditCount');
@@ -121,8 +134,9 @@ async function loadIdentityAudit(){
   if(!r.ok||!d.ok)throw Error(d.error||'Auditoria indisponível');
   const a=d.audit||{},cases=a.cases||[];
   count.textContent=cases.length+' pendências · '+a.peopleCount+' identidades consolidadas';
-  body.innerHTML='<div id="identityAuditResult" role="status" style="margin:8px 0"></div><p class="journey-base"><b>'+a.peopleCount+' identidades consolidadas</b> · '+a.linkedEvoIds+' IDs associados · '+cases.length+' pendências. '+(a.countProvisional?'Contagem provisória até validação.':'Sem suspeitas detectadas por esta auditoria.')+'</p>'+cases.slice(0,100).map(c=>'<div class="notice" style="margin:8px 0"><b>'+clean(c.records.map(x=>x.name).join(' / '))+'</b> · '+clean(c.reason)+'<p>'+clean(c.records.map(x=>x.id+' ('+x.ids.join(', ')+')').join(' | '))+'</p><small>Verifique os dados na EVO antes de vincular. Nenhuma mesclagem automática.</small><div style="margin-top:8px"><button type="button" class="tinybtn" data-audit-name="'+clean(c.records[0].name)+'">Atualizar na EVO</button></div></div>').join('');
+  body.innerHTML='<div id="identityAuditResult" role="status" style="margin:8px 0"></div><p class="journey-base"><b>'+a.peopleCount+' identidades consolidadas</b> · '+a.linkedEvoIds+' IDs associados · '+cases.length+' pendências. '+(a.countProvisional?'Contagem provisória até validação.':'Sem suspeitas detectadas por esta auditoria.')+'</p>'+cases.slice(0,100).map(c=>'<div class="notice" style="margin:8px 0"><b>'+clean(c.records.map(x=>x.name).join(' / '))+'</b> · '+clean(c.reason)+'<p>'+clean(c.records.map(x=>x.id+' ('+x.ids.join(', ')+')').join(' | '))+'</p><small>Verifique os dados na EVO antes de vincular. Nenhuma mesclagem automática.</small><div style="margin-top:8px"><button type="button" class="tinybtn" data-audit-name="'+clean(c.records[0].name)+'">Atualizar na EVO</button> <button type="button" class="tinybtn" data-audit-delete="'+clean(String(c.records[0].id))+'" data-audit-label="'+clean(c.records[0].name)+'">Excluir do D1</button></div></div>').join('');
   body.querySelectorAll('[data-audit-name]').forEach(btn=>btn.addEventListener('click',()=>refreshAuditStudent(btn.dataset.auditName)));
+  body.querySelectorAll('[data-audit-delete]').forEach(btn=>btn.addEventListener('click',()=>deleteAuditStudent(btn.dataset.auditDelete,btn.dataset.auditLabel)));
  }catch(e){if(seq===identityAuditSeq){count.textContent='Consulta indisponível';body.textContent='Não foi possível auditar: '+e.message;}}
 }
 async function loadD1(){if(waBusy)return;if(loading){pendingReload=true;return;}waChosen.clear();waInvalidateReview();loading=true;currentUnit=$('unit').value==='gym'?'gym':'bike';try{const from=$('start').value,to=$('end').value;if(!from||!to||from>to)throw Error('Período inválido');const r=await fetch('/api/evo-config?route=new-students&unit='+currentUnit+'&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to),{cache:'no-store'}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Consulta D1 indisponível');if(pendingReload)return;records=(d.students||[]).map(normalize);loadIdentityAudit();selected.clear();page={identified:10,opps:10,retention:10};stagePage={};renderAll();notify('Atualizado: '+records.filter(x=>!x.removed).length+' identidades do D1')}catch(e){records=[];renderAll();notify('Erro na consulta: '+e.message)}finally{loading=false;if(pendingReload){pendingReload=false;loadD1()}}}
