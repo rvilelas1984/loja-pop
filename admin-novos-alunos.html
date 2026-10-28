@@ -120,6 +120,30 @@ async function refreshAuditStudent(name){
  }catch(e){if(box)box.textContent='Erro: '+e.message;}
  finally{auditActionBusy=false;}
 }
+async function mergeAuditIds(ids){
+ if(auditActionBusy)return;
+ const unit=$('unit').value;
+ const list=[...new Set((ids||[]).map(x=>String(x).trim()).filter(x=>/^\d{1,15}$/.test(x)))];
+ const extra=prompt('IDs EVO para mesclar na unidade '+unit+'. Separe por vírgula. Confira os dados na EVO antes de confirmar.',list.join(', '));
+ if(extra===null)return;
+ const selected=[...new Set(extra.split(/[;,\s]+/).map(x=>x.trim()).filter(Boolean))];
+ if(selected.length<2||selected.length>20||selected.some(x=>!/^\d{1,15}$/.test(x))){alert('Informe entre 2 e 20 IDs EVO válidos da mesma unidade.');return;}
+ const principal=prompt('Qual ID EVO deve ser o PRINCIPAL? Os demais permanecerão como legados.\nIDs: '+selected.join(', '),selected[selected.length-1]);
+ if(principal===null)return;
+ if(!selected.includes(principal)){alert('O principal deve estar na lista selecionada.');return;}
+ const confirmText=prompt('ATENÇÃO: essa operação vincula os históricos no Club Pop. Não cria novas presenças nem apaga registros.\nPrincipal: '+principal+'\nLegados: '+selected.filter(x=>x!==principal).join(', ')+'\n\nDigite MESCLAR '+principal+' para confirmar.');
+ if(confirmText!=='MESCLAR '+principal)return;
+ auditActionBusy=true;const box=$('identityAuditResult');
+ if(box)box.textContent='Validando CPFs e vínculos existentes no D1...';
+ try{
+  const r=await fetch('/api/evo-config?route=new-students-identity-merge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({unit,ids:selected,principal,confirm:confirmText}),cache:'no-store'});
+  const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Mesclagem bloqueada');
+  await loadD1();
+  await loadIdentityAudit();
+  alert('Identidades vinculadas. Principal: '+d.principal+'. Legados preservados: '+d.legacy.join(', ')+'.');
+ }catch(e){if(box)box.textContent='Mesclagem não realizada: '+e.message;alert('Mesclagem não realizada: '+e.message);}
+ finally{auditActionBusy=false;}
+}
 async function deleteAuditStudent(id,name){
  if(auditActionBusy)return;
  const answer=prompt('Excluir o cadastro '+id+' ('+name+') da base de novos alunos no D1? Somente registros sem histórico e sem IDs vinculados podem ser excluídos. Digite EXCLUIR '+id+' para confirmar.');
@@ -195,8 +219,9 @@ async function loadIdentityAudit(){
   if(!r.ok||!d.ok)throw Error(d.error||'Auditoria indisponível');
   const a=d.audit||{},cases=a.cases||[];
   count.textContent=cases.length+' pendências · '+a.peopleCount+' identidades consolidadas';
-  body.innerHTML='<div id="identityAuditResult" role="status" style="margin:8px 0"></div><p class="journey-base"><b>'+a.peopleCount+' identidades consolidadas</b> · '+a.linkedEvoIds+' IDs associados · '+cases.length+' pendências. '+(a.countProvisional?'Contagem provisória até validação.':'Sem suspeitas detectadas por esta auditoria.')+'</p>'+cases.slice(0,100).map(c=>'<div class="notice" style="margin:8px 0"><b>'+clean(c.records.map(x=>x.name).join(' / '))+'</b> · '+clean(c.reason)+'<p>'+clean(c.records.map(x=>x.id+' ('+x.ids.join(', ')+')').join(' | '))+'</p><small>Verifique os dados na EVO antes de vincular. Nenhuma mesclagem automática.</small><div style="margin-top:8px"><button type="button" class="tinybtn" data-audit-delete="'+clean(String(c.records[0].id))+'" data-audit-label="'+clean(c.records[0].name)+'">Excluir do D1</button> <button type="button" class="tinybtn" data-audit-ids="'+clean(JSON.stringify([...new Set(c.records.flatMap(x=>x.ids||[]))]))+'">Consultar IDs na EVO</button></div></div>').join('');
+  body.innerHTML='<div id="identityAuditResult" role="status" style="margin:8px 0"></div><p class="journey-base"><b>'+a.peopleCount+' identidades consolidadas</b> · '+a.linkedEvoIds+' IDs associados · '+cases.length+' pendências. '+(a.countProvisional?'Contagem provisória até validação.':'Sem suspeitas detectadas por esta auditoria.')+'</p>'+cases.slice(0,100).map(c=>'<div class="notice" style="margin:8px 0"><b>'+clean(c.records.map(x=>x.name).join(' / '))+'</b> · '+clean(c.reason)+'<p>'+clean(c.records.map(x=>x.id+' ('+x.ids.join(', ')+')').join(' | '))+'</p><small>Verifique os dados na EVO antes de vincular. Nenhuma mesclagem automática.</small><div style="margin-top:8px"><button type="button" class="tinybtn" data-audit-merge="'+clean(JSON.stringify([...new Set(c.records.flatMap(x=>x.ids||[]))]))+'">Mesclar IDs / definir principal</button> <button type="button" class="tinybtn" data-audit-delete="'+clean(String(c.records[0].id))+'" data-audit-label="'+clean(c.records[0].name)+'">Excluir do D1</button> <button type="button" class="tinybtn" data-audit-ids="'+clean(JSON.stringify([...new Set(c.records.flatMap(x=>x.ids||[]))]))+'">Consultar IDs na EVO</button></div></div>').join('');
   body.querySelectorAll('[data-audit-name]').forEach(btn=>btn.addEventListener('click',()=>refreshAuditStudent(btn.dataset.auditName)));
+  body.querySelectorAll('[data-audit-merge]').forEach(btn=>btn.addEventListener('click',()=>mergeAuditIds(JSON.parse(btn.dataset.auditMerge))));
   body.querySelectorAll('[data-audit-delete]').forEach(btn=>btn.addEventListener('click',()=>deleteAuditStudent(btn.dataset.auditDelete,btn.dataset.auditLabel)));
   body.querySelectorAll('[data-audit-ids]').forEach(btn=>btn.addEventListener('click',()=>checkAuditIds(JSON.parse(btn.dataset.auditIds))));
   body.querySelectorAll('[data-audit-delete]').forEach(btn=>btn.addEventListener('click',()=>deleteAuditStudent(btn.dataset.auditDelete,btn.dataset.auditLabel)));
