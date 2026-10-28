@@ -1,0 +1,23 @@
+name: Shared unit access tests
+on:
+  push:
+    branches:
+      - feat/contratos-acesso-duas-unidades-20261028
+    paths:
+      - 'lib/shared-unit-access.mjs'
+      - 'shared-unit-access.test.mjs'
+      - 'lib/worker-shared-contract-access.mjs'
+      - 'worker-shared-contract-access.test.mjs'
+      - '.github/workflows/shared-unit-access.yml'
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test shared-unit-access.test.mjs worker-shared-contract-access.test.mjs
