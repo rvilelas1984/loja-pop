@@ -4504,19 +4504,20 @@ if(url.pathname==="/promotion-numbers/mine"&&request.method==="GET"){
   for(const u of ["bike","gym"]){
    for(const id of [...new Set([canonicalEvoId(member.evo_member_id),canonicalEvoId(member.gym_client_id)].filter(Boolean))]){
     const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(u,id).first();
-    let doc="";try{const p=JSON.parse(master?.personal_json||"{}");doc=String(p.document||p.cpf||"").replace(/\\D/g,"")}catch{}
-    if(/^\\d{11}$/.test(doc)&&(await sha256(doc))===trustedHash)authoritative.push(id);
+    let doc="";try{const p=JSON.parse(master?.personal_json||"{}");doc=String(p.document||p.cpf||"").replace(/\D/g,"")}catch{}
+    if(/^\d{11}$/.test(doc)&&(await sha256(doc))===trustedHash)authoritative.push(id);
    }
   }
   for(const id of new Set(authoritative)){
-   const linked=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id FROM members WHERE status='ACTIVE' AND (CAST(evo_member_id AS TEXT)=? OR CAST(gym_client_id AS TEXT)=?)").bind(id,id).all();
+   const linked=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,cpf_hash FROM members WHERE status='ACTIVE' AND (CAST(evo_member_id AS TEXT)=? OR CAST(gym_client_id AS TEXT)=?)").bind(id,id).all();
    for(const m of linked.results||[]){
+    if(validHash(m.cpf_hash)&&String(m.cpf_hash)!==trustedHash)continue;
     let matched=false;
     for(const u of ["bike","gym"]){
      for(const evo of [canonicalEvoId(m.evo_member_id),canonicalEvoId(m.gym_client_id)].filter(Boolean)){
       const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(u,evo).first();
-      let doc="";try{const p=JSON.parse(master?.personal_json||"{}");doc=String(p.document||p.cpf||"").replace(/\\D/g,"")}catch{}
-      if(/^\\d{11}$/.test(doc)&&(await sha256(doc))===trustedHash){matched=true;break}
+      let doc="";try{const p=JSON.parse(master?.personal_json||"{}");doc=String(p.document||p.cpf||"").replace(/\D/g,"")}catch{}
+      if(/^\d{11}$/.test(doc)&&(await sha256(doc))===trustedHash){matched=true;break}
      }
      if(matched)break;
     }
