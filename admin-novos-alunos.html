@@ -122,6 +122,29 @@ async function deleteAuditStudent(id,name){
  }catch(e){if(box)box.textContent='Exclusão não realizada: '+e.message;}
  finally{auditActionBusy=false;}
 }
+async function checkAuditIds(ids){
+ if(auditActionBusy)return;
+ auditActionBusy=true;
+ const box=$('identityAuditResult');if(box)box.textContent='Validando IDs individualmente na EVO...';
+ try{
+  const r=await fetch('/api/evo-config?route=new-students-evo-id-check',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({unit:$('unit').value,ids}),cache:'no-store'});
+  const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Consulta indisponível');
+  if(box){
+   box.replaceChildren();
+   for(const item of d.results){
+    const line=document.createElement('div');line.className='notice';
+    const labels={found:'Encontrado',not_found:'ID não encontrado (404)',error:'Falha na consulta',mismatch:'ID divergente',unverified:'Resposta inconclusiva'};
+    line.textContent='ID '+item.id+' · '+(labels[item.status]||item.status)+(item.name?' · '+item.name:'');
+    if(item.status==='not_found'){
+     const btn=document.createElement('button');btn.type='button';btn.className='tinybtn';btn.textContent='Excluir do D1';btn.style.marginLeft='8px';
+     btn.addEventListener('click',()=>deleteAuditStudent(item.id,item.id));line.appendChild(btn);
+    }
+    box.appendChild(line);
+   }
+  }
+ }catch(e){if(box)box.textContent='Falha ao validar IDs: '+e.message}
+ finally{auditActionBusy=false}
+}
 async function loadIdentityAudit(){
  const seq=++identityAuditSeq,unit=$('unit').value==='gym'?'gym':'bike',from=$('start').value,to=$('end').value;
  const body=$('identityAuditBody'),count=$('identityAuditCount');
@@ -134,9 +157,10 @@ async function loadIdentityAudit(){
   if(!r.ok||!d.ok)throw Error(d.error||'Auditoria indisponível');
   const a=d.audit||{},cases=a.cases||[];
   count.textContent=cases.length+' pendências · '+a.peopleCount+' identidades consolidadas';
-  body.innerHTML='<div id="identityAuditResult" role="status" style="margin:8px 0"></div><p class="journey-base"><b>'+a.peopleCount+' identidades consolidadas</b> · '+a.linkedEvoIds+' IDs associados · '+cases.length+' pendências. '+(a.countProvisional?'Contagem provisória até validação.':'Sem suspeitas detectadas por esta auditoria.')+'</p>'+cases.slice(0,100).map(c=>'<div class="notice" style="margin:8px 0"><b>'+clean(c.records.map(x=>x.name).join(' / '))+'</b> · '+clean(c.reason)+'<p>'+clean(c.records.map(x=>x.id+' ('+x.ids.join(', ')+')').join(' | '))+'</p><small>Verifique os dados na EVO antes de vincular. Nenhuma mesclagem automática.</small><div style="margin-top:8px"><button type="button" class="tinybtn" data-audit-name="'+clean(c.records[0].name)+'">Atualizar na EVO</button> <button type="button" class="tinybtn" data-audit-delete="'+clean(String(c.records[0].id))+'" data-audit-label="'+clean(c.records[0].name)+'">Excluir do D1</button></div></div>').join('');
+  body.innerHTML='<div id="identityAuditResult" role="status" style="margin:8px 0"></div><p class="journey-base"><b>'+a.peopleCount+' identidades consolidadas</b> · '+a.linkedEvoIds+' IDs associados · '+cases.length+' pendências. '+(a.countProvisional?'Contagem provisória até validação.':'Sem suspeitas detectadas por esta auditoria.')+'</p>'+cases.slice(0,100).map(c=>'<div class="notice" style="margin:8px 0"><b>'+clean(c.records.map(x=>x.name).join(' / '))+'</b> · '+clean(c.reason)+'<p>'+clean(c.records.map(x=>x.id+' ('+x.ids.join(', ')+')').join(' | '))+'</p><small>Verifique os dados na EVO antes de vincular. Nenhuma mesclagem automática.</small><div style="margin-top:8px"><button type="button" class="tinybtn" data-audit-name="'+clean(c.records[0].name)+'">Atualizar na EVO</button> <button type="button" class="tinybtn" data-audit-ids="'+clean(JSON.stringify([...new Set(c.records.flatMap(x=>x.ids||[]))]))+'">Validar IDs na EVO</button></div></div>').join('');
   body.querySelectorAll('[data-audit-name]').forEach(btn=>btn.addEventListener('click',()=>refreshAuditStudent(btn.dataset.auditName)));
   body.querySelectorAll('[data-audit-delete]').forEach(btn=>btn.addEventListener('click',()=>deleteAuditStudent(btn.dataset.auditDelete,btn.dataset.auditLabel)));
+  body.querySelectorAll('[data-audit-ids]').forEach(btn=>btn.addEventListener('click',()=>checkAuditIds(JSON.parse(btn.dataset.auditIds))));
  }catch(e){if(seq===identityAuditSeq){count.textContent='Consulta indisponível';body.textContent='Não foi possível auditar: '+e.message;}}
 }
 async function loadD1(){if(waBusy)return;if(loading){pendingReload=true;return;}waChosen.clear();waInvalidateReview();loading=true;currentUnit=$('unit').value==='gym'?'gym':'bike';try{const from=$('start').value,to=$('end').value;if(!from||!to||from>to)throw Error('Período inválido');const r=await fetch('/api/evo-config?route=new-students&unit='+currentUnit+'&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to),{cache:'no-store'}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Consulta D1 indisponível');if(pendingReload)return;records=(d.students||[]).map(normalize);loadIdentityAudit();selected.clear();page={identified:10,opps:10,retention:10};stagePage={};renderAll();notify('Atualizado: '+records.filter(x=>!x.removed).length+' identidades do D1')}catch(e){records=[];renderAll();notify('Erro na consulta: '+e.message)}finally{loading=false;if(pendingReload){pendingReload=false;loadD1()}}}

@@ -749,6 +749,28 @@ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return await logFailure(400,{ok:false,error
   if(!["student","opportunity","client"].includes(body.kind)||!["done","failed"].includes(body.status))return res.status(400).json({ok:false,error:"DADOS_INVALIDOS"});
   try{const r=await fetch(WORKER+"/admin/evo-automation-run-log",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit,kind:body.kind,status:body.status,detail:{manual:true,total:Number(body.detail?.total||0),requests:Number(body.detail?.requests||0),batches:Number(body.detail?.batches||0),runId:String(body.detail?.runId||"").slice(0,80),found:Number(body.detail?.found||0),saved:Number(body.detail?.saved??body.detail?.inserted??0),inserted:Number(body.detail?.inserted||0),from:String(body.detail?.from||"").slice(0,10),to:String(body.detail?.to||"").slice(0,10),error:String(body.detail?.error||"").slice(0,180)}})});return res.status(r.status).json(await r.json())}catch(e){return res.status(502).json({ok:false,error:"FALHA_REGISTRO_HISTORICO"})}
  }
+ if(req.query.route==="new-students-evo-id-check"){
+  res.setHeader("Cache-Control","no-store");
+  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const sess=adminSession(req),unit=String(req.body?.unit||""),ids=req.body?.ids;
+  if(!sess||sess.role!=="admin"||!sess.units?.includes(unit))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+  if(!["bike","gym"].includes(unit)||!Array.isArray(ids)||ids.length<1||ids.length>10||ids.some(x=>!/^[0-9]{1,15}$/.test(String(x))))return res.status(400).json({ok:false,error:"IDS_INVALIDOS"});
+  try{
+   const evo=getEvoTransport(unit),results=[];
+   for(const id of [...new Set(ids.map(String))]){
+    try{
+     const r=await evo.fetch("https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(id));
+     if(r.status===404){results.push({id,status:"not_found"});continue}
+     if(!r.ok){results.push({id,status:"error",httpStatus:r.status});continue}
+     const raw=await r.json(),m=Array.isArray(raw)?raw[0]:(raw?.data||raw?.member||raw);
+     if(!m||!Number(m.idMember||m.id)){results.push({id,status:"unverified"});continue}
+     if(String(m.idMember||m.id)!==id){results.push({id,status:"mismatch",returnedId:String(m.idMember||m.id)});continue}
+     results.push({id,status:"found",name:String(m.name||[m.firstName,m.lastName].filter(Boolean).join(" ")),documentLast4:String(m.document||m.cpf||"").replace(/\D/g,"").slice(-4)});
+    }catch{results.push({id,status:"error"})}
+   }
+   return res.status(200).json({ok:true,unit,results,checkedAt:new Date().toISOString()});
+  }catch{return res.status(502).json({ok:false,error:"FALHA_CONSULTA_EVO"})}
+ }
  if(req.query.route==="new-students-identity-delete"){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const sess=adminSession(req),unit=String(req.body?.unit||"");
