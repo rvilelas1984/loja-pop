@@ -760,7 +760,20 @@ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return await logFailure(400,{ok:false,error
    for(const id of [...new Set(ids.map(String))]){
     try{
      const r=await evo.fetch("https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(id));
-     if(r.status===404){results.push({id,status:"not_found"});continue}
+     if(r.status===404){
+      // A 404 can mean an unavailable endpoint, not necessarily a deleted member.
+      // Cross-check the basic search by ID before declaring an orphan.
+      let confirmed=false;
+      try{
+       const probe=await evo.fetch("https://evo-integracao.w12app.com.br/api/v1/members/basic?idMember="+encodeURIComponent(id));
+       if(probe.ok){
+        const data=await probe.json(),list=Array.isArray(data)?data:Array.isArray(data?.data)?data.data:Array.isArray(data?.members)?data.members:[data];
+        confirmed=!list.some(m=>String(m?.idMember||m?.id||"")===id);
+       }
+      }catch{}
+      results.push({id,status:confirmed?"not_found":"unverified",httpStatus:404,reason:confirmed?"not_found_on_both_queries":"detail_404_unconfirmed"});
+      continue;
+     }
      if(!r.ok){results.push({id,status:"error",httpStatus:r.status});continue}
      const raw=await r.json(),m=Array.isArray(raw)?raw[0]:(raw?.data||raw?.member||raw);
      if(!m||!Number(m.idMember||m.id)){results.push({id,status:"unverified"});continue}
