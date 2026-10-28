@@ -88,7 +88,7 @@ function journeyStage(s){
  const dates=bookings.map(b=>dateOnly(b.day)).filter(Boolean);
  if(dates.some(d=>d>=today()))return 1;
  if(dates.some(d=>d<today()))return 6;
- return Number.isInteger(s.journeyStage)&&[4,5].includes(s.journeyStage)?s.journeyStage:0;
+ return 0;
 }
 function stageEntryDate(s,stage){
  if(stage===0)return dateOnly(s.day);
