@@ -156,6 +156,15 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   try{const r=await fetch(WORKER+"/admin/evo-modalities-catalog?unit="+unit,{method:req.method,headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});const body=await r.text();res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(body)}
   catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}
  }
+ if(req.query.route==="journey-item-classification"){
+  if(!["GET","PUT"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const unit=String(req.query.unit||"").toLowerCase();
+  if(!["bike","gym"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
+  try{
+   const r=await fetch(WORKER+"/admin/journey-item-classification?unit="+unit,{method:req.method,headers:{"content-type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:req.method==="PUT"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});
+   res.setHeader("Cache-Control","no-store");return res.status(r.status).json(await r.json());
+  }catch{return res.status(502).json({ok:false,error:"FALHA_CLASSIFICACAO"})}
+ }
  if(req.query.route==="service-catalog"){
   if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=String(req.query.unit||"").toLowerCase();
