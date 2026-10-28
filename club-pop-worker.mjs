@@ -2468,7 +2468,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase();
         const from=String(url.searchParams.get("from")||""),to=String(url.searchParams.get("to")||"");
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
-        if(!/^20\\d{2}-\\d{2}-\\d{2}$/.test(from)||!/^20\\d{2}-\\d{2}-\\d{2}$/.test(to)||from>to)return json({ok:false,error:"PERIODO_INVALIDO"},400);
+        if(!/^20\d{2}-\d{2}-\d{2}$/.test(from)||!/^20\d{2}-\d{2}-\d{2}$/.test(to)||from>to)return json({ok:false,error:"PERIODO_INVALIDO"},400);
         const people=await loadJourneyPeople(env.DB,unit);
         return json({ok:true,unit,from,to,audit:auditJourneyIdentities(people,{from,to})});
       }
