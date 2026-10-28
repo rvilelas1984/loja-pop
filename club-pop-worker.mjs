@@ -4461,7 +4461,7 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||!["admin","reception"].includes(vd.role))return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const rows=await env.DB.prepare("SELECT r.id,r.member_id memberId,TRIM(COALESCE(m.first_name,'')||' '||COALESCE(m.last_name,'')) memberName,r.title,r.status,r.source_type sourceType,r.source_id sourceId,r.unit,r.requested_at requestedAt,v.code voucherCode,v.status voucherStatus,v.description voucherDescription FROM redemptions r LEFT JOIN vouchers v ON v.redemption_id=r.id LEFT JOIN members m ON m.id=r.member_id WHERE r.source_type='MISSION' ORDER BY r.id DESC LIMIT 200").all();
+        const rows=await env.DB.prepare("SELECT r.id,r.member_id memberId,m.evo_member_id evoMemberId,TRIM(COALESCE(m.first_name,'')||' '||COALESCE(m.last_name,'')) memberName,r.title,r.status,r.source_type sourceType,r.source_id sourceId,r.unit,r.requested_at requestedAt,v.code voucherCode,v.status voucherStatus,v.description voucherDescription FROM redemptions r LEFT JOIN vouchers v ON v.redemption_id=r.id LEFT JOIN members m ON m.id=r.member_id WHERE r.source_type='MISSION' ORDER BY r.id DESC LIMIT 200").all();
         return json({ok:true,redemptions:rows.results||[]});
       }
       if (url.pathname === "/student-vouchers" && request.method === "GET") {
