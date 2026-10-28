@@ -1,3 +1,5 @@
+import {captureConquestEvents} from './lib/conquest-events.mjs';
+import {eventParams,readEventCenter,ensureEventSourceCapture} from './lib/event-center.mjs';
 import {canonicalEvoId,normalizeMemberIds,resolveEvoClubMember,memberAttendanceHistory} from './lib/member-identity.mjs';
 import {drawCandidates,ensureDrawMember,drawAttendance,ticketSession,acquireDrawLease,releaseDrawLease} from './lib/lucky-draw-data.mjs';
 import { partnerMedia } from "./lib/partner-media.mjs";
@@ -649,7 +651,7 @@ async function backfillMissingAttendanceInstructors(env,manualUnit=null,manualRu
             const payload=await response.json(),d=Array.isArray(payload)&&payload.length===1?payload[0]:payload;
             if(String(d?.idActivitySession??d?.idActivitieSession??"")!==String(row.id_activity_session))throw Error("SESSION_ID_MISMATCH");
             const instructor=attendanceInstructorName(d);
-            if(instructor){const update=await env.DB.prepare("UPDATE evo_attendance_sessions SET instructor_name=? WHERE unit=? AND id_activity_session=? AND (instructor_name IS NULL OR trim(instructor_name)='')").bind(instructor,unit,row.id_activity_session).run();linked+=update.meta?.changes||0}
+            if(instructor){const update=await env.DB.prepare("UPDATE evo_attendance_sessions SET instructor_name=? WHERE unit=? AND id_activity_session=? AND (instructor_name IS NULL OR trim(instructor_name)='')").bind(instructor,unit,row.id_activity_session).run();linked+=update.meta?.changes?1:0}
             else missing++;
             await env.DB.prepare("INSERT OR REPLACE INTO evo_instructor_backfill_attempts(unit,id_activity_session,attempted_at,status,detail) VALUES(?,?,CURRENT_TIMESTAMP,?,?)").bind(unit,row.id_activity_session,instructor?"found":"missing",instructor||"Professor ausente no detalhe").run();
           }catch(error){
@@ -846,7 +848,7 @@ async function runScheduledRegistrationSync(env,kind="opportunity"){
  }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([popDrawTick(env),journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env).then(()=>runScheduledContractSync(env)).then(()=>runScheduledAttendanceSync(env)).then(()=>luckyDrawTick(env,{generate:async(p,skip)=>{const r=await generatePromotionBatch(new Request('https://internal/promotion-numbers/admin/generate-batch',{method:'POST',headers:{'Content-Type':'application/json','x-auto-sync-secret':env.AUTO_SYNC_SECRET},body:JSON.stringify({promotionId:p.id,take:10,...(skip==null?{}:{skip})})}),env);const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'GERACAO_HTTP_'+r.status);return d;},profile:(id,unit,beforeRequest)=>evoProfile(env,id,unit,{beforeRequest}),attendance:(id,start,end,unit,beforeRequest)=>evoAttendance(env,id,start,end,null,unit,{beforeRequest,paginate:true}),syncNow:async(kind,unit,key,date)=>{if(kind==="student")await runScheduledStudentSync(env,unit,key);else if(kind==="contract")await runScheduledContractSync(env,unit,key);else if(kind==="attendance")await runScheduledAttendanceSync(env,unit,key,date);const row=await env.DB.prepare("SELECT status,detail FROM evo_sync_schedule_runs WHERE unit=? AND kind=? AND scheduled_minute=?").bind(unit,kind,key).first();if(row?.status!=="done")throw Error("SINCRONIZACAO_"+kind+"_"+unit+"_"+String(row?.detail||row?.status||"SEM_RESULTADO").slice(0,180));return row;}})),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledReservationSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([captureConquestEvents(env.DB).catch(error=>console.error('EVENT_CONQUEST_CAPTURE_FAILED',error.message)),popDrawTick(env),journeyAutomationTick(env,journeyChatproAdapters(env)),reconcileAbandonedAutomaticRuns(env.DB),runScheduledStudentSync(env).then(()=>runScheduledContractSync(env)).then(()=>runScheduledAttendanceSync(env)).then(()=>luckyDrawTick(env,{generate:async(p,skip)=>{const r=await generatePromotionBatch(new Request('https://internal/promotion-numbers/admin/generate-batch',{method:'POST',headers:{'Content-Type':'application/json','x-auto-sync-secret':env.AUTO_SYNC_SECRET},body:JSON.stringify({promotionId:p.id,take:10,...(skip==null?{}:{skip})})}),env);const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'GERACAO_HTTP_'+r.status);return d;},profile:(id,unit,beforeRequest)=>evoProfile(env,id,unit,{beforeRequest}),attendance:(id,start,end,unit,beforeRequest)=>evoAttendance(env,id,start,end,null,unit,{beforeRequest,paginate:true}),syncNow:async(kind,unit,key,date)=>{if(kind==="student")await runScheduledStudentSync(env,unit,key);else if(kind==="contract")await runScheduledContractSync(env,unit,key);else if(kind==="attendance")await runScheduledAttendanceSync(env,unit,key,date);const row=await env.DB.prepare("SELECT status,detail FROM evo_sync_schedule_runs WHERE unit=? AND kind=? AND scheduled_minute=?").bind(unit,kind,key).first();if(row?.status!=="done")throw Error("SINCRONIZACAO_"+kind+"_"+unit+"_"+String(row?.detail||row?.status||"SEM_RESULTADO").slice(0,180));return row;}})),runScheduledRegistrationSync(env,"opportunity"),runScheduledRegistrationSync(env,"client"),runScheduledReservationSync(env),runScheduledCatalogSync(env),backfillMissingAttendanceInstructors(env),voucherBatchTick(env),currencyRewardTick(env),whatsappBirthdayTick(env),whatsappNewStudentsTick(env),productSalesTick(env)])); },
   async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
@@ -1074,7 +1076,7 @@ return json({ok:true,id:result.meta.last_row_id,sourceKey});
 if(action==="delegate"){
 if(actor.role!=="admin"||!keys.length||!Number.isInteger(Number(body.staffId)))return json({ok:false,error:"DELEGACAO_INVALIDA"},400);
 const staff=(await staffRows()).find(x=>x.id===Number(body.staffId));if(!staff)return json({ok:false,error:"RECEPCIONISTA_INVALIDO"},400);
-let changed=0;for(const key of keys){const r=await db.prepare("UPDATE club_tasks SET assigned_staff_id=?,assigned_name=?,status='delegated',completed_by=NULL,completed_name=NULL,completed_at=NULL,last_action_by=?,last_action_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND source_key=? AND status!='closed'").bind(staff.id,staff.name,String(actor.name||"Administrador"),unit,key).run();changed+=Number(r.meta?.changes||0)}return json({ok:true,changed})}
+let changed=0;for(const key of keys){const r=await db.prepare("UPDATE club_tasks SET assigned_staff_id=?,assigned_name=?,status='delegated',completed_by=NULL,completed_name=NULL,completed_at=NULL,last_action_by=?,last_action_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND source_key=? AND status!='closed' RETURNING id").bind(staff.id,staff.name,String(actor.name||"Administrador"),unit,key).all();changed+=(r.results||[]).length}return json({ok:true,changed})}
 if(["validate","return"].includes(action)){
 if(actor.role!=="admin"||keys.length!==1)return json({ok:false,error:"SEM_PERMISSAO"},403);
 const task=await db.prepare("SELECT id,status FROM club_tasks WHERE unit=? AND source_key=?").bind(unit,keys[0]).first();
@@ -1902,6 +1904,12 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"}),vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(url.searchParams.get('view')==='events'){
+          let params;try{params=eventParams(url.searchParams)}catch{return json({ok:false,error:'PARAMETROS_INVALIDOS'},400)}
+          const units=vd.units||['bike','gym','club'];
+          if(params.unit==='club'?!units.includes('club')&&!(units.includes('bike')&&units.includes('gym')):!units.includes(params.unit))return json({ok:false,error:'UNIDADE_NAO_AUTORIZADA'},403);
+          return json(await readEventCenter(env.DB,params));
+        }
         let params;try{params=activityParams(url.searchParams)}catch{return json({ok:false,error:"PARAMETROS_INVALIDOS"},400)}
         return json(await readActivityCenter(env,params));
       }
@@ -1987,7 +1995,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(request.method==="DELETE"){
           if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"ID_INVALIDO"},400);
           const deleted=await env.DB.prepare("DELETE FROM student_tutorial_videos WHERE id=?").bind(id).run();
-          return json({ok:true,deleted:deleted.meta?.changes||0});
+          return json({ok:true,deleted:deleted.meta?.changes?1:0});
         }
         const title=String(body?.title||"").trim(),description=String(body?.description||"").trim(),category=String(body?.category||"").trim(),unit=String(body?.unit||"all");
         const published=body?.published===false||body?.published===0?0:1,sortOrder=Number(body?.sort_order||0);
@@ -2824,8 +2832,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(b.done&&validSequence&&(requestedSkip+rows.length)>0){
           // A EVO retorna somente ativos (status=1) nessa varredura. Ausência comprovada
           // após a última página significa que o contrato não está mais ativo.
-          const changed=await env.DB.prepare("UPDATE evo_member_contracts SET membership_status='2',synced_at=CURRENT_TIMESTAMP WHERE unit=? AND membership_status IN ('1','active') AND COALESCE(source_run_id,'')<>?").bind(unit,generation.run_id).run();
-          deactivated=Number(changed.meta?.changes||0);
+          const changed=await env.DB.prepare("UPDATE evo_member_contracts SET membership_status='2',synced_at=CURRENT_TIMESTAMP WHERE unit=? AND membership_status IN ('1','active') AND COALESCE(source_run_id,'')<>? RETURNING contract_key").bind(unit,generation.run_id).all();
+          deactivated=(changed.results||[]).length;
           await env.DB.prepare("UPDATE evo_contract_sync_generation SET completed=1,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND run_id=?").bind(unit,generation.run_id).run();
         }
         if(b.done){
@@ -3671,13 +3679,13 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(order.external_member_id)await getEvoConfig(env,order.unit);
         if(savedChoice&&order.amount_cents===0&&order.external_member_id){
           const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='creating',choice_expires_at=NULL WHERE id=? AND status='selected' AND reservation_state='held' AND datetime(choice_expires_at)>datetime('now')").bind(id).run();
-          if(claim.meta.changes!==1)return json({ok:false,error:"ESCOLHA_EXPIRADA_SALVE_NOVAMENTE"},409);
+          if(!(claim.meta.changes>0))return json({ok:false,error:"ESCOLHA_EXPIRADA_SALVE_NOVAMENTE"},409);
           try{return json({ok:true,orderId:id,amountCents:0,...await settleCheckout(env,order)});}catch(e){return json({ok:false,error:"FITCOINS_REQUER_CONFERENCIA",orderId:id},409)}
         }
         if(savedChoice&&order.amount_cents===0){
           try{
             const settled=await env.DB.prepare("UPDATE club_pix_orders SET status='approved',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='selected' AND reservation_state='held' AND datetime(choice_expires_at)>datetime('now')").bind(id,member.id).run();
-            if(Number(settled.meta?.changes)!==1)return json({ok:false,error:"ESCOLHA_EXPIRADA_SALVE_NOVAMENTE"},409);
+            if(Number(settled.meta?.changes)<1)return json({ok:false,error:"ESCOLHA_EXPIRADA_SALVE_NOVAMENTE"},409);
             return json({ok:true,orderId:id,status:"approved",amountCents:0,deliveryQueued:true});
           }catch(e){const known=checkoutError(e);if(known)return json({ok:false,error:known.message},known.status);throw e;}
         }
@@ -3697,7 +3705,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const email=String(member.email||"").trim();
         if(email.includes(" ")||!email.includes("@")||!email.split("@")[1]?.includes("."))return json({ok:false,error:"EMAIL_INVALIDO"},409);
         const claim=await env.DB.prepare(savedChoice?"UPDATE club_pix_orders SET status='creating',choice_expires_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='selected' AND reservation_state='held' AND datetime(choice_expires_at)>datetime('now') AND provider_order_id IS NULL":"UPDATE club_pix_orders SET status='creating',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='created' AND provider_order_id IS NULL").bind(id,member.id).run();
-        if(Number(claim.meta?.changes||0)!==1)return json({ok:false,error:"COBRANCA_EM_PROCESSAMENTO"},409);
+        if(Number(claim.meta?.changes||0)<1)return json({ok:false,error:"COBRANCA_EM_PROCESSAMENTO"},409);
         const amount=(Number(order.amount_cents)/100).toFixed(2);
         const payload={type:"online",external_reference:id,total_amount:amount,processing_mode:"automatic",transactions:{payments:[{amount,payment_method:{id:"pix",type:"bank_transfer"}}]},payer:{email}};
         let response;
@@ -4260,7 +4268,7 @@ if(url.pathname==="/content-store"){
       // PROMOTION NUMBERS + MISSION REDEMPTIONS
       // =====================================================
       
-if(url.pathname==="/promotion-numbers/admin/sync-batch"&&request.method==="POST"){const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});if(!vr.ok)return json({ok:false,error:"NAO_AUTORIZADO"},401);const body=await readJson(request),key=String(body.promotionId||""),skip=Math.max(0,Number(body.skip||0)),promo=await clubContentItem(env,"promotion",key);if(!promo||promo.status!=="Ativo"||promo.promotionType!=="lucky_number"||!promo.luckyNumber?.enabled)return json({ok:false,error:"PROMOCAO_INVALIDA"},400);const accepted=new Set((promo.eligibility?.acceptedContracts||[]).map(String));if((promo.eligibility?.mode||"any")!=="active_contract"||!accepted.size)return json({ok:false,error:"PROMOCAO_SEM_CONTRATOS_ELEGIVEIS"},400);const promoUnit=(promo.unit||"bike")==="gym"?"gym":"bike",cfg=await getEvoConfig(env,promoUnit),auth="Basic "+btoa(cfg.dns+":"+cfg.token),take=25,ep="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?take="+take+"&skip="+skip+"&statusMemberMembership=1&showAggregators=true&showVips=true",er=await fetch(ep,{headers:{Authorization:auth,Accept:"application/json"}});if(!er.ok)return json({ok:false,error:"EVO_CONTRATOS_HTTP_"+er.status},502);const ed=await er.json(),items=Array.isArray(ed)?ed:(ed.items||ed.data||ed.lista||ed.list||[]),eligible=[...new Map(items.filter(x=>Number(x.statusMemberMembership||1)===1&&accepted.has(String(x.idMembership))).filter(x=>Number(x.idMember)>0).map(x=>[String(x.idMember),x])).values()];let participating=0,generated=0,attendance=0,errors=[];for(const x of eligible){try{const evoId=Number(x.idMember);let member=await resolveEvoClubMember(env.DB,promoUnit,evoId);if(!member){member=await ensureDrawMember(env.DB,{unit:promoUnit,id:key},{members:[],evo_member_id:String(evoId),display_name:x.name||"Aluno"})}await evoAttendance(env,evoId,promo.start,promo.end,member.id,promoUnit);const ac=Number((await env.DB.prepare("SELECT COUNT(*) n FROM attendance_history WHERE member_id=? AND unit=? AND attendance_date BETWEEN ? AND ?").bind(member.id,promo.unit||"bike",promo.start,promo.end).first())?.n||0);attendance+=ac;if(ac<1)continue;participating++;const before=Number((await env.DB.prepare("SELECT COUNT(*) n FROM lucky_numbers l JOIN promotion_participants pp ON pp.id=l.participant_id JOIN promotions pr ON pr.id=l.promotion_id WHERE pr.slug=? AND pp.member_id=? AND l.status='ACTIVE'").bind(key,member.id).first())?.n||0);await syncLuckyMember(env,member,promo);const after=Number((await env.DB.prepare("SELECT COUNT(*) n FROM lucky_numbers l JOIN promotion_participants pp ON pp.id=l.participant_id JOIN promotions pr ON pr.id=l.promotion_id WHERE pr.slug=? AND pp.member_id=? AND l.status='ACTIVE'").bind(key,member.id).first())?.n||0);generated+=Math.max(0,after-before)}catch(e){errors.push({idMember:x.idMember,error:String(e.message||e).slice(0,160)})}}const nextSkip=items.length===take?skip+take:null;if(nextSkip==null){await env.DB.prepare("CREATE TABLE IF NOT EXISTS promotion_sync_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,promotion_slug TEXT NOT NULL,unit TEXT NOT NULL,processed INTEGER NOT NULL DEFAULT 0,eligible INTEGER NOT NULL DEFAULT 0,participating INTEGER NOT NULL DEFAULT 0,attendance INTEGER NOT NULL DEFAULT 0,generated INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();const t=body.totals||{};await env.DB.prepare("INSERT INTO promotion_sync_runs(promotion_slug,unit,processed,eligible,participating,attendance,generated,errors) VALUES(?,?,?,?,?,?,?,?)").bind(key,promo.unit||"bike",Number(t.processed||0)+items.length,Number(t.eligible||0)+eligible.length,Number(t.participating||0)+participating,Number(t.attendance||0)+attendance,Number(t.generated||0)+generated,Number(t.errors||0)+errors.length).run()}return json({ok:true,promotion:{id:key,name:promo.name},batch:{skip,processed:items.length,eligible:eligible.length,participating,attendance,generated,errors},nextSkip,done:nextSkip==null})}
+if(url.pathname==="/promotion-numbers/admin/sync-batch"&&request.method==="POST"){const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});if(!vr.ok)return json({ok:false,error:"NAO_AUTORIZADO"},401);const body=await readJson(request),key=String(body.promotionId||""),skip=Math.max(0,Number(body.skip||0)),promo=await clubContentItem(env,"promotion",key);if(!promo||promo.status!=="Ativo"||promo.promotionType!=="lucky_number"||!promo.luckyNumber?.enabled)return json({ok:false,error:"PROMOCAO_INVALIDA"},400);const accepted=new Set((promo.eligibility?.acceptedContracts||[]).map(String));if((promo.eligibility?.mode||"any")!=="active_contract"||!accepted.size)return json({ok:false,error:"PROMOCAO_SEM_CONTRATOS_ELEGIVEIS"},400);const promoUnit=(promo.unit||"bike")==="gym"?"gym":"bike",cfg=await getEvoConfig(env,promoUnit),auth="Basic "+btoa(cfg.dns+":"+cfg.token),take=25,ep="https://evo-integracao-api.w12app.com.br/api/v3/membermembership?take="+take+"&skip="+skip+"&statusMemberMembership=1&showAggregators=true&showVips=true",er=await fetch(ep,{headers:{Authorization:auth,Accept:"application/json"}});if(!er.ok)return json({ok:false,error:"EVO_CONTRATOS_HTTP_"+er.status},502);const ed=await er.json(),items=Array.isArray(ed)?ed:(ed.items||ed.data||ed.lista||ed.list||[]),eligible=[...new Map(items.filter(x=>Number(x.statusMemberMembership||1)===1&&accepted.has(String(x.idMembership))).filter(x=>Number(x.idMember)>0).map(x=>[String(x.idMember),x])).values()];let participating=0,generated=0,attendance=0,errors=[];for(const x of eligible){try{const evoId=Number(x.idMember);let member=await resolveEvoClubMember(env.DB,promoUnit,evoId);if(!member){member=await ensureDrawMember(env.DB,{unit:promoUnit,id:key},{members:[],evo_member_id:String(evoId),display_name:x.name||"Aluno"})}await evoAttendance(env,evoId,promo.start,promo.end,member.id,promoUnit);const ac=Number((await env.DB.prepare("SELECT COUNT(*) n FROM attendance_history WHERE member_id=? AND unit=? AND attendance_date BETWEEN ? AND ?").bind(member.id,promo.unit||"bike",promo.start,promo.end).first())?.n||0);attendance+=ac;if(ac<1)continue;participating++;const before=Number((await env.DB.prepare("SELECT COUNT(*) n FROM lucky_numbers l JOIN promotion_participants pp ON pp.id=l.participant_id JOIN promotions pr ON pr.id=l.promotion_id WHERE pr.slug=? AND pp.member_id=? AND l.status='ACTIVE'").bind(key,member.id).first())?.n||0);await syncLuckyMember(env,member,promo);const after=Number((await env.DB.prepare("SELECT COUNT(*) n FROM lucky_numbers l JOIN promotion_participants pp ON pp.id=l.participant_id JOIN promotions pr ON pr.id=l.promotion_id WHERE pr.slug=? AND pp.member_id=? AND l.status='ACTIVE'").bind(key,member.id).first())?.n||0);generated+=Math.max(0,after-before)}catch(e){errors.push({idMember:x.idMember,error:String(e.message||e).slice(0,160)})}}const nextSkip=items.length===take?skip+take:null;if(nextSkip==null){await env.DB.prepare("CREATE TABLE IF NOT EXISTS promotion_sync_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,promotion_slug TEXT NOT NULL,unit TEXT NOT NULL,processed INTEGER NOT NULL DEFAULT 0,eligible INTEGER NOT NULL DEFAULT 0,participating INTEGER NOT NULL DEFAULT 0,attendance INTEGER NOT NULL DEFAULT 0,generated INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();await ensureEventSourceCapture(env.DB,'promotion_sync_runs');const t=body.totals||{};await env.DB.prepare("INSERT INTO promotion_sync_runs(promotion_slug,unit,processed,eligible,participating,attendance,generated,errors) VALUES(?,?,?,?,?,?,?,?)").bind(key,promo.unit||"bike",Number(t.processed||0)+items.length,Number(t.eligible||0)+eligible.length,Number(t.participating||0)+participating,Number(t.attendance||0)+attendance,Number(t.generated||0)+generated,Number(t.errors||0)+errors.length).run()}return json({ok:true,promotion:{id:key,name:promo.name},batch:{skip,processed:items.length,eligible:eligible.length,participating,attendance,generated,errors},nextSkip,done:nextSkip==null})}
 
 if(url.pathname==="/promotion-numbers/admin/generate-batch"&&request.method==="POST")return generatePromotionBatch(request,env,json);
 
@@ -4404,7 +4412,7 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
   if(!["refund_pending","paid_pending_coins","pending","approved"].includes(order.status))return json({ok:false,error:"PEDIDO_INDISPONIVEL"},409);
   if(order.status!=="refund_pending"){
    const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='refund_pending' WHERE id=? AND status IN ('paid_pending_coins','pending','approved') AND external_state IN ('none','failed','refunded')").bind(id).run();
-   if(claim.meta.changes!==1)return json({ok:false,error:"ESTORNO_EM_PROCESSAMENTO"},409);
+   if(!(claim.meta.changes>0))return json({ok:false,error:"ESTORNO_EM_PROCESSAMENTO"},409);
   }
   let response;try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id)+"/refund",{method:"POST",headers:{...headers,"X-Idempotency-Key":id+"-refund-v2","Content-Type":"application/json"}})}catch{return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA"},502)}
   const result=await response.json().catch(()=>({}));
@@ -4486,7 +4494,7 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
         const goal=(mission.goals||[]).find(x=>String(x.id)===goalKey); if(!goal)return json({ok:false,error:"META_NAO_ENCONTRADA"},404);
         // A mission with tiered rewards grants one final choice per student.
         if(mission.type==="presence" && (mission.goals||[]).length>1){
-          await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_mission_final_choice (member_id INTEGER NOT NULL,mission_id TEXT NOT NULL,period_key TEXT NOT NULL,goal_id TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(member_id,mission_id,period_key))").run();
+          await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_mission_final_choice (member_id INTEGER NOT NULL,mission_id TEXT NOT NULL,period_key TEXT NOT NULL,goal_id TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(member_id,mission_id,period_key))").run();await ensureEventSourceCapture(env.DB,'club_mission_final_choice');
           const periodKey=mission.period==="month"?String(mission.start||"").slice(0,7):String(mission.start||"")+"_"+String(mission.end||"");
           const prior=await env.DB.prepare("SELECT source_id FROM redemptions WHERE member_id=? AND source_type='MISSION' AND reference_id=? ORDER BY id DESC LIMIT 1").bind(member.id,missionKey).first();
           if(prior && String(prior.source_id)!==goalKey)return json({ok:false,error:"MISSAO_JA_ENCERRADA_OUTRA_META"},409);
@@ -4494,7 +4502,7 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
           const progress=await missionProgressValue(env,member,mission);
           if(progress<Number(goal.value||0))return json({ok:false,error:"META_AINDA_NAO_ATINGIDA",progress},409);
           const inserted=await env.DB.prepare("INSERT OR IGNORE INTO club_mission_final_choice(member_id,mission_id,period_key,goal_id) VALUES(?,?,?,?)").bind(member.id,missionKey,periodKey,goalKey).run();
-          if(Number(inserted.meta?.changes||0)!==1){
+          if(Number(inserted.meta?.changes||0)<1){
             const chosen=await env.DB.prepare("SELECT goal_id FROM club_mission_final_choice WHERE member_id=? AND mission_id=? AND period_key=?").bind(member.id,missionKey,periodKey).first();
             if(String(chosen?.goal_id)!==goalKey)return json({ok:false,error:"MISSAO_JA_ENCERRADA_OUTRA_META"},409);
           }
@@ -5393,7 +5401,7 @@ async function challengeFitcoinClaim(env,member,mission,goal,json){
  const existing=await env.DB.prepare("SELECT id,status FROM redemptions WHERE dedupe_key=?").bind(key).first();
  if(existing)return json({ok:true,alreadyClaimed:true,rewardType:"fitcoins",redemption:existing,fitcoinsApplied:existing.status==="COMPLETED",requiresReview:existing.status!=="COMPLETED"});
  const inserted=await env.DB.prepare("INSERT INTO redemptions(member_id,redemption_type,reference_id,fitcoins,status,source_type,source_id,title,details,unit,dedupe_key) SELECT ?,'fitcoins',?,?,'PROCESSING','MISSION',?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM redemptions WHERE dedupe_key=?)").bind(member.id,String(mission.id),amount,String(goal.id),goal.rewardName||amount+" Fitcoins",mission.name||"",unit,key,key).run();
- if(Number(inserted.meta?.changes||0)!==1)return json({ok:true,alreadyClaimed:true,rewardType:"fitcoins",requiresReview:true});
+ if(Number(inserted.meta?.changes||0)<1)return json({ok:true,alreadyClaimed:true,rewardType:"fitcoins",requiresReview:true});
  const cfg=await getEvoConfig(env,unit),headers={Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"};
  const base="https://evo-integracao-api.w12app.com.br/api/v1/members/";
  const parse=async r=>{try{return await r.json()}catch{return null}};
@@ -5522,8 +5530,8 @@ async function voucherBatchTick(env,options={}){
    if(!lock.meta.changes){blocked+=Number(group.n);continue;}
    created+=Number(group.n);
    const batchId=lock.meta.last_row_id, nowDate=new Date(),until=new Date(nowDate.getTime()+model.validity_days*86400000);
-   const reserved=await env.DB.prepare("UPDATE club_voucher_requests SET batch_id=? WHERE id IN (SELECT id FROM club_voucher_requests WHERE unit=? AND model_id=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL ORDER BY id LIMIT ?)").bind(batchId,unit,group.model_id,group.n).run();
-   if(Number(reserved.meta.changes)!==Number(group.n)){await env.DB.prepare("UPDATE club_voucher_batches SET status='review_required' WHERE id=?").bind(batchId).run();continue;}
+   const reserved=await env.DB.prepare("UPDATE club_voucher_requests SET batch_id=? WHERE id IN (SELECT id FROM club_voucher_requests WHERE unit=? AND model_id=? AND delivery_mode='batch' AND status='pending' AND batch_id IS NULL ORDER BY id LIMIT ?) RETURNING id").bind(batchId,unit,group.model_id,group.n).all();
+   if((reserved.results||[]).length!==Number(group.n)){await env.DB.prepare("UPDATE club_voucher_batches SET status='review_required' WHERE id=?").bind(batchId).run();continue;}
 
    try{
     const selection=voucherSelection(model.contract_ids_json),cfg=await getEvoConfig(env,unit);
@@ -5638,7 +5646,7 @@ async function checkoutServiceVoucher(env,order,create){
  if(q.delivery_mode==="batch")return {ok:true,status:"pending",message:"Voucher aguardando lote"};
  if(q.status!=="pending")return {ok:true,status:q.status,message:"Emissão em processamento ou conferência"};
  const locked=await db.prepare("UPDATE club_voucher_requests SET status='creating',attempts=attempts+1,processed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending' AND attempts=0").bind(q.id).run();
- if(locked.meta.changes!==1)return {ok:true,status:"creating"};
+ if(!(locked.meta.changes>0))return {ok:true,status:"creating"};
  const model=await db.prepare("SELECT * FROM club_voucher_models WHERE id=? AND unit=? AND enabled=1").bind(q.model_id,order.unit).first();
  if(!model)throw new Error("MODELO_INDISPONIVEL");
  const selection=voucherSelection(model.contract_ids_json),now=new Date(),until=new Date(now.getTime()*1+model.validity_days*86400000);
