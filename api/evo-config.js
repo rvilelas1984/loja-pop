@@ -66,7 +66,21 @@ export default async function handler(req,res){
   const qs=new URLSearchParams({unit,partnerId:String(req.query.partnerId||""),month:String(req.query.month||"")});
   try{const r=await fetch(WORKER+"/admin/partner-performance?"+qs,{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),Accept:"application/json"},cache:"no-store",signal:AbortSignal.timeout(20000)});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
  }
- if(req.query.route==="partner-voucher-history"){
+ if(req.query.route==="achievements-mission-history"){
+  const sess=adminSession(req),unit=String(req.query.unit||"club").toLowerCase();
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  if(!sess||sess.role!=="admin")return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+  if(!["bike","gym","club"].includes(unit))return res.status(400).json({ok:false,error:"UNIDADE_INVALIDA"});
+  if(unit!=="club"&&!sess.units?.includes(unit))return res.status(403).json({ok:false,error:"UNIDADE_NAO_PERMITIDA"});
+  try{
+    const r=await fetch(WORKER+"/admin/mission-redemptions",{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),Accept:"application/json"},cache:"no-store",signal:AbortSignal.timeout(20000)});
+    const data=await r.json();if(!r.ok)return res.status(r.status).json(data);
+    const allowed=unit==="club"?(sess.units||[]):[unit];
+    res.setHeader("Cache-Control","no-store");
+    return res.status(200).json({ok:true,redemptions:(data.redemptions||[]).filter(x=>allowed.includes(x.unit))});
+  }catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ }
+if(req.query.route==="partner-voucher-history"){
   const sess=adminSession(req),unit=String(req.query.unit||"club").toLowerCase();
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   if(!sess||sess.role!=="admin")return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
