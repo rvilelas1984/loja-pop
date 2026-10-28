@@ -125,24 +125,42 @@ async function deleteAuditStudent(id,name){
 async function checkAuditIds(ids){
  if(auditActionBusy)return;
  auditActionBusy=true;
- const box=$('identityAuditResult');if(box)box.textContent='Validando IDs individualmente na EVO...';
+ const box=$('identityAuditResult');if(box)box.textContent='Consultando '+ids.length+' ID(s) na EVO...';
  try{
   const r=await fetch('/api/evo-config?route=new-students-evo-id-check',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({unit:$('unit').value,ids}),cache:'no-store'});
   const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Consulta indisponível');
   if(box){
    box.replaceChildren();
+   const title=document.createElement('p');title.textContent='Resultado da EVO · '+d.results.length+' ID(s) consultado(s)';box.appendChild(title);
    for(const item of d.results){
-    const line=document.createElement('div');line.className='notice';
-    const labels={found:'Encontrado',not_found:'ID não encontrado (404)',error:'Falha na consulta',mismatch:'ID divergente',unverified:'Resposta inconclusiva'};
-    line.textContent='ID '+item.id+' · '+(labels[item.status]||item.status)+(item.name?' · '+item.name:'');
+    const line=document.createElement('div');line.className='notice';line.style.margin='8px 0';
+    const labels={found:'Encontrado',not_found:'Não encontrado (404 confirmado)',error:'Erro na EVO',mismatch:'ID retornado divergente',unverified:'404 não confirmado ou resposta inconclusiva'};
+    const info=document.createElement('p');info.textContent='ID '+item.id+' · '+(labels[item.status]||item.status)+(item.name?' · '+item.name:'');line.appendChild(info);
+    if(item.status==='found'){
+     const btn=document.createElement('button');btn.type='button';btn.className='tinybtn';btn.textContent='Atualizar este ID no D1';
+     btn.addEventListener('click',()=>refreshAuditStudentById(item.id));line.appendChild(btn);
+    }
     if(item.status==='not_found'){
-     const btn=document.createElement('button');btn.type='button';btn.className='tinybtn';btn.textContent='Excluir do D1';btn.style.marginLeft='8px';
+     const btn=document.createElement('button');btn.type='button';btn.className='tinybtn';btn.textContent='Excluir do D1';
      btn.addEventListener('click',()=>deleteAuditStudent(item.id,item.id));line.appendChild(btn);
     }
     box.appendChild(line);
    }
   }
- }catch(e){if(box)box.textContent='Falha ao validar IDs: '+e.message}
+ }catch(e){if(box)box.textContent='Falha na consulta: '+e.message}
+ finally{auditActionBusy=false}
+}
+async function refreshAuditStudentById(id){
+ if(auditActionBusy)return;
+ if(!confirm('Atualizar no D1 o cadastro EVO ID '+id+'?'))return;
+ auditActionBusy=true;
+ const box=$('identityAuditResult');
+ try{
+  const r=await fetch('/api/evo-config?route=student-refresh-by-id',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({unit:$('unit').value,id}),cache:'no-store'});
+  const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Atualização indisponível');
+  await loadD1();
+  if($('identityAuditResult'))$('identityAuditResult').textContent='ID '+id+' atualizado no D1: '+(d.name||'aluno')+'. Confira a etapa recalculada da jornada.';
+ }catch(e){if(box)box.textContent='Falha na atualização do ID '+id+': '+e.message}
  finally{auditActionBusy=false}
 }
 async function loadIdentityAudit(){
@@ -157,7 +175,7 @@ async function loadIdentityAudit(){
   if(!r.ok||!d.ok)throw Error(d.error||'Auditoria indisponível');
   const a=d.audit||{},cases=a.cases||[];
   count.textContent=cases.length+' pendências · '+a.peopleCount+' identidades consolidadas';
-  body.innerHTML='<div id="identityAuditResult" role="status" style="margin:8px 0"></div><p class="journey-base"><b>'+a.peopleCount+' identidades consolidadas</b> · '+a.linkedEvoIds+' IDs associados · '+cases.length+' pendências. '+(a.countProvisional?'Contagem provisória até validação.':'Sem suspeitas detectadas por esta auditoria.')+'</p>'+cases.slice(0,100).map(c=>'<div class="notice" style="margin:8px 0"><b>'+clean(c.records.map(x=>x.name).join(' / '))+'</b> · '+clean(c.reason)+'<p>'+clean(c.records.map(x=>x.id+' ('+x.ids.join(', ')+')').join(' | '))+'</p><small>Verifique os dados na EVO antes de vincular. Nenhuma mesclagem automática.</small><div style="margin-top:8px"><button type="button" class="tinybtn" data-audit-name="'+clean(c.records[0].name)+'">Atualizar na EVO</button> <button type="button" class="tinybtn" data-audit-delete="'+clean(String(c.records[0].id))+'" data-audit-label="'+clean(c.records[0].name)+'">Excluir do D1</button> <button type="button" class="tinybtn" data-audit-ids="'+clean(JSON.stringify([...new Set(c.records.flatMap(x=>x.ids||[]))]))+'">Validar IDs na EVO</button></div></div>').join('');
+  body.innerHTML='<div id="identityAuditResult" role="status" style="margin:8px 0"></div><p class="journey-base"><b>'+a.peopleCount+' identidades consolidadas</b> · '+a.linkedEvoIds+' IDs associados · '+cases.length+' pendências. '+(a.countProvisional?'Contagem provisória até validação.':'Sem suspeitas detectadas por esta auditoria.')+'</p>'+cases.slice(0,100).map(c=>'<div class="notice" style="margin:8px 0"><b>'+clean(c.records.map(x=>x.name).join(' / '))+'</b> · '+clean(c.reason)+'<p>'+clean(c.records.map(x=>x.id+' ('+x.ids.join(', ')+')').join(' | '))+'</p><small>Verifique os dados na EVO antes de vincular. Nenhuma mesclagem automática.</small><div style="margin-top:8px"><button type="button" class="tinybtn" data-audit-delete="'+clean(String(c.records[0].id))+'" data-audit-label="'+clean(c.records[0].name)+'">Excluir do D1</button> <button type="button" class="tinybtn" data-audit-ids="'+clean(JSON.stringify([...new Set(c.records.flatMap(x=>x.ids||[]))]))+'">Consultar IDs na EVO</button></div></div>').join('');
   body.querySelectorAll('[data-audit-name]').forEach(btn=>btn.addEventListener('click',()=>refreshAuditStudent(btn.dataset.auditName)));
   body.querySelectorAll('[data-audit-delete]').forEach(btn=>btn.addEventListener('click',()=>deleteAuditStudent(btn.dataset.auditDelete,btn.dataset.auditLabel)));
   body.querySelectorAll('[data-audit-ids]').forEach(btn=>btn.addEventListener('click',()=>checkAuditIds(JSON.parse(btn.dataset.auditIds))));
