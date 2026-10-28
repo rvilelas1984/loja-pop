@@ -57,3 +57,10 @@ test('status numérico EVO sem mapeamento confirmado não libera acesso',()=>{
 test('contrato EVO cancelado não concede acesso compartilhado',()=>{
  assert.deepEqual(access([{unit:'bike',id_membership:'78217',membership_status:'canceled'}],[{unit:'bike',contractId:'78217',enabled:1}]).units,[]);
 });
+
+test('status cancelado prevalece sobre booleano ativo divergente',()=>{
+ assert.deepEqual(access([contract({status:'canceled',isActive:true})],[rule()]).units,[]);
+});
+test('status numérico não é convertido em ativo por flag legada',()=>{
+ assert.deepEqual(access([contract({status:'2',isActive:true})],[rule()]).units,[]);
+});
