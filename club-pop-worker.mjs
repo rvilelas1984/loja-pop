@@ -4326,6 +4326,33 @@ if(url.pathname==="/promotion-numbers/mine"&&request.method==="GET"){
    }
   }
  }
+ // Reconcile cross-unit EVO accounts by their authoritative full CPF, never by name or CPF suffix alone.
+ // This also covers old Gym accounts whose EVO identifier was stored in evo_member_id.
+ if(trustedHash){
+  const authoritative=[];
+  for(const u of ["bike","gym"]){
+   for(const id of [...new Set([canonicalEvoId(member.evo_member_id),canonicalEvoId(member.gym_client_id)].filter(Boolean))]){
+    const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(u,id).first();
+    let doc="";try{const p=JSON.parse(master?.personal_json||"{}");doc=String(p.document||p.cpf||"").replace(/\\D/g,"")}catch{}
+    if(/^\\d{11}$/.test(doc)&&(await sha256(doc))===trustedHash)authoritative.push(id);
+   }
+  }
+  for(const id of new Set(authoritative)){
+   const linked=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id FROM members WHERE status='ACTIVE' AND (CAST(evo_member_id AS TEXT)=? OR CAST(gym_client_id AS TEXT)=?)").bind(id,id).all();
+   for(const m of linked.results||[]){
+    let matched=false;
+    for(const u of ["bike","gym"]){
+     for(const evo of [canonicalEvoId(m.evo_member_id),canonicalEvoId(m.gym_client_id)].filter(Boolean)){
+      const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(u,evo).first();
+      let doc="";try{const p=JSON.parse(master?.personal_json||"{}");doc=String(p.document||p.cpf||"").replace(/\\D/g,"")}catch{}
+      if(/^\\d{11}$/.test(doc)&&(await sha256(doc))===trustedHash){matched=true;break}
+     }
+     if(matched)break;
+    }
+    if(matched)verified.add(Number(m.id));
+   }
+  }
+ }
  const rules=(()=>{try{return JSON.parse(dbp.rules_json||"{}")||{}}catch{return {}}})();
  const effectivePromo=promo||{id:key,name:dbp.name,start:dbp.start_at,end:dbp.end_at,unit,numbersPerAttendance:+(rules.numbersPerAttendance||1),luckyNumber:rules};
  const cfg=effectivePromo.luckyNumber||{},per=+(cfg.numbersPerAttendance||effectivePromo.numbersPerAttendance||1),max=+(cfg.maxNumbers||0),goals=[...(cfg.milestones||[])].sort((a,b)=>a.attendance-b.attendance);
