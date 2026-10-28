@@ -2459,6 +2459,33 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       if (url.pathname === "/admin/equipment-maintenance") return equipmentMaintenance(request,env,url);
       if(url.pathname==="/admin/flash-mission-classes")return flashClasses(request,env,url);
       if(url.pathname==="/admin/journey-automations")return journeyAutomationAdmin(request,env,url,journeyChatproAdapters(env));
+      if(url.pathname==="/admin/new-students-identity-delete"&&request.method==="POST"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck},cache:"no-store"});
+        const actor=await vr.json().catch(()=>({}));
+        if(!vr.ok||actor.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const b=await request.json().catch(()=>({})),unit=String(b.unit||""),id=String(b.id||"");
+        if(!["bike","gym"].includes(unit)||!/^[0-9]{1,15}$/.test(id)||b.confirm!=="EXCLUIR "+id)return json({ok:false,error:"CONFIRMACAO_INVALIDA"},400);
+        if(actor.units?.length&&!actor.units.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        const rows=(await env.DB.prepare("SELECT * FROM evo_daily_registrations WHERE unit=? AND evo_id=? AND category IN ('client','opportunity')").bind(unit,id).all()).results||[];
+        if(!rows.length)return json({ok:false,error:"CADASTRO_NAO_ENCONTRADO"},404);
+        const people=await loadJourneyPeople(env.DB,unit);
+        const person=people.find(p=>p.ids.includes(id));
+        if(person?.ids.length>1)return json({ok:false,error:"IDENTIDADE_VINCULADA_A_OUTROS_IDS_USE_VALIDACAO_EVO"},409);
+        const checks=await Promise.all([
+          env.DB.prepare("SELECT COUNT(*) n FROM evo_member_attendance WHERE unit=? AND evo_member_id=?").bind(unit,id).first(),
+          env.DB.prepare("SELECT COUNT(*) n FROM evo_member_contracts WHERE unit=? AND evo_member_id=?").bind(unit,id).first(),
+          env.DB.prepare("SELECT COUNT(*) n FROM checkin_reservation_snapshots WHERE unit=? AND evo_member_id=?").bind(unit,id).first()
+        ]);
+        if(checks.some(x=>Number(x?.n||0)>0))return json({ok:false,error:"HISTORICO_DE_PRESENCAS_CONTRATOS_OU_RESERVAS_EXISTE_EXCLUSAO_BLOQUEADA"},409);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_journey_deleted_registrations(id INTEGER PRIMARY KEY AUTOINCREMENT,unit TEXT NOT NULL,evo_id TEXT NOT NULL,backup_json TEXT NOT NULL,deleted_by TEXT,deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        await env.DB.batch([
+          env.DB.prepare("INSERT INTO club_journey_deleted_registrations(unit,evo_id,backup_json,deleted_by) VALUES(?,?,?,?)").bind(unit,id,JSON.stringify(rows),String(actor.id||actor.name||"admin")),
+          env.DB.prepare("DELETE FROM evo_daily_registrations WHERE unit=? AND evo_id=? AND category IN ('client','opportunity')").bind(unit,id)
+        ]);
+        return json({ok:true,unit,id,deletedRegistrations:rows.length,backup:true,scope:"cadastros da jornada; outros dados D1 preservados"});
+      }
       if (url.pathname === "/admin/new-students-identity-audit" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
