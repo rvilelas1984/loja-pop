@@ -749,6 +749,16 @@ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return await logFailure(400,{ok:false,error
   if(!["student","opportunity","client"].includes(body.kind)||!["done","failed"].includes(body.status))return res.status(400).json({ok:false,error:"DADOS_INVALIDOS"});
   try{const r=await fetch(WORKER+"/admin/evo-automation-run-log",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit,kind:body.kind,status:body.status,detail:{manual:true,total:Number(body.detail?.total||0),requests:Number(body.detail?.requests||0),batches:Number(body.detail?.batches||0),runId:String(body.detail?.runId||"").slice(0,80),found:Number(body.detail?.found||0),saved:Number(body.detail?.saved??body.detail?.inserted??0),inserted:Number(body.detail?.inserted||0),from:String(body.detail?.from||"").slice(0,10),to:String(body.detail?.to||"").slice(0,10),error:String(body.detail?.error||"").slice(0,180)}})});return res.status(r.status).json(await r.json())}catch(e){return res.status(502).json({ok:false,error:"FALHA_REGISTRO_HISTORICO"})}
  }
+ if(req.query.route==="new-students-identity-delete"){
+  if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const sess=adminSession(req),unit=String(req.body?.unit||"");
+  if(!sess||sess.role!=="admin"||!["bike","gym"].includes(unit)||!sess.units?.includes(unit))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+  try{
+   const r=await fetch(WORKER+"/admin/new-students-identity-delete",{method:"POST",headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),"content-type":"application/json"},body:JSON.stringify(req.body||{}),cache:"no-store"});
+   res.status(r.status).setHeader("Cache-Control","no-store").setHeader("Content-Type","application/json; charset=utf-8");
+   return res.send(await r.text());
+  }catch{return res.status(502).json({ok:false,error:"WORKER_INDISPONIVEL"})}
+ }
  if(req.query.route==="new-students-identity-audit"){
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=String(req.query.unit||"bike")==="gym"?"gym":"bike";
