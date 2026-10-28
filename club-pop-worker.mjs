@@ -1,4 +1,4 @@
-import {loadJourneyPeople,loadJourneyFacts} from './lib/journey-data.mjs';
+import {loadJourneyPeople,loadJourneyFacts,auditJourneyIdentities} from './lib/journey-data.mjs';
 import {journeyConversion,currentJourneyStage,contractCategory} from './lib/journey-conversion.mjs';
 import {captureConquestEvents} from './lib/conquest-events.mjs';
 import {eventParams,readEventCenter,ensureEventSourceCapture} from './lib/event-center.mjs';
@@ -2459,6 +2459,19 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       if (url.pathname === "/admin/equipment-maintenance") return equipmentMaintenance(request,env,url);
       if(url.pathname==="/admin/flash-mission-classes")return flashClasses(request,env,url);
       if(url.pathname==="/admin/journey-automations")return journeyAutomationAdmin(request,env,url,journeyChatproAdapters(env));
+      if (url.pathname === "/admin/new-students-identity-audit" && request.method === "GET") {
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||!["admin","reception"].includes(String(vd.role||"")))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase();
+        const from=String(url.searchParams.get("from")||""),to=String(url.searchParams.get("to")||"");
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+        if(!/^20\\d{2}-\\d{2}-\\d{2}$/.test(from)||!/^20\\d{2}-\\d{2}-\\d{2}$/.test(to)||from>to)return json({ok:false,error:"PERIODO_INVALIDO"},400);
+        const people=await loadJourneyPeople(env.DB,unit);
+        return json({ok:true,unit,from,to,audit:auditJourneyIdentities(people,{from,to})});
+      }
       if (url.pathname === "/admin/new-students" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
