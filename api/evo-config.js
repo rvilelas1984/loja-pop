@@ -795,7 +795,18 @@ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return await logFailure(400,{ok:false,error
      const raw=await r.json(),m=Array.isArray(raw)?raw[0]:(raw?.data||raw?.member||raw);
      if(!m||!Number(m.idMember||m.id)){results.push({id,status:"unverified"});continue}
      if(String(m.idMember||m.id)!==id){results.push({id,status:"mismatch",returnedId:String(m.idMember||m.id)});continue}
-     results.push({id,status:"found",name:String(m.name||[m.firstName,m.lastName].filter(Boolean).join(" ")),documentLast4:String(m.document||m.cpf||"").replace(/\D/g,"").slice(-4)});
+     const found={id,status:"found",name:String(m.name||[m.firstName,m.lastName].filter(Boolean).join(" ")),documentLast4:String(m.document||m.cpf||"").replace(/\D/g,"").slice(-4)};
+     // Reuse the member detail already fetched; no second EVO request.
+     try{
+      const wr=await fetch(WORKER+"/admin/evo-student-sync-one",{method:"POST",headers:{"content-type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify({unit,idMember:Number(id),member:m}),cache:"no-store"});
+      const wd=await wr.json().catch(()=>({}));
+      found.d1Updated=wr.ok&&wd.ok;
+      found.d1Error=found.d1Updated?null:(wd.error||"SYNC_D1_FAILED");
+      found.createdInMaster=!!wd.createdInMaster;
+     }catch{found.d1Updated=false;found.d1Error="WORKER_UNAVAILABLE"}
+     const contracts=m.contracts||m.memberships||m.memberContracts;
+     found.contractInfo=Array.isArray(contracts)?{count:contracts.length,active:contracts.filter(c=>c.isActive===true||String(c.status||"").toLowerCase()==="active").length}:null;
+     results.push(found);
     }catch{results.push({id,status:"error"})}
    }
    return res.status(200).json({ok:true,unit,results,checkedAt:new Date().toISOString()});
