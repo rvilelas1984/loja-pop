@@ -2470,9 +2470,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(actor.units?.length&&!actor.units.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
         const rows=(await env.DB.prepare("SELECT * FROM evo_daily_registrations WHERE unit=? AND evo_id=? AND category IN ('client','opportunity')").bind(unit,id).all()).results||[];
         if(!rows.length)return json({ok:false,error:"CADASTRO_NAO_ENCONTRADO"},404);
-        const people=await loadJourneyPeople(env.DB,unit);
-        const person=people.find(p=>p.ids.includes(id));
-        if(person?.ids.length>1)return json({ok:false,error:"IDENTIDADE_VINCULADA_A_OUTROS_IDS_USE_VALIDACAO_EVO"},409);
+        // A registration ID can be removed independently of other EVO IDs.
+        // Preserve the other identities and block only when this exact ID
+        // owns attendance, contracts or reservations.
         const checks=await Promise.all([
           env.DB.prepare("SELECT COUNT(*) n FROM evo_member_attendance WHERE unit=? AND evo_member_id=?").bind(unit,id).first(),
           env.DB.prepare("SELECT COUNT(*) n FROM evo_member_contracts WHERE unit=? AND evo_member_id=?").bind(unit,id).first(),
