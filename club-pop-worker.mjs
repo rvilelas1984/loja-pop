@@ -2497,7 +2497,42 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
         if(!/^20\d{2}-\d{2}-\d{2}$/.test(from)||!/^20\d{2}-\d{2}-\d{2}$/.test(to)||from>to)return json({ok:false,error:"PERIODO_INVALIDO"},400);
         const people=await loadJourneyPeople(env.DB,unit);
-        return json({ok:true,unit,from,to,audit:auditJourneyIdentities(people,{from,to})});
+        const audit=auditJourneyIdentities(people,{from,to});
+        // Deletion can dissolve a name-based duplicate before the remaining
+        // EVO IDs are reconciled. Reconstruct pending cases from the audited
+        // deletion backups, without restoring any deleted registration.
+        const exists=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='club_journey_deleted_registrations'").first();
+        if(exists){
+          const deleted=(await env.DB.prepare("SELECT evo_id,backup_json,deleted_at FROM club_journey_deleted_registrations WHERE unit=? ORDER BY id DESC LIMIT 500").bind(unit).all()).results||[];
+          const normalize=n=>String(n||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+          const grouped=new Map();
+          for(const entry of deleted){
+            let backups=[];try{backups=JSON.parse(entry.backup_json||"[]")}catch{}
+            for(const row of backups){
+              const name=normalize(row.display_name);
+              if(!name)continue;
+              if(!grouped.has(name))grouped.set(name,{names:new Set(),deleted:new Set()});
+              grouped.get(name).names.add(row.display_name);
+              grouped.get(name).deleted.add(String(entry.evo_id));
+            }
+          }
+          for(const [name,history] of grouped){
+            const matches=people.filter(p=>normalize(p.name)===name);
+            const activeIds=[...new Set(matches.flatMap(p=>p.ids.map(String)).filter(id=>!history.deleted.has(id)))];
+            if(activeIds.length<2)continue;
+            if(audit.cases.some(c=>c.records.some(r=>r.ids?.some(id=>activeIds.includes(String(id))))))continue;
+            audit.cases.push({
+              key:"pending-after-delete:"+name,
+              reason:"TRATAMENTO_PARCIAL_IDS",
+              status:"review",
+              records:matches.map(p=>({id:p.id,name:p.name,ids:p.ids.filter(id=>activeIds.includes(String(id))),day:p.day,memberIds:p.memberIds,prospectIds:p.prospectIds})),
+              note:"Exclusão anterior registrada. Restam "+activeIds.length+" IDs para validação; IDs já excluídos não foram restaurados."
+            });
+          }
+          audit.unresolvedCases=audit.cases.length;
+          audit.countProvisional=audit.unresolvedCases>0;
+        }
+        return json({ok:true,unit,from,to,audit});
       }
       if (url.pathname === "/admin/new-students" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
