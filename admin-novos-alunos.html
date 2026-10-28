@@ -136,9 +136,16 @@ async function checkAuditIds(ids){
     const line=document.createElement('div');line.className='notice';line.style.margin='8px 0';
     const labels={found:'Encontrado',not_found:'Não encontrado (404 confirmado)',error:'Erro na EVO',mismatch:'ID retornado divergente',unverified:'404 não confirmado ou resposta inconclusiva'};
     const info=document.createElement('p');info.textContent='ID '+item.id+' · '+(labels[item.status]||item.status)+(item.name?' · '+item.name:'');line.appendChild(info);
+    if(item.status==='found'){
+     const detail=document.createElement('small');
+     detail.textContent=item.d1Updated?'Perfil atualizado no D1 com a mesma resposta da EVO.':('Perfil não atualizado no D1: '+(item.d1Error||'erro'));
+     if(item.contractInfo)detail.textContent+=' · Contratos presentes na resposta: '+item.contractInfo.count+' (ativos informados: '+item.contractInfo.active+').';
+     else detail.textContent+=' · Contrato não incluído na resposta: requer sincronização de contratos.';
+     line.appendChild(detail);
+    }
     if(item.status==='error'||item.status==='unverified'){const hint=document.createElement('small');hint.textContent='A EVO não confirmou a inexistência deste ID. Você pode conferir manualmente antes de solicitar a exclusão.';line.appendChild(hint)}
     if(item.status==='found'){
-     const btn=document.createElement('button');btn.type='button';btn.className='tinybtn';btn.textContent='Atualizar este ID no D1';
+     const btn=document.createElement('button');btn.type='button';btn.className='tinybtn';btn.textContent=item.d1Updated?'Atualizar novamente':'Tentar atualizar este ID';
      btn.addEventListener('click',()=>refreshAuditStudentById(item.id));line.appendChild(btn);
     }
     if(item.status==='not_found'||item.status==='error'||item.status==='unverified'||item.status==='mismatch'){
