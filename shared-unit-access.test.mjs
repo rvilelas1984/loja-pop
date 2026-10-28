@@ -45,3 +45,15 @@ test('histórico é separado por unidade de origem',()=>{
 test('data ausente falha explicitamente',()=>{
  assert.throws(()=>resolveSharedUnitAccess({contracts:[],rules:[],identityVerified:true}),TypeError);
 });
+
+test('contrato EVO sincronizado usa id_membership e membership_status',()=>{
+ assert.deepEqual(access([{unit:'bike',id_membership:'78217',membership_status:'active'}],[{unit:'bike',contractId:'78217',enabled:1}]).units,['bike','gym']);
+});
+test('status numérico EVO sem mapeamento confirmado não libera acesso',()=>{
+ for(const status of ['1','2','3','4']){
+  assert.deepEqual(access([{unit:'bike',id_membership:'78217',membership_status:status}],[{unit:'bike',contractId:'78217',enabled:1}]).units,[]);
+ }
+});
+test('contrato EVO cancelado não concede acesso compartilhado',()=>{
+ assert.deepEqual(access([{unit:'bike',id_membership:'78217',membership_status:'canceled'}],[{unit:'bike',contractId:'78217',enabled:1}]).units,[]);
+});
