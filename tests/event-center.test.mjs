@@ -90,3 +90,14 @@ test('lazily created mission source gets capture before first operation',async()
 test('200 reservations keep capture parameters bounded and preserve atomicity',async()=>{
  const {db,sql}=fixture();const rows=Array.from({length:200},(_,i)=>({idMember:i+1,slotNumber:i+1,name:'Test'}));await saveReservationSnapshot(db,{unit:'bike',sessionId:'20',date:day,time:'20:00',name:'Bike',rows});assert.equal(sql.prepare("SELECT count(*) n FROM audit_log WHERE action='cp.checkin_reservation_snapshots.detected'").get().n,200);sql.close();
 });
+test('production query plan uses member primary key and large origin filters fit D1 parameters',async()=>{
+ const {sql,db}=fixture(),seen=[];
+ const observed={prepare(text){let statement=db.prepare(text);return {bind(...args){assert(args.length<=100,'D1 parameter limit');statement=statement.bind(...args);return this},all(){seen.push(text);return statement.all()}}}};
+ await readEventCenter(observed,params({origin:eventSources.find(s=>s.mode==='trigger').origin}));
+ const count=seen.find(s=>s.startsWith('SELECT a.action,COUNT'));
+ assert(!count.includes('JOIN members'),'unfiltered counts must not resolve names');
+ const history=seen.find(s=>s.startsWith('SELECT a.id,a.action'));
+ const plan=sql.prepare('EXPLAIN QUERY PLAN '+history).all(...['2000-01-01','2099-01-01',JSON.stringify(['cp.example']),0]);
+ assert(plan.some(r=>/SEARCH m USING INTEGER PRIMARY KEY/.test(r.detail)),JSON.stringify(plan));
+ sql.close();
+});
