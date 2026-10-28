@@ -5046,11 +5046,9 @@ async function findEvoMember(env, cpf) {
 
 
 async function findGymEvoMember(env, cpf) {
-  if (!env.GYM_EVO_DNS || !env.GYM_EVO_TOKEN) {
-    throw new Error("GYM_EVO_CREDENTIALS_MISSING");
-  }
-
-  const auth = btoa(`${env.GYM_EVO_DNS}:${env.GYM_EVO_TOKEN}`);
+  // Read the Gym EVO credentials from the validated D1 unit configuration.
+  const cfg = await getEvoConfig(env, "gym");
+  const auth = btoa(cfg.dns + ":" + cfg.token);
   const basicUrl =
     `https://evo-integracao.w12app.com.br/api/v1/members/basic?document=${encodeURIComponent(cpf)}`;
 
