@@ -275,17 +275,8 @@ async function cpRefreshConquests(){
   for(const x of [...highlights,...daily,...pending]){if(!Number(x.target))continue;const k=String(x.evoMemberId||x.name||"")+"|"+String(x.target);if(!unique.has(k))unique.set(k,{...x,_fromDaily:daily.includes(x),_alreadyDisplayed:!!x.displayed});}
   const freshItems=[...unique.values()].slice(0,10);
   const previousSignature=cpConquestItems.map(x=>String(x.evoMemberId||x.name)+"|"+String(x.target)).sort().join(";");
-  const freshSignature=cpConquestItems.map(x=>String(x.evoMemberId||x.name)+"|"+String(x.target)).sort().join(";");
-  // Publish the exact validated list for this unit/date/session so the TV iframe
-  // can reuse the same records as the standalone check-in on this browser.
-  const sharedKey="cpVerifiedClassAwards:"+unit+":"+(tvEmbedded?(tvParams.get("date")||day()):day())+":"+id;
-  if(!tvEmbedded){try{localStorage.setItem(sharedKey,JSON.stringify({savedAt:Date.now(),items:freshItems}))}catch{}}
-  let canonicalItems=freshItems;
-  if(tvFixedView==="highlights"){try{
-   const shared=JSON.parse(localStorage.getItem(sharedKey)||"null");
-   if(shared&&Date.now()-shared.savedAt<20000&&Array.isArray(shared.items)&&shared.items.length>=freshItems.length)canonicalItems=shared.items;
-  }catch{}}
-  cpConquestItems=canonicalItems;
+  const freshSignature=freshItems.map(x=>String(x.evoMemberId||x.name)+"|"+String(x.target)).sort().join(";");
+  cpConquestItems=freshItems;
   // A fixed TV highlights view must redraw when the server adds or removes awards.
   // Otherwise cpTickConquests returns early in the "conquests" phase and keeps stale cards.
   if(tvFixedView==="highlights"&&previousSignature!==freshSignature){
