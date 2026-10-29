@@ -2656,7 +2656,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const [attendanceQuery,bookingQuery,contractQuery]=await Promise.all([
           env.DB.prepare("SELECT a.evo_member_id id,a.attendance_date day,a.start_time time,a.activity_name activity FROM evo_member_attendance a WHERE a.unit=? AND a.attendance_date>=? AND a.attendance_date<=date('now','-3 hours') AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=a.unit AND r.evo_id=a.evo_member_id AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ?) ORDER BY a.attendance_date,a.start_time").bind(unit,from,from,to).all(),
           env.DB.prepare("SELECT b.evo_member_id id,b.activity_date day,b.start_time time,b.activity_name activity,b.session_id session FROM checkin_reservation_snapshots b WHERE b.unit=? AND b.removed=0 AND (b.status IS NULL OR lower(b.status) NOT IN ('cancelled','canceled','cancelado','cancelada')) AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=b.unit AND r.evo_id=b.evo_member_id AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ?) ORDER BY b.activity_date,b.start_time").bind(unit,from,to).all(),
-          env.DB.prepare("SELECT c.evo_member_id id,c.membership_name name,c.membership_status status,c.start_date startDate,c.end_date endDate,c.cancel_date cancelDate,c.category_id category,c.id_membership membershipId,c.sale_date saleDate FROM evo_member_contracts c WHERE c.unit=? AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=c.unit AND r.evo_id=c.evo_member_id AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ?)").bind(unit,from,to).all()
+          env.DB.prepare("SELECT c.evo_member_id id,c.membership_name name,c.membership_status status,c.start_date startDate,c.end_date endDate,c.cancel_date cancelDate,c.category_id category,c.id_membership membershipId,c.sale_date saleDate,c.raw_json rawFinancial FROM evo_member_contracts c WHERE c.unit=? AND EXISTS(SELECT 1 FROM evo_daily_registrations r WHERE r.unit=c.unit AND r.evo_id=c.evo_member_id AND r.category IN ('client','opportunity') AND r.register_day BETWEEN ? AND ?)").bind(unit,from,to).all()
         ]);
         const byId=(items)=>{const map=new Map();for(const x of items.results||[]){const k=String(x.id);if(!map.has(k))map.set(k,[]);map.get(k).push(x)}return map};
         const attendanceBy=byId(attendanceQuery),bookingBy=byId(bookingQuery),contractBy=byId(contractQuery);
@@ -2694,8 +2694,24 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           st.additionalClassHistory=attend.map((a,index)=>({number:index+1,day:a.day,time:a.time,activity:a.activity,acquisition:(()=>{const candidates=[...contracts.map(c=>({...c,type:'contract'})),...serviceRows.map(c=>({...c,type:'service'}))].filter(c=>String(c.saleDate||c.startDate||'').slice(0,10)<=String(a.day)).sort((x,y)=>String(y.saleDate||y.startDate||'').localeCompare(String(x.saleDate||x.startDate||'')));const c=candidates[0];return c?{name:c.name,membershipId:c.membershipId||null,serviceId:c.serviceId||null,type:c.type,saleDate:c.saleDate||null,matchedBy:'latest_purchase_before_attendance'}:null})()}));st.booking=bookings[0]||null;st.nextBooking=future[0]||null;st.firstAttendanceBooking=first?(bookings.find(b=>String(b.day)===String(first)&&(!attend[0]?.time||!b.time||String(b.time).slice(0,5)===String(attend[0].time).slice(0,5)))||null):null;st.firstAttendance=first;st.lastAttendance=last;st.attendanceCount=attend.length;st.weeklyAverage=Math.round(recent.length/4*10)/10;st.daysSinceAttendance=last?days(last,now):null;st.followupDay=first?Math.max(0,days(first,now)):null;st.retention={day30:first&&days(first,now)>=30?attend.some(a=>days(first,String(a.day))>=23&&days(first,String(a.day))<=37):null,day60:first&&days(first,now)>=60?attend.some(a=>days(first,String(a.day))>=53&&days(first,String(a.day))<=67):null,day90:first&&days(first,now)>=90?attend.some(a=>days(first,String(a.day))>=83&&days(first,String(a.day))<=97):null};
           st.stage=first?"attendance":bookings.length?"booking":"identified";
           st.risk=first&&st.daysSinceAttendance>=14?"high":first&&st.daysSinceAttendance>=7?"attention":!first&&days(st.day,now)>=7?"no-first-class":"normal";
-          st.contracts=contracts.map(c=>({...c,contractCategory:contractCategory(c),active:active.includes(c)}));
-          Object.assign(st,journeyConversion(st,st.contracts,now));
+          // Financeiro: somente recebíveis EVO registrados no D1; ausência de dados não significa pago.
+          const financialContracts=contracts.map(c=>{
+            let raw={};try{raw=JSON.parse(c.rawFinancial||'{}')}catch{}
+            const receivables=Array.isArray(raw.receivables)?raw.receivables:[];
+            const unpaid=receivables.filter(r=>!r.canceled).reduce((sum,r)=>sum+Math.max(0,Number(r.ammount??r.amount??0)-Number(r.ammountPaid??r.amountPaid??0)),0);
+            const paid=receivables.filter(r=>!r.canceled).reduce((sum,r)=>sum+Number(r.ammountPaid??r.amountPaid??0),0);
+            const status=!receivables.length?'unknown':unpaid>0.009?(paid>0?'partial':'pending'):'paid';
+            return {...c,paymentStatus:status,paymentDue:Math.round(unpaid*100)/100,receivableCount:receivables.length};
+          });
+          st.contracts=financialContracts.map(c=>({...c,contractCategory:contractCategory(c),active:active.includes(contracts.find(original=>original===c)||c)}));
+          const eligibleDirect=financialContracts.filter(c=>contractCategory(c)==='other'&&!/experimental|massagem|adicional/i.test(String(c.name||'')));
+          const outstanding=eligibleDirect.filter(c=>['pending','partial'].includes(c.paymentStatus));
+          st.paymentStatus=outstanding.length?'pending':eligibleDirect.some(c=>c.paymentStatus==='paid')?'paid':eligibleDirect.length?'unknown':'not-applicable';
+          st.paymentDue=Math.round(outstanding.reduce((n,c)=>n+c.paymentDue,0)*100)/100;
+          st.paymentContractNames=outstanding.map(c=>c.name);
+          // Uma cobrança pendente não bloqueia outro contrato elegível já quitado.
+          const conversionContracts=financialContracts.filter(c=>contractCategory(c)!=='other'||!['pending','partial'].includes(c.paymentStatus));
+          Object.assign(st,journeyConversion(st,conversionContracts,now));
           st.journeyStage=currentJourneyStage(st);
           st.contractAlert=!!st.conversionPending;st.contractFound=st.converted;
           st.firstContract=st.conversionContract?.name||null;
