@@ -193,7 +193,7 @@ async function loadTVCheckin(){
  const date=tvParams.get('date')||day();
  if(!tvSession){els.time.textContent='—';els.map.innerHTML='<div class="empty-class">Esta aula não possui identificação de sessão no D1. Atualize a grade para testar.</div>';return}if(date!==day()&&tvParams.get('preview')!=='1'){els.time.textContent='—';els.map.innerHTML='<div class="empty-class">O check-in estará disponível no dia desta aula.</div>';return}
  const key='cpTVCheckin:'+tvUnit+':'+date+':'+tvSession;
- if(tvFixedView==="highlights"){try{const awardCache=JSON.parse(localStorage.getItem("cpTVAwards:"+tvUnit+":"+date+":"+tvSession)||"null");if(awardCache&&Date.now()-awardCache.savedAt<300000&&awardCache.items?.length){cpConquestSession=tvUnit+":"+tvSession;cpConquestItems=awardCache.items;cpConquestPhase="positions";cpConquestAt=Date.now()-cpTvSettings.positionsSeconds*1000;cpTickConquests();}}catch{}}
+
  // Fetch awards in parallel with class detail, not after check-in rendering.
  if(tvFixedView==='highlights'){currentSessionId=tvSession;cpRefreshConquests();}
  let hit=null;try{const saved=JSON.parse(localStorage.getItem(key)||'null');if(saved&&Date.now()-saved.savedAt<300000)hit=saved.data}catch{}
@@ -274,7 +274,7 @@ async function cpRefreshConquests(){
   const unique=new Map();
   for(const x of [...highlights,...daily,...pending]){if(!Number(x.target))continue;const k=String(x.evoMemberId||x.name||"")+"|"+String(x.target);if(!unique.has(k))unique.set(k,{...x,_fromDaily:daily.includes(x),_alreadyDisplayed:!!x.displayed});}
   cpConquestItems=[...unique.values()].slice(0,10);
-  if(tvEmbedded&&cpConquestItems.length){try{localStorage.setItem("cpTVAwards:"+unit+":"+(tvParams.get("date")||day())+":"+id,JSON.stringify({savedAt:Date.now(),items:cpConquestItems}))}catch{}}
+  // The TV always uses the current verified awards response, not a stale local snapshot.
   status.hidden=false;status.textContent=cpConquestItems.length?cpConquestItems.length+" conquista(s) confirmada(s) nesta aula • alternância automática":"Nenhuma conquista confirmada para esta aula.";if(tvFixedView==="highlights"&&cpConquestItems.length){cpConquestPhase="positions";cpConquestAt=Date.now()-cpTvSettings.positionsSeconds*1000;cpTickConquests();}
  }else{status.hidden=false;status.textContent="Destaques indisponíveis: "+(String(awards.reason?.message||"").includes("AUTORIZADO")?"o perfil não tem permissão para consultar as conquistas":String(awards.reason?.message||"falha de conexão"))+". Nova tentativa em até 1 minuto.";console.warn("[Club Pop] Destaques:",awards.reason);}
 }
@@ -294,7 +294,7 @@ function cpTickConquests(){const now=Date.now(),screen=document.querySelector(".
  }
 }
 setInterval(cpTickConquests,1000);
-setInterval(cpRefreshConquests,60000);
+setInterval(cpRefreshConquests,tvFixedView==="highlights"?15000:60000);
 const us=document.getElementById("unitSelect");if(us){us.value=tvEmbedded?tvUnit:(window.cpCheckinAllowedUnits||["bike"]).includes(sessionStorage.getItem("cpCheckinUnit"))?sessionStorage.getItem("cpCheckinUnit"):(window.cpCheckinAllowedUnits||["bike"])[0]||"bike";applyUnitIdentity(us.value);us.onchange=()=>{sessionStorage.setItem("cpCheckinUnit",us.value);applyUnitIdentity(us.value);load("initial")}}if(tvEmbedded)loadTVCheckin();else load("initial");setInterval(watchClassChange,15000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)watchClassChange()});document.querySelector("#back").onclick=()=>location.href="/admin-resgates.html";document.querySelector("#refresh").onclick=()=>{cpRefreshConquests();return load("manual")};document.querySelector("#gradeRefresh").onclick=()=>refreshGrade();document.querySelector("#prev").onclick=()=>navigateClass(-1);document.querySelector("#nextClass").onclick=()=>navigateClass(1);document.addEventListener('fullscreenchange',()=>{const wrap=document.querySelector('.checkin-wrap');if(!wrap)return;wrap.style.setProperty('--cp-fullscreen-cols',String(Math.max(1,...[...wrap.querySelectorAll('.map .row')].map(row=>row.children.length))));wrap.querySelectorAll('.map .row').forEach(row=>row.style.setProperty('--cp-row-cols',String(row.children.length||8)));});
 document.querySelector("#fs").onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.querySelector(".checkin-wrap").requestFullscreen()}catch{}};
 </script><script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script><script>
