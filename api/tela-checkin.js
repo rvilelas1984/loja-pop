@@ -25,6 +25,11 @@ const displayName=n=>{const p=String(n||"").trim().split(/\s+/).filter(Boolean);
 export default async function handler(req,res){
  if(req.method!=="GET")return res.status(405).json({ok:false,error:"Método não permitido"});res.setHeader("cache-control","no-store");
  const observedAt=Date.now(),cookie=String(req.headers.cookie||'');
+ if(req.query.mode==='mirror'){
+  const unit=String(req.query.unit||''),date=String(req.query.date||''),sessionId=String(req.query.idActivitySession||'');
+  if(!cookie)return res.status(401).json({ok:false,error:'NAO_AUTORIZADO'});
+  try{const q=new URLSearchParams({unit,date,sessionId});const r=await fetch('https://club-pop-api.renato-vilelas-personal.workers.dev/checkin-snapshot?'+q,{headers:{'x-clubpop-admin-cookie':cookie},cache:'no-store',signal:AbortSignal.timeout(15000)});const d=await r.json();if(r.ok&&d.ok){d.current.enrollments=await birthdayFlags(unit,d.current.enrollments.map(e=>({...e,displayName:displayName(e.name)})))}return res.status(r.status).json(d)}catch{return res.status(502).json({ok:false,error:'ESPELHAMENTO_INDISPONIVEL'})}
+ }
  const unit=String(req.query.unit||"bike").toLowerCase()==="gym"?"gym":"bike",cfg=getEvoTransport(unit),evoFetch=cfg.fetch;
  const headers=cfg.headers;
  try{const stamp=sao(),date=stamp.slice(0,10),now=mins(stamp.slice(11,16));const mode=String(req.query.mode||"auto"),requestedId=String(req.query.idActivitySession||"");if(mode==="future-snapshots"){

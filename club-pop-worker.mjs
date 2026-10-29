@@ -1,3 +1,4 @@
+import {readCheckinMirror,assertCheckinSessionDate} from './lib/checkin-mirror.mjs';
 import {memberUnitAccess,readAccessSettings,saveAccessSettings,accessCatalog} from './lib/unit-access.mjs';
 import {memberAttendanceIds,unitAttendanceHistory,unitAttendanceRows,unitStars} from './lib/unit-progress.mjs';
 import {serviceSalesAdmin,scheduledServiceSales,ensureServiceSalesTables} from './lib/service-sales-sync.mjs';
@@ -4187,6 +4188,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           if(!authorized)return json({ok:false,error:'NAO_AUTORIZADO'},403);
         }
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS checkin_reservation_snapshots (unit TEXT NOT NULL,session_id TEXT NOT NULL,activity_date TEXT NOT NULL,start_time TEXT NOT NULL,activity_name TEXT,slot_number INTEGER NOT NULL,evo_member_id TEXT,member_name TEXT,removed INTEGER NOT NULL DEFAULT 0,status TEXT,checked_in INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,session_id,slot_number))").run();
+        if(request.method==="GET"&&url.searchParams.has("sessionId")){
+          try{return json(await readCheckinMirror(env.DB,url.searchParams.get("unit"),url.searchParams.get("date"),url.searchParams.get("sessionId")))}catch(error){return json({ok:false,error:String(error.message||error)},409)}
+        }
         if(request.method==="GET"){
           const unit=String(url.searchParams.get("unit")||""),date=String(url.searchParams.get("date")||""),time=String(url.searchParams.get("time")||"");
           const slot=Number(url.searchParams.get("slot"));
@@ -4199,6 +4203,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         let snapshot,time;
         try{
           await ensureReservationSchema(env.DB);
+          await assertCheckinSessionDate(env.DB,unit,sid,date);
           time=reservationTime(session?.startTime);
           const observedAt=body.observedAt||Date.now();snapshot=await saveReservationSnapshot(env.DB,{unit,sessionId:sid,date,time,name:session?.name,rows,observedAt});if(!snapshot.superseded)await saveProspectReservationSnapshot(env.DB,{unit,sessionId:sid,date,time,name:session?.name,rows,observedAt});
         }catch(error){return json({ok:false,error:String(error.message||error)},422)}
