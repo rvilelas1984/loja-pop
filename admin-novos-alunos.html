@@ -90,7 +90,7 @@ function journeyPurchase(s){
  const services=(s.servicePurchases||[]).filter(c=>c&&!c.removed);
  const plans=contracts.filter(c=>!/massagem|adicional/i.test(String(c.name||'')));
  const items=[...plans.map(c=>clean(c.name)),...services.map(c=>clean(c.name)+(c.quantity?' · '+Number(c.quantity)+' sessão(ões)':''))];
- return items.length?items.join('<small>')+'</small>':'<span class="pill gray">Não identificado</span>';
+ return items.length?items.join('<small> · </small>'):'<span class="pill gray">Não identificado</span>';
 }
 function journeyPayment(s){
  const status=s.paymentStatus||'unknown',due=Number(s.paymentDue||0);
