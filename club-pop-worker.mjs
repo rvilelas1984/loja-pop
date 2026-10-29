@@ -1,9 +1,11 @@
+import {memberUnitAccess,readAccessSettings,saveAccessSettings,accessCatalog} from './lib/unit-access.mjs';
+import {memberAttendanceIds,unitAttendanceHistory,unitAttendanceRows,unitStars} from './lib/unit-progress.mjs';
 import {serviceSalesAdmin,scheduledServiceSales,ensureServiceSalesTables} from './lib/service-sales-sync.mjs';
 import {loadJourneyPeople,loadJourneyFacts,auditJourneyIdentities} from './lib/journey-data.mjs';
 import {journeyConversion,currentJourneyStage,contractCategory} from './lib/journey-conversion.mjs';
 import {captureConquestEvents} from './lib/conquest-events.mjs';
 import {eventParams,readEventCenter,ensureEventSourceCapture} from './lib/event-center.mjs';
-import {canonicalEvoId,normalizeMemberIds,resolveEvoClubMember,memberAttendanceHistory} from './lib/member-identity.mjs';
+import {canonicalEvoId,normalizeMemberIds,resolveEvoClubMember} from './lib/member-identity.mjs';
 import {activeContract,drawCandidates,ensureDrawMember,drawAttendance,ticketSession,acquireDrawLease,releaseDrawLease} from './lib/lucky-draw-data.mjs';
 import { partnerMedia } from "./lib/partner-media.mjs";
 import {popDrawAdmin,popDrawTick} from './lib/pop-draws.mjs';
@@ -1644,60 +1646,53 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:'NAO_AUTORIZADO'},401);
         const unit=url.searchParams.get('unit')==='gym'?'gym':'bike';
-        const data=await memberAttendanceHistory(env.DB,member,unit,url.searchParams.get('offset'));
+        const access=await memberUnitAccess(env.DB,member.evo_member_id,member.gym_client_id);
+        if(!access.activeUnits.includes(unit))return json({ok:false,error:'UNIDADE_NAO_AUTORIZADA'},403);
+        const data=await unitAttendanceHistory(env.DB,member,unit,url.searchParams.get('offset'));
         return json(data,data.ok?200:404);
       }
-      // Student-only lifetime stars, read from D1; never calls EVO.
+      // Access and evolution use separate, verified identities; no EVO requests.
       if (url.pathname === "/member/stars" && request.method === "GET") {
-        const auth=request.headers.get("Authorization")||"";
-        if(!auth.startsWith("Bearer "))return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const tokenHash=await sha256(auth.slice(7));
-        const session=await env.DB.prepare("SELECT m.id,m.evo_member_id,COALESCE(NULLIF(m.gym_client_id,''),g.gym_client_id) AS gym_client_id,m.first_name,m.last_name FROM auth_sessions s JOIN members m ON m.id=s.member_id LEFT JOIN gym_member_links g ON g.member_id=m.id AND g.status='ACTIVE' WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP LIMIT 1").bind(tokenHash).first();
-        if(!session)return json({ok:false,error:"SESSAO_INVALIDA"},401);
-        Object.assign(session,normalizeMemberIds(session));
-        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike";
-        const evoId=unit==="gym"?session.gym_client_id:session.evo_member_id;
-        if(!evoId)return json({ok:false,error:"UNIDADE_NAO_VINCULADA"},404);
-        let legacy=0,actual=0;
-        if(unit==="gym"){
-          const starRow=await env.DB.prepare(rankingBase+"SELECT legacy,actual,stars FROM totals WHERE evo_member_id=? LIMIT 1").bind(String(evoId)).first();
-          if(!starRow)return json({ok:false,error:"ALUNO_SEM_RANKING"},404);
-          legacy=Number(starRow.legacy||0);actual=Number(starRow.actual||0);
-        }else{
-          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,MAX((SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT)),COALESCE((SELECT baseline_count FROM bike_evo_historical_baseline b WHERE b.evo_member_id=CAST(m.evo_member_id AS TEXT) AND NOT EXISTS(SELECT 1 FROM club_settings review WHERE review.key='attendance_baseline_review:bike:'||b.evo_member_id AND json_extract(review.value,'$.status')='pending')),0)+(SELECT COUNT(*) FROM evo_member_attendance a WHERE a.unit='bike' AND a.evo_member_id=CAST(m.evo_member_id AS TEXT) AND a.attendance_date>'2026-10-18')) AS actual FROM members m WHERE m.id=?").bind(session.id).first();
-          legacy=Number(starRow?.legacy||0);actual=Number(starRow?.actual||0);
-        }
-        return json({ok:true,unit,memberId:session.id,name:[session.first_name,session.last_name].filter(Boolean).join(" ").trim()||"Aluno",stars:{legacy,actual,total:legacy+actual},source:"d1",evoRequestsMade:0});
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const unit=url.searchParams.get("unit")==="gym"?"gym":"bike";
+        const access=await memberUnitAccess(env.DB,member.evo_member_id,member.gym_client_id);
+        if(!access.activeUnits.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        const identity=await memberAttendanceIds(env.DB,member,unit);
+        return json({ok:true,unit,memberId:member.id,name:[member.first_name,member.last_name].filter(Boolean).join(" "),stars:await unitStars(env.DB,member,unit,identity.ids),identityPending:identity.pending.length>0,source:"d1",evoRequestsMade:0});
       }
       // Cache de leitura do Dashboard: nunca chama a EVO.
       if (url.pathname === "/member/evo-cache" && request.method === "GET") {
-        const auth=request.headers.get("Authorization")||"";if(!auth.startsWith("Bearer "))return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const tokenHash=await sha256(auth.slice(7));
-        const session=await env.DB.prepare("SELECT m.id,m.evo_member_id,COALESCE(m.gym_client_id,g.gym_client_id) AS gym_client_id FROM auth_sessions s JOIN members m ON m.id=s.member_id LEFT JOIN gym_member_links g ON g.member_id=m.id AND g.status='ACTIVE' WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP LIMIT 1").bind(tokenHash).first();
+        const session=await authenticatedMember(request,env);
         if(!session)return json({ok:false,error:"SESSAO_INVALIDA"},401);
-        Object.assign(session,normalizeMemberIds(session));
-        const unit=String(url.searchParams.get("unit")||"bike").toLowerCase()==="gym"?"gym":"bike",evoId=unit==="gym"?session.gym_client_id:session.evo_member_id;
-        if(!evoId)return json({ok:false,error:"UNIDADE_NAO_VINCULADA"},404);
+        const unit=url.searchParams.get("unit")==="gym"?"gym":"bike";
+        const access=await memberUnitAccess(env.DB,session.evo_member_id,session.gym_client_id);
+        if(!access.activeUnits.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        const identity=await memberAttendanceIds(env.DB,session,unit);
+        const ownId=unit==="gym"?session.gym_client_id:session.evo_member_id;
+        const evoId=ownId||"__shared_access__";
+        const progressInfo={sharedAccess:access.grants.filter(g=>g.targetUnit===unit),identityPending:identity.pending.length>0};
         if(unit==="bike"){
           const parse=v=>{try{return JSON.parse(v||"{}")}catch{return {}}};
           const cache=await env.DB.prepare("SELECT payload_json,updated_at FROM evo_member_cache WHERE unit='bike' AND evo_member_id=?").bind(String(evoId)).first();
           const master=await env.DB.prepare("SELECT personal_json,financial_json,memberships_json,synced_at FROM evo_member_master WHERE unit='bike' AND evo_member_id=?").bind(String(evoId)).first();
           const base=await env.DB.prepare("SELECT first_name,last_name FROM members WHERE id=?").bind(session.id).first();
           const data=parse(cache?.payload_json),personal=parse(master?.personal_json),financial=parse(master?.financial_json);
-          data.member={idMember:evoId,firstName:personal.firstName||base?.first_name||"Aluno",lastName:personal.lastName||base?.last_name||"",branchName:"Studio Bike Pop",memberships:parse(master?.memberships_json),...(data.member||{})};
+          data.member={idMember:ownId||null,firstName:personal.firstName||base?.first_name||"Aluno",lastName:personal.lastName||base?.last_name||"",branchName:"Studio Bike Pop",memberships:parse(master?.memberships_json),...(data.member||{})};
           if(!Array.isArray(data.member.memberships))data.member.memberships=[];
           const studentBalance=await env.DB.prepare("SELECT fitcoins FROM evo_students WHERE unit='bike' AND evo_member_id=? AND is_current=1 LIMIT 1").bind(String(evoId)).first();
           const coin=[studentBalance?.fitcoins,data.fitcoins,financial.totalFitCoins,financial.totalFitcoins].find(v=>v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)));data.fitcoins=coin===undefined?null:Number(coin);
           const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()),part=t=>parts.find(p=>p.type===t).value,month=part("year")+"-"+part("month"),today=month+"-"+part("day");
-          const q=await env.DB.prepare("SELECT attendance_date,start_time,activity_name,id_activity_session,json_extract(raw_json,'$.raw.slotNumber') AS slotNumber FROM evo_member_attendance WHERE unit='bike' AND evo_member_id=? AND substr(attendance_date,1,7)=? ORDER BY attendance_date,start_time,id_activity_session").bind(String(evoId),month).all();
+          const q={results:await unitAttendanceRows(env.DB,unit,identity.ids,month)};
           const rows=(q.results||[]).map(a=>({date:a.attendance_date,startTime:a.start_time,activity:a.activity_name,idActivitySession:a.id_activity_session,slotNumber:a.slotNumber,presenca:true,isFinalized:true})),times={},acts={},days=new Set();
           for(const a of rows){days.add(a.date);if(a.startTime)times[a.startTime]=(times[a.startTime]||0)+1;if(a.activity)acts[a.activity]=(acts[a.activity]||0)+1}
           const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0]?.[0]||null,monday=new Date(today+"T00:00:00Z");monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);const week=rows.filter(a=>a.date>=monday.toISOString().slice(0,10)&&a.date<=today);
+          Object.assign(data,progressInfo);
           data.sessionDetails=await memberSessionDetails(env.DB,unit,evoId);
           await attachContractSessions(env.DB,unit,evoId,data);
           data.attendance={ok:true,period:{month},attendanceCount:rows.length,distinctDays:days.size,favoriteTime:top(times),favoriteActivity:top(acts),favoriteEquipment:favoriteEquipmentFromRows(rows,unit,top(acts)),currentWeek:{attendanceCount:week.length,distinctDays:new Set(week.map(a=>a.date)).size},attendance:rows};
-          const starRow=await env.DB.prepare("SELECT COALESCE(m.presencas_legadas_bike,0) AS legacy,MAX((SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT)),COALESCE((SELECT baseline_count FROM bike_evo_historical_baseline b WHERE b.evo_member_id=CAST(m.evo_member_id AS TEXT) AND NOT EXISTS(SELECT 1 FROM club_settings review WHERE review.key='attendance_baseline_review:bike:'||b.evo_member_id AND json_extract(review.value,'$.status')='pending')),0)+(SELECT COUNT(*) FROM evo_member_attendance e WHERE e.unit='bike' AND e.evo_member_id=CAST(m.evo_member_id AS TEXT) AND e.attendance_date>'2026-10-18')) AS current_count FROM members m WHERE m.id=?").bind(session.id).first();
-          data.bikeStars={total:Number(starRow?.legacy||0)+Number(starRow?.current_count||0),legacy:Number(starRow?.legacy||0),current:Number(starRow?.current_count||0)};
+          const stars=await unitStars(env.DB,session,unit,identity.ids);
+          data.bikeStars={total:stars.total,legacy:stars.legacy,current:stars.actual};
           const sync=await env.DB.prepare("SELECT sync_time,last_sync_at FROM evo_sync_config WHERE unit='bike'").first();
           return json({ok:true,unit,cached:true,source:"d1",evoRequestsMade:0,updatedAt:cache?.updated_at||master?.synced_at||null,sync:{syncTime:sync?.sync_time||null,lastSyncAt:sync?.last_sync_at||null},data});
         }
@@ -1734,14 +1729,15 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           const isEligible=String(x.membership_status??raw.membershipStatus??"").toLowerCase()==="active"&&!/WELLHUB|GYMPASS|TOTAL\s*PASS|TOTALPASS|MASSAGEM|SERVIÇO|SERVICO/.test(String(raw.nameMembership??raw.name??x.membership_name??"").toUpperCase())&&raw.limitless!==true;
           return {...raw,idMembership:raw.idMembership??x.id_membership,idMemberMembership:raw.idMemberMembership??x.id_member_membership,idCategoryMembership:raw.idCategoryMembership??x.category_id,nameMembership:raw.nameMembership??raw.name??x.membership_name,membershipStatus:raw.membershipStatus??raw.statusMemberMembership??x.membership_status,startDate:raw.startDate??x.start_date,endDate:raw.endDate??x.end_date,cancelDate:raw.cancelDate??x.cancel_date,saleDate:raw.saleDate??x.sale_date,flAdditionalMembership:raw.flAdditionalMembership??!!x.is_additional,absenceAudit:isEligible?{unjustified:linked.filter(a=>a.evo_status===1&&a.justified_absence===0).length,justified:linked.filter(a=>a.justified_absence===1).length,partial:true,attribution:"unique_eligible_contract_in_d1"}:null};
         }),unitMemberships=projected.length?projected:(Array.isArray(masterMemberships)?masterMemberships:[]);
-        data.member={idMember:evoId,firstName:personal.firstName||cachedMember.firstName||fallbackFirst,lastName:personal.lastName||cachedMember.lastName||fallbackLast,branchName:unit==="gym"?"Studio Gym Pop":"Studio Bike Pop",membershipStatus:student?.membership_status||cachedMember.membershipStatus||null,memberships:unitMemberships};
+        data.member={idMember:ownId||null,firstName:personal.firstName||cachedMember.firstName||fallbackFirst,lastName:personal.lastName||cachedMember.lastName||fallbackLast,branchName:unit==="gym"?"Studio Gym Pop":"Studio Bike Pop",membershipStatus:student?.membership_status||cachedMember.membershipStatus||null,memberships:unitMemberships};
         const coin=[student?.fitcoins,financial.totalFitCoins,financial.totalFitcoins].find(v=>v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)));data.fitcoins=coin===undefined?null:Number(coin);
         const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()),part=t=>parts.find(p=>p.type===t).value,month=part("year")+"-"+part("month"),today=month+"-"+part("day");
-        const q=await env.DB.prepare("SELECT attendance_date,start_time,activity_name,id_activity_session,json_extract(raw_json,'$.raw.slotNumber') AS slotNumber FROM evo_member_attendance WHERE unit=? AND evo_member_id=? AND substr(attendance_date,1,7)=? ORDER BY attendance_date,start_time,id_activity_session").bind(unit,String(evoId),month).all();
+          const q={results:await unitAttendanceRows(env.DB,unit,identity.ids,month)};
         const rows=(q.results||[]).map(a=>({date:a.attendance_date,startTime:a.start_time,activity:a.activity_name,idActivitySession:a.id_activity_session,slotNumber:a.slotNumber,presenca:true,isFinalized:true})),times={},acts={},days=new Set();
         for(const a of rows){days.add(String(a.date).slice(0,10));if(a.startTime)times[a.startTime]=(times[a.startTime]||0)+1;if(a.activity)acts[a.activity]=(acts[a.activity]||0)+1}
         const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0]?.[0]||null,monday=new Date(today+"T00:00:00Z");monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);const week=rows.filter(a=>String(a.date).slice(0,10)>=monday.toISOString().slice(0,10)&&String(a.date).slice(0,10)<=today);
-        data.sessionDetails=await memberSessionDetails(env.DB,unit,evoId);
+        Object.assign(data,progressInfo);
+          data.sessionDetails=await memberSessionDetails(env.DB,unit,evoId);
         await attachContractSessions(env.DB,unit,evoId,data);
           data.attendance={ok:true,period:{month},attendanceCount:rows.length,distinctDays:days.size,favoriteTime:top(times),favoriteActivity:top(acts),favoriteEquipment:favoriteEquipmentFromRows(rows,unit,top(acts)),currentWeek:{attendanceCount:week.length,distinctDays:new Set(week.map(a=>String(a.date).slice(0,10))).size},attendance:rows};
         return json({ok:true,unit,cached:!!cache,source:"d1-unified",evoRequestsMade:0,coverage:{cache:!!cache,master:!!master,student:!!student,contracts:projected.length,attendance:rows.length},updatedAt:cache?.updated_at||master?.synced_at||student?.updated_at||null,sync:{syncTime:sync?.sync_time||null,lastSyncAt:sync?.last_sync_at||null},data});
@@ -3701,6 +3697,23 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         return json({ok:true,unit,backgroundColor:row?.background_color||defaults[unit],headerColor:row?.header_color||"#ffffff",logoData:row?.logo_data||"",faviconData:row?.favicon_data||"",logoLink:row?.logo_link||"",updatedAt:row?.updated_at||null});
       }
 
+      if (url.pathname === "/admin/shared-unit-access") {
+        if(!["GET","PUT"].includes(request.method))return json({ok:false,error:"METODO_INVALIDO"},405);
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const admin=await vr.json().catch(()=>({}));
+        if(!vr.ok||admin.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        try{
+          const settings=request.method==="PUT"?await saveAccessSettings(env.DB,await readJson(request),admin.id||admin.email||admin.name):await readAccessSettings(env.DB);
+          return json({ok:true,...settings,catalog:await accessCatalog(env.DB),evoRequestsMade:0});
+        }catch(e){
+          const known=["REGRAS_INVALIDAS","CONTRATO_INVALIDO","CONTRATO_REPETIDO","CONTRATO_NAO_ENCONTRADO","CONFIGURACAO_ALTERADA_RECARREGUE"];
+          if(!known.includes(e.message))throw e;
+          return json({ok:false,error:e.message},e.message==="CONFIGURACAO_ALTERADA_RECARREGUE"?409:400);
+        }
+      }
+
       if (url.pathname === "/admin/auto-link-history" && request.method==="GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -4982,13 +4995,7 @@ function clubProfile(row){
  return {unit:row.unit,id:clubCanonicalId(row.evo_member_id),cpf:clubDigits(p.document||raw.document||raw["CPF (CIN)"]),email:normalizeEmail((Array.isArray(c)?c.find(x=>String(x.contactType||"").toLowerCase().includes("mail"))?.description: c?.email)||p.email||raw.email||raw["E-MAIL"]),birth:normalizeDate(p.birthDate||raw.birthDate||raw["DATA DE NASCIMENTO"]),first:p.firstName||raw.firstName||"",last:p.lastName||raw.lastName||""};
 }
 async function clubActiveUnits(env,bikeId,gymId){
- const ids=[["bike",bikeId],["gym",gymId]].filter(x=>x[1]!=null&&String(x[1])!=="").map(([unit,id])=>[unit,clubCanonicalId(id)]);
- const active=[];
- for(const [unit,id] of ids){
-  const found=await env.DB.prepare(`SELECT 1 FROM evo_member_contracts WHERE unit=? AND CAST(evo_member_id AS TEXT)=? AND lower(trim(membership_status)) IN ('active','1') AND (start_date IS NULL OR start_date='' OR substr(start_date,1,10)<=date('now','-3 hours')) AND (end_date IS NULL OR end_date='' OR substr(end_date,1,10)>=date('now','-3 hours')) AND (cancel_date IS NULL OR cancel_date='' OR substr(cancel_date,1,10)>date('now','-3 hours')) LIMIT 1`).bind(unit,String(id)).first();
-  if(found)active.push(unit);
- }
- return active;
+ return (await memberUnitAccess(env.DB,bikeId,gymId)).activeUnits;
 }
 async function clubFindLocal(env,cpf,email,birth){
  const rows=(await env.DB.prepare("SELECT unit,evo_member_id,personal_json,contacts_json,raw_json FROM evo_member_master WHERE is_current=1 AND unit IN ('bike','gym')").all()).results||[];

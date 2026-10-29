@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - "club-pop-worker.mjs"
+      - "lib/unit-access.mjs"
+      - "lib/unit-progress.mjs"
       - "lib/event-*.mjs"
       - "lib/conquest-events.mjs"
       - "lib/journey-plan.mjs"

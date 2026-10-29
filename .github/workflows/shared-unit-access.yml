@@ -1,0 +1,20 @@
+name: Validate shared unit access
+on:
+  push:
+    paths:
+      - 'lib/unit-*.mjs'
+      - 'tests/shared-unit-access.test.mjs'
+      - 'club-pop-worker.mjs'
+      - 'index.html'
+      - 'admin-shared-unit-access.js'
+      - '.github/workflows/shared-unit-access.yml'
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/shared-unit-access.test.mjs tests/member-identity.test.mjs tests/promotion-eligibility.test.mjs tests/student-lucky-numbers.test.mjs
