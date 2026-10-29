@@ -2676,7 +2676,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const extraContracts=linkedId?(await env.DB.prepare("SELECT membership_name name,membership_status status,start_date startDate,end_date endDate,cancel_date cancelDate,category_id category,id_membership membershipId,sale_date saleDate FROM evo_member_contracts WHERE unit=? AND evo_member_id=?").bind(unit,linkedId).all()).results||[]:[];
           const contracts=[...(contractBy.get(String(st.id))||[]),...extraContracts];
           const memberIds=[String(st.id),...(linkedId?[String(linkedId)]:[])];
-          const serviceRows=(await env.DB.prepare("SELECT id_service serviceId,service_name name,sale_date saleDate,id_sale saleId,removed FROM evo_member_service_sales WHERE unit=? AND evo_member_id IN ("+memberIds.map(()=>"?").join(",")+") AND removed=0 ORDER BY sale_date").bind(unit,...memberIds).all()).results||[];
+          const serviceRows=(await env.DB.prepare("SELECT id_service serviceId,service_name name,sale_date saleDate,id_sale saleId,quantity,removed FROM evo_member_service_sales WHERE unit=? AND evo_member_id IN ("+memberIds.map(()=>"?").join(",")+") AND removed=0 ORDER BY sale_date").bind(unit,...memberIds).all()).results||[];
           st.servicePurchases=serviceRows;
 
           let registrationPayload={};try{const rr=await env.DB.prepare("SELECT payload_json FROM evo_daily_registrations WHERE unit=? AND evo_id=? AND category=? ORDER BY register_at DESC LIMIT 1").bind(unit,String(st.id),st.category==='opportunity'?'opportunity':'client').first();registrationPayload=JSON.parse(rr?.payload_json||'{}')}catch{}
