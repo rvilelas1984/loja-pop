@@ -262,8 +262,12 @@ async function cpRefreshConquests(){
  const status=document.getElementById("cpConquestStatus");
  if(awards.status==="fulfilled"){
   // Only previously confirmed, unshown milestones for this exact class are eligible.
-  cpConquestItems=(awards.value.pending||[]).filter(x=>String(x.sessionId||"")===id&&x.type==="milestone").slice(0,10);
-  status.hidden=false;status.textContent=cpConquestItems.length?cpConquestItems.length+" destaque(s) pendente(s) para esta aula • alternância automática":"Sem conquistas pendentes para esta aula.";
+  const daily=(Array.isArray(awards.value.daily)?awards.value.daily:[]).filter(x=>String(x.sessionId||"")===id);
+  const pending=(Array.isArray(awards.value.pending)?awards.value.pending:[]).filter(x=>String(x.sessionId||"")===id&&x.type==="milestone");
+  const unique=new Map();
+  for(const x of [...daily,...pending]){if(!Number(x.target))continue;const k=String(x.evoMemberId||x.name||"")+"|"+String(x.target);if(!unique.has(k))unique.set(k,{...x,_fromDaily:daily.includes(x)});}
+  cpConquestItems=[...unique.values()].slice(0,10);
+  status.hidden=false;status.textContent=cpConquestItems.length?cpConquestItems.length+" conquista(s) confirmada(s) nesta aula • alternância automática":"Nenhuma conquista confirmada para esta aula.";
  }else{status.hidden=false;status.textContent="Destaques indisponíveis: "+(String(awards.reason?.message||"").includes("AUTORIZADO")?"o perfil não tem permissão para consultar as conquistas":String(awards.reason?.message||"falha de conexão"))+". Nova tentativa em até 1 minuto.";console.warn("[Club Pop] Destaques:",awards.reason);}
 }
 function cpFitAwards(){
@@ -278,7 +282,7 @@ setInterval(()=>{const now=Date.now(),screen=document.querySelector(".screen");i
   const awardGrid=document.getElementById("cpConquestCards");if(awardGrid){const n=cpConquestItems.length||1;const cols=n<=3?n:n<=6?3:n<=9?3:5;const rows=Math.ceil(n/cols);awardGrid.style.setProperty("--award-cols",cols);awardGrid.style.setProperty("--award-rows",rows);requestAnimationFrame(cpFitAwards)}
   screen.classList.add("cp-show-conquests");cpConquestShown=[...cpConquestItems];cpConquestPhase="conquests";cpConquestAt=now;
  }else if(elapsed>=(cpConquestPhase==="conquests"?cpTvSettings.highlightsSeconds*1000:cpTvSettings.positionsSeconds*1000)){
-  if(cpConquestPhase==="conquests"&&cpConquestShown.length){const unit=document.getElementById("unitSelect")?.value||"bike",date=day(),displaySession=cpConquestSession;for(const x of cpConquestShown){fetch("/api/evo-config?route=hall-conquests-display&unit="+unit,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({evoMemberId:x.evoMemberId,sessionId:x.sessionId,earnedDate:x.earnedDate,date,target:x.target})}).then(r=>{if(r.ok&&cpConquestSession===displaySession){/* keep current-class highlight visible after display acknowledgement */}}).catch(()=>{})}cpConquestShown=[]}screen.classList.remove("cp-show-conquests");cpConquestPhase="positions";cpConquestAt=now;
+  if(cpConquestPhase==="conquests"&&cpConquestShown.length){const unit=document.getElementById("unitSelect")?.value||"bike",date=day(),displaySession=cpConquestSession;for(const x of cpConquestShown.filter(x=>!x._fromDaily)){fetch("/api/evo-config?route=hall-conquests-display&unit="+unit,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({evoMemberId:x.evoMemberId,sessionId:x.sessionId,earnedDate:x.earnedDate,date,target:x.target})}).then(r=>{if(r.ok&&cpConquestSession===displaySession){/* keep current-class highlight visible after display acknowledgement */}}).catch(()=>{})}cpConquestShown=[]}screen.classList.remove("cp-show-conquests");cpConquestPhase="positions";cpConquestAt=now;
  }
 },1000);
 setInterval(cpRefreshConquests,60000);
