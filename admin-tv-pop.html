@@ -131,6 +131,8 @@ function cpTvPrepare(c){
   const q=new URLSearchParams({tvpop:'1',unit,session,date,preview:preview?'1':'0',view});
   const frame=document.createElement('iframe');
   frame.className='checkin-frame';frame.title=view==='highlights'?'Destaques da aula':'Check-in da aula';
+  // Destaques precisam do ciclo nativo para construir os cards oficiais.
+  if(view==='highlights')q.delete('view');
   frame.src='/tela-checkin.html?'+q.toString();
   frame.style.cssText='position:absolute;left:0;top:0;width:1280px;height:720px;max-width:none;transform-origin:top left;border:0;visibility:hidden;pointer-events:none';
   layer.append(frame);cpTvPrepared.set(view,frame);
@@ -141,7 +143,15 @@ function cpTvDisplayPrepared(view){
  const frame=cpTvPrepared.get(view);if(!frame)return false;
  $('popLayer').style.display='none';$('cpTvPreparedLayer').style.display='block';
  for(const [kind,f] of cpTvPrepared){f.style.visibility=kind===view?'visible':'hidden';}
- if(view==='highlights')cpTvRefreshOfficialAwards();
+ if(view==='highlights'){
+  // Só exibir depois que a própria página oficial tiver renderizado os cards.
+  try{
+   const doc=frame.contentDocument,grid=doc?.getElementById('cpConquestCards');
+   const ready=!!grid?.querySelector('.cp-tv-conquest-card');
+   if(ready)doc.querySelector('.screen')?.classList.add('cp-show-conquests');
+   frame.style.visibility=ready?'visible':'hidden';
+  }catch(e){console.warn('[TV Pop] Espelhamento aguardando cards oficiais',e)}
+ }
  fitCheckin();return true;
 }
 function cpTvHidePrepared(){
@@ -183,5 +193,5 @@ $('pause').onclick=()=>{if(!playing)return;paused=!paused;if(paused){if(preview)
 $('next').onclick=()=>{if(!playing||paused)return;forced++;if(preview?.c){const begin=mins(preview.c.time)*60;const elapsed=Math.floor((Date.now()-preview.started)/1000);const current=preview.sec+elapsed;if(current<begin){preview.sec=begin;preview.started=Date.now()}else{const v=Number(cfg.rules.videoMinutes)*60,a=programItems(preview.c).reduce((sum,ad)=>sum+ad.seconds,0)||15,within=(current-begin)%(v+a);if(within<v){preview.sec=current+(v-within);preview.started=Date.now()}}}lastSignature='';tick()};
 $('stop').onclick=stopPlayback;
 $('full').onclick=async()=>{try{if(!document.fullscreenElement)await $('screen').requestFullscreen?.();else await document.exitFullscreen?.()}catch{$('onair').textContent='Tela cheia indisponível neste navegador. Use a opção de tela cheia do navegador.'}};
-load();setInterval(()=>{if(playing&&!paused)cpTvRefreshOfficialAwards()},15000);setInterval(tick,1000);setInterval(refresh,5*60*1000);tick();
+load();setInterval(tick,1000);setInterval(refresh,5*60*1000);tick();
 </script></body></html>
