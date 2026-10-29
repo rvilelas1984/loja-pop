@@ -108,12 +108,24 @@ function scene(c){if(c.type==='checkin'||c.type==='highlights'){const q=new URLS
 // Pré-carrega as duas visualizações da tela oficial de check-in, sem consultas paralelas na TV.
 const cpTvPrepared=new Map();
 let cpTvPreparedKey='';
+let cpTvLastAwardsRefresh=0;
+function cpTvRefreshOfficialAwards(force=false){
+ const frame=cpTvPrepared.get('highlights');
+ if(!frame||!frame.contentWindow)return;
+ if(!force&&Date.now()-cpTvLastAwardsRefresh<15000)return;
+ try{
+  const win=frame.contentWindow;
+  if(typeof win.cpRefreshConquests!=='function')return;
+  cpTvLastAwardsRefresh=Date.now();
+  win.cpRefreshConquests();
+ }catch(e){console.warn('[TV Pop] Não foi possível atualizar destaques oficiais',e)}
+}
 function cpTvPrepare(c){
  if(!c?.sessionId)return;
  const unit=$('unit').value,date=c.date||now().date,session=String(c.sessionId);
  const key=[unit,date,session,preview?'1':'0'].join('|');
  if(cpTvPreparedKey===key)return;
- cpTvPreparedKey=key;
+ cpTvPreparedKey=key;cpTvLastAwardsRefresh=0;
  const layer=$('cpTvPreparedLayer');layer.replaceChildren();cpTvPrepared.clear();
  for(const view of ['positions','highlights']){
   const q=new URLSearchParams({tvpop:'1',unit,session,date,preview:preview?'1':'0',view});
@@ -129,6 +141,7 @@ function cpTvDisplayPrepared(view){
  const frame=cpTvPrepared.get(view);if(!frame)return false;
  $('popLayer').style.display='none';$('cpTvPreparedLayer').style.display='block';
  for(const [kind,f] of cpTvPrepared){f.style.visibility=kind===view?'visible':'hidden';}
+ if(view==='highlights')cpTvRefreshOfficialAwards();
  fitCheckin();return true;
 }
 function cpTvHidePrepared(){
@@ -170,5 +183,5 @@ $('pause').onclick=()=>{if(!playing)return;paused=!paused;if(paused){if(preview)
 $('next').onclick=()=>{if(!playing||paused)return;forced++;if(preview?.c){const begin=mins(preview.c.time)*60;const elapsed=Math.floor((Date.now()-preview.started)/1000);const current=preview.sec+elapsed;if(current<begin){preview.sec=begin;preview.started=Date.now()}else{const v=Number(cfg.rules.videoMinutes)*60,a=programItems(preview.c).reduce((sum,ad)=>sum+ad.seconds,0)||15,within=(current-begin)%(v+a);if(within<v){preview.sec=current+(v-within);preview.started=Date.now()}}}lastSignature='';tick()};
 $('stop').onclick=stopPlayback;
 $('full').onclick=async()=>{try{if(!document.fullscreenElement)await $('screen').requestFullscreen?.();else await document.exitFullscreen?.()}catch{$('onair').textContent='Tela cheia indisponível neste navegador. Use a opção de tela cheia do navegador.'}};
-load();setInterval(tick,1000);setInterval(refresh,5*60*1000);tick();
+load();setInterval(()=>{if(playing&&!paused)cpTvRefreshOfficialAwards()},15000);setInterval(tick,1000);setInterval(refresh,5*60*1000);tick();
 </script></body></html>
