@@ -2710,7 +2710,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           st.paymentDue=Math.round(outstanding.reduce((n,c)=>n+c.paymentDue,0)*100)/100;
           st.paymentContractNames=outstanding.map(c=>c.name);
           // Uma cobrança pendente não bloqueia outro contrato elegível já quitado.
-          const conversionContracts=financialContracts.filter(c=>contractCategory(c)!=='other'||!['pending','partial'].includes(c.paymentStatus));
+          const conversionContracts=financialContracts.filter(c=>contractCategory(c)!=='other'||(!/experimental|massagem|adicional/i.test(String(c.name||''))&&!['pending','partial'].includes(c.paymentStatus)));
           Object.assign(st,journeyConversion(st,conversionContracts,now));
           st.journeyStage=currentJourneyStage(st);
           st.contractAlert=!!st.conversionPending;st.contractFound=st.converted;
