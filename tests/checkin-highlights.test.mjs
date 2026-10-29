@@ -18,7 +18,7 @@ test('only pending milestones for the selected class appear, at most ten',async(
  const pending=Array.from({length:12},(_,i)=>({name:'Aluno '+i,sessionId:'101',type:'milestone',target:50}));
  pending.unshift({sessionId:'102',type:'milestone'},{sessionId:'101',type:'birthday'});
  const h=harness(async url=>reply(url.includes('settings')?{settings:{positionsSeconds:15,highlightsSeconds:10}}:{pending,daily:[{sessionId:'101',type:'milestone'}]}));
- await h.run('cpRefreshConquests()');assert.equal(h.run('cpConquestItems.length'),10);assert.equal(h.run('cpConquestItems[0].name'),'Aluno 0');assert.equal(h.status.hidden,true);
+ await h.run('cpRefreshConquests()');assert.equal(h.run('cpConquestItems.length'),10);assert.equal(h.run('cpConquestItems[0].name'),'Aluno 0');assert.equal(h.status.hidden,false);assert.match(h.status.textContent,/10 destaque/);
 });
 test('a slow response from the previous class cannot replace the current highlights',async()=>{
  let release;let count=0;
@@ -39,3 +39,18 @@ test('all official Hall medals and trophies render with unique gradient IDs',()=
  assert.ok(html.includes('src="/hall-art.js"'));assert.ok(fs.readFileSync(new URL('../meu-hall-conquistas.html',import.meta.url),'utf8').includes('src="/hall-art.js"'));
 });
 test('every inline script parses',()=>{for(const m of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))new vm.Script(m[1]);});
+
+test('empty pending list is distinguished from failed loading',async()=>{
+ const h=harness(async url=>reply(url.includes('settings')?{settings:{}}:{pending:[]}));await h.run('cpRefreshConquests()');assert.match(h.status.textContent,/Sem conquistas pendentes/);
+});
+test('verified highlights enter the visible phase after 15 seconds',()=>{
+ let now=16000;const classes=new Set(),card={innerHTML:'',style:{setProperty(){}}};
+ const ctx=vm.createContext({Date:{now:()=>now},document:{hidden:false,querySelector:()=>({classList:{add:x=>classes.add(x),remove:x=>classes.delete(x)}}),getElementById:()=>card},requestAnimationFrame(){},cpFitAwards(){},esc:String,hallArt:()=>'<svg></svg>',cpConquestAt:0,cpConquestPhase:'positions',cpConquestItems:[{sessionId:'123',target:50,name:'Aluno teste',medal:'Constância'}],cpTvSettings:{positionsSeconds:15,highlightsSeconds:10,showEmpty:false},cpConquestShown:[]});
+ const begin=html.indexOf('setInterval(()=>{const now='),end=html.indexOf('},1000);',begin);
+ vm.runInContext('var tick='+html.slice(begin+'setInterval('.length,end+1),ctx);vm.runInContext('tick()',ctx);
+ assert.ok(classes.has('cp-show-conquests'));assert.match(card.innerHTML,/Aluno teste/);assert.equal(ctx.cpConquestPhase,'conquests');
+});
+test('all mobile layout overrides are confined to the mobile breakpoint',()=>{
+ const css=fs.readFileSync(new URL('../checkin-mobile.css',import.meta.url),'utf8');assert.match(css,/@media \(max-width:760px\)/);assert.match(html,/href="\/checkin-mobile.css"/);
+ assert.ok(css.includes('body.cp-admin-ready .checkin-wrap>main.screen'));
+});

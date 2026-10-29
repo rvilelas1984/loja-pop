@@ -1,0 +1,50 @@
+/* Check-in owns its mobile canvas; the admin main styles must not resize it. */
+@media (max-width:760px){
+ html,body{width:100%;max-width:100%;height:auto;overflow-x:hidden}
+ body.cp-admin-ready{padding-top:68px!important}
+ body.cp-admin-ready .admin-shell{height:auto;min-height:0}
+ body .checkin-wrap,body .checkin-wrap.cp-has-tv-ads,
+ body .checkin-wrap:fullscreen,body .checkin-wrap:-webkit-full-screen{
+  display:flex!important;flex-direction:column!important;align-items:stretch!important;
+  width:100%!important;max-width:100%!important;min-width:0;min-height:0!important;
+  height:auto!important;padding:8px!important;gap:12px!important;overflow:visible!important;
+ }
+ body .checkin-wrap:fullscreen,body .checkin-wrap:-webkit-full-screen{height:100dvh!important;overflow-x:hidden!important;overflow-y:auto!important}
+ body.cp-admin-ready .checkin-wrap>main.screen,body .checkin-wrap>main.screen{
+  display:flex!important;flex-direction:column!important;flex:0 0 auto!important;
+  width:100%!important;max-width:none!important;min-width:0!important;height:auto!important;
+  min-height:0!important;margin:0!important;padding:6px!important;overflow:visible!important;
+ }
+ body .checkin-wrap .top{flex:none;width:100%;height:auto;min-height:150px;padding:12px;gap:8px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-radius:18px}
+ body .checkin-wrap .top .brand{grid-column:1/-1;grid-row:1}
+ body .checkin-wrap .top .info:first-child{grid-column:1;grid-row:2}
+ body .checkin-wrap .top .right{grid-column:2;grid-row:2}
+ body .checkin-wrap .top .info{font-size:10px;overflow-wrap:anywhere}
+ body .checkin-wrap .top .info strong{font-size:22px}
+ body .checkin-wrap .top .info span{font-size:10px}
+ body .checkin-wrap .top .brand h1{font-size:25px}
+ body .checkin-wrap .top select{max-width:100%;font-size:13px}
+ body .checkin-wrap .map{flex:none!important;width:100%;min-height:0!important;grid-template-rows:none!important;grid-auto-rows:auto;gap:10px!important}
+ body .checkin-wrap .map .row{gap:6px!important;grid-template-columns:repeat(var(--cp-row-cols,8),minmax(0,1fr))!important}
+ body .checkin-wrap .bike{width:100%;min-width:0!important;height:86px!important;min-height:0!important;border-radius:10px}
+ body .checkin-wrap .bike .n{font-size:15px}
+ body .checkin-wrap .bike .name{font-size:7px;margin-top:4px}
+ body .checkin-wrap .bike .presence{font-size:6px}
+ body.cp-shape-circle .checkin-wrap .bike{height:auto!important;aspect-ratio:1;border-radius:50%}
+ body.cp-shape-horizontal .checkin-wrap .bike{height:auto!important;aspect-ratio:1.7;min-height:50px!important}
+ body .checkin-wrap .participant-list{flex:none;grid-template-columns:repeat(2,minmax(0,1fr));padding:8px 0}
+ body .checkin-wrap .screen.cp-show-conquests #map{display:none!important}
+ body .checkin-wrap .screen.cp-show-conquests .cp-tv-conquests{display:flex!important;flex:none!important;height:420px!important;min-height:0!important;margin-top:12px}
+ body .checkin-wrap .cp-tv-conquest-grid{width:100%;min-width:0;min-height:0!important}
+ body .checkin-wrap>.cp-partner-tv{flex:none!important;width:min(340px,100%)!important;min-height:0!important;margin:0 auto 100px!important;align-self:center!important}
+ body .checkin-wrap .cp-partner-story{min-height:0!important;aspect-ratio:auto}
+ body .checkin-wrap .cp-partner-creative{height:auto!important;min-height:0!important;aspect-ratio:9/16;overflow:hidden}
+ body .checkin-wrap .cp-partner-creative>img,body .checkin-wrap .cp-partner-creative>video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+ body .checkin-wrap .cp-partner-footer{flex-direction:row;min-height:110px}
+ body .checkin-wrap .cp-partner-tv[hidden]{display:none!important}
+ body .checkin-wrap .controls{left:8px!important;right:8px!important;bottom:8px!important;flex-wrap:wrap;opacity:.94!important;max-width:none!important}
+ body .checkin-wrap .controls button{flex:1 1 28%;min-width:0;font-size:10px;padding:9px 6px}
+ body .checkin-wrap .status{left:12px;bottom:100px;max-width:calc(100% - 24px)}
+ body .checkin-wrap .foot{flex:none;font-size:8px}
+ body .checkin-wrap #cpConquestStatus{font-size:10px;margin:4px 0}
+}
