@@ -134,13 +134,6 @@ function cpTvPrepare(c){
   frame.src='/tela-checkin.html?'+q.toString();
   frame.style.cssText='position:absolute;left:0;top:0;width:1280px;height:720px;max-width:none;transform-origin:top left;border:0;visibility:hidden;pointer-events:none';
   layer.append(frame);cpTvPrepared.set(view,frame);
-  // A prévia usa a tela oficial: atualize conquistas assim que o iframe terminar de carregar.
-  // Sem consultar uma segunda lista ou reconstruir destaques na TV Pop.
-  if(view==='highlights')frame.addEventListener('load',()=>{
-   if(cpTvPrepared.get('highlights')!==frame)return;
-   cpTvLastAwardsRefresh=0;
-   cpTvRefreshOfficialAwards(true);
-  });
  }
  fitCheckin();
 }
@@ -148,11 +141,7 @@ function cpTvDisplayPrepared(view){
  const frame=cpTvPrepared.get(view);if(!frame)return false;
  $('popLayer').style.display='none';$('cpTvPreparedLayer').style.display='block';
  for(const [kind,f] of cpTvPrepared){f.style.visibility=kind===view?'visible':'hidden';}
- if(view==='highlights'){
-  // O bloco deve refletir a consulta oficial mais recente da própria tela de check-in.
-  if(lastSignature!==('prepared:'+cpTvPreparedKey+':highlights'))cpTvRefreshOfficialAwards(true);
-  else cpTvRefreshOfficialAwards();
- }
+ if(view==='highlights')cpTvRefreshOfficialAwards();
  fitCheckin();return true;
 }
 function cpTvHidePrepared(){
