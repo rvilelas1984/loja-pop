@@ -190,7 +190,7 @@ const tvParams=new URLSearchParams(location.search),tvEmbedded=tvParams.get('tvp
 const tvFixedView=tvEmbedded?tvParams.get('view'):null;
 async function loadTVCheckin(){
  const date=tvParams.get('date')||day();
- if(!tvSession||date!==day()){els.time.textContent='—';els.map.innerHTML='<div class="empty-class">O check-in estará disponível no dia desta aula.</div>';return}
+ if(!tvSession){els.time.textContent='—';els.map.innerHTML='<div class="empty-class">Esta aula não possui identificação de sessão no D1. Atualize a grade para testar.</div>';return}if(date!==day()&&tvParams.get('preview')!=='1'){els.time.textContent='—';els.map.innerHTML='<div class="empty-class">O check-in estará disponível no dia desta aula.</div>';return}
  const key='cpTVCheckin:'+tvUnit+':'+date+':'+tvSession;
  let hit=null;try{const saved=JSON.parse(localStorage.getItem(key)||'null');if(saved&&Date.now()-saved.savedAt<300000)hit=saved.data}catch{}
  if(hit?.ok&&String(hit.current?.idActivitySession)===tvSession){currentSessionId=tvSession;currentStart=hit.current.startTime;render(hit);return}
