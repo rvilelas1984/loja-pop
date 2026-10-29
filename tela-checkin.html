@@ -273,7 +273,16 @@ async function cpRefreshConquests(){
   const pending=(Array.isArray(awards.value.pending)?awards.value.pending:[]).filter(x=>String(x.sessionId||"")===id&&x.type==="milestone");
   const unique=new Map();
   for(const x of [...highlights,...daily,...pending]){if(!Number(x.target))continue;const k=String(x.evoMemberId||x.name||"")+"|"+String(x.target);if(!unique.has(k))unique.set(k,{...x,_fromDaily:daily.includes(x),_alreadyDisplayed:!!x.displayed});}
-  cpConquestItems=[...unique.values()].slice(0,10);
+  const freshItems=[...unique.values()].slice(0,10);
+  const previousSignature=cpConquestItems.map(x=>String(x.evoMemberId||x.name)+"|"+String(x.target)).sort().join(";");
+  const freshSignature=freshItems.map(x=>String(x.evoMemberId||x.name)+"|"+String(x.target)).sort().join(";");
+  cpConquestItems=freshItems;
+  // A fixed TV highlights view must redraw when the server adds or removes awards.
+  // Otherwise cpTickConquests returns early in the "conquests" phase and keeps stale cards.
+  if(tvFixedView==="highlights"&&previousSignature!==freshSignature){
+   cpConquestPhase="positions";
+   cpConquestAt=Date.now()-cpTvSettings.positionsSeconds*1000;
+  }
   // The TV always uses the current verified awards response, not a stale local snapshot.
   status.hidden=false;status.textContent=cpConquestItems.length?cpConquestItems.length+" conquista(s) confirmada(s) nesta aula • alternância automática":"Nenhuma conquista confirmada para esta aula.";if(tvFixedView==="highlights"&&cpConquestItems.length){cpConquestPhase="positions";cpConquestAt=Date.now()-cpTvSettings.positionsSeconds*1000;cpTickConquests();}
  }else{status.hidden=false;status.textContent="Destaques indisponíveis: "+(String(awards.reason?.message||"").includes("AUTORIZADO")?"o perfil não tem permissão para consultar as conquistas":String(awards.reason?.message||"falha de conexão"))+". Nova tentativa em até 1 minuto.";console.warn("[Club Pop] Destaques:",awards.reason);}
