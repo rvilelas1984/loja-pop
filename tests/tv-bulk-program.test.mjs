@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const html=fs.readFileSync(new URL('../admin-tv-pop.html',import.meta.url),'utf8');
+function harness({confirmed=true,saved=true}={}){
+ const classes=[{sessionId:'1',day:1,time:'07:00',name:'Bike'},{sessionId:'2',day:1,time:'08:00',name:'Bike'},{sessionId:'3',day:3,time:'18:00',name:'Bike'},{sessionId:'4',day:5,time:'12:00',name:'Bike'}];
+ const cfg={windows:[{day:1,start:'07:00',end:'09:00'},{day:3,start:'17:00',end:'20:00'}],weeklySettings:{'1|07:00|Bike':{video:'source',ads:[0],adDurations:{0:20},checkinEnabled:true,timeline:[{type:'main',seconds:2670},{type:'highlights',seconds:30}]},'5|12:00|Bike':{video:'outside'}}};
+ const alerts=[];let saves=0;
+ const ctx=vm.createContext({window:{},cfg,classes,timelineDrafts:{},tvConfigReady:true,loading:false,dayNames:['Dom','Seg','Ter','Qua'],alert:m=>alerts.push(m),confirm:()=>confirmed,mins:s=>Number(s.slice(0,2))*60+Number(s.slice(3,5)),classKey:c=>c.sessionId,weeklyKey:c=>c.day+'|'+c.time+'|'+c.name,entries:w=>classes.filter(c=>c.day===w.day),findClass:k=>classes.find(c=>c.sessionId===k),settings:c=>cfg.weeklySettings[c.day+'|'+c.time+'|'+c.name]||{},timeline:c=>cfg.weeklySettings[c.day+'|'+c.time+'|'+c.name]?.timeline||[],save:async()=>{saves++;return saved}});
+ vm.runInContext(html.slice(html.indexOf('function bulkProgramReady'),html.indexOf('window.copyToNext=')),ctx);
+ return {ctx,cfg,alerts,saves:()=>saves};
+}
+test('full program copies to configured windows only, with independent nested data',async()=>{const h=harness();await h.ctx.window.copyProgramToAll('1');assert.equal(h.saves(),1);assert.equal(h.cfg.weeklySettings['3|18:00|Bike'].video,'source');assert.equal(h.cfg.weeklySettings['3|18:00|Bike'].timeline[1].type,'highlights');h.cfg.weeklySettings['1|08:00|Bike'].timeline[0].seconds=10;h.cfg.weeklySettings['1|08:00|Bike'].adDurations[0]=60;assert.equal(h.cfg.weeklySettings['1|07:00|Bike'].timeline[0].seconds,2670);assert.equal(h.cfg.weeklySettings['3|18:00|Bike'].adDurations[0],20);assert.equal(h.cfg.weeklySettings['5|12:00|Bike'].video,'outside')});
+test('clear affects only selected window and explicitly empties legacy fallback values',async()=>{const h=harness();h.cfg.weeklySettings['1|07:30|Old class']={video:'old'};h.cfg.weeklySettings['3|18:00|Bike']={video:'keep'};await h.ctx.window.clearWindowProgram(0);assert.equal(h.saves(),1);for(const k of ['1|07:00|Bike','1|08:00|Bike','1|07:30|Old class']){assert.equal(h.cfg.weeklySettings[k].video,'');assert.equal(h.cfg.weeklySettings[k].timeline.length,0);assert.equal(h.cfg.weeklySettings[k].ads.length,0)}assert.equal(h.cfg.weeklySettings['3|18:00|Bike'].video,'keep');assert.equal(h.cfg.windows.length,2)});
+test('cancel does not change any program or save',async()=>{const h=harness({confirmed:false}),before=JSON.stringify(h.cfg);await h.ctx.window.copyProgramToAll('1');await h.ctx.window.clearWindowProgram(0);assert.equal(JSON.stringify(h.cfg),before);assert.equal(h.saves(),0)});
+test('invalid draft is not replicated; valid draft includes unsaved edits',async()=>{const h=harness();h.ctx.timelineDrafts['1']=[{type:'highlights',seconds:1}];await h.ctx.window.copyProgramToAll('1');assert.equal(h.saves(),0);h.ctx.timelineDrafts['1']=[{type:'highlights',seconds:2700}];await h.ctx.window.copyProgramToAll('1');assert.equal(h.saves(),1);assert.equal(h.cfg.weeklySettings['3|18:00|Bike'].timeline[0].type,'highlights')});
+test('failed save never reports completion',async()=>{const h=harness({saved:false});await h.ctx.window.copyProgramToAll('1');assert.equal(h.alerts.length,0)});
