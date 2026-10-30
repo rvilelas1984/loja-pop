@@ -213,9 +213,15 @@ function tvPopPrepareVideoPlayer(){
  const video=wrapper.querySelector('video'),feedback=wrapper.querySelector('.tv-media-feedback'),message=wrapper.querySelector('.tv-media-message'),button=wrapper.querySelector('.tv-media-retry');
  if(!video||!feedback)return;
  const status=(text,action=false)=>{message.textContent=text;feedback.style.display='flex';button.style.display=action?'inline-block':'none'};
- const ready=()=>{feedback.style.display='none'};
+ let renderedFrames=0;
+ if(typeof video.requestVideoFrameCallback==='function'){const watchFrame=()=>{if(!video.isConnected)return;renderedFrames++;video.requestVideoFrameCallback(watchFrame)};video.requestVideoFrameCallback(watchFrame)}
+ const ready=()=>{if(video.videoWidth>0&&video.videoHeight>0)feedback.style.display='none'};
+ const checkImage=()=>{if(!video.isConnected||video.error)return;const quality=typeof video.getVideoPlaybackQuality==='function'?video.getVideoPlaybackQuality():null;const frames=quality?.totalVideoFrames??renderedFrames;
+ if(video.currentTime>=2&&(video.videoWidth===0||video.videoHeight===0||frames===0)){status('O vídeo avança, mas nenhuma imagem foi decodificada. Possível codec incompatível (HEVC/H.265, 10-bit ou perfil de alta resolução). Converta uma cópia para MP4 H.264, 1080p, 30 fps, AAC. O arquivo original pode ser mantido.',false);return}
+ if(video.videoWidth>0&&frames>0)ready()};
+ setTimeout(checkImage,9000);
  const errorMessage=()=>{const code=video.error?.code;return code===4?'Formato de vídeo não compatível com este navegador. Use MP4 com vídeo H.264 e áudio AAC.':code===3?'Falha ao decodificar vídeo. Confira o codec e a resolução do arquivo.':code===2?'Falha de rede ao carregar o vídeo. Verifique a conexão e tente novamente.':'Não foi possível reproduzir o vídeo. Verifique o arquivo e tente novamente.'};
- video.addEventListener('playing',ready);
+ video.addEventListener('playing',()=>{ready();setTimeout(checkImage,7000)});
  video.addEventListener('waiting',()=>status('Carregando vídeo… Aguarde o buffer.'));
  video.addEventListener('stalled',()=>status('A transferência está lenta. Verifique a internet e a rede sem fio.'));
  video.addEventListener('error',()=>status(errorMessage(),false));
