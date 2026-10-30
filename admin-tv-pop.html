@@ -127,8 +127,31 @@ window.removeItem=async(type,i)=>{if(type==='trailers'&&cfg.trailerBlocks.some(b
 $('addWindow').onclick=()=>{const days=[...$('weekday').querySelectorAll('input:checked')].map(x=>Number(x.value)),start=$('start').value,end=$('end').value;if(!days.length||!start||!end||end<=start)return alert('Selecione dias e horários válidos.');for(const day of days){if(!cfg.windows.some(w=>w.day===day&&w.start===start&&w.end===end))cfg.windows.push({day,start,end})}cfg.windows.sort((a,b)=>a.day-b.day||a.start.localeCompare(b.start));save()};
 const tvMediaMimeByExtension={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',mp4:'video/mp4',webm:'video/webm'};
 function tvMediaFileType(file){const ext=String(file.name||'').split('.').pop().toLowerCase();const inferred=tvMediaMimeByExtension[ext]||'';const reported=String(file.type||'').toLowerCase();return inferred&&(!reported||reported==='application/octet-stream')?inferred:reported}
-function tvValidateMediaFile(file){const type=tvMediaFileType(file);const allowed=['image/jpeg','image/png','image/webp','video/mp4','video/webm'];if(!allowed.includes(type))throw Error('Formato não suportado: '+(file.name||type||'desconhecido')+'. Use JPG, PNG, WebP, MP4 ou WebM.');const limit=type.startsWith('video/')?50:10;if(!file.size)throw Error('O arquivo está vazio.');if(file.size>limit*1024*1024)throw Error('O arquivo tem '+(file.size/1048576).toFixed(1)+' MB e ultrapassa o limite de '+limit+' MB. Comprima o vídeo ou informe uma URL HTTPS direta.');return type}
-async function tvPopUploadFile(file,type){const t=await fetch('/api/admin-auth?route=media-token',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,size:file.size})});const token=await t.json();if(!t.ok||!token.ok)throw Error(token.error||'Falha ao autorizar upload');const upload=await fetch(token.uploadUrl,{method:'PUT',headers:{Authorization:'Bearer '+token.token,'Content-Type':type},body:file});const data=await upload.json();if(!upload.ok||!data.ok)throw Error(data.error||'Falha ao salvar arquivo no R2');return data.url}
+function tvValidateMediaFile(file){const type=tvMediaFileType(file);const allowed=['image/jpeg','image/png','image/webp','video/mp4','video/webm'];if(!allowed.includes(type))throw Error('Formato não suportado: '+(file.name||type||'desconhecido')+'. Use JPG, PNG, WebP, MP4 ou WebM.');const limit=type.startsWith('video/')?2048:10;if(!file.size)throw Error('O arquivo está vazio.');if(file.size>limit*1024*1024)throw Error('O arquivo tem '+(file.size/1048576).toFixed(1)+' MB e ultrapassa o limite de '+(type.startsWith('video/')?'2 GB':'10 MB')+'.');return type}
+function tvUploadStatus(message){const button=document.querySelector('#addTrailer:disabled,#addContent:disabled');if(button)button.textContent=message}
+async function tvPopUploadFile(file,type){
+ const t=await fetch('/api/admin-auth?route=media-token',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,size:file.size})});
+ const token=await t.json();if(!t.ok||!token.ok)throw Error(token.error||'Falha ao autorizar upload');
+ const auth={Authorization:'Bearer '+token.token};
+ if(file.size<=50*1024*1024){const upload=await fetch(token.uploadUrl,{method:'PUT',headers:{...auth,'Content-Type':type},body:file});const data=await upload.json();if(!upload.ok||!data.ok)throw Error(data.error||'Falha ao salvar arquivo no R2');return data.url}
+ const base=new URL(token.uploadUrl);base.pathname='/tv/multipart/start';
+ let start=await fetch(base.toString(),{method:'POST',headers:auth});
+ let info=await start.json();if(!start.ok||!info.ok)throw Error(info.error||'Não foi possível iniciar o envio por partes');
+ const partUrl=new URL(token.uploadUrl);partUrl.pathname='/tv/multipart/part';partUrl.searchParams.set('uploadId',info.uploadId);
+ const parts=new Array(info.totalParts);let completed=0,nextPart=1,failed=null;
+ async function uploadPart(n){const offset=(n-1)*info.chunkSize;const blob=file.slice(offset,Math.min(file.size,offset+info.chunkSize));const url=new URL(partUrl);url.searchParams.set('partNumber',String(n));
+  for(let attempt=1;attempt<=3;attempt++){try{const response=await fetch(url.toString(),{method:'PUT',headers:{...auth,'Content-Type':'application/octet-stream'},body:blob});const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'Falha ao enviar parte '+n);parts[n-1]={partNumber:n,etag:result.etag};completed++;tvUploadStatus('Enviando vídeo… '+Math.floor(completed/info.totalParts*100)+'%');return}catch(e){if(attempt===3)throw e}}
+ }
+ async function worker(){while(!failed&&nextPart<=info.totalParts){const n=nextPart++;try{await uploadPart(n)}catch(e){failed=e;break}}}
+ try{
+  await Promise.all(Array.from({length:Math.min(3,info.totalParts)},()=>worker()));
+  if(failed)throw failed;
+  tvUploadStatus('Finalizando vídeo…');
+  const finish=new URL(token.uploadUrl);finish.pathname='/tv/multipart/complete';finish.searchParams.set('uploadId',info.uploadId);
+  const response=await fetch(finish.toString(),{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify({parts})});
+  const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'Falha ao finalizar o vídeo');return result.url;
+ }catch(e){const abort=new URL(token.uploadUrl);abort.pathname='/tv/multipart/abort';abort.searchParams.set('uploadId',info.uploadId);fetch(abort.toString(),{method:'POST',headers:auth}).catch(()=>{});throw Error('Upload interrompido: '+e.message+'. Se necessário, tente novamente.')}
+}
 async function addMedia(prefix,type){const file=$(prefix+'File').files[0],button=$(prefix==='trailer'?'addTrailer':'addContent');const url=$(prefix==='trailer'?'trailerUrl':'contentImage').value.trim();const entry={type,title:$(prefix+'Title').value.trim(),seconds:prefix==='trailer'?Math.max(5,Number(cfg.rules.cardSeconds)||15):undefined,image:url,audioEnabled:prefix==='trailer'&&$('trailerAudio').checked};if(prefix==='content'){entry.desc=$('contentDesc').value.trim();entry.seconds=adDuration($('contentSeconds').value)}
 if(['checkin','highlights'].includes(type)){entry.title=entry.title||(type==='checkin'?'Check-in · posições':'Destaques da aula');entry.image='';cfg[prefix==='trailer'?'trailers':'contents'].push(entry);save();$(prefix+'Title').value='';return}
 if(!entry.title)return alert('Informe um nome interno para o trailer.');
