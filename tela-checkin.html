@@ -260,9 +260,15 @@ async function cpRefreshConquests(){
  const status=document.getElementById("cpConquestStatus");
  if(awards.status==="fulfilled"){
   // Only previously confirmed, unshown milestones for this exact class are eligible.
-  const highlights=(Array.isArray(awards.value.highlights)?awards.value.highlights:[]).filter(x=>String(x.sessionId||"")===id);
-  const daily=(Array.isArray(awards.value.daily)?awards.value.daily:[]).filter(x=>String(x.sessionId||"")===id);
-  const pending=(Array.isArray(awards.value.pending)?awards.value.pending:[]).filter(x=>String(x.sessionId||"")===id&&x.type==="milestone");
+  // Exibições já confirmadas não podem voltar ao telão em outra aula.
+  // Entre marcos antigos não exibidos, priorizar apenas o marco mais recente
+  // alcançado pelo aluno, evitando apresentar 125 aulas para alguém com 256 estrelas.
+  const targets=[12,24,50,100,125,150,175,200,225,250,275,300,325,350,375,400,450,500,600,750];
+  const currentMilestone=x=>{const stars=Number(x.stars);return Number.isFinite(stars)?targets.filter(t=>t<=stars).at(-1):null};
+  const relevant=x=>x.displayed!==true&&(!Number(x.stars)||Number(x.target)>=currentMilestone(x));
+  const highlights=(Array.isArray(awards.value.highlights)?awards.value.highlights:[]).filter(x=>String(x.sessionId||"")===id&&relevant(x));
+  const daily=(Array.isArray(awards.value.daily)?awards.value.daily:[]).filter(x=>String(x.sessionId||"")===id&&String(x.date||"")===date);
+  const pending=(Array.isArray(awards.value.pending)?awards.value.pending:[]).filter(x=>String(x.sessionId||"")===id&&x.type==="milestone"&&relevant(x));
   const unique=new Map();
   for(const x of [...highlights,...daily,...pending]){if(!Number(x.target))continue;const k=String(x.evoMemberId||x.name||"")+"|"+String(x.target);if(!unique.has(k))unique.set(k,{...x,_fromDaily:daily.includes(x),_alreadyDisplayed:!!x.displayed});}
   cpConquestItems=[...unique.values()].slice(0,10);
