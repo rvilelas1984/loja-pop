@@ -94,7 +94,7 @@ if(!matchedPrize||!catalogItem)return send("Não foi possível vincular o prêmi
 const attemptKey=unit+":"+id+":"+model;
 if(voucherAttempts.has(attemptKey))return send("Já houve uma solicitação para este aluno e voucher nesta sessão. Consulte o histórico antes de tentar novamente.");
 $("testStudentId").value=id;$("testStudentUnit").value=unit;$("testStudentId").dispatchEvent(new Event("input"));
-if(!confirm("ATENÇÃO: gerar 1 voucher REAL na EVO?\n\nAluno informado: "+id+"\nUnidade: "+unit+"\nVoucher: "+catalogItem.name+"\n\nA rota existente emite o voucher, mas NÃO confirma a atribuição automática ao aluno. O código emitido deverá ser conferido e entregue manualmente. Continuar?"))return send("Emissão cancelada pelo administrador.");
+if(!confirm(["ATENÇÃO: gerar 1 voucher REAL na EVO?","","Aluno informado: "+id,"Unidade: "+unit,"Voucher: "+catalogItem.name,"","A rota existente emite o voucher, mas NÃO confirma a atribuição automática ao aluno. O código emitido deverá ser conferido e entregue manualmente. Continuar?"].join(String.fromCharCode(10))))return send("Emissão cancelada pelo administrador.");
 voucherIssueBusy=true;voucherAttempts.add(attemptKey);send("Gerando voucher real na EVO... Aguarde e não clique novamente.");
 try{
 const response=await fetch("/api/evo-config?route=voucher-create",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({unit,modelId:Number(model),quantity:1})});
