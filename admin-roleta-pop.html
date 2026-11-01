@@ -44,7 +44,7 @@ $("catalogMessage").textContent="Carregando catálogos existentes do D1...";
 const endpoints=[["voucher","voucher-models","models"],["product","product-catalog","products"],["service","service-catalog","services"]];
 const results=await Promise.all(endpoints.map(async ([kind,route,key])=>{
 try{const response=await fetch("/api/evo-config?route="+route+"&unit="+unit,{credentials:"same-origin",cache:"no-store"});const d=await response.json();if(!response.ok||!d.ok)throw Error(d.error||"Catálogo indisponível");
-const raw=Array.isArray(d[key])?d[key]:[];catalogCache[kind]=raw.filter(x=>x&&x.id!=null&&(x.publicName||x.name)&&x.inactive!==true&&x.active!==false).map(x=>({id:String(x.id),name:String(x.publicName||x.name)}));return kind+": "+catalogCache[kind].length;
+const raw=Array.isArray(d[key])?d[key]:[];catalogCache[kind]=raw.filter(x=>x&&x.id!=null&&(x.publicName||x.name)&&x.inactive!==true&&x.active!==false&&x.active!==0).map(x=>({id:String(x.id),name:String(x.publicName||x.name)}));return kind+": "+catalogCache[kind].length;
 }catch(e){return kind+": indisponível ("+e.message+")"}
 }));
 catalogReady=true;$("catalogMessage").textContent=results.join(" · ")+" · Leitura do D1, sem emissão de vouchers.";renderFields();renderWheel();
