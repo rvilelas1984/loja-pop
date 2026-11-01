@@ -207,6 +207,13 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   try{const r=await fetch(WORKER+"/admin/voucher-run-now",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":String(req.headers.cookie||"")},body:JSON.stringify(req.body||{}),cache:"no-store"});res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(await r.text());}catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}
  }
+ if(req.query.route==="roleta-analytics"){
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  try{const q=new URLSearchParams();for(const key of ["period","start","end"]){if(req.query[key])q.set(key,String(req.query[key]));}
+   const r=await fetch(WORKER+"/admin/roleta-analytics?"+q.toString(),{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});
+   res.status(r.status);res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.send(await r.text());
+  }catch{return res.status(502).json({ok:false,error:"FALHA_CONEXAO_WORKER"})}
+ }
  if(req.query.route==="roleta-voucher-issue"){
   if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   try{
