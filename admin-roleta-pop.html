@@ -73,6 +73,24 @@ function renderWheel(){let prizes=activePrizes(),total=prizes.reduce((a,p)=>a+Nu
 function samplePrize(){let prizes=activePrizes(),roll=Math.random()*100,acc=0;for(const p of prizes){acc+=p.pct;if(roll<acc)return p}return prizes[prizes.length-1]}
 $("retryEnabled").onchange=()=>{let p=data.prizes.find(p=>p.type==="retry");if(!p){p={...retryDefault};data.prizes.push(p)}p.enabled=$("retryEnabled").checked;renderFields();renderWheel();persistPrizeDraft()};
 ["title","subtitle","bg","center","font","distance"].forEach(k=>{$(k).value=data[k];$(k).addEventListener("input",()=>{data[k]=["font","distance"].includes(k)?Number($(k).value):$(k).value;renderWheel();schedulePrizeDraft()})});$("add").onclick=()=>{data.prizes.push({name:"Novo prêmio",emoji:"🎁",color:"#C02AC0",pct:0,type:"prize",category:"custom",catalogId:null});renderFields();renderWheel();persistPrizeDraft()};$("reset").onclick=()=>{data=structuredClone(defaults);localStorage.removeItem("cp_roleta_admin_draft");location.reload()};$("save").onclick=()=>{data.enabled=false;localStorage.setItem("cp_roleta_admin_draft",JSON.stringify(data));$("message").textContent="Rascunho salvo neste navegador. Roleta permanece desabilitada para os alunos."};$("export").onclick=()=>{let blob=new Blob([JSON.stringify({...data,enabled:false},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="roleta-pop-configuracao.json";a.click();URL.revokeObjectURL(url)};let voucherIssueBusy=false;
+async function consultExistingVoucherLot(unit,model,batchId,send){
+if(!/^[1-9][0-9]*$/.test(String(batchId)))return send("Informe um número de lote válido.");
+send("Consultando lote "+batchId+" na EVO e no D1, sem criar novo voucher...");
+try{
+const r=await fetch("/api/evo-config?route=voucher-create",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({unit,modelId:Number(model),resumeBatchId:Number(batchId)})});
+const d=await r.json();
+if(r.ok&&d.status==="completed"&&Array.isArray(d.codes)&&d.codes.length===1){
+const raw=d.codes[0],code=typeof raw==="object"?(raw.code||raw.assignedCode||""):String(raw);
+if(code)return send("✓ Código confirmado para o lote "+batchId+".",code);
+}
+const status=await fetch("/api/evo-config?route=voucher-status&unit="+unit,{credentials:"same-origin",cache:"no-store"});
+const sd=await status.json();
+const matching=Array.isArray(sd.requests)?sd.requests.filter(x=>String(x.batchId||x.batch_id||x.manualBatchId||"")===String(batchId)):[];
+if(matching.length===1&&matching[0].assignedCode)return send("✓ Código confirmado no histórico D1 para lote "+batchId+".",String(matching[0].assignedCode));
+send("Lote "+batchId+" localizado para consulta, mas o código ainda não foi retornado. Confira a Central de Vouchers. Nenhum voucher novo foi criado.");
+}catch(e){send("Consulta do lote "+batchId+" falhou: "+e.message+". Nenhuma nova emissão solicitada.");}
+}
+
 window.addEventListener("message",async event=>{
 if(event.origin!==location.origin||event.source!==$("approvedPreview").contentWindow||event.data?.type!=="roleta-pop-admin-voucher-request")return;
 const id=String(event.data.studentId||"").trim(),requestedModel=String(event.data.modelId||""),unit=$("prizeCatalogUnit").value;
@@ -86,6 +104,8 @@ const catalogItemResolved=directItem||(candidates.length===1?candidates[0]:null)
 const model=catalogItemResolved?String(catalogItemResolved.id):"";
 if(matchedPrize&&catalogItemResolved&&String(matchedPrize.catalogId)!==model){matchedPrize.catalogId=model;persistPrizeDraft();renderFields();renderWheel();}
 const send=(message,code)=>$("approvedPreview").contentWindow.postMessage({type:"roleta-pop-admin-voucher-response",message,code:code||null},location.origin);
+if(event.data.consultOnly){return consultExistingVoucherLot(unit,model,event.data.batchId,send);}
+
 if(voucherIssueBusy)return send("Emissão em andamento. Aguarde.");
 if(!/^[1-9][0-9]{0,14}$/.test(id))return send("ID EVO inválido.");if(!numeric(model))return send("Não encontrei um ID numérico de voucher para este prêmio no catálogo D1. Nenhuma emissão realizada. Verifique o cadastro na Central de Vouchers.");
 const configured=data.prizes.some(p=>p.type==="prize"&&p.category==="voucher"&&String(p.catalogId)===model);
