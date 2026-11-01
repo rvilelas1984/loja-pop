@@ -165,6 +165,10 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
    res.setHeader("Cache-Control","no-store");return res.status(r.status).json(await r.json());
   }catch{return res.status(502).json({ok:false,error:"FALHA_CLASSIFICACAO"})}
  }
+ if(req.query.route==="roleta-prizes"){
+  if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  try{const r=await fetch(WORKER+"/admin/roleta-prizes",{method:req.method,headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),"content-type":"application/json"},body:req.method==="POST"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});res.status(r.status).setHeader("Cache-Control","no-store").setHeader("Content-Type","application/json; charset=utf-8");return res.send(await r.text())}catch{return res.status(502).json({ok:false,error:"FALHA_PREMIOS_ROLETA"})}
+ }
  if(req.query.route==="product-catalog"){
   if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const unit=String(req.query.unit||"").toLowerCase();
