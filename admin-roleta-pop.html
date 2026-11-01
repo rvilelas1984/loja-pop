@@ -114,27 +114,16 @@ if(!matchedPrize||!catalogItem)return send("Não foi possível vincular o prêmi
 const attemptKey=unit+":"+id+":"+model;
 
 $("testStudentId").value=id;$("testStudentUnit").value=unit;$("testStudentId").dispatchEvent(new Event("input"));
-if(!confirm(["ATENÇÃO: gerar 1 voucher REAL na EVO?","","Aluno informado: "+id,"Unidade: "+unit,"Voucher: "+catalogItem.name,"","A rota existente emite o voucher, mas NÃO confirma a atribuição automática ao aluno. O código emitido deverá ser conferido e entregue manualmente. Continuar?"].join(String.fromCharCode(10))))return send("Emissão cancelada pelo administrador.");
-voucherIssueBusy=true;send("Gerando voucher real na EVO... Aguarde e não clique novamente.");
+if(!confirm("Emitir voucher REAL para o aluno EVO "+id+"?"))return send("Cancelado.");
+voucherIssueBusy=true;
+const requestId="roleta_"+Date.now()+"_"+Math.random().toString(36).slice(2,14);
+send("Solicitando voucher individual na EVO...");
 try{
-const response=await fetch("/api/evo-config?route=voucher-create",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({unit,modelId:Number(model),quantity:1})});
+const response=await fetch("/api/evo-config?route=roleta-voucher-issue",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({unit,modelId:Number(model),studentId:id,requestId})});
 const d=await response.json();
-if(!response.ok||!d.ok){const detail=d.error||"Falha na emissão";send("Atenção: "+detail+(d.batchId?" · Lote "+d.batchId:"")+". Consulte a Central de Vouchers antes de repetir.");return;}
-if(d.status==="completed"&&Array.isArray(d.codes)&&d.codes.length===1){
-const code=typeof d.codes[0]==="object"?(d.codes[0].code||d.codes[0].assignedCode||JSON.stringify(d.codes[0])):String(d.codes[0]);
-send("✓ Voucher confirmado na EVO · Lote "+(d.batchId||"não informado")+". Vínculo ao aluno "+id+" ainda não confirmado.",code);
-}else if(d.batchId){
-send("Lote "+d.batchId+" criado na EVO. Consultando códigos sem emitir outro voucher...");
-try{
-const check=await fetch("/api/evo-config?route=voucher-create",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({unit,modelId:Number(model),resumeBatchId:d.batchId})});
-const cd=await check.json();
-if(check.ok&&cd.status==="completed"&&Array.isArray(cd.codes)&&cd.codes.length===1){
-const code=typeof cd.codes[0]==="object"?(cd.codes[0].code||cd.codes[0].assignedCode||JSON.stringify(cd.codes[0])):String(cd.codes[0]);
-send("✓ Voucher confirmado na EVO · Lote "+d.batchId+". Vínculo ao aluno "+id+" ainda não confirmado.",code);
-}else send("Voucher solicitado na EVO · Lote "+d.batchId+". Código ainda não confirmado na consulta. Não gere novamente; confira a Central de Vouchers.");
-}catch(err){send("Lote "+d.batchId+" registrado. Não foi possível consultar o código agora; não gere novamente. "+err.message);}
-}else send("Emissão sem código confirmado e sem identificador de lote. Consulte a Central de Vouchers antes de repetir.");
-}catch(e){send("Falha de conexão: "+e.message+". Pode haver emissão pendente; confira a Central de Vouchers antes de tentar novamente.");}
+if(response.ok&&d.status==="issued"&&d.code)send("Voucher emitido e registrado no D1 para o aluno "+id+".",String(d.code));
+else send("Solicitação "+requestId+": "+(d.error||d.message||d.status||"sem confirmação")+". Confira antes de repetir.");
+}catch(e){send("Falha de conexão. Solicitação "+requestId+". Confira antes de repetir.");}
 finally{voucherIssueBusy=false;}
 });
 $("testStudentId").addEventListener("input",()=>{const value=$("testStudentId").value.trim();$("testStudentStatus").textContent=!value?"Informe um ID para preparar o teste.":!/^[1-9][0-9]{0,14}$/.test(value)?"Informe um ID EVO numérico válido.":"ID "+value+" informado para "+$("testStudentUnit").selectedOptions[0].text+". Ainda não validado na EVO; emissão bloqueada.";});$("testStudentUnit").addEventListener("change",()=>$("testStudentId").dispatchEvent(new Event("input")));$("approvedPreview").addEventListener("load",()=>renderWheel());$("reloadPrizeCatalog").onclick=loadPrizeCatalog;$("prizeCatalogUnit").onchange=loadPrizeCatalog;loadPrizeCatalog();try{renderFields();renderWheel();$("message").textContent="Prévia carregada · modo de teste (sem prêmios reais)."}catch(err){console.error("Roleta Pop init:",err);$("message").style.color="#b91c1c";$("message").textContent="Falha na inicialização: "+err.message+" · Utilize Restaurar exemplo ou informe esta mensagem."}
