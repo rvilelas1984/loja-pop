@@ -75,13 +75,22 @@ $("retryEnabled").onchange=()=>{let p=data.prizes.find(p=>p.type==="retry");if(!
 ["title","subtitle","bg","center","font","distance"].forEach(k=>{$(k).value=data[k];$(k).addEventListener("input",()=>{data[k]=["font","distance"].includes(k)?Number($(k).value):$(k).value;renderWheel();schedulePrizeDraft()})});$("add").onclick=()=>{data.prizes.push({name:"Novo prêmio",emoji:"🎁",color:"#C02AC0",pct:0,type:"prize",category:"custom",catalogId:null});renderFields();renderWheel();persistPrizeDraft()};$("reset").onclick=()=>{data=structuredClone(defaults);localStorage.removeItem("cp_roleta_admin_draft");location.reload()};$("save").onclick=()=>{data.enabled=false;localStorage.setItem("cp_roleta_admin_draft",JSON.stringify(data));$("message").textContent="Rascunho salvo neste navegador. Roleta permanece desabilitada para os alunos."};$("export").onclick=()=>{let blob=new Blob([JSON.stringify({...data,enabled:false},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="roleta-pop-configuracao.json";a.click();URL.revokeObjectURL(url)};let voucherIssueBusy=false;const voucherAttempts=new Set();
 window.addEventListener("message",async event=>{
 if(event.origin!==location.origin||event.source!==$("approvedPreview").contentWindow||event.data?.type!=="roleta-pop-admin-voucher-request")return;
-const id=String(event.data.studentId||"").trim(),requestedModel=String(event.data.modelId||""),unit=$("prizeCatalogUnit").value;const matchedPrize=data.prizes.find(p=>p.type==="prize"&&p.category==="voucher"&&(requestedModel&&String(p.catalogId)===requestedModel||p.name===event.data.prizeName));const candidates=catalogCache.voucher.filter(x=>x.name===event.data.prizeName);const model=String(matchedPrize?.catalogId||requestedModel||(candidates.length===1?candidates[0].id:""));
+const id=String(event.data.studentId||"").trim(),requestedModel=String(event.data.modelId||""),unit=$("prizeCatalogUnit").value;
+const normalizeName=value=>String(value||"").replace(/\\s+/g," ").trim().toLocaleLowerCase("pt-BR");
+const matchedPrize=data.prizes.find(p=>p.type==="prize"&&p.category==="voucher"&&((requestedModel&&String(p.catalogId)===requestedModel)||normalizeName(p.name)===normalizeName(event.data.prizeName)));
+const numeric=id=>/^[1-9][0-9]*$/.test(String(id||""));
+const candidates=catalogCache.voucher.filter(x=>normalizeName(x.name)===normalizeName(event.data.prizeName)&&numeric(x.id));
+const directIds=[matchedPrize?.catalogId,requestedModel].filter(numeric).map(String);
+const directItem=catalogCache.voucher.find(x=>directIds.includes(String(x.id)));
+const catalogItemResolved=directItem||(candidates.length===1?candidates[0]:null);
+const model=catalogItemResolved?String(catalogItemResolved.id):"";
+if(matchedPrize&&catalogItemResolved&&String(matchedPrize.catalogId)!==model){matchedPrize.catalogId=model;persistPrizeDraft();renderFields();renderWheel();}
 const send=message=>$("approvedPreview").contentWindow.postMessage({type:"roleta-pop-admin-voucher-response",message},location.origin);
 if(voucherIssueBusy)return send("Emissão em andamento. Aguarde.");
-if(!/^[1-9][0-9]{0,14}$/.test(id))return send("ID EVO inválido.");if(!/^\\d+$/.test(model))return send("O prêmio não possui um modelo EVO numérico válido. Selecione novamente o voucher cadastrado no catálogo e salve a configuração.");
+if(!/^[1-9][0-9]{0,14}$/.test(id))return send("ID EVO inválido.");if(!numeric(model))return send("Não encontrei um ID numérico de voucher para este prêmio no catálogo D1. Nenhuma emissão realizada. Verifique o cadastro na Central de Vouchers.");
 const configured=data.prizes.some(p=>p.type==="prize"&&p.category==="voucher"&&String(p.catalogId)===model);
 const catalogItem=catalogCache.voucher.find(x=>String(x.id)===model);
-if(!configured||!catalogItem)return send("Voucher não encontrado na configuração e no catálogo D1 desta unidade. Atualize os catálogos.");
+if(!matchedPrize||!catalogItem)return send("Não foi possível vincular o prêmio ao voucher do catálogo. Confira a unidade e o modelo cadastrado.");
 const attemptKey=unit+":"+id+":"+model;
 if(voucherAttempts.has(attemptKey))return send("Já houve uma solicitação para este aluno e voucher nesta sessão. Consulte o histórico antes de tentar novamente.");
 $("testStudentId").value=id;$("testStudentUnit").value=unit;$("testStudentId").dispatchEvent(new Event("input"));
