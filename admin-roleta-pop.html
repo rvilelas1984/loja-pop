@@ -85,7 +85,7 @@ const directItem=catalogCache.voucher.find(x=>directIds.includes(String(x.id)));
 const catalogItemResolved=directItem||(candidates.length===1?candidates[0]:null);
 const model=catalogItemResolved?String(catalogItemResolved.id):"";
 if(matchedPrize&&catalogItemResolved&&String(matchedPrize.catalogId)!==model){matchedPrize.catalogId=model;persistPrizeDraft();renderFields();renderWheel();}
-const send=message=>$("approvedPreview").contentWindow.postMessage({type:"roleta-pop-admin-voucher-response",message},location.origin);
+const send=(message,code)=>$("approvedPreview").contentWindow.postMessage({type:"roleta-pop-admin-voucher-response",message,code:code||null},location.origin);
 if(voucherIssueBusy)return send("Emissão em andamento. Aguarde.");
 if(!/^[1-9][0-9]{0,14}$/.test(id))return send("ID EVO inválido.");if(!numeric(model))return send("Não encontrei um ID numérico de voucher para este prêmio no catálogo D1. Nenhuma emissão realizada. Verifique o cadastro na Central de Vouchers.");
 const configured=data.prizes.some(p=>p.type==="prize"&&p.category==="voucher"&&String(p.catalogId)===model);
@@ -102,7 +102,7 @@ const d=await response.json();
 if(!response.ok||!d.ok){const detail=d.error||"Falha na emissão";send("Atenção: "+detail+(d.batchId?" · Lote "+d.batchId:"")+". Consulte a Central de Vouchers antes de repetir.");return;}
 if(d.status==="completed"&&Array.isArray(d.codes)&&d.codes.length===1){
 const code=typeof d.codes[0]==="object"?(d.codes[0].code||d.codes[0].assignedCode||JSON.stringify(d.codes[0])):String(d.codes[0]);
-send("Voucher REAL emitido na EVO! Código: "+code+" · Lote D1: "+(d.batchId||"não informado")+". Aluno "+id+" informado para conferência; vínculo automático NÃO confirmado.");
+send("✓ Voucher confirmado na EVO · Lote "+(d.batchId||"não informado")+". Vínculo ao aluno "+id+" ainda não confirmado.",code);
 }else if(d.batchId){
 send("Lote "+d.batchId+" criado na EVO. Consultando códigos sem emitir outro voucher...");
 try{
@@ -110,7 +110,7 @@ const check=await fetch("/api/evo-config?route=voucher-create",{method:"POST",cr
 const cd=await check.json();
 if(check.ok&&cd.status==="completed"&&Array.isArray(cd.codes)&&cd.codes.length===1){
 const code=typeof cd.codes[0]==="object"?(cd.codes[0].code||cd.codes[0].assignedCode||JSON.stringify(cd.codes[0])):String(cd.codes[0]);
-send("✓ Voucher gerado com sucesso na EVO! Prêmio: "+catalogItem.name+" · Código: "+code+" · Lote D1: "+d.batchId+". O vínculo ao aluno "+id+" deve ser conferido.");
+send("✓ Voucher confirmado na EVO · Lote "+d.batchId+". Vínculo ao aluno "+id+" ainda não confirmado.",code);
 }else send("Voucher solicitado na EVO · Lote "+d.batchId+". Código ainda não confirmado na consulta. Não gere novamente; confira a Central de Vouchers.");
 }catch(err){send("Lote "+d.batchId+" registrado. Não foi possível consultar o código agora; não gere novamente. "+err.message);}
 }else send("Emissão sem código confirmado e sem identificador de lote. Consulte a Central de Vouchers antes de repetir.");
