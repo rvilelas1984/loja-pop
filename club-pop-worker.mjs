@@ -4323,6 +4323,16 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             return json({ok:true,source:"d1",evoRequestsMade:0});
           }
           if(String(b.action||"")==="save-profile"){const num=(v,min,max)=>v===null||v===undefined||v===""?null:(Number.isFinite(Number(v))&&Number(v)>=min&&Number(v)<=max?Number(v):NaN),height=num(b.height,0.8,2.5),initialWeight=num(b.initialWeight,20,350);if([height,initialWeight].some(Number.isNaN))return json({ok:false,error:"VALOR_INVALIDO"},400);await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=excluded.height,initial_weight=COALESCE(pop_fit_profile.initial_weight,excluded.initial_weight),updated_at=CURRENT_TIMESTAMP").bind(base.id,height,initialWeight).run();const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,saved:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
+          if(String(b.action||"")==="delete-manual-activity"){
+            const id=Number(b.activityId);
+            if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
+            const owned=await env.DB.prepare("SELECT id FROM pop_fit_manual_activities WHERE id=? AND member_id=? LIMIT 1").bind(id,base.id).first();
+            if(!owned)return json({ok:false,error:"ATIVIDADE_NAO_ENCONTRADA"},404);
+            const result=await env.DB.prepare("DELETE FROM pop_fit_manual_activities WHERE id=? AND member_id=?").bind(id,base.id).run();
+            if(!result.meta?.changes)return json({ok:false,error:"ATIVIDADE_NAO_ENCONTRADA"},404);
+            await audit(env,"MEMBER",String(base.id),"POP_FIT_MANUAL_DELETED","POP_FIT_MANUAL_ACTIVITY",String(id),{});
+            return json({ok:true,deleted:true,source:"d1",evoRequestsMade:0});
+          }
           if(String(b.action||"")==="add-manual-activity"){
             const name=String(b.activityName||"").trim().slice(0,60),date=String(b.activityDate||""),time=String(b.startTime||"").trim(),cal=b.calories===""||b.calories==null?null:Number(b.calories);
             if(!name||date.length!==10||(date.slice(0,7)!=="2026-09"&&date.slice(0,7)!=="2026-10"))return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
