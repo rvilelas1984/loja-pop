@@ -2046,9 +2046,9 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           }
           const b=await request.json().catch(()=>({}));
           if(request.method==="POST"&&devices){
-            const type=String(b.device_type||""),ref=String(b.reference_number||"").trim(),name=String(b.display_name||"").trim();
-            if(!["moovz","rpm"].includes(type)||!/^\d{1,6}$/.test(ref)||!name||name.length>100||(!b.unit_bike&&!b.unit_gym))return json({ok:false,error:"DADOS_INVALIDOS"},400);
-            const r=await env.DB.prepare("INSERT INTO pop_live_devices(reference_number,device_type,display_name,ble_identifier,unit_bike,unit_gym) VALUES(?,?,?,?,?,?)").bind(ref,type,name,String(b.ble_identifier||"").slice(0,180),b.unit_bike?1:0,b.unit_gym?1:0).run();
+            const type=String(b.device_type||"").trim(),manufacturer=String(b.manufacturer||"").trim(),model=String(b.model||"").trim(),ref=String(b.reference_number||"").trim(),name=String(b.display_name||"").trim();
+            if(!type||type.length>60||!manufacturer||manufacturer.length>80||model.length>80||!/^\d{1,6}$/.test(ref)||!name||name.length>100||(!b.unit_bike&&!b.unit_gym))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+            const r=await env.DB.prepare("INSERT INTO pop_live_devices(reference_number,device_type,manufacturer,model,display_name,ble_identifier,unit_bike,unit_gym) VALUES(?,?,?,?,?,?,?,?)").bind(ref,type,manufacturer,model,name,String(b.ble_identifier||"").slice(0,180),b.unit_bike?1:0,b.unit_gym?1:0).run();
             return json({ok:true,id:r.meta?.last_row_id},201);
           }
           if(request.method==="POST"&&!devices){

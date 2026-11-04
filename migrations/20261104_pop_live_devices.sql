@@ -2,7 +2,9 @@
 CREATE TABLE IF NOT EXISTS pop_live_devices (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  reference_number TEXT NOT NULL,
- device_type TEXT NOT NULL CHECK(device_type IN ('moovz','rpm')),
+ device_type TEXT NOT NULL,
+ manufacturer TEXT NOT NULL,
+ model TEXT,
  display_name TEXT NOT NULL,
  ble_identifier TEXT,
  ble_name TEXT,
