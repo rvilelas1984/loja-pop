@@ -2101,12 +2101,16 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const data=await request.json().catch(()=>null);
         const number=String(data?.reference_number||"").trim();
         const address=String(data?.ble_identifier||"").trim().toUpperCase();
-        if(!/^[0-9]{1,6}$/.test(number)||!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(address))return json({ok:false,error:"DADOS_INVALIDOS"},400);
-        const exists=await env.DB.prepare("SELECT id,reference_number,ble_identifier FROM pop_live_devices WHERE active=1 AND (reference_number=? OR upper(ble_identifier)=?) LIMIT 1").bind(number,address).first();
+        const type=data?.device_type==="cadence"?"cadence":"heart_rate";
+        if(!/^[0-9]{1,6}$/.test(number)||!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(address)||(type==="cadence"&&(+number<1||+number>34)))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const exists=await env.DB.prepare("SELECT id,reference_number,ble_identifier,device_type FROM pop_live_devices WHERE active=1 AND ((reference_number=? AND device_type=?) OR upper(ble_identifier)=?) LIMIT 1").bind(number,type,address).first();
         if(exists)return json({ok:false,error:"DISPOSITIVO_JA_CADASTRADO",existing:exists},409);
-        const result=await env.DB.prepare("INSERT INTO pop_live_devices(reference_number,device_type,manufacturer,model,display_name,ble_identifier,ble_name,unit_bike,unit_gym,active) SELECT ?,'heart_rate','COOSPO','HW807',?,?,?,1,1,1 WHERE NOT EXISTS (SELECT 1 FROM pop_live_devices WHERE active=1 AND (reference_number=? OR upper(ble_identifier)=?))").bind(number,"Relógio "+number,address,String(data?.ble_name||"COOSPO HW807").slice(0,80),number,address).run();
-        if(!result.meta?.changes)return json({ok:false,error:"DISPOSITIVO_JA_CADASTRADO"},409);
-        return json({ok:true,reference_number:number,ble_identifier:address});
+        const name=type==="cadence"?"Sensor Bike "+number:"Relógio "+number;
+        const manufacturer=type==="cadence"?"Bluetooth":"COOSPO";
+        const model=type==="cadence"?"Cadence":"HW807";
+        const result=await env.DB.prepare("INSERT INTO pop_live_devices(reference_number,device_type,manufacturer,model,display_name,ble_identifier,ble_name,unit_bike,unit_gym,active) VALUES(?,?,?,?,?,?,?,1,1,1)").bind(number,type,manufacturer,model,name,address,String(data?.ble_name||model).slice(0,80)).run();
+        if(!result.meta?.changes)return json({ok:false,error:"FALHA_AO_SALVAR"},500);
+        return json({ok:true,reference_number:number,device_type:type,ble_identifier:address});
       }
       if(url.pathname==="/admin/pop-live-app-token"&&request.method==="POST"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
