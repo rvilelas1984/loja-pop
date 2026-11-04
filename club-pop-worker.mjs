@@ -2091,6 +2091,21 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const r=await env.DB.prepare("SELECT reference_number,device_type,manufacturer,model,display_name,ble_identifier,unit_bike,unit_gym FROM pop_live_devices WHERE active=1 ORDER BY reference_number").all();
         return json({ok:true,devices:r.results||[]});
       }
+      if(url.pathname==="/pop-live/devices"&&request.method==="POST"){
+        const token=String(request.headers.get("authorization")||"").replace(/^Bearer /i,"").trim();
+        if(!/^[0-9a-f-]{36}$/.test(token))return json({ok:false,error:"APP_NAO_AUTORIZADO"},401);
+        const access=await env.DB.prepare("SELECT active FROM pop_live_app_tokens WHERE token=?").bind(token).first();
+        if(!access||!access.active)return json({ok:false,error:"APP_NAO_AUTORIZADO"},403);
+        const data=await request.json().catch(()=>null);
+        const number=String(data?.reference_number||"").trim();
+        const address=String(data?.ble_identifier||"").trim().toUpperCase();
+        if(!/^[0-9]{1,6}$/.test(number)||!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(address))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const exists=await env.DB.prepare("SELECT id,reference_number,ble_identifier FROM pop_live_devices WHERE active=1 AND (reference_number=? OR upper(ble_identifier)=?) LIMIT 1").bind(number,address).first();
+        if(exists)return json({ok:false,error:"DISPOSITIVO_JA_CADASTRADO",existing:exists},409);
+        const result=await env.DB.prepare("INSERT INTO pop_live_devices(reference_number,device_type,manufacturer,model,display_name,ble_identifier,ble_name,unit_bike,unit_gym,active) SELECT ?,'heart_rate','COOSPO','HW807',?,?,?,1,1,1 WHERE NOT EXISTS (SELECT 1 FROM pop_live_devices WHERE active=1 AND (reference_number=? OR upper(ble_identifier)=?))").bind(number,"Relógio "+number,address,String(data?.ble_name||"COOSPO HW807").slice(0,80),number,address).run();
+        if(!result.meta?.changes)return json({ok:false,error:"DISPOSITIVO_JA_CADASTRADO"},409);
+        return json({ok:true,reference_number:number,ble_identifier:address});
+      }
       if(url.pathname==="/admin/pop-live-app-token"&&request.method==="POST"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
