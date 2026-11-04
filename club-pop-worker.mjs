@@ -2054,7 +2054,10 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           if(request.method==="POST"&&!devices){
             const unit=String(b.unit||""),name=String(b.class_name||"").trim(),start=String(b.starts_at||""),duration=Number(b.duration_minutes||60);
             if(!["bike","gym"].includes(unit)||!name||name.length>120||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(start)||duration<1||duration>240)return json({ok:false,error:"DADOS_INVALIDOS"},400);
-            const r=await env.DB.prepare("INSERT INTO pop_live_sessions(source,unit,class_name,starts_at,duration_minutes,teacher_name) VALUES('manual',?,?,?,?,?)").bind(unit,name,start,duration,String(b.teacher_name||"").slice(0,100)).run();
+            const source=b.source==="d1"?"d1":"manual",sourceId=source==="d1"?String(b.source_class_id||""):null;
+            if(source==="d1"&&!/^[0-9]+$/.test(sourceId))return json({ok:false,error:"ID_AULA_INVALIDO"},400);
+            if(source==="d1"){const existing=await env.DB.prepare("SELECT * FROM pop_live_sessions WHERE source='d1' AND unit=? AND source_class_id=? AND starts_at=?").bind(unit,sourceId,start).first();if(existing)return json({ok:true,id:existing.id,session:existing})}
+            const r=await env.DB.prepare("INSERT INTO pop_live_sessions(source,source_class_id,unit,class_name,starts_at,duration_minutes,teacher_name) VALUES(?,?,?,?,?,?,?)").bind(source,sourceId,unit,name,start,duration,String(b.teacher_name||"").slice(0,100)).run();
             return json({ok:true,id:r.meta?.last_row_id},201);
           }
           const id=Number(b.id||url.searchParams.get("id"));
