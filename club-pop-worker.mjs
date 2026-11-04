@@ -2067,8 +2067,16 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
             const r=await env.DB.prepare("DELETE FROM "+table+" WHERE id=?").bind(id).run();return json({ok:true,deleted:r.meta?.changes||0});
           }
           if(devices){
-            const active=b.active===false?0:1;
-            await env.DB.prepare("UPDATE pop_live_devices SET active=?,ble_identifier=COALESCE(?,ble_identifier),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(active,b.ble_identifier==null?null:String(b.ble_identifier).slice(0,180),id).run();
+            const existing=await env.DB.prepare("SELECT id FROM pop_live_devices WHERE id=?").bind(id).first();
+            if(!existing)return json({ok:false,error:"DISPOSITIVO_NAO_ENCONTRADO"},404);
+            if(b.device_type!=null){
+              const type=String(b.device_type||"").trim(),manufacturer=String(b.manufacturer||"").trim(),model=String(b.model||"").trim(),ref=String(b.reference_number||"").trim(),name=String(b.display_name||"").trim();
+              if(!type||type.length>60||!manufacturer||manufacturer.length>80||model.length>80||!/^[0-9]{1,6}$/.test(ref)||!name||name.length>100||(!b.unit_bike&&!b.unit_gym))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+              await env.DB.prepare("UPDATE pop_live_devices SET device_type=?,manufacturer=?,model=?,reference_number=?,display_name=?,ble_identifier=?,unit_bike=?,unit_gym=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(type,manufacturer,model,ref,name,String(b.ble_identifier||"").slice(0,180),b.unit_bike?1:0,b.unit_gym?1:0,id).run();
+            }else{
+              const active=b.active===false?0:1;
+              await env.DB.prepare("UPDATE pop_live_devices SET active=?,ble_identifier=COALESCE(?,ble_identifier),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(active,b.ble_identifier==null?null:String(b.ble_identifier).slice(0,180),id).run();
+            }
           }else{
             if(!["ranking","collective","zone"].includes(b.goal_type))return json({ok:false,error:"META_INVALIDA"},400);
             await env.DB.prepare("UPDATE pop_live_sessions SET goal_type=?,goal_value=?,goal_zone=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(b.goal_type,b.goal_value==null?null:Number(b.goal_value),b.goal_zone==null?null:Number(b.goal_zone),id).run();
