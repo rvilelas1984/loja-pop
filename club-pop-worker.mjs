@@ -2083,6 +2083,24 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           return json({ok:true,id});
         }catch(e){return json({ok:false,error:String(e).includes("UNIQUE")?"DISPOSITIVO_DUPLICADO":"TABELA_D1_NAO_DISPONIVEL"},500)}
       }
+      if(url.pathname==="/pop-live/devices"&&request.method==="GET"){
+        const token=String(request.headers.get("authorization")||"").replace(/^Bearer /i,"").trim();
+        if(!/^[0-9a-f-]{36}$/.test(token))return json({ok:false,error:"APP_NAO_AUTORIZADO"},401);
+        const access=await env.DB.prepare("SELECT active FROM pop_live_app_tokens WHERE token=?").bind(token).first();
+        if(!access||!access.active)return json({ok:false,error:"APP_NAO_AUTORIZADO"},403);
+        const r=await env.DB.prepare("SELECT reference_number,device_type,manufacturer,model,display_name,ble_identifier,unit_bike,unit_gym FROM pop_live_devices WHERE active=1 ORDER BY reference_number").all();
+        return json({ok:true,devices:r.results||[]});
+      }
+      if(url.pathname==="/admin/pop-live-app-token"&&request.method==="POST"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const token=crypto.randomUUID();
+        await env.DB.prepare("INSERT INTO pop_live_app_tokens(token) VALUES(?)").bind(token).run();
+        return json({ok:true,token});
+      }
       // TV POP: shared unit settings, persisted in D1 (media bytes remain in R2).
       if(url.pathname==="/admin/tv-pop-config"&&["GET","PUT"].includes(request.method)){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
