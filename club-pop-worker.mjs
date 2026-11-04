@@ -2026,6 +2026,53 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const inserted=await env.DB.prepare("INSERT INTO student_tutorial_videos(title,description,category,unit,drive_file_id,sort_order,published) VALUES(?,?,?,?,?,?,?)").bind(title,description,category,unit,driveId,sortOrder,published).run();
         return json({ok:true,id:inserted.meta?.last_row_id},201);
       }
+      // Pop Live: authenticated equipment inventory and manual monitoring sessions.
+      if(["/admin/pop-live-devices","/admin/pop-live-sessions"].includes(url.pathname)){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const devices=url.pathname.endsWith("devices");
+        if(!["GET","POST","PUT","DELETE"].includes(request.method))return json({ok:false,error:"METODO_INVALIDO"},405);
+        const table=devices?"pop_live_devices":"pop_live_sessions";
+        try{
+          if(request.method==="GET"){
+            if(devices){const r=await env.DB.prepare("SELECT * FROM pop_live_devices ORDER BY device_type,reference_number").all();return json({ok:true,devices:r.results||[]})}
+            const unit=url.searchParams.get("unit"),date=url.searchParams.get("date");
+            if(!["bike","gym"].includes(unit)||!/^\d{4}-\d{2}-\d{2}$/.test(date||""))return json({ok:false,error:"FILTROS_INVALIDOS"},400);
+            const r=await env.DB.prepare("SELECT * FROM pop_live_sessions WHERE unit=? AND substr(starts_at,1,10)=? ORDER BY starts_at").bind(unit,date).all();
+            return json({ok:true,sessions:r.results||[]});
+          }
+          const b=await request.json().catch(()=>({}));
+          if(request.method==="POST"&&devices){
+            const type=String(b.device_type||""),ref=String(b.reference_number||"").trim(),name=String(b.display_name||"").trim();
+            if(!["moovz","rpm"].includes(type)||!/^\d{1,6}$/.test(ref)||!name||name.length>100||(!b.unit_bike&&!b.unit_gym))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+            const r=await env.DB.prepare("INSERT INTO pop_live_devices(reference_number,device_type,display_name,ble_identifier,unit_bike,unit_gym) VALUES(?,?,?,?,?,?)").bind(ref,type,name,String(b.ble_identifier||"").slice(0,180),b.unit_bike?1:0,b.unit_gym?1:0).run();
+            return json({ok:true,id:r.meta?.last_row_id},201);
+          }
+          if(request.method==="POST"&&!devices){
+            const unit=String(b.unit||""),name=String(b.class_name||"").trim(),start=String(b.starts_at||""),duration=Number(b.duration_minutes||60);
+            if(!["bike","gym"].includes(unit)||!name||name.length>120||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(start)||duration<1||duration>240)return json({ok:false,error:"DADOS_INVALIDOS"},400);
+            const r=await env.DB.prepare("INSERT INTO pop_live_sessions(source,unit,class_name,starts_at,duration_minutes,teacher_name) VALUES('manual',?,?,?,?,?)").bind(unit,name,start,duration,String(b.teacher_name||"").slice(0,100)).run();
+            return json({ok:true,id:r.meta?.last_row_id},201);
+          }
+          const id=Number(b.id||url.searchParams.get("id"));
+          if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"ID_INVALIDO"},400);
+          if(request.method==="DELETE"){
+            if(!devices){const row=await env.DB.prepare("SELECT source FROM pop_live_sessions WHERE id=?").bind(id).first();if(row?.source!=="manual")return json({ok:false,error:"APENAS_AULAS_MANUAIS"},400)}
+            const r=await env.DB.prepare("DELETE FROM "+table+" WHERE id=?").bind(id).run();return json({ok:true,deleted:r.meta?.changes||0});
+          }
+          if(devices){
+            const active=b.active===false?0:1;
+            await env.DB.prepare("UPDATE pop_live_devices SET active=?,ble_identifier=COALESCE(?,ble_identifier),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(active,b.ble_identifier==null?null:String(b.ble_identifier).slice(0,180),id).run();
+          }else{
+            if(!["ranking","collective","zone"].includes(b.goal_type))return json({ok:false,error:"META_INVALIDA"},400);
+            await env.DB.prepare("UPDATE pop_live_sessions SET goal_type=?,goal_value=?,goal_zone=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(b.goal_type,b.goal_value==null?null:Number(b.goal_value),b.goal_zone==null?null:Number(b.goal_zone),id).run();
+          }
+          return json({ok:true,id});
+        }catch(e){return json({ok:false,error:String(e).includes("UNIQUE")?"DISPOSITIVO_DUPLICADO":"TABELA_D1_NAO_DISPONIVEL"},500)}
+      }
       // TV POP: shared unit settings, persisted in D1 (media bytes remain in R2).
       if(url.pathname==="/admin/tv-pop-config"&&["GET","PUT"].includes(request.method)){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
