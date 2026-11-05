@@ -91,7 +91,7 @@ assert.equal(selection.body.attendance_created,false);
 assert.equal((await call(selectionRoute+'/lookup',{member_id:'88'})).body.member.sex,'f');
 assert.equal((await call(selectionRoute+'/members/88/health',{sex:'invalid'})).status,400);
 const health=await call(selectionRoute+'/members/88/health',{sex:'m',weight:82,idempotency_key:'33333333-3333-4333-8333-333333333333'});
-assert.equal(health.status,200);
+console.log('DEBUG health',JSON.stringify(health));assert.equal(health.status,200);
 assert.equal(health.body.saved,true);
 assert.equal((await call(selectionRoute+'/lookup',{member_id:'88'})).body.member.sex,'m');
 assert.equal((await call(selectionRoute+'/lookup',{member_id:'88'})).body.member.weight,82);
