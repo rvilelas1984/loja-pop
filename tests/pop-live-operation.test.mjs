@@ -21,6 +21,7 @@ sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_member_performanc
 sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_manual_drafts.sql',import.meta.url),'utf8'));
 sql.exec(readFileSync(new URL('../migrations/20261105_pop_fit_weight_history.sql',import.meta.url),'utf8'));
 sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_selected_members.sql',import.meta.url),'utf8'));
+sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_profile_sex.sql',import.meta.url),'utf8'));
 const token='11111111-1111-4111-8111-111111111111',key='22222222-2222-4222-8222-222222222222';
 sql.prepare('INSERT INTO pop_live_app_tokens VALUES(?,1)').run(token);
 sql.exec("INSERT INTO evo_attendance_sessions VALUES('gym','123',date('now','-3 hours'),'23:59','Aula oficial','Professor','scheduled'); INSERT INTO pop_live_devices(id,reference_number,ble_identifier,active,device_type,unit_bike,unit_gym) VALUES(1,'21','AA:BB:CC:DD:EE:FF',1,'heart_rate',1,1); INSERT INTO members(id,evo_member_id,gym_client_id,birth_date,first_name,last_name) VALUES(1,'77','88','1986-01-01','Test','Student'); INSERT INTO pop_fit_profile VALUES(1,170,75); INSERT INTO evo_member_master VALUES('gym','88','{\"gender\":\"Female\"}');");
@@ -103,6 +104,13 @@ sql.prepare("INSERT INTO pop_live_devices(id,reference_number,device_type,active
 const available=await call(selectionRoute+'/devices');
 assert.equal(available.status,200);
 assert.ok(available.body.devices.some(d=>d.id===501));
+assert.equal(foundByCpf.body.member.sex,'f');
+sql.exec("UPDATE evo_member_master SET personal_json='{}' WHERE unit='gym' AND evo_member_id='88'");
+assert.equal((await call(selectionRoute+'/assign-device',{member_id:'88',device_id:501})).body.error,'SEXO_OBRIGATORIO');
+assert.equal((await call(selectionRoute+'/select-member',{member_id:'88',sex:'x'})).status,400);
+for(let i=0;i<2;i++)assert.equal((await call(selectionRoute+'/select-member',{member_id:'88',sex:'f'})).body.sex,'f');
+assert.equal((await call(selectionRoute+'/select-member',{member_id:'88',sex:'m'})).status,409);
+assert.equal((await call(selectionRoute+'/lookup',{member_id:'88'})).body.member.sex,'f');
 const assigned=await call(selectionRoute+'/assign-device',{member_id:'88',device_id:501});
 assert.equal(assigned.status,200);
 assert.equal(assigned.body.assigned,true);
