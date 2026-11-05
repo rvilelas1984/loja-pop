@@ -3,6 +3,14 @@ on:
   push:
     paths:
       - 'lib/unit-*.mjs'
+      - 'tela-checkin.html'
+      - 'api/tela-checkin.js'
+      - 'api/evo-config.js'
+      - 'lib/evo-transport.js'
+      - 'lib/admin-gym-ranking.mjs'
+      - 'tests/checkin-*.test.mjs'
+      - 'tests/scheduled-isolation.test.mjs'
+      - 'tests/reservation-invalid-session.test.mjs'
       - 'lib/reservation-sync.mjs'
       - 'tests/reservation-sync.test.mjs'
       - 'tests/shared-unit-access.test.mjs'
@@ -20,3 +28,4 @@ jobs:
         with:
           node-version: '24'
       - run: node --test tests/shared-unit-access.test.mjs tests/member-identity.test.mjs tests/promotion-eligibility.test.mjs tests/student-lucky-numbers.test.mjs tests/reservation-sync.test.mjs
+      - run: node --test tests/checkin-unit-race.test.mjs tests/checkin-highlights.test.mjs tests/checkin-mirror.test.mjs tests/scheduled-isolation.test.mjs tests/reservation-invalid-session.test.mjs tests/partner-media.test.mjs
