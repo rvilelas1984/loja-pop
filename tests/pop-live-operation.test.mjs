@@ -8,7 +8,7 @@ sql.exec(`
 CREATE TABLE pop_live_app_tokens(token TEXT PRIMARY KEY,active INTEGER);
 CREATE TABLE evo_attendance_sessions(unit TEXT,id_activity_session TEXT,activity_date TEXT,start_time TEXT,activity_name TEXT,instructor_name TEXT,status TEXT);
 CREATE TABLE pop_live_sessions(id INTEGER PRIMARY KEY,source TEXT,source_class_id TEXT,unit TEXT,class_name TEXT,starts_at TEXT,teacher_name TEXT,duration_minutes INTEGER DEFAULT 60,goal_type TEXT,goal_value REAL,goal_zone INTEGER,status TEXT DEFAULT 'planned',updated_at TEXT);
-CREATE TABLE pop_live_devices(id INTEGER PRIMARY KEY,reference_number TEXT,ble_identifier TEXT,active INTEGER,device_type TEXT,unit_bike INTEGER,unit_gym INTEGER);
+CREATE TABLE pop_live_devices(id INTEGER PRIMARY KEY,reference_number TEXT,display_name TEXT,ble_identifier TEXT,active INTEGER,device_type TEXT,unit_bike INTEGER,unit_gym INTEGER);
 CREATE TABLE pop_live_session_devices(session_id INTEGER,device_id INTEGER,member_id TEXT,PRIMARY KEY(session_id,device_id));
 CREATE TABLE checkin_reservation_snapshots(unit TEXT,session_id TEXT,activity_date TEXT,evo_member_id TEXT,member_name TEXT,checked_in INTEGER,removed INTEGER,status TEXT,slot_number INTEGER);
 CREATE TABLE members(id INTEGER,evo_member_id TEXT,gym_client_id TEXT,birth_date TEXT,first_name TEXT,last_name TEXT,cpf_hash TEXT);
