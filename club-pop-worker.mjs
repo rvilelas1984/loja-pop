@@ -2095,6 +2095,28 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!["bike","gym"].includes(unit)||!activeUnits.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA",activeUnits},403);
         const memberId=String((unit==="gym"?linkedGym:member.evo_member_id)||"");
         if(!/^\d+$/.test(memberId))return json({ok:false,error:"ID_EVO_NAO_VINCULADO"},403);
+        const action=String(url.searchParams.get("action")||"classes");
+        if(action==="health"&&request.method==="GET"){
+          const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,memberId).first();
+          let personal={};try{personal=JSON.parse(master?.personal_json||"{}")}catch{}
+          const profile=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=?").bind(member.id).first();
+          const recent=await env.DB.prepare("SELECT weight FROM pop_fit_entries WHERE member_id=? AND weight>0 ORDER BY updated_at DESC LIMIT 1").bind(member.id).first();
+          const birth=String(member.birth_date||personal.birthDate||personal.birth_date||"").slice(0,10);
+          const sexRaw=String(personal.gender||personal.sex||personal.genderDescription||"").trim().toLowerCase();
+          const sex=["m","male","masculino"].includes(sexRaw)?"M":["f","female","feminino"].includes(sexRaw)?"F":"";
+          const height=Number(profile?.height||personal.height||personal.altura||0)||null;
+          const weight=Number(recent?.weight||profile?.initial_weight||0)||null;
+          return json({ok:true,health:{birth_date:/^\\d{4}-\\d{2}-\\d{2}$/.test(birth)?birth:"",sex,height,weight},unit});
+        }
+        if(action==="health"&&request.method==="POST"){
+          let b;try{b=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
+          const weight=Number(b.weight),height=b.height==null||b.height===""?null:Number(b.height);
+          if(!Number.isFinite(weight)||weight<20||weight>300)return json({ok:false,error:"PESO_INVALIDO"},400);
+          if(height!==null&&(!Number.isFinite(height)||height<100||height>230))return json({ok:false,error:"ALTURA_INVALIDA"},400);
+          await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=COALESCE(excluded.height,pop_fit_profile.height),initial_weight=excluded.initial_weight,updated_at=CURRENT_TIMESTAMP").bind(member.id,height,weight).run();
+          return json({ok:true,health:{weight,height}});
+        }
+        if(action!=="classes")return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(request.method==="GET"){
           const q=await env.DB.prepare(`SELECT id_activity_session id,activity_date,start_time,activity_name name,instructor_name teacher
             FROM evo_attendance_sessions WHERE unit=? AND activity_date BETWEEN date('now','-3 hours') AND date('now','-3 hours','+2 days')
