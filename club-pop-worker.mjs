@@ -2098,6 +2098,18 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const memberId=String((unit==="gym"?linkedGym:member.evo_member_id)||"");
         if(!/^\d+$/.test(memberId))return json({ok:false,error:"ID_EVO_NAO_VINCULADO"},403);
         const action=String(url.searchParams.get("action")||(request.method==="GET"?"classes":"checkin"));
+        if(action==="status"&&request.method==="GET"){
+          const classId=String(url.searchParams.get("class_id")||"");
+          const manual=/^manual-([1-9]\\d*)$/.exec(classId);
+          if(!manual&&!/^\\d+$/.test(classId))return json({ok:false,error:"AULA_INVALIDA"},400);
+          const sessions=manual
+            ?await env.DB.prepare("SELECT id FROM pop_live_sessions WHERE id=? AND unit=? AND source='manual' LIMIT 1").bind(Number(manual[1]),unit).all()
+            :await env.DB.prepare("SELECT id FROM pop_live_sessions WHERE unit=? AND source_class_id=? AND source='d1' AND status IN ('planned','running') ORDER BY id DESC LIMIT 1").bind(unit,classId).all();
+          const sid=sessions.results?.[0]?.id;
+          if(!sid)return json({ok:true,already_registered:false});
+          const assigned=await env.DB.prepare(`SELECT d.reference_number,d.device_type FROM pop_live_session_devices a JOIN pop_live_devices d ON d.id=a.device_id WHERE a.session_id=? AND a.member_id=? LIMIT 1`).bind(sid,memberId).first();
+          return json({ok:true,already_registered:!!assigned,session_id:sid,device_number:assigned?.reference_number||null,device_type:assigned?.device_type||null});
+        }
         if(action==="health"&&request.method==="GET"){
           const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,memberId).first();
           let personal={};try{personal=JSON.parse(master?.personal_json||"{}")}catch{}
