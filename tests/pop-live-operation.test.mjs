@@ -63,11 +63,10 @@ assert.ok((await call('/pop-live/classes?unit=gym')).body.classes.some(c=>c.id==
 assert.equal((await call('/pop-live/sessions',{unit:'bike',class_id:manualClass})).status,404);
 assert.equal((await call('/pop-live/sessions',{unit:'gym',class_id:manualClass})).body.session.id,manualId);
 const manualRoute='/pop-live/sessions/'+manualId;
-const monitor=(await call(manualRoute+'/participants')).body.participants[0];
-assert.equal(monitor.watch,'21');assert.equal(monitor.profileComplete,false);
+assert.deepEqual((await call(manualRoute+'/participants')).body.participants,[]);
 const startedManual=(await call(manualRoute+'/start',{operation_key:key,rules})).body.session;
 assert.equal(startedManual.status,'running');
-assert.equal((await call(manualRoute+'/finish',{operation_key:key,finished_at:startedManual.started_at,people:[{member_id:monitor.member_id,watch:'21',kcal:0,zones:[0,0,0,0,0]}]})).body.session.status,'finished');
+assert.equal((await call(manualRoute+'/finish',{operation_key:key,finished_at:startedManual.started_at,people:[]})).body.session.status,'finished');
 assert.equal((await call(manualRoute+'/close',{operation_key:key})).body.session.status,'closed');
 assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_session_devices').get().n,linkedBefore);
 assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_member_performance').get().n,1);
@@ -101,6 +100,8 @@ console.log('PASS: unit device listing and monitoring assignment without attenda
 const manualParticipants=await call(selectionRoute+'/participants');
 assert.equal(manualParticipants.status,200);
 assert.ok(manualParticipants.body.participants.some(p=>p.member_id==='88'&&p.watch==='TEST-501'));
+assert.equal(manualParticipants.body.participants.length,1);
+assert.equal(manualParticipants.body.participants[0].name,'Test Student');
 console.log('PASS: manually linked student appears in participants without EVO check-in.');
 
 
