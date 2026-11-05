@@ -88,6 +88,15 @@ const selection=await call(selectionRoute+'/select-member',{member_id:'88'});
 assert.equal(selection.status,200);
 assert.equal(selection.body.selected,true);
 assert.equal(selection.body.attendance_created,false);
+assert.equal((await call(selectionRoute+'/lookup',{member_id:'88'})).body.member.sex,'f');
+assert.equal((await call(selectionRoute+'/members/88/health',{sex:'invalid'})).status,400);
+const health=await call(selectionRoute+'/members/88/health',{sex:'m',weight:82,idempotency_key:'33333333-3333-4333-8333-333333333333'});
+assert.equal(health.status,200);
+assert.equal(health.body.saved,true);
+assert.equal((await call(selectionRoute+'/lookup',{member_id:'88'})).body.member.sex,'m');
+assert.equal((await call(selectionRoute+'/lookup',{member_id:'88'})).body.member.weight,82);
+assert.equal(sql.prepare('SELECT count(*) n FROM pop_fit_weight_history').get().n,1);
+
 assert.equal((await call(selectionRoute+'/select-member',{member_id:'88'})).body.selected,true);
 assert.equal(sql.prepare('SELECT COUNT(*) n FROM pop_live_selected_members').get().n,1);
 console.log('PASS: CPF hash lookup, CPF validation and monitoring selection without check-in.');
