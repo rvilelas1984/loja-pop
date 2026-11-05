@@ -2084,6 +2084,48 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           return json({ok:true,id});
         }catch(e){return json({ok:false,error:String(e).includes("UNIQUE")?"DISPOSITIVO_DUPLICADO":"TABELA_D1_NAO_DISPONIVEL"},500)}
       }
+      // Pop Live aluno: sessão do Club Pop, sem token administrativo do APK.
+      if(url.pathname==="/pop-live/student" && ["GET","POST"].includes(request.method)){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const activeUnits=await clubActiveUnits(env,member.evo_member_id,member.gym_client_id);
+        if(!activeUnits.length)return json({ok:false,error:"CONTRATO_INATIVO"},403);
+        const unit=String(url.searchParams.get("unit")||"");
+        if(!["bike","gym"].includes(unit)||!activeUnits.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        const memberId=String(unit==="gym"?member.gym_client_id:member.evo_member_id||"");
+        if(!/^\d+$/.test(memberId))return json({ok:false,error:"ID_EVO_NAO_VINCULADO"},403);
+        if(request.method==="GET"){
+          const q=await env.DB.prepare(`SELECT id_activity_session id,activity_date,start_time,activity_name name,instructor_name teacher
+            FROM evo_attendance_sessions WHERE unit=? AND activity_date BETWEEN date('now','-3 hours') AND date('now','-3 hours','+2 days')
+            AND lower(COALESCE(status,'')) NOT IN ('cancelled','canceled','cancelado','cancelada')
+            AND datetime(activity_date||'T'||substr(start_time,1,5)||':00') BETWEEN datetime('now','-3 hours','-30 minutes') AND datetime('now','-3 hours','+48 hours')
+            ORDER BY activity_date,start_time LIMIT 60`).bind(unit).all();
+          return json({ok:true,classes:q.results||[],unit});
+        }
+        let b;try{b=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
+        const classId=String(b.class_id||""),number=String(b.device_number||"").trim(),type=String(b.device_type||"heart_rate");
+        if(!/^\d+$/.test(classId)||!/^\d{1,6}$/.test(number)||!["heart_rate","cadence"].includes(type))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        if(type==="cadence"&&unit!=="bike")return json({ok:false,error:"SENSOR_EXCLUSIVO_BIKE"},400);
+        const c=await env.DB.prepare(`SELECT * FROM evo_attendance_sessions WHERE unit=? AND id_activity_session=?
+          AND lower(COALESCE(status,'')) NOT IN ('cancelled','canceled','cancelado','cancelada')
+          AND datetime(activity_date||'T'||substr(start_time,1,5)||':00') BETWEEN datetime('now','-3 hours','-30 minutes') AND datetime('now','-3 hours','+90 minutes')`).bind(unit,classId).first();
+        if(!c)return json({ok:false,error:"AULA_FORA_DA_JANELA_DE_CHECKIN"},409);
+        const d=await env.DB.prepare("SELECT id FROM pop_live_devices WHERE reference_number=? AND device_type=? AND active=1 AND ((?='bike' AND unit_bike=1) OR (?='gym' AND unit_gym=1))").bind(number,type,unit,unit).first();
+        if(!d)return json({ok:false,error:"DISPOSITIVO_NAO_CADASTRADO"},404);
+        const starts=c.activity_date+"T"+String(c.start_time).slice(0,5)+":00";
+        await env.DB.prepare("INSERT INTO pop_live_sessions(source,source_class_id,unit,class_name,starts_at,teacher_name) VALUES('d1',?,?,?,?,?) ON CONFLICT DO NOTHING").bind(classId,unit,c.activity_name,starts,c.instructor_name).run();
+        const session=await env.DB.prepare("SELECT id,status FROM pop_live_sessions WHERE source='d1' AND source_class_id=? AND unit=? AND starts_at=?").bind(classId,unit,starts).first();
+        if(!session||!["planned","running"].includes(session.status))return json({ok:false,error:"AULA_ENCERRADA"},409);
+        const old=await env.DB.prepare("SELECT device_id,member_id FROM pop_live_session_devices WHERE session_id=? AND (member_id=? OR device_id=?) LIMIT 1").bind(session.id,memberId,d.id).first();
+        if(old){
+          if(String(old.member_id)===memberId&&Number(old.device_id)===Number(d.id))return json({ok:true,session_id:session.id,already_checked_in:true});
+          return json({ok:false,error:"ALUNO_OU_DISPOSITIVO_JA_ASSOCIADO"},409);
+        }
+        const ins=await env.DB.prepare(`INSERT INTO pop_live_session_devices(session_id,device_id,member_id,connected_at)
+          SELECT ?,?,?,CURRENT_TIMESTAMP WHERE NOT EXISTS(SELECT 1 FROM pop_live_session_devices WHERE session_id=? AND (member_id=? OR device_id=?))`).bind(session.id,d.id,memberId,session.id,memberId,d.id).run();
+        if(!ins.meta?.changes)return json({ok:false,error:"ALUNO_OU_DISPOSITIVO_JA_ASSOCIADO"},409);
+        return json({ok:true,session_id:session.id,member_id:memberId,device_number:number});
+      }
       if(url.pathname.startsWith('/pop-live/')&&url.pathname!=='/pop-live/devices')return await popLiveOperation(request,env,url,json);
       if(url.pathname==="/pop-live/devices"&&request.method==="GET"){
         const token=String(request.headers.get("authorization")||"").replace(/^Bearer /i,"").trim();
