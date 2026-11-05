@@ -2135,8 +2135,8 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         }
         let b;try{b=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
         const classId=String(b.class_id||""),number=String(b.device_number||"").trim(),type=String(b.device_type||"heart_rate");
-        const manualId=/^manual-([1-9]\\d*)$/.exec(classId);
-        if((!manualId&&!/^\\d+$/.test(classId))||!/^\\d{1,6}$/.test(number)||!["heart_rate","cadence"].includes(type))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const manualId=/^manual-([1-9]\d*)$/.exec(classId);
+        if((!manualId&&!/^\d+$/.test(classId))||!/^\d{1,6}$/.test(number)||!["heart_rate","cadence"].includes(type))return json({ok:false,error:"DADOS_INVALIDOS"},400);
         if(type==="cadence"&&unit!=="bike")return json({ok:false,error:"SENSOR_EXCLUSIVO_BIKE"},400);
         let c=null,manualSession=null;
         if(manualId){
