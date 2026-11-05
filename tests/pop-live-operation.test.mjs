@@ -99,3 +99,14 @@ assert.equal(assigned.body.attendance_created,false);
 assert.equal(sql.prepare('SELECT COUNT(*) n FROM pop_live_session_devices WHERE session_id=?').get(selectionSession).n,1);
 console.log('PASS: unit device listing and monitoring assignment without attendance.');
 
+
+const cadence={member_id:'77',watch:'21',sensor_types:['cadence'],rpm_avg:81,rpm_max:100};
+const summary=consolidate([cadence],60,rules);
+assert.equal(summary.people[0].kcal,null);
+assert.equal(summary.people[0].zones,null);
+assert.deepEqual(summary.rankings.kcal,[]);
+assert.throws(()=>consolidate([{...cadence,hr_avg:145}],60,rules));
+const both={...cadence,sensor_types:['heart_rate','cadence'],hr_avg:130,hr_max:145,measured_seconds:30};
+assert.equal(consolidate([both],60,rules).people[0].measured_seconds,30);
+assert.equal(sql.prepare('SELECT COUNT(*) n FROM pop_live_member_performance WHERE unit=? AND member_id=?').get('gym',1).n,1);
+console.log('PASS: cadence-only, combined summary, partial coverage, null calories and sensor compatibility.');
