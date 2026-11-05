@@ -2100,7 +2100,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const action=String(url.searchParams.get("action")||(request.method==="GET"?"classes":"checkin"));
         if(action==="status"&&request.method==="GET"){
           const classId=String(url.searchParams.get("class_id")||"");
-          const manual=/^manual-([1-9]\\d*)$/.exec(classId);
+          const manual=/^manual-([1-9]\d*)$/.exec(classId);
           if(!manual&&!/^\\d+$/.test(classId))return json({ok:false,error:"AULA_INVALIDA"},400);
           const sessions=manual
             ?await env.DB.prepare("SELECT id FROM pop_live_sessions WHERE id=? AND unit=? AND source='manual' LIMIT 1").bind(Number(manual[1]),unit).all()
