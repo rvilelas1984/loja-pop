@@ -98,4 +98,9 @@ assert.equal(assigned.body.assigned,true);
 assert.equal(assigned.body.attendance_created,false);
 assert.equal(sql.prepare('SELECT COUNT(*) n FROM pop_live_session_devices WHERE session_id=?').get(selectionSession).n,1);
 console.log('PASS: unit device listing and monitoring assignment without attendance.');
+const manualParticipants=await call(selectionRoute+'/participants',undefined,'GET');
+assert.equal(manualParticipants.status,200);
+assert.ok(manualParticipants.body.participants.some(p=>p.member_id==='88'&&p.watch==='TEST-501'));
+console.log('PASS: manually linked student appears in participants without EVO check-in.');
+
 
