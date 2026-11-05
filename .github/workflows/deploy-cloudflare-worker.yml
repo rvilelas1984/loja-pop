@@ -16,6 +16,7 @@ on:
       - "lib/journey-engine.mjs"
       - "lib/journey-automations.mjs"
       - "lib/pop-draws.mjs"
+      - "lib/pop-live-operation.mjs"
       - "lib/partner-media.mjs"
       - "lib/lucky-draw-official.mjs"
       - "lib/lucky-draw-audit.mjs"
