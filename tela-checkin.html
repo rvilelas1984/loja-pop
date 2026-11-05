@@ -324,22 +324,26 @@ setInterval(()=>{const now=Date.now(),screen=document.querySelector(".screen");i
 setInterval(cpRefreshConquests,60000);
 const us=document.getElementById("unitSelect");if(us){us.value=tvEmbedded?tvUnit:(window.cpCheckinAllowedUnits||["bike"]).includes(sessionStorage.getItem("cpCheckinUnit"))?sessionStorage.getItem("cpCheckinUnit"):(window.cpCheckinAllowedUnits||["bike"])[0]||"bike";applyUnitIdentity(us.value);us.onchange=()=>{cpUnitEpoch++;cpStarRender++;const starStatus=document.getElementById("cpStarsStatus");if(starStatus)starStatus.hidden=true;currentSessionId=null;currentStart=null;autoReloadKey="";els.map.replaceChildren();els.time.textContent="--:--";els.teacher.textContent="—";els.activity.textContent="Carregando…";els.next.textContent="";cpRefreshConquests();sessionStorage.setItem("cpCheckinUnit",us.value);applyUnitIdentity(us.value);load("initial")}}if(tvEmbedded){loadTVCheckin();setInterval(()=>{if(!document.hidden)loadTVCheckin()},15000)}else load("initial");setInterval(watchClassChange,15000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)watchClassChange()});document.querySelector("#back").onclick=()=>location.href="/admin-resgates.html";document.querySelector("#refresh").onclick=()=>{cpRefreshConquests();return load("manual")};document.querySelector("#gradeRefresh").onclick=()=>refreshGrade();document.querySelector("#prev").onclick=()=>navigateClass(-1);document.querySelector("#nextClass").onclick=()=>navigateClass(1);document.addEventListener('fullscreenchange',()=>{const wrap=document.querySelector('.checkin-wrap');if(!wrap)return;wrap.style.setProperty('--cp-fullscreen-cols',String(Math.max(1,...[...wrap.querySelectorAll('.map .row')].map(row=>row.children.length))));wrap.querySelectorAll('.map .row').forEach(row=>row.style.setProperty('--cp-row-cols',String(row.children.length||8)));});
 document.querySelector("#fs").onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.querySelector(".checkin-wrap").requestFullscreen()}catch{}};
-</script><script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script><script>
-(()=>{"use strict";let items=[],index=0,last=0,shownId="",lastUnit="",timer=null;
+</script><script defer src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script><script>
+(()=>{"use strict";let items=[],index=0,last=0,shownId="",lastUnit="",timer=null,inFlight=null,retryCount=0;
 const el=id=>document.getElementById(id),base="https://club-pop-api.renato-vilelas-personal.workers.dev";
 const unit=()=>el("unitSelect")?.value||"bike";
-async function refresh(){const u=unit();if(u===lastUnit&&items.length)return;lastUnit=u;
- const changedUnit=items.length&&items[0]._unit!==u;if(changedUnit){items=[];shownId="";}let failure="";
+async function refresh(){const u=unit();if(inFlight?.unit===u)return;if(u===lastUnit&&items.length)return;
+ if(inFlight)inFlight.controller.abort();clearTimeout(timer);lastUnit=u;
+ const request={unit:u,controller:new AbortController()};inFlight=request;
+ const changedUnit=items.length&&items[0]._unit!==u;if(changedUnit){items=[];shownId="";el("cpPartnerTV").hidden=true;document.querySelector(".checkin-wrap").classList.remove("cp-has-tv-ads");}let failure="";
  try{
-   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),9000);let r;try{r=await fetch("/api/tv-campaigns?unit="+encodeURIComponent(u)+"&_="+Date.now(),{cache:"no-store",mode:"cors",signal:controller.signal})}finally{clearTimeout(timeout)}
+   const controller=request.controller;const timeout=setTimeout(()=>controller.abort(),9000);let r;try{r=await fetch("/api/tv-campaigns?unit="+encodeURIComponent(u)+"&_="+Date.now(),{cache:"no-store",mode:"cors",signal:controller.signal})}finally{clearTimeout(timeout)}
    if(!r.ok)throw Error("HTTP "+r.status);
    const d=await r.json();if(!d.ok)throw Error(d.error||"RESPOSTA_INVALIDA");
    const previousId=items[index]?.id||"";const next=(Array.isArray(d.campaigns)?d.campaigns:[]).filter(x=>typeof x.imageUrl==="string"&&(/^(https?:\/\/)/i.test(x.imageUrl)||x.imageUrl.startsWith("/tv/")));
    const previousSignature=items.map(x=>x.id+"|"+x.imageUrl+"|"+x.seconds).join(";");
    const nextSignature=next.map(x=>x.id+"|"+x.imageUrl+"|"+x.seconds).join(";");
-   if(unit()!==u)return;items=next.map(x=>({...x,_unit:u}));
+   if(unit()!==u||inFlight!==request)return;retryCount=0;items=next.map(x=>({...x,_unit:u}));
    if(previousSignature!==nextSignature){const preserved=items.findIndex(x=>x.id===previousId);index=preserved>=0?preserved:0;shownId="";}else index=Math.max(0,Math.min(index,items.length-1));
- }catch(e){if(unit()!==u)return;failure=e?.name==="AbortError"?"Tempo limite da API (9 segundos)":(e?.message||"Falha de conexão");console.warn("[Club Pop] Publicidade: ",failure)}
+ }catch(e){if(unit()!==u||inFlight!==request)return;failure=e?.name==="AbortError"?"Tempo limite da API (9 segundos)":(e?.message||"Falha de conexão");console.warn("[Club Pop] Publicidade: ",failure);
+ if(retryCount<3){retryCount++;timer=setTimeout(()=>{lastUnit="";refresh()},retryCount*2000)}
+ }finally{if(inFlight===request)inFlight=null}
  const panel=el("cpPartnerTV"),wrap=document.querySelector(".checkin-wrap");
  if(!items.length){el("cpPartnerVideo").pause();el("cpPartnerVideo").removeAttribute("src");el("cpPartnerVideo").load()}
  panel.hidden=!items.length;wrap.classList.toggle("cp-has-tv-ads",!!items.length);
@@ -363,7 +367,7 @@ if(typeof QRCode!=="undefined")new QRCode(qr,{text:link,width:116,height:116,cor
 else qr.textContent="Acesse: "+link;
 el("cpPartnerDots").innerHTML=items.map((_,i)=>'<span class="'+(i===index?"on":"")+'"></span>').join("");
 last=Date.now();if(shownId!==x.id){shownId=x.id;fetch("/api/admin-auth?route=tv-impression",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:x.id,unit:unit()}),keepalive:true}).catch(()=>{});}}
-setInterval(()=>{if(unit()!==lastUnit){refresh();return}if(!items.length)return;const seconds=Math.max(5,Math.min(60,Number(items[index].seconds)||10));if(Date.now()-last>=seconds*1000){index=(index+1)%items.length;shownId="";show()}},1000);
-setInterval(()=>{lastUnit="";refresh()},60000);refresh();
+setInterval(()=>{if(unit()!==lastUnit){retryCount=0;refresh();return}if(!items.length)return;const seconds=Math.max(5,Math.min(60,Number(items[index].seconds)||10));if(Date.now()-last>=seconds*1000){index=(index+1)%items.length;shownId="";show()}},1000);
+setInterval(()=>{lastUnit="";retryCount=0;refresh()},60000);refresh();
 })();
 </script></body></html>
