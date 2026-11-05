@@ -2095,7 +2095,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!["bike","gym"].includes(unit)||!activeUnits.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA",activeUnits},403);
         const memberId=String((unit==="gym"?linkedGym:member.evo_member_id)||"");
         if(!/^\d+$/.test(memberId))return json({ok:false,error:"ID_EVO_NAO_VINCULADO"},403);
-        const action=String(url.searchParams.get("action")||"classes");
+        const action=String(url.searchParams.get("action")||(request.method==="GET"?"classes":"checkin"));
         if(action==="health"&&request.method==="GET"){
           const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,memberId).first();
           let personal={};try{personal=JSON.parse(master?.personal_json||"{}")}catch{}
@@ -2116,7 +2116,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=COALESCE(excluded.height,pop_fit_profile.height),initial_weight=excluded.initial_weight,updated_at=CURRENT_TIMESTAMP").bind(member.id,height,weight).run();
           return json({ok:true,health:{weight,height}});
         }
-        if(action!=="classes")return json({ok:false,error:"ACAO_INVALIDA"},400);
+        if(!["classes","checkin"].includes(action))return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(request.method==="GET"){
           const q=await env.DB.prepare(`SELECT id_activity_session id,activity_date,start_time,activity_name name,instructor_name teacher
             FROM evo_attendance_sessions WHERE unit=? AND activity_date BETWEEN date('now','-3 hours') AND date('now','-3 hours','+2 days')
