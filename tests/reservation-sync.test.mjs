@@ -51,6 +51,34 @@ test('failed detail preserves old reservation and reports failure rather than fa
  const log=sql.prepare('SELECT * FROM evo_sync_schedule_runs').get(),q=JSON.parse(log.detail);
  assert.equal(log.status,'failed');assert.equal(q.requests,3);assert.match(q.failures[0].error,/503/);assert.equal(sql.prepare('SELECT count(*) n FROM checkin_reservation_snapshots').get().n,1);
 });
+test('EVO empty JSON retries without overwriting a previously valid reservation snapshot',async t=>{
+ const {db,sql}=database();await ensureReservationSchema(db);await saveReservationSnapshot(db,base);
+ let detailCalls=0;
+ t.mock.method(globalThis,'fetch',async url=>{
+  const u=new URL(url);
+  if(u.pathname.endsWith('/detail')){detailCalls++;return new Response('',{status:200,headers:{'Content-Type':'application/json'}})}
+  return Response.json([{idActivitySession:123,activityDate:u.searchParams.get('date'),startTime:'23:59',name:'Bike Pop'}]);
+ });
+ await startReservationSync(db,'bike','empty-json',true);
+ await processReservationSync({DB:db},'bike',async()=>({dns:'test',token:'test'}),3);
+ const log=sql.prepare('SELECT * FROM evo_sync_schedule_runs').get(),detail=JSON.parse(log.detail);
+ assert.equal(log.status,'failed');assert.equal(detailCalls,3);
+ assert.equal(detail.invalidJsonRetries,3);
+ assert.match(detail.failures[0].error,/EVO_JSON_INVALIDO_OU_INCOMPLETO/);
+ assert.equal(sql.prepare('SELECT COUNT(*) n FROM checkin_reservation_snapshots').get().n,1);
+});
+test('provisional EVO session ID zero is skipped without requesting invalid detail',async t=>{
+ const {db,sql}=database();let detailCalls=0;
+ t.mock.method(globalThis,'fetch',async url=>{
+  const u=new URL(url);if(u.pathname.endsWith('/detail')){detailCalls++;throw Error('invalid detail call')}
+  return Response.json([{idActivitySession:0,activityDate:u.searchParams.get('date'),startTime:'23:59',name:'Bike Pop'}]);
+ });
+ await startReservationSync(db,'bike','zero-id',true);
+ await processReservationSync({DB:db},'bike',async()=>({dns:'test',token:'test'}),3);
+ const log=sql.prepare('SELECT * FROM evo_sync_schedule_runs').get(),detail=JSON.parse(log.detail);
+ assert.equal(log.status,'done');assert.equal(detailCalls,0);
+ assert.equal(detail.skippedWithoutSessionId,1);assert.equal(detail.classesSaved,0);
+});
 test('network failure counts attempts; active lease prevents overlapping worker requests',async t=>{
  const {db,sql}=database();await startReservationSync(db,'bike','network',true);
  let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;throw Error('network');});
