@@ -3,6 +3,8 @@ on:
   push:
     paths:
       - 'lib/unit-*.mjs'
+      - 'lib/reservation-sync.mjs'
+      - 'tests/reservation-sync.test.mjs'
       - 'tests/shared-unit-access.test.mjs'
       - 'club-pop-worker.mjs'
       - 'index.html'
@@ -17,4 +19,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --test tests/shared-unit-access.test.mjs tests/member-identity.test.mjs tests/promotion-eligibility.test.mjs tests/student-lucky-numbers.test.mjs
+      - run: node --test tests/shared-unit-access.test.mjs tests/member-identity.test.mjs tests/promotion-eligibility.test.mjs tests/student-lucky-numbers.test.mjs tests/reservation-sync.test.mjs
