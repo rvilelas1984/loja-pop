@@ -4458,6 +4458,15 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const ids={bike:base.evo_member_id?String(base.evo_member_id):null,gym:base.gym_client_id?String(base.gym_client_id):null};
         if(request.method==="GET"){
           const action=String(url.searchParams.get("action")||"activities");
+          if(action==="performance"){
+            const sessionId=Number(url.searchParams.get("id"));
+            if(!Number.isSafeInteger(sessionId)||sessionId<1)return json({ok:false,error:"SESSAO_INVALIDA"},400);
+            const q=await env.DB.prepare(`SELECT p.session_id,p.unit,p.sensor_types_json,p.duration_seconds,p.hr_avg,p.hr_max,p.calories_estimated,p.zones_seconds_json,p.rpm_avg,p.rpm_max,p.speed_avg_kmh,p.speed_max_kmh,p.distance_km,s.class_name,s.starts_at
+              FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id
+              WHERE p.session_id=? AND p.member_id=? AND s.status='closed' LIMIT 1`).bind(sessionId,base.id).first();
+            if(!q)return json({ok:false,error:"DESEMPENHO_NAO_ENCONTRADO"},404);
+            return json({ok:true,source:"d1",evoRequestsMade:0,performance:q});
+          }
           if(action==="profile"){const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
           if(action==="images"){
             const q=await env.DB.prepare("SELECT id,scope,image_data,period_label,created_at FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3").bind(base.id,scope).all();
@@ -4476,6 +4485,16 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             if(!ids[u])continue;
             const q=await env.DB.prepare("SELECT a.attendance_key,a.attendance_date,a.start_time,a.activity_name,a.id_activity_session,p.weight,p.height,p.calories,p.updated_at FROM evo_member_attendance a LEFT JOIN pop_fit_entries p ON p.member_id=? AND p.unit=a.unit AND p.attendance_key=a.attendance_key WHERE a.unit=? AND a.evo_member_id=? AND substr(a.attendance_date,1,7)=? ORDER BY a.attendance_date DESC,a.start_time DESC").bind(base.id,u,ids[u],month).all();
             for(const x of q.results||[])rows.push({...x,unit:u});
+          }
+          // Somente sessoes oficiais encerradas e do proprio aluno.
+          // A correspondencia usa o identificador da aula EVO, nunca apenas a data.
+          const monitored=await env.DB.prepare(`SELECT p.session_id,p.unit,s.source_class_id,s.starts_at
+            FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id
+            WHERE p.member_id=? AND s.status='closed' AND s.source!='manual'
+              AND substr(s.starts_at,1,7)=? LIMIT 100`).bind(base.id,month).all();
+          for(const x of rows){
+            const match=(monitored.results||[]).find(p=>p.unit===x.unit&&String(p.source_class_id)===String(x.id_activity_session)&&String(p.starts_at||'').slice(0,10)===x.attendance_date);
+            if(match)x.performance_session_id=match.session_id;
           }
           rows.sort((a,b)=>String(b.attendance_date+" "+(b.start_time||"")).localeCompare(String(a.attendance_date+" "+(a.start_time||""))));
           return json({ok:true,source:"d1",evoRequestsMade:0,scope,month,student:{firstName:base.first_name||"Aluno",lastName:base.last_name||""},linked:{bike:!!ids.bike,gym:!!ids.gym},activities:rows});
