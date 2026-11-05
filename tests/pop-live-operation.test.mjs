@@ -88,7 +88,7 @@ assert.equal(selection.body.attendance_created,false);
 assert.equal((await call(selectionRoute+'/select-member',{member_id:'88'})).body.selected,true);
 assert.equal(sql.prepare('SELECT COUNT(*) n FROM pop_live_selected_members').get().n,1);
 console.log('PASS: CPF hash lookup, CPF validation and monitoring selection without check-in.');
-sql.prepare("INSERT INTO pop_live_devices(id,reference_number,device_type,active,unit_gym,unit_bike) VALUES(501,'21','heart_rate',1,1,0)").run();
+sql.prepare("INSERT INTO pop_live_devices(id,reference_number,device_type,active,unit_gym,unit_bike) VALUES(501,'TEST-501','heart_rate',1,1,0)").run();
 const available=await call(selectionRoute+'/devices');
 assert.equal(available.status,200);
 assert.ok(available.body.devices.some(d=>d.id===501));
