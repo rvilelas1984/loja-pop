@@ -2105,8 +2105,8 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           const sexRaw=String(personal.gender||personal.sex||personal.genderDescription||"").trim().toLowerCase();
           const sex=["m","male","masculino"].includes(sexRaw)?"M":["f","female","feminino"].includes(sexRaw)?"F":"";
           const height=Number(profile?.height||personal.height||personal.altura||0)||null;
-          const weight=Number(recent?.weight||profile?.initial_weight||0)||null;
-          return json({ok:true,health:{birth_date:/^\\d{4}-\\d{2}-\\d{2}$/.test(birth)?birth:"",sex,height,weight},unit});
+          const weight=Number(profile?.initial_weight||recent?.weight||0)||null;
+          return json({ok:true,health:{birth_date:/^\d{4}-\d{2}-\d{2}$/.test(birth)?birth:"",sex,height,weight},unit});
         }
         if(action==="health"&&request.method==="POST"){
           let b;try{b=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
