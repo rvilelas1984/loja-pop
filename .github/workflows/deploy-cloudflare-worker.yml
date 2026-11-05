@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "club-pop-worker.mjs"
+      - "lib/admin-bike-ranking.mjs"
       - "lib/unit-access.mjs"
       - "lib/unit-progress.mjs"
       - "lib/event-*.mjs"
