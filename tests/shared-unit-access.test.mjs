@@ -132,6 +132,10 @@ test('worker settings route requires administrator before any DB operation',asyn
 
 test('student dashboard serves shared Gym attendance without inventing a Gym contract or balance',async()=>{
  const {db,sql}=fixture(),member=person(sql);attendance(sql,'gym',100,7);
+ // Dashboard reports the current month; align fixture dates with the Sao Paulo month.
+ const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit'}).formatToParts(new Date());
+ const year=parts.find(p=>p.type==='year').value,month=parts.find(p=>p.type==='month').value;
+ sql.prepare("UPDATE evo_member_attendance SET attendance_date=substr(?,1,7)||substr(attendance_date,8) WHERE unit='gym'").run(year+'-'+month);
  sql.exec(`ALTER TABLE members ADD COLUMN first_name TEXT; ALTER TABLE members ADD COLUMN last_name TEXT;
  ALTER TABLE evo_member_master ADD COLUMN financial_json TEXT; ALTER TABLE evo_member_master ADD COLUMN memberships_json TEXT;
  ALTER TABLE evo_member_master ADD COLUMN synced_at TEXT;
