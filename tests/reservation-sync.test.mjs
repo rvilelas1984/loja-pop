@@ -37,10 +37,10 @@ test('jobs resume by batches, deduplicate manual clicks, count real requests and
  assert.equal(sql.prepare('SELECT state FROM evo_reservation_jobs').get().state,'pending');
  await processReservationSync({DB:db},'bike',config,3);
  const log=sql.prepare('SELECT * FROM evo_sync_schedule_runs').get(),detail=JSON.parse(log.detail);
- assert.equal(log.status,'done');assert.equal(detail.requests,calls);assert.equal(calls,3);assert.equal(detail.classesSaved,1);assert.ok(detail.finishedAt);assert.equal(detail.manual,true);
- assert.equal(sql.prepare('SELECT count(*) n FROM evo_request_log').get().n,3);
+ assert.equal(log.status,'done');assert.equal(detail.requests,calls);assert.equal(calls,2);assert.equal(detail.classesSaved,1);assert.ok(detail.finishedAt);assert.equal(detail.manual,true);
+ assert.equal(sql.prepare('SELECT count(*) n FROM evo_request_log').get().n,2);
  assert.equal(sql.prepare('SELECT evo_member_id FROM checkin_reservation_snapshots').get().evo_member_id,'975709');
- await processReservationSync({DB:db},'bike',config);assert.equal(calls,3);
+ await processReservationSync({DB:db},'bike',config);assert.equal(calls,2);
  assert.equal((await startReservationSync(db,'bike','test',false,now)).started,false);
 });
 test('failed detail preserves old reservation and reports failure rather than false success',async t=>{
@@ -49,7 +49,7 @@ test('failed detail preserves old reservation and reports failure rather than fa
  await startReservationSync(db,'bike','fail',true);
  await processReservationSync({DB:db},'bike',async()=>({dns:'t',token:'t'}),3);
  const log=sql.prepare('SELECT * FROM evo_sync_schedule_runs').get(),q=JSON.parse(log.detail);
- assert.equal(log.status,'failed');assert.equal(q.requests,3);assert.match(q.failures[0].error,/503/);assert.equal(sql.prepare('SELECT count(*) n FROM checkin_reservation_snapshots').get().n,1);
+ assert.equal(log.status,'failed');assert.equal(q.requests,4);assert.match(q.failures[0].error,/503/);assert.equal(sql.prepare('SELECT count(*) n FROM checkin_reservation_snapshots').get().n,1);
 });
 test('EVO empty JSON retries without overwriting a previously valid reservation snapshot',async t=>{
  const {db,sql}=database();await ensureReservationSchema(db);await saveReservationSnapshot(db,base);
@@ -86,7 +86,7 @@ test('network failure counts attempts; active lease prevents overlapping worker 
  await processReservationSync({DB:db},'bike',async()=>({dns:'t',token:'t'}));assert.equal(calls,0);
  sql.prepare('UPDATE evo_reservation_jobs SET lease_until=0').run();
  await processReservationSync({DB:db},'bike',async()=>({dns:'t',token:'t'}));
- assert.equal(calls,2);const log=sql.prepare('SELECT * FROM evo_sync_schedule_runs').get();assert.equal(log.status,'failed');assert.equal(JSON.parse(log.detail).requests,2);
+ assert.equal(calls,3);const log=sql.prepare('SELECT * FROM evo_sync_schedule_runs').get();assert.equal(log.status,'failed');assert.equal(JSON.parse(log.detail).requests,3);
 });
 test('worker: student sees tomorrow without EVO, check-in removal immediately revokes chat',async t=>{
  const {default:worker}=await import('../club-pop-worker.mjs');
@@ -99,8 +99,9 @@ test('worker: student sees tomorrow without EVO, check-in removal immediately re
  const date=reservationDates()[1],stamp=Date.now()-5000;
  await saveReservationSnapshot(db,{...base,date,observedAt:stamp});
  const headers={Authorization:'Bearer '+token};
- const next=await (await worker.fetch(new Request('https://local/student-next-class?unit=bike',{headers}),env)).json();assert.equal(next.reservation.slot_number,5);assert.equal(next.reservation.activity_date,date);assert.equal(next.evoRequestsMade,0);
+ sql.exec('CREATE TABLE evo_attendance_sessions(unit TEXT,id_activity_session TEXT,activity_date TEXT,instructor_name TEXT)');
  await worker.fetch(new Request('https://local/class-chat?unit=bike&session_id=123',{headers}),env);
+ const next=await (await worker.fetch(new Request('https://local/student-next-class?unit=bike',{headers}),env)).json();assert.equal(next.reservation.slot_number,5);assert.equal(next.reservation.activity_date,date);assert.equal(next.evoRequestsMade,0);
  sql.prepare("INSERT INTO class_chat_settings(unit,enabled,test_member_id,open_before) VALUES('bike',1,'975709',1440)").run();
  const chat=await worker.fetch(new Request('https://local/class-chat?unit=bike&session_id=123',{headers}),env);assert.equal(chat.status,200);
  const cleared=await worker.fetch(new Request('https://local/checkin-snapshot',{method:'POST',headers:{Authorization:'Bearer fixture-secret','Content-Type':'application/json'},body:JSON.stringify({unit:'bike',date,session:{idActivitySession:'123',startTime:'07:15:00'},enrollments:[],observedAt:stamp+1})}),env);assert.equal(cleared.status,200);
