@@ -2104,13 +2104,13 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           const birth=String(member.birth_date||personal.birthDate||personal.birth_date||"").slice(0,10);
           const sexRaw=String(personal.gender||personal.sex||personal.genderDescription||"").trim().toLowerCase();
           const sex=["m","male","masculino"].includes(sexRaw)?"M":["f","female","feminino"].includes(sexRaw)?"F":"";
-          const height=Number(profile?.height||personal.height||personal.altura||0)||null;
+          const rawHeight=Number(String(profile?.height||personal.height||personal.altura||0).replace(',','.'));const height=rawHeight>=1&&rawHeight<=2.5?Math.round(rawHeight*1000)/10:rawHeight||null;
           const weight=Number(profile?.initial_weight||recent?.weight||0)||null;
           return json({ok:true,health:{birth_date:/^\d{4}-\d{2}-\d{2}$/.test(birth)?birth:"",sex,height,weight},unit});
         }
         if(action==="health"&&request.method==="POST"){
           let b;try{b=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
-          const weight=Number(b.weight),height=b.height==null||b.height===""?null:Number(b.height);
+          const weight=Number(b.weight),rawHeight=b.height==null||b.height===""?null:Number(String(b.height).replace(",",".")),height=rawHeight>=1&&rawHeight<=2.5?Math.round(rawHeight*1000)/10:rawHeight;
           if(!Number.isFinite(weight)||weight<20||weight>300)return json({ok:false,error:"PESO_INVALIDO"},400);
           if(height!==null&&(!Number.isFinite(height)||height<100||height>230))return json({ok:false,error:"ALTURA_INVALIDA"},400);
           await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=COALESCE(excluded.height,pop_fit_profile.height),initial_weight=excluded.initial_weight,updated_at=CURRENT_TIMESTAMP").bind(member.id,height,weight).run();
