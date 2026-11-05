@@ -2088,11 +2088,12 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
       if(url.pathname==="/pop-live/student" && ["GET","POST"].includes(request.method)){
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
-        const activeUnits=await clubActiveUnits(env,member.evo_member_id,member.gym_client_id);
+        const linkedGym=member.gym_client_id||((await env.DB.prepare("SELECT gym_client_id FROM gym_member_links WHERE member_id=? AND status='ACTIVE' ORDER BY rowid DESC LIMIT 1").bind(member.id).first())?.gym_client_id||null);
+        const activeUnits=await clubActiveUnits(env,member.evo_member_id,linkedGym);
         if(!activeUnits.length)return json({ok:false,error:"CONTRATO_INATIVO"},403);
         const unit=String(url.searchParams.get("unit")||"");
-        if(!["bike","gym"].includes(unit)||!activeUnits.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
-        const memberId=String(unit==="gym"?member.gym_client_id:member.evo_member_id||"");
+        if(!["bike","gym"].includes(unit)||!activeUnits.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA",activeUnits},403);
+        const memberId=String((unit==="gym"?linkedGym:member.evo_member_id)||"");
         if(!/^\d+$/.test(memberId))return json({ok:false,error:"ID_EVO_NAO_VINCULADO"},403);
         if(request.method==="GET"){
           const q=await env.DB.prepare(`SELECT id_activity_session id,activity_date,start_time,activity_name name,instructor_name teacher
