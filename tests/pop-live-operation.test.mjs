@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ CREATE TABLE pop_live_sessions(id INTEGER PRIMARY KEY,source TEXT,source_class_i
 CREATE TABLE pop_live_devices(id INTEGER PRIMARY KEY,reference_number TEXT,ble_identifier TEXT,active INTEGER,device_type TEXT,unit_bike INTEGER,unit_gym INTEGER);
 CREATE TABLE pop_live_session_devices(session_id INTEGER,device_id INTEGER,member_id TEXT,PRIMARY KEY(session_id,device_id));
 CREATE TABLE checkin_reservation_snapshots(unit TEXT,session_id TEXT,activity_date TEXT,evo_member_id TEXT,member_name TEXT,checked_in INTEGER,removed INTEGER,status TEXT,slot_number INTEGER);
-CREATE TABLE members(id INTEGER,evo_member_id TEXT,gym_client_id TEXT,birth_date TEXT,first_name TEXT,last_name TEXT);
+CREATE TABLE members(id INTEGER,evo_member_id TEXT,gym_client_id TEXT,birth_date TEXT,first_name TEXT,last_name TEXT,cpf_hash TEXT);
 CREATE TABLE pop_fit_profile(member_id INTEGER,height REAL,initial_weight REAL);
 CREATE TABLE pop_fit_entries(member_id INTEGER,weight REAL,updated_at TEXT);
 CREATE TABLE evo_member_master(unit TEXT,evo_member_id TEXT,personal_json TEXT);
@@ -19,6 +20,7 @@ sql.exec(readFileSync(new URL('../migrations/20261104_pop_live_operation.sql',im
 sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_member_performance.sql',import.meta.url),'utf8'));
 sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_manual_drafts.sql',import.meta.url),'utf8'));
 sql.exec(readFileSync(new URL('../migrations/20261105_pop_fit_weight_history.sql',import.meta.url),'utf8'));
+sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_selected_members.sql',import.meta.url),'utf8'));
 const token='11111111-1111-4111-8111-111111111111',key='22222222-2222-4222-8222-222222222222';
 sql.prepare('INSERT INTO pop_live_app_tokens VALUES(?,1)').run(token);
 sql.exec("INSERT INTO evo_attendance_sessions VALUES('gym','123',date('now','-3 hours'),'23:59','Aula oficial','Professor','scheduled'); INSERT INTO pop_live_devices VALUES(1,'21','AA:BB:CC:DD:EE:FF',1,'heart_rate',1,1); INSERT INTO members(id,evo_member_id,gym_client_id,birth_date,first_name,last_name) VALUES(1,'77','88','1986-01-01','Test','Student'); INSERT INTO pop_fit_profile VALUES(1,170,75); INSERT INTO evo_member_master VALUES('gym','88','{\"gender\":\"Female\"}');");
@@ -69,3 +71,20 @@ assert.equal((await call(manualRoute+'/finish',{operation_key:key,finished_at:st
 assert.equal((await call(manualRoute+'/close',{operation_key:key})).body.session.status,'closed');
 assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_session_devices').get().n,linkedBefore);
 assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_member_performance').get().n,1);
+
+const cpfHash=createHash('sha256').update('52998224725').digest('hex');
+sql.prepare('UPDATE members SET cpf_hash=? WHERE id=1').run(cpfHash);
+const selectionSession=Number(sql.prepare("INSERT INTO pop_live_sessions(source,unit,class_name,starts_at) VALUES('manual','gym','Pesquisa CPF',datetime('now','-3 hours'))").run().lastInsertRowid);
+const selectionRoute='/pop-live/sessions/'+selectionSession;
+const foundByCpf=await call(selectionRoute+'/lookup',{cpf:'52998224725'});
+assert.equal(foundByCpf.status,200);
+assert.equal(foundByCpf.body.found,true);
+assert.equal(foundByCpf.body.member.member_id,'88');
+assert.equal((await call(selectionRoute+'/lookup',{cpf:'11111111111'})).status,400);
+const selection=await call(selectionRoute+'/select-member',{member_id:'88'});
+assert.equal(selection.status,200);
+assert.equal(selection.body.selected,true);
+assert.equal(selection.body.attendance_created,false);
+assert.equal((await call(selectionRoute+'/select-member',{member_id:'88'})).body.selected,true);
+assert.equal(sql.prepare('SELECT COUNT(*) n FROM pop_live_selected_members').get().n,1);
+console.log('PASS: CPF hash lookup, CPF validation and monitoring selection without check-in.');
