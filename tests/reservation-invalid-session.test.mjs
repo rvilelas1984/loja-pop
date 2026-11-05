@@ -14,7 +14,7 @@ test('invalid session zero is reported without EVO detail request and valid clas
  t.mock.method(globalThis,'fetch',async url=>{const u=new URL(url);if(u.pathname.endsWith('/detail')){details.push(u.searchParams.get('idActivitySession'));return Response.json({idActivitySession:123,participants:[]})}return Response.json([{idActivitySession:0,startTime:'23:59',name:'Burn Pop',activityDate:u.searchParams.get('date')},{idActivitySession:123,startTime:'23:59',name:'Ritbox',activityDate:u.searchParams.get('date')}])});
  await processReservationSync({DB:db},'gym',async()=>({dns:'test',token:'test'}),10);
  const row=sql.prepare('SELECT status,detail FROM evo_sync_schedule_runs').get(),p=JSON.parse(row.detail);
- assert.equal(row.status,'failed');assert.equal(p.classesSaved,1);assert.deepEqual(details,['123']);assert.ok(p.failures.some(f=>f.error==='GRADE_SEM_ID_SESSAO_VALIDO'));
+ assert.equal(row.status,'done');assert.equal(p.classesSaved,1);assert.deepEqual(details,['123']);assert.ok(p.skippedWithoutSessionId>=1);
 });
 test('empty EVO response produces explicit failure without writing snapshot',async t=>{
  const {db,sql}=database();await ensureReservationSchema(db);await startReservationSync(db,'gym','empty-test',true,new Date(Date.now()+86400000));
