@@ -23,3 +23,11 @@ test('empty EVO response produces explicit failure without writing snapshot',asy
  const p=JSON.parse(sql.prepare('SELECT detail FROM evo_sync_schedule_runs').get().detail);
  assert.ok(p.failures.some(f=>f.error==='EVO_SEM_CONTEUDO'));assert.equal(p.classesSaved,0);assert.equal(sql.prepare('SELECT count(*) n FROM checkin_snapshot_versions').get().n,0);
 });
+test('429 respects Retry-After and resumes the same job without an immediate second EVO call',async t=>{
+ const {db,sql}=database();let calls=0;
+ await startReservationSync(db,'gym','rate-limit',false,new Date());
+ t.mock.method(globalThis,'fetch',async()=>++calls===1?new Response(null,{status:429,headers:{'Retry-After':'1800'}}):Response.json([]));
+ const run=()=>processReservationSync({DB:db},'gym',async()=>({dns:'test',token:'test'}));const before=Date.now();await run();
+ const held=sql.prepare('SELECT state,lease_until FROM evo_reservation_jobs').get();assert.equal(held.state,'pending');assert.ok(held.lease_until>=before+1800000);await run();assert.equal(calls,1);
+ sql.exec('UPDATE evo_reservation_jobs SET lease_until=0');await run();assert.equal(calls,2);assert.equal(sql.prepare('SELECT state FROM evo_reservation_jobs').get().state,'done');
+});
