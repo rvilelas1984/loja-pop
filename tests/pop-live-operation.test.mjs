@@ -22,10 +22,11 @@ sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_manual_drafts.sql
 sql.exec(readFileSync(new URL('../migrations/20261105_pop_fit_weight_history.sql',import.meta.url),'utf8'));
 sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_selected_members.sql',import.meta.url),'utf8'));
 sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_health_overrides.sql',import.meta.url),'utf8'));
+sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_session_exclusions.sql',import.meta.url),'utf8'));
 const token='11111111-1111-4111-8111-111111111111',key='22222222-2222-4222-8222-222222222222';
 sql.prepare('INSERT INTO pop_live_app_tokens VALUES(?,1)').run(token);
 sql.exec("INSERT INTO evo_attendance_sessions VALUES('gym','123',date('now','-3 hours'),'23:59','Aula oficial','Professor','scheduled'); INSERT INTO pop_live_devices(id,reference_number,ble_identifier,active,device_type,unit_bike,unit_gym) VALUES(1,'21','AA:BB:CC:DD:EE:FF',1,'heart_rate',1,1); INSERT INTO members(id,evo_member_id,gym_client_id,birth_date,first_name,last_name) VALUES(1,'77','88','1986-01-01','Test','Student'); INSERT INTO pop_fit_profile VALUES(1,170,75); INSERT INTO evo_member_master(unit,evo_member_id,personal_json) VALUES('gym','88','{\"gender\":\"Female\"}');");
-const DB={prepare(query){let params=[];return {bind(...p){params=p;return this},async first(){return sql.prepare(query).get(...params)||null},async all(){return {results:sql.prepare(query).all(...params)}},async run(){const r=sql.prepare(query).run(...params);return {meta:{changes:r.changes,last_row_id:r.lastInsertRowid}}}}},async batch(items){sql.exec('BEGIN');try{const r=[];for(const i of items)r.push(await i.run());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}};
+const DB={prepare(query){let params=[];return {readOnly:/^SELECT/i.test(query.trim()),bind(...p){params=p;return this},async first(){return sql.prepare(query).get(...params)||null},async all(){return {results:sql.prepare(query).all(...params)}},async run(){const r=sql.prepare(query).run(...params);return {meta:{changes:r.changes,last_row_id:r.lastInsertRowid}}}}},async batch(items){sql.exec('BEGIN');try{const r=[];for(const i of items)r.push(i.readOnly?await i.all():await i.run());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}};
 const call=async(path,data,t=token)=>{const request=new Request('https://test'+path,{method:data?'POST':'GET',headers:{authorization:'Bearer '+t},body:data?JSON.stringify(data):undefined});return popLiveOperation(request,{DB},new URL(request.url),(body,status=200)=>({body,status}));};
 assert.equal((await call('/pop-live/classes?unit=gym',null,'bad')).status,401);
 assert.equal((await call('/pop-live/classes?unit=gym')).body.classes[0].id,'123');
@@ -118,3 +119,29 @@ assert.equal(manualParticipants.body.participants[0].name,'Test Student');
 console.log('PASS: manually linked student appears in participants without EVO check-in.');
 
 
+for(const [unit,target,sensor,type] of [['bike','965062',12,'cadence'],['gym','88',21,'heart_rate']]){
+ const sid=unit==='bike'?35:36,api='/pop-live/sessions/'+sid,day='2026-11-05';
+ sql.prepare("INSERT INTO pop_live_sessions(id,unit,source,source_class_id,starts_at) VALUES(?,?,'d1','777',?)").run(sid,unit,day+'T18:15:00');
+ sql.prepare("INSERT INTO pop_live_devices(id,reference_number,device_type,active,unit_gym,unit_bike) VALUES(?,?,?,1,?,?)").run(sensor,String(sensor+100),type,Number(unit==='gym'),Number(unit==='bike'));
+ if(unit==='bike')sql.prepare("UPDATE members SET evo_member_id=? WHERE id=1").run(target);
+ const snapshot=sql.prepare("INSERT INTO checkin_reservation_snapshots VALUES (?,'777',?,?,?,1,0,'checked_in',?)");
+ snapshot.run(unit,day,target,'Aluno teste',1);snapshot.run(unit,day,'999','Outro',2);
+ const attendance=()=>sql.prepare("SELECT * FROM checkin_reservation_snapshots WHERE unit=? AND session_id='777' ORDER BY slot_number").all(unit);
+ const before=attendance();
+ const select=()=>call(api+'/select-member',{member_id:target});
+ const assign=(device_id=sensor)=>call(api+'/assign-device',{member_id:target,device_id});
+ const list=async()=>(await call(api+'/participants')).body.participants;
+ await select();assert.equal((await assign()).status,200);
+ assert.ok((await list()).some(p=>p.member_id===target&&p.watch));
+ const other=(await list()).find(p=>p.member_id==='999');
+ const removed=await call(api+'/remove-member',{member_id:target});
+ assert.equal(removed.status,200);assert.equal(removed.body.device_released,true);
+ assert.equal((await call(api+'/remove-member',{member_id:target})).body.removed,true);
+ assert.equal(sql.prepare("SELECT COUNT(*) n FROM pop_live_session_exclusions WHERE session_id=? AND member_id=?").get(sid,target).n,1);
+ assert.equal((await call(api+'/devices')).body.devices.find(d=>d.id===sensor).occupied,0);
+ for(let i=0;i<2;i++)assert.deepEqual(await list(),[other]);
+ await select();assert.equal((await assign(987654)).status,404);assert.deepEqual(await list(),[other]);
+ assert.equal((await assign()).status,200);assert.ok((await list()).some(p=>p.member_id===target&&p.watch));
+ assert.deepEqual(attendance(),before);
+ console.log('PASS remove, release, refresh, failed and successful re-enrollment, other participant and original attendance:',unit);
+}
