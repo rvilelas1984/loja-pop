@@ -4475,7 +4475,14 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           if(action==="manual-activities"){
             const m=String(url.searchParams.get("month")||"2026-10");
             if(!/^2026-(09|10|11|12)$/.test(m))return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
-            const q=await env.DB.prepare("SELECT id,activity_name,activity_date,start_time,calories FROM pop_fit_manual_activities WHERE member_id=? AND substr(activity_date,1,7)=? ORDER BY activity_date DESC,start_time DESC,id DESC").bind(base.id,m).all();
+            const q=await env.DB.prepare(`SELECT id,activity_name,activity_date,start_time,calories,NULL performance_session_id,NULL unit
+              FROM pop_fit_manual_activities WHERE member_id=? AND substr(activity_date,1,7)=?
+              UNION ALL
+              SELECT NULL,s.class_name,substr(s.starts_at,1,10),substr(s.starts_at,12,5),p.calories_estimated,s.id,s.unit
+              FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id
+              WHERE p.member_id=? AND s.source='manual' AND s.status='closed' AND substr(s.starts_at,1,7)=?
+                AND (?='club' OR s.unit=?) ORDER BY activity_date DESC,start_time DESC,id DESC`
+            ).bind(base.id,m,base.id,m,scope,scope).all();
             return json({ok:true,source:"d1",evoRequestsMade:0,activities:q.results||[]});
           }
           const month=String(url.searchParams.get("month")||"2026-10");

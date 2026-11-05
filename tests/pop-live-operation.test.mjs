@@ -121,3 +121,25 @@ const both={...cadence,sensor_types:['heart_rate','cadence'],hr_avg:130,hr_max:1
 assert.equal(consolidate([both],60,rules).people[0].measured_seconds,30);
 assert.equal(sql.prepare('SELECT COUNT(*) n FROM pop_live_member_performance WHERE unit=? AND member_id=?').get('gym',1).n,1);
 console.log('PASS: cadence-only, combined summary, partial coverage, null calories and sensor compatibility.');
+
+// Manual monitoring goes to the selected student's Pop Fit, even without EVO attendance.
+sql.prepare("UPDATE pop_live_devices SET reference_number='28' WHERE id=501").run();
+const selected=(await call(selectionRoute+'/participants')).body.participants.find(p=>p.watch==='28');
+assert.equal(selected.weight,63.5);
+assert.equal(selected.profile_member_id,1);
+const start=(await call(selectionRoute+'/start',{operation_key:key,rules})).body.session;
+const data={member_id:selected.member_id,watch:'28',sensor_types:['heart_rate'],hr_avg:142,hr_max:151,measured_seconds:10};
+assert.equal((await call(selectionRoute+'/finish',{operation_key:key,finished_at:start.started_at+10000,people:[data]})).status,200);
+for(let i=0;i<2;i++)assert.equal((await call(selectionRoute+'/close',{operation_key:key})).status,200);
+assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_member_performance WHERE session_id=? AND member_id=1 AND hr_avg=142').get(selectionSession).n,1);
+assert.equal(sql.prepare('SELECT COUNT(*) n FROM checkin_reservation_snapshots').get().n,1);
+sql.exec('CREATE TABLE pop_fit_manual_activities(id INTEGER,activity_name TEXT,activity_date TEXT,start_time TEXT,calories INTEGER,member_id INTEGER)');
+const worker=readFileSync(new URL('../club-pop-worker.mjs',import.meta.url),'utf8');
+const list=sql.prepare(worker.match(/prepare\(`(SELECT id,activity_name,activity_date,start_time,calories,NULL performance_session_id[\s\S]*?)`/)[1]);
+const month=sql.prepare('SELECT substr(starts_at,1,7) m FROM pop_live_sessions WHERE id=?').get(selectionSession).m;
+const other=(member,scope)=>list.all(member,month,member,month,scope,scope);
+assert.equal(other(1,'gym')[0].performance_session_id,selectionSession);
+assert.equal(other(1,'club').length,1);
+assert.equal(other(1,'bike').length,0);
+assert.equal(other(2,'gym').length,0);
+console.log('PASS: manual session → selected profile → Outras atividades; retry, unit and member isolation.');
