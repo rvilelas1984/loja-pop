@@ -11,7 +11,7 @@ CREATE TABLE pop_live_sessions(id INTEGER PRIMARY KEY,source TEXT,source_class_i
 CREATE TABLE pop_live_devices(id INTEGER PRIMARY KEY,reference_number TEXT,display_name TEXT,ble_identifier TEXT,active INTEGER,device_type TEXT,unit_bike INTEGER,unit_gym INTEGER);
 CREATE TABLE pop_live_session_devices(session_id INTEGER,device_id INTEGER,member_id TEXT,PRIMARY KEY(session_id,device_id));
 CREATE TABLE checkin_reservation_snapshots(unit TEXT,session_id TEXT,activity_date TEXT,evo_member_id TEXT,member_name TEXT,checked_in INTEGER,removed INTEGER,status TEXT,slot_number INTEGER);
-CREATE TABLE members(id INTEGER,evo_member_id TEXT,gym_client_id TEXT,birth_date TEXT,first_name TEXT,last_name TEXT,cpf_hash TEXT);
+CREATE TABLE members(id INTEGER PRIMARY KEY,evo_member_id TEXT,gym_client_id TEXT,birth_date TEXT,first_name TEXT,last_name TEXT,cpf_hash TEXT);
 CREATE TABLE pop_fit_profile(member_id INTEGER,height REAL,initial_weight REAL);
 CREATE TABLE pop_fit_entries(member_id INTEGER,weight REAL,updated_at TEXT);
 CREATE TABLE evo_member_master(unit TEXT,evo_member_id TEXT,personal_json TEXT,is_current INTEGER DEFAULT 1);
@@ -91,7 +91,7 @@ assert.equal(selection.body.attendance_created,false);
 assert.equal((await call(selectionRoute+'/lookup',{member_id:'88'})).body.member.sex,'f');
 assert.equal((await call(selectionRoute+'/members/88/health',{sex:'invalid'})).status,400);
 const health=await call(selectionRoute+'/members/88/health',{sex:'m',weight:82,idempotency_key:'33333333-3333-4333-8333-333333333333'});
-console.log('DEBUG health',JSON.stringify(health));assert.equal(health.status,200);
+assert.equal(health.status,200);
 assert.equal(health.body.saved,true);
 assert.equal((await call(selectionRoute+'/lookup',{member_id:'88'})).body.member.sex,'m');
 assert.equal((await call(selectionRoute+'/lookup',{member_id:'88'})).body.member.weight,82);
