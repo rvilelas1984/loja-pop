@@ -10,12 +10,14 @@ CREATE TABLE pop_live_sessions(id INTEGER PRIMARY KEY,source TEXT,source_class_i
 CREATE TABLE pop_live_devices(id INTEGER PRIMARY KEY,reference_number TEXT,ble_identifier TEXT,active INTEGER,device_type TEXT,unit_bike INTEGER,unit_gym INTEGER);
 CREATE TABLE pop_live_session_devices(session_id INTEGER,device_id INTEGER,member_id TEXT,PRIMARY KEY(session_id,device_id));
 CREATE TABLE checkin_reservation_snapshots(unit TEXT,session_id TEXT,activity_date TEXT,evo_member_id TEXT,member_name TEXT,checked_in INTEGER,removed INTEGER,status TEXT,slot_number INTEGER);
-CREATE TABLE members(id INTEGER,evo_member_id TEXT,gym_client_id TEXT,birth_date TEXT);
+CREATE TABLE members(id INTEGER,evo_member_id TEXT,gym_client_id TEXT,birth_date TEXT,first_name TEXT,last_name TEXT);
 CREATE TABLE pop_fit_profile(member_id INTEGER,height REAL,initial_weight REAL);
 CREATE TABLE pop_fit_entries(member_id INTEGER,weight REAL,updated_at TEXT);
 CREATE TABLE evo_member_master(unit TEXT,evo_member_id TEXT,personal_json TEXT);
 `);
 sql.exec(readFileSync(new URL('../migrations/20261104_pop_live_operation.sql',import.meta.url),'utf8'));
+sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_manual_drafts.sql',import.meta.url),'utf8'));
+sql.exec(readFileSync(new URL('../migrations/20261105_pop_fit_weight_history.sql',import.meta.url),'utf8'));
 const token='11111111-1111-4111-8111-111111111111',key='22222222-2222-4222-8222-222222222222';
 sql.prepare('INSERT INTO pop_live_app_tokens VALUES(?,1)').run(token);
 sql.exec("INSERT INTO evo_attendance_sessions VALUES('gym','123',date('now','-3 hours'),'23:59','Aula oficial','Professor','scheduled'); INSERT INTO pop_live_devices VALUES(1,'21','AA:BB:CC:DD:EE:FF',1,'heart_rate',1,1); INSERT INTO members VALUES(1,'77','88','1986-01-01'); INSERT INTO pop_fit_profile VALUES(1,170,75); INSERT INTO evo_member_master VALUES('gym','88','{\"gender\":\"Female\"}');");
