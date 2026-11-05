@@ -2125,21 +2125,40 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
             AND lower(COALESCE(status,'')) NOT IN ('cancelled','canceled','cancelado','cancelada')
             AND datetime(activity_date||'T'||substr(start_time,1,5)||':00') BETWEEN datetime('now','-3 hours','-30 minutes') AND datetime('now','-3 hours','+48 hours')
             ORDER BY activity_date,start_time LIMIT 60`).bind(unit).all();
-          return json({ok:true,classes:q.results||[],unit});
+          const manual=await env.DB.prepare(`SELECT 'manual-'||id id,substr(starts_at,1,10) activity_date,substr(starts_at,12,5) start_time,class_name name,teacher_name teacher,'manual' source
+            FROM pop_live_sessions WHERE unit=? AND source='manual' AND status IN ('planned','running')
+            AND date(starts_at) BETWEEN date('now','-3 hours') AND date('now','-3 hours','+2 days')
+            AND datetime(starts_at,'+'||duration_minutes||' minutes')>=datetime('now','-3 hours','-30 minutes')
+            ORDER BY starts_at LIMIT 30`).bind(unit).all();
+          const classes=[...(q.results||[]),...(manual.results||[])].sort((a,b)=>String(a.activity_date+'T'+a.start_time).localeCompare(String(b.activity_date+'T'+b.start_time)));
+          return json({ok:true,classes,unit});
         }
         let b;try{b=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
         const classId=String(b.class_id||""),number=String(b.device_number||"").trim(),type=String(b.device_type||"heart_rate");
-        if(!/^\d+$/.test(classId)||!/^\d{1,6}$/.test(number)||!["heart_rate","cadence"].includes(type))return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const manualId=/^manual-([1-9]\d*)$/.exec(classId);
+        if((!manualId&&!/^\d+$/.test(classId))||!/^\d{1,6}$/.test(number)||!["heart_rate","cadence"].includes(type))return json({ok:false,error:"DADOS_INVALIDOS"},400);
         if(type==="cadence"&&unit!=="bike")return json({ok:false,error:"SENSOR_EXCLUSIVO_BIKE"},400);
-        const c=await env.DB.prepare(`SELECT * FROM evo_attendance_sessions WHERE unit=? AND id_activity_session=?
-          AND lower(COALESCE(status,'')) NOT IN ('cancelled','canceled','cancelado','cancelada')
-          AND datetime(activity_date||'T'||substr(start_time,1,5)||':00') BETWEEN datetime('now','-3 hours','-30 minutes') AND datetime('now','-3 hours','+90 minutes')`).bind(unit,classId).first();
-        if(!c)return json({ok:false,error:"AULA_FORA_DA_JANELA_DE_CHECKIN"},409);
+        let c=null,manualSession=null;
+        if(manualId){
+          manualSession=await env.DB.prepare(`SELECT id,status,starts_at,duration_minutes FROM pop_live_sessions
+            WHERE id=? AND unit=? AND source='manual' AND status IN ('planned','running')
+            AND datetime(starts_at) <= datetime('now','-3 hours','+90 minutes')
+            AND datetime(starts_at,'+'||duration_minutes||' minutes') >= datetime('now','-3 hours','-30 minutes')`).bind(Number(manualId[1]),unit).first();
+          if(!manualSession)return json({ok:false,error:"AULA_FORA_DA_JANELA_DE_CHECKIN"},409);
+        }else{
+          c=await env.DB.prepare(`SELECT * FROM evo_attendance_sessions WHERE unit=? AND id_activity_session=?
+            AND lower(COALESCE(status,'')) NOT IN ('cancelled','canceled','cancelado','cancelada')
+            AND datetime(activity_date||'T'||substr(start_time,1,5)||':00') BETWEEN datetime('now','-3 hours','-30 minutes') AND datetime('now','-3 hours','+90 minutes')`).bind(unit,classId).first();
+          if(!c)return json({ok:false,error:"AULA_FORA_DA_JANELA_DE_CHECKIN"},409);
+        }
         const d=await env.DB.prepare("SELECT id FROM pop_live_devices WHERE reference_number=? AND device_type=? AND active=1 AND ((?='bike' AND unit_bike=1) OR (?='gym' AND unit_gym=1))").bind(number,type,unit,unit).first();
         if(!d)return json({ok:false,error:"DISPOSITIVO_NAO_CADASTRADO"},404);
-        const starts=c.activity_date+"T"+String(c.start_time).slice(0,5)+":00";
-        await env.DB.prepare("INSERT INTO pop_live_sessions(source,source_class_id,unit,class_name,starts_at,teacher_name) VALUES('d1',?,?,?,?,?) ON CONFLICT DO NOTHING").bind(classId,unit,c.activity_name,starts,c.instructor_name).run();
-        const session=await env.DB.prepare("SELECT id,status FROM pop_live_sessions WHERE source='d1' AND source_class_id=? AND unit=? AND starts_at=?").bind(classId,unit,starts).first();
+        let session=manualSession;
+        if(!manualId){
+          const starts=c.activity_date+"T"+String(c.start_time).slice(0,5)+":00";
+          await env.DB.prepare("INSERT INTO pop_live_sessions(source,source_class_id,unit,class_name,starts_at,teacher_name) VALUES('d1',?,?,?,?,?) ON CONFLICT DO NOTHING").bind(classId,unit,c.activity_name,starts,c.instructor_name).run();
+          session=await env.DB.prepare("SELECT id,status FROM pop_live_sessions WHERE source='d1' AND source_class_id=? AND unit=? AND starts_at=?").bind(classId,unit,starts).first();
+        }
         if(!session||!["planned","running"].includes(session.status))return json({ok:false,error:"AULA_ENCERRADA"},409);
         const old=await env.DB.prepare("SELECT device_id,member_id FROM pop_live_session_devices WHERE session_id=? AND (member_id=? OR device_id=?) LIMIT 1").bind(session.id,memberId,d.id).first();
         if(old){
