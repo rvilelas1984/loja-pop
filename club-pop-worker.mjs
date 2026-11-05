@@ -4474,12 +4474,12 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           }
           if(action==="manual-activities"){
             const m=String(url.searchParams.get("month")||"2026-10");
-            if(m!=="2026-09"&&m!=="2026-10")return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
+            if(!/^2026-(09|10|11|12)$/.test(m))return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
             const q=await env.DB.prepare("SELECT id,activity_name,activity_date,start_time,calories FROM pop_fit_manual_activities WHERE member_id=? AND substr(activity_date,1,7)=? ORDER BY activity_date DESC,start_time DESC,id DESC").bind(base.id,m).all();
             return json({ok:true,source:"d1",evoRequestsMade:0,activities:q.results||[]});
           }
           const month=String(url.searchParams.get("month")||"2026-10");
-          if(!["2026-09","2026-10"].includes(month))return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
+          if(!/^2026-(09|10|11|12)$/.test(month))return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
           const units=scope==="club"?["bike","gym"]:[scope],rows=[];
           for(const u of units){
             if(!ids[u])continue;
