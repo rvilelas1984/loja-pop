@@ -64,11 +64,14 @@ assert.equal((await call('/pop-live/sessions',{unit:'bike',class_id:manualClass}
 assert.equal((await call('/pop-live/sessions',{unit:'gym',class_id:manualClass})).body.session.id,manualId);
 const manualRoute='/pop-live/sessions/'+manualId;
 assert.deepEqual((await call(manualRoute+'/participants')).body.participants,[]);
+sql.prepare('INSERT INTO pop_live_session_devices(session_id,device_id,member_id) VALUES(?,?,?)').run(manualId,1,'88');
+const monitor=(await call(manualRoute+'/participants')).body.participants[0];
+assert.equal(monitor.member_id,'88');assert.equal(monitor.watch,'21');
 const startedManual=(await call(manualRoute+'/start',{operation_key:key,rules})).body.session;
 assert.equal(startedManual.status,'running');
-assert.equal((await call(manualRoute+'/finish',{operation_key:key,finished_at:startedManual.started_at,people:[]})).body.session.status,'finished');
+assert.equal((await call(manualRoute+'/finish',{operation_key:key,finished_at:startedManual.started_at,people:[{member_id:'88',watch:'21',kcal:0,zones:[0,0,0,0,0]}]})).body.session.status,'finished');
 assert.equal((await call(manualRoute+'/close',{operation_key:key})).body.session.status,'closed');
-assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_session_devices').get().n,linkedBefore);
+assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_session_devices').get().n,linkedBefore+1);
 assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_member_performance').get().n,1);
 
 const cpfHash=createHash('sha256').update('52998224725').digest('hex');
