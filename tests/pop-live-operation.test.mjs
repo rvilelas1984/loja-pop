@@ -8,7 +8,7 @@ sql.exec(`
 CREATE TABLE pop_live_app_tokens(token TEXT PRIMARY KEY,active INTEGER);
 CREATE TABLE evo_attendance_sessions(unit TEXT,id_activity_session TEXT,activity_date TEXT,start_time TEXT,activity_name TEXT,instructor_name TEXT,status TEXT);
 CREATE TABLE pop_live_sessions(id INTEGER PRIMARY KEY,source TEXT,source_class_id TEXT,unit TEXT,class_name TEXT,starts_at TEXT,teacher_name TEXT,duration_minutes INTEGER DEFAULT 60,goal_type TEXT,goal_value REAL,goal_zone INTEGER,status TEXT DEFAULT 'planned',updated_at TEXT);
-CREATE TABLE pop_live_devices(id INTEGER PRIMARY KEY,reference_number TEXT,ble_identifier TEXT,active INTEGER,device_type TEXT,unit_bike INTEGER,unit_gym INTEGER);
+CREATE TABLE pop_live_devices(id INTEGER PRIMARY KEY,reference_number TEXT,display_name TEXT,ble_identifier TEXT,active INTEGER,device_type TEXT,unit_bike INTEGER,unit_gym INTEGER);
 CREATE TABLE pop_live_session_devices(session_id INTEGER,device_id INTEGER,member_id TEXT,PRIMARY KEY(session_id,device_id));
 CREATE TABLE checkin_reservation_snapshots(unit TEXT,session_id TEXT,activity_date TEXT,evo_member_id TEXT,member_name TEXT,checked_in INTEGER,removed INTEGER,status TEXT,slot_number INTEGER);
 CREATE TABLE members(id INTEGER,evo_member_id TEXT,gym_client_id TEXT,birth_date TEXT,first_name TEXT,last_name TEXT,cpf_hash TEXT);
@@ -23,7 +23,7 @@ sql.exec(readFileSync(new URL('../migrations/20261105_pop_fit_weight_history.sql
 sql.exec(readFileSync(new URL('../migrations/20261105_pop_live_selected_members.sql',import.meta.url),'utf8'));
 const token='11111111-1111-4111-8111-111111111111',key='22222222-2222-4222-8222-222222222222';
 sql.prepare('INSERT INTO pop_live_app_tokens VALUES(?,1)').run(token);
-sql.exec("INSERT INTO evo_attendance_sessions VALUES('gym','123',date('now','-3 hours'),'23:59','Aula oficial','Professor','scheduled'); INSERT INTO pop_live_devices VALUES(1,'21','AA:BB:CC:DD:EE:FF',1,'heart_rate',1,1); INSERT INTO members(id,evo_member_id,gym_client_id,birth_date,first_name,last_name) VALUES(1,'77','88','1986-01-01','Test','Student'); INSERT INTO pop_fit_profile VALUES(1,170,75); INSERT INTO evo_member_master VALUES('gym','88','{\"gender\":\"Female\"}');");
+sql.exec("INSERT INTO evo_attendance_sessions VALUES('gym','123',date('now','-3 hours'),'23:59','Aula oficial','Professor','scheduled'); INSERT INTO pop_live_devices(id,reference_number,ble_identifier,active,device_type,unit_bike,unit_gym) VALUES(1,'21','AA:BB:CC:DD:EE:FF',1,'heart_rate',1,1); INSERT INTO members(id,evo_member_id,gym_client_id,birth_date,first_name,last_name) VALUES(1,'77','88','1986-01-01','Test','Student'); INSERT INTO pop_fit_profile VALUES(1,170,75); INSERT INTO evo_member_master VALUES('gym','88','{\"gender\":\"Female\"}');");
 const DB={prepare(query){let params=[];return {bind(...p){params=p;return this},async first(){return sql.prepare(query).get(...params)||null},async all(){return {results:sql.prepare(query).all(...params)}},async run(){const r=sql.prepare(query).run(...params);return {meta:{changes:r.changes,last_row_id:r.lastInsertRowid}}}}},async batch(items){sql.exec('BEGIN');try{const r=[];for(const i of items)r.push(await i.run());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}};
 const call=async(path,data,t=token)=>{const request=new Request('https://test'+path,{method:data?'POST':'GET',headers:{authorization:'Bearer '+t},body:data?JSON.stringify(data):undefined});return popLiveOperation(request,{DB},new URL(request.url),(body,status=200)=>({body,status}));};
 assert.equal((await call('/pop-live/classes?unit=gym',null,'bad')).status,401);
@@ -88,3 +88,14 @@ assert.equal(selection.body.attendance_created,false);
 assert.equal((await call(selectionRoute+'/select-member',{member_id:'88'})).body.selected,true);
 assert.equal(sql.prepare('SELECT COUNT(*) n FROM pop_live_selected_members').get().n,1);
 console.log('PASS: CPF hash lookup, CPF validation and monitoring selection without check-in.');
+sql.prepare("INSERT INTO pop_live_devices(id,reference_number,device_type,active,unit_gym,unit_bike) VALUES(501,'TEST-501','heart_rate',1,1,0)").run();
+const available=await call(selectionRoute+'/devices');
+assert.equal(available.status,200);
+assert.ok(available.body.devices.some(d=>d.id===501));
+const assigned=await call(selectionRoute+'/assign-device',{member_id:'88',device_id:501});
+assert.equal(assigned.status,200);
+assert.equal(assigned.body.assigned,true);
+assert.equal(assigned.body.attendance_created,false);
+assert.equal(sql.prepare('SELECT COUNT(*) n FROM pop_live_session_devices WHERE session_id=?').get(selectionSession).n,1);
+console.log('PASS: unit device listing and monitoring assignment without attendance.');
+
