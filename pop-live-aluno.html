@@ -6,7 +6,7 @@ const el=id=>document.getElementById(id);
 const status=el('status'),form=el('form'),lessons=el('lessons'),checkin=el('checkin'),deviceType=el('deviceType'),deviceNumber=el('deviceNumber');
 let unit='',selected=null,healthLoaded=false,healthSaved=false;
 function message(t){status.textContent=t}
-function update(){checkin.disabled=!(unit&&selected&&healthSaved&&/^\\d{1,6}$/.test(deviceNumber.value.trim()))}
+function update(){checkin.disabled=!(unit&&selected&&healthSaved&&/^\d{1,6}$/.test(deviceNumber.value.trim()))}
 function escapeText(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 async function request(path,opts={}){const r=await fetch(path,{...opts,headers:{Authorization:'Bearer '+token,...opts.headers},cache:'no-store'});const data=await r.json().catch(()=>({}));if(!r.ok||!data.ok)throw Error(data.error||'Não foi possível concluir a operação');return data}
 function stage(which){el('healthStage').classList.toggle('hide',which!=='health');el('deviceStage').classList.toggle('hide',which!=='device')}
