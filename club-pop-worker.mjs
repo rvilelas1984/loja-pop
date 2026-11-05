@@ -2084,7 +2084,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           return json({ok:true,id});
         }catch(e){return json({ok:false,error:String(e).includes("UNIQUE")?"DISPOSITIVO_DUPLICADO":"TABELA_D1_NAO_DISPONIVEL"},500)}
       }
-      // Pop Live aluno: sessão do Club Pop, sem token administrativo do APK.
+      // Pop Live aluno: sessão autenticada do Club Pop; associação independente de presença EVO.
       if(url.pathname==="/pop-live/student" && ["GET","POST"].includes(request.method)){
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
