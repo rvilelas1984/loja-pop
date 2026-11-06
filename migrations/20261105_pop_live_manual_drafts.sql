@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS pop_live_manual_drafts (
  height_cm REAL NOT NULL CHECK(height_cm BETWEEN 100 AND 230),
  sex TEXT CHECK(sex IN ('m','f')),
  cpf_hash TEXT,
+ linked_member_id INTEGER,
  status TEXT NOT NULL DEFAULT 'pending_review' CHECK(status IN ('pending_review','linked','rejected')),
  idempotency_key TEXT NOT NULL UNIQUE,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
