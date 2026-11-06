@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS pop_live_manual_drafts (
  birth_date TEXT NOT NULL,
  weight_kg REAL NOT NULL CHECK(weight_kg BETWEEN 20 AND 350),
  height_cm REAL NOT NULL CHECK(height_cm BETWEEN 100 AND 230),
+ sex TEXT CHECK(sex IN ('m','f')),
  status TEXT NOT NULL DEFAULT 'pending_review' CHECK(status IN ('pending_review','linked','rejected')),
  idempotency_key TEXT NOT NULL UNIQUE,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
