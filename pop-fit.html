@@ -57,10 +57,29 @@ async function openPerformance(sessionId){
   const routeLabels={recuperacao:'Recuperação',subida_ingreme:'Subida íngreme',subida_moderada:'Subida moderada',plano:'Estrada plana',reta_rapida:'Reta rápida',sprint:'Sprint',sprint_intenso:'Sprint intenso'};
   const routeColors={recuperacao:'#a0a0a0',subida_ingreme:'#db8196',subida_moderada:'#d4a36c',plano:'#73b6e8',reta_rapida:'#9a92f0',sprint:'#e4a3f2',sprint_intenso:'#f68bc2'};
   const routeSummary=Array.isArray(routeData)&&routeData.length?(()=>{
-   const totals={};for(const s of routeData){if(!routeLabels[s.kind])continue;const a=totals[s.kind]||(totals[s.kind]={seconds:0,km:0});a.seconds+=Number(s.seconds)||0;a.km+=Number(s.km)||0}
-   const totalKm=routeData.reduce((n,s)=>n+(Number(s.km)||0),0);
-   const strip='<div style="display:flex;height:18px;border-radius:9px;overflow:hidden;margin:14px 0">'+routeData.map(s=>'<span title="'+esc(routeLabels[s.kind]||'Trecho')+'" style="width:'+Math.max(0,(Number(s.km)||0)/Math.max(totalKm,0.001)*100)+'%;background:'+(routeColors[s.kind]||'#777')+'"></span>').join('')+'</div>';
-   return strip+'<div class="perf-extra-grid">'+Object.entries(totals).map(([k,v])=>'<div><small>'+esc(routeLabels[k])+'</small><strong>'+Math.round(v.seconds/60)+' min · '+v.km.toLocaleString('pt-BR',{maximumFractionDigits:2})+' km</strong></div>').join('')+'</div><p class="perf-note">Faixas de RPM em ordem de ocorrência, com distância equivalente por trecho.</p>';
+   const totals={};for(const s of routeData){if(!routeLabels[s.kind])continue;const a=totals[s.kind]||(totals[s.kind]={seconds:0,km:0});a.seconds+=Math.max(0,Number(s.seconds)||0);a.km+=Math.max(0,Number(s.km)||0)}
+   const totalSeconds=routeData.reduce((n,s)=>n+Math.max(0,Number(s.seconds)||0),0);
+   const totalKm=routeData.reduce((n,s)=>n+Math.max(0,Number(s.km)||0),0);
+   // Perfil virtual: a cadência define a forma do terreno, não uma altitude real.
+   // Trechos preservados na ordem da aula; a largura representa o tempo de pedalada.
+   const deltas={recuperacao:0,subida_ingreme:-28,subida_moderada:-14,plano:0,reta_rapida:0,sprint:23,sprint_intenso:34};
+   let x=12,y=104;const pts=[[x,y]],maxWidth=336;
+   for(const s of routeData){
+    const sec=Math.max(0,Number(s.seconds)||0);
+    if(sec<=0)continue;
+    const nx=Math.min(348,x+maxWidth*sec/Math.max(1,totalSeconds));
+    const delta=(deltas[s.kind]||0)*Math.min(1,sec/30);
+    y=Math.max(18,Math.min(130,y+delta));
+    pts.push([nx,y]);x=nx;
+   }
+   if(pts.length===1)pts.push([348,104]);
+   const poly=pts.map(([px,py])=>px.toFixed(1)+','+py.toFixed(1)).join(' ');
+   const area='12,142 '+poly+' 348,142';
+   const svg='<div style="background:#24192e;border-radius:14px;padding:12px;margin:14px 0"><div style="font-weight:700;margin-bottom:8px">Perfil do percurso</div><svg viewBox="0 0 360 165" role="img" aria-label="Perfil virtual de subidas, retas e descidas na sequência da aula" style="display:block;width:100%;height:auto"><path d="M12 35H348 M12 75H348 M12 115H348" stroke="#60476b" stroke-dasharray="4 5" fill="none"/><polygon points="'+area+'" fill="#dca0f4" opacity=".12"/><polyline points="'+poly+'" stroke="#e4a1f8" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="12" y="158" font-size="11" fill="#cbb9d3">Início</text><text x="348" y="158" text-anchor="end" font-size="11" fill="#cbb9d3">'+Math.round(totalSeconds/60)+' min</text></svg><small style="color:#cbb9d3">Perfil ilustrativo calculado pelas faixas de RPM, sem medição de altitude.</small></div>';
+   const order=['subida_ingreme','subida_moderada','plano','reta_rapida','sprint','sprint_intenso','recuperacao'];
+   const bars=order.filter(k=>totals[k]).map(k=>{const v=totals[k],fraction=100*v.seconds/Math.max(1,totalSeconds);const minutes=(v.seconds/60).toLocaleString('pt-BR',{maximumFractionDigits:1});return '<div style="margin:13px 0"><div style="display:flex;justify-content:space-between;gap:12px"><span>'+esc(routeLabels[k])+'</span><strong>'+minutes+' min · '+v.km.toLocaleString('pt-BR',{maximumFractionDigits:2})+' km</strong></div><div style="height:8px;background:#523c5d;border-radius:9px;overflow:hidden;margin-top:6px"><div style="height:100%;width:'+fraction.toFixed(2)+'%;background:'+routeColors[k]+';border-radius:9px"></div></div></div>'}).join('');
+   const main=Object.entries(totals).sort((a,b)=>b[1].seconds-a[1].seconds)[0];
+   return svg+bars+(main?'<p class="perf-note">Terreno predominante: <strong>'+esc(routeLabels[main[0]])+'</strong> · '+totalKm.toLocaleString('pt-BR',{maximumFractionDigits:2})+' km equivalentes no total.</p>':'');
   })():'';
   const bikeNote=bike?'<section class="perf-zones"><h3>Meu Percurso Virtual</h3>'+(routeSummary||'<div class="perf-extra-grid"><div><small>Distância total equivalente</small><strong>'+esc(p.distance_km==null?'—':Number(p.distance_km).toLocaleString("pt-BR",{maximumFractionDigits:2})+' km')+'</strong></div><div><small>Cadência média</small><strong>'+esc(p.rpm_avg==null?'—':Math.round(Number(p.rpm_avg))+' RPM')+'</strong></div></div><p class="perf-note">Resumo consolidado desta aula. A sequência de subidas, retas e sprints não foi registrada e não pode ser reconstruída com precisão. Distância virtual estimada pela cadência, não por GPS.</p>')+'</section>':'';
   content.innerHTML=header+stats+zoneHtml+bikeNote+otherHtml+timeHtml+'<p class="perf-note">Somente dados disponíveis dos sensores conectados. Calorias são estimativas; o total da turma considera apenas alunos monitorados.</p>';
