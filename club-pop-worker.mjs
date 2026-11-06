@@ -2030,12 +2030,44 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const inserted=await env.DB.prepare("INSERT INTO student_tutorial_videos(title,description,category,unit,drive_file_id,sort_order,published) VALUES(?,?,?,?,?,?,?)").bind(title,description,category,unit,driveId,sortOrder,published).run();
         return json({ok:true,id:inserted.meta?.last_row_id},201);
       }
-      if(["/admin/pop-live-devices","/admin/pop-live-sessions"].includes(url.pathname)){
+      if(["/admin/pop-live-devices","/admin/pop-live-sessions","/admin/pop-live-drafts"].includes(url.pathname)){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(url.pathname.endsWith("drafts")){
+          const b=request.method==="POST"?await request.json().catch(()=>({})):{};
+          const id=Number(b.id||url.searchParams.get("id"));
+          if(request.method==="GET"){
+            const unit=url.searchParams.get("unit");
+            if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
+            const drafts=await env.DB.prepare("SELECT id,unit,session_id,full_name,birth_date,status,created_at,cpf_hash IS NOT NULL AS has_cpf FROM pop_live_manual_drafts WHERE unit=? AND status IN ('pending_review','verified_internal','linked') ORDER BY id DESC LIMIT 100").bind(unit).all();
+            if(!id)return json({ok:true,drafts:drafts.results||[]});
+            const draft=await env.DB.prepare("SELECT id,unit,full_name,birth_date FROM pop_live_manual_drafts WHERE id=? AND unit=?").bind(id,unit).first();
+            if(!draft)return json({ok:false,error:"CADASTRO_NAO_ENCONTRADO"},404);
+            const matches=await env.DB.prepare("SELECT id,first_name,last_name,birth_date,evo_member_id,gym_client_id FROM members WHERE birth_date=? AND lower(trim(first_name||' '||last_name))=lower(?) AND (CASE WHEN ?='gym' THEN gym_client_id ELSE evo_member_id END) IS NOT NULL LIMIT 10").bind(draft.birth_date,draft.full_name,unit).all();
+            return json({ok:true,draft,matches:matches.results||[]});
+          }
+          if(request.method!=="POST")return json({ok:false,error:"METODO_INVALIDO"},405);
+          if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"ID_INVALIDO"},400);
+          const draft=await env.DB.prepare("SELECT id,unit,status FROM pop_live_manual_drafts WHERE id=?").bind(id).first();
+          if(!draft)return json({ok:false,error:"CADASTRO_NAO_ENCONTRADO"},404);
+          if(b.action==="confirm_internal"){
+            const r=await env.DB.prepare("UPDATE pop_live_manual_drafts SET status='verified_internal' WHERE id=? AND status='pending_review' AND cpf_hash IS NOT NULL").bind(id).run();
+            if(!r.meta?.changes)return json({ok:false,error:"CPF_NAO_VALIDADO_OU_JA_RESOLVIDO"},409);
+            return json({ok:true,id,status:"verified_internal"});
+          }
+          if(b.action==="link_member"){
+            const memberId=Number(b.member_id);
+            if(!Number.isSafeInteger(memberId)||memberId<1)return json({ok:false,error:"ALUNO_INVALIDO"},400);
+            const match=await env.DB.prepare("SELECT id FROM members WHERE id=? AND birth_date=(SELECT birth_date FROM pop_live_manual_drafts WHERE id=?) AND lower(trim(first_name||' '||last_name))=lower((SELECT full_name FROM pop_live_manual_drafts WHERE id=?)) AND (CASE WHEN ?='gym' THEN gym_client_id ELSE evo_member_id END) IS NOT NULL").bind(memberId,id,id,draft.unit).first();
+            if(!match)return json({ok:false,error:"CORRESPONDENCIA_NAO_CONFIRMADA"},409);
+            await env.DB.prepare("UPDATE pop_live_manual_drafts SET status='linked' WHERE id=? AND status IN ('pending_review','verified_internal')").bind(id).run();
+            return json({ok:true,id,status:"linked",member_id:memberId,note:"Correspondência confirmada; histórico temporário preservado"});
+          }
+          return json({ok:false,error:"ACAO_INVALIDA"},400);
+        }
         const devices=url.pathname.endsWith("devices");
         if(!["GET","POST","PUT","DELETE"].includes(request.method))return json({ok:false,error:"METODO_INVALIDO"},405);
         const table=devices?"pop_live_devices":"pop_live_sessions";
