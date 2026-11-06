@@ -34,7 +34,7 @@ async function openPerformance(sessionId){
   const monitoredSeconds=Array.isArray(zones)?zones.reduce((a,b)=>a+Math.max(0,Number(b)||0),0):null;
   const stat=(label,value,unit,icon)=>'<div class="perf-stat"><span class="perf-stat-icon">'+icon+'</span><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong><small>'+esc(unit)+'</small></div>';
   const header='<div class="perf-head"><span class="perf-tag">'+esc(unitName(p.unit))+'</span><span class="perf-date">'+esc(date)+'</span><h3>'+esc(p.class_name||"Aula monitorada")+'</h3><p>◷ '+esc(hour||"—")+' · Aula finalizada</p></div>';
-  const stats='<div class="perf-stats">'+stat("Minhas calorias",roundKcal(p.calories_estimated),"kcal","🔥")+stat("Calorias da turma",p.class_calories==null?"—":roundKcal(p.class_calories),"kcal · "+Number(p.monitored_members||0)+" monitorados","♧")+stat("Duração",Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60).toLocaleString("pt-BR"),"min","◷")+'</div>';
+  const stats='<div class="perf-stats">'+stat("Minhas calorias",roundKcal(p.calories_estimated),"kcal","🔥")+stat("Calorias da turma",p.class_calories==null?"—":roundKcal(p.class_calories),"kcal · "+Number(p.monitored_members||0)+" monitorados","♧")+stat("Duração",Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60).toLocaleString("pt-BR"),"min","◷")+stat("Minha posição",p.calorie_rank==null?"—":Number(p.calorie_rank).toLocaleString("pt-BR")+"º","de "+Number(p.monitored_members||0)+" monitorados","🏆")+'</div>';
   const colors=["#24d8e3","#168fe8","#26cc66","#fa8730","#f43f5e"];
   let zoneHtml="";
   if(Array.isArray(zones)&&zones.length===5){

@@ -4477,8 +4477,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
               FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id
               WHERE p.session_id=? AND p.member_id=? AND s.status='closed' LIMIT 1`).bind(sessionId,base.id).first();
             if(!q)return json({ok:false,error:"DESEMPENHO_NAO_ENCONTRADO"},404);
-            const totals=await env.DB.prepare("SELECT COUNT(*) monitored_members,COALESCE(SUM(calories_estimated),0) class_calories FROM pop_live_member_performance WHERE session_id=?").bind(sessionId).first();
-            return json({ok:true,source:"d1",evoRequestsMade:0,performance:{...q,class_calories:totals?.class_calories??null,monitored_members:totals?.monitored_members??0}});
+            const totals=await env.DB.prepare("SELECT COUNT(*) monitored_members,COALESCE(SUM(calories_estimated),0) class_calories FROM pop_live_member_performance WHERE session_id=? AND calories_estimated IS NOT NULL AND calories_estimated>=0").bind(sessionId).first();
+            const rank=await env.DB.prepare("SELECT 1+COUNT(*) position FROM pop_live_member_performance WHERE session_id=? AND calories_estimated IS NOT NULL AND calories_estimated>=0 AND calories_estimated>?").bind(sessionId,q.calories_estimated??-1).first();
+            return json({ok:true,source:"d1",evoRequestsMade:0,performance:{...q,class_calories:totals?.class_calories??null,monitored_members:totals?.monitored_members??0,calorie_rank:q.calories_estimated==null?null:rank?.position??null}});
           }
           if(action==="profile"){const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
           if(action==="images"){
