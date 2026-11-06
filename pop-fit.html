@@ -35,10 +35,10 @@ async function openPerformance(sessionId){
   const hour=String(p.starts_at||"").slice(11,16);
   const monitoredSeconds=Array.isArray(zones)?zones.reduce((a,b)=>a+Math.max(0,Number(b)||0),0):null;
   const stat=(label,value,unit,icon)=>'<div class="perf-stat"><span class="perf-stat-icon">'+icon+'</span><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong><small>'+esc(unit)+'</small></div>';
-  const header='<div class="perf-head"><span class="perf-tag">'+esc(unitName(p.unit))+'</span><span class="perf-date">'+esc(date)+'</span><h3>'+esc(p.class_name||"Aula monitorada")+'</h3><p>◷ '+esc(hour||"—")+' · Aula finalizada</p></div>';
   const bike=p.unit==="bike";
+  const header='<div class="perf-head"><span class="perf-tag">'+esc(unitName(p.unit))+'</span><span class="perf-date">'+esc(date)+'</span><h3>'+esc(p.class_name||"Aula monitorada")+'</h3><p>◷ '+esc(hour||"—")+' · Aula finalizada'+(bike?' · '+fmtDuration(p.duration_seconds):'')+'</p></div>';
   const stats=bike
-   ?'<div class="perf-stats">'+stat("Calorias estimadas",roundKcal(p.calories_estimated),"kcal","🔥")+stat("Distância equivalente",p.distance_km==null?"—":Number(p.distance_km).toLocaleString("pt-BR",{maximumFractionDigits:2}),"km","🚴")+stat("RPM médio",p.rpm_avg==null?"—":Math.round(Number(p.rpm_avg)),"rpm","◉")+stat("RPM máximo",p.rpm_max==null?"—":Math.round(Number(p.rpm_max)),"rpm","⚡")+stat("Velocidade média",p.speed_avg_kmh==null?"—":Number(p.speed_avg_kmh).toLocaleString("pt-BR",{maximumFractionDigits:1}),"km/h","◷")+stat("Duração",Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60).toLocaleString("pt-BR"),"min","⏱")+'</div>'
+   ?'<div class="perf-stats">'+stat("Calorias estimadas",roundKcal(p.calories_estimated),"kcal","🔥")+stat("Distância equivalente",p.distance_km==null?"—":Number(p.distance_km).toLocaleString("pt-BR",{maximumFractionDigits:2}),"km","🚴")+stat("RPM médio",p.rpm_avg==null?"—":Math.round(Number(p.rpm_avg)),"rpm","◉")+stat("RPM máximo",p.rpm_max==null?"—":Math.round(Number(p.rpm_max)),"rpm","⚡")+stat("Velocidade média",p.speed_avg_kmh==null?"—":Number(p.speed_avg_kmh).toLocaleString("pt-BR",{maximumFractionDigits:1}),"km/h","◷")+stat("Velocidade máxima",p.speed_max_kmh==null?"—":Number(p.speed_max_kmh).toLocaleString("pt-BR",{maximumFractionDigits:1}),"km/h","⚡")+'</div>'
    :'<div class="perf-stats">'+stat("Minhas calorias",roundKcal(p.calories_estimated),"kcal","🔥")+stat("Calorias da turma",p.class_calories==null?"—":roundKcal(p.class_calories),"kcal · "+Number(p.monitored_members||0)+" monitorados","♧")+stat("Duração",Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60).toLocaleString("pt-BR"),"min","◷")+stat("Minha posição",p.calorie_rank==null?"—":Number(p.calorie_rank).toLocaleString("pt-BR")+"º","de "+Number(p.monitored_members||0)+" monitorados","🏆")+'</div>';
   const colors=["#24d8e3","#168fe8","#26cc66","#fa8730","#f43f5e"];
   let zoneHtml="";
@@ -50,7 +50,7 @@ async function openPerformance(sessionId){
     const bars=zones.map((raw,i)=>{const v=Math.max(0,Number(raw)||0),pct=total?100*v/total:0;return '<div class="perf-zone"><div><span>Zona '+(i+1)+'</span><span>'+Math.round(v/60)+' min</span></div><div class="perf-track"><div style="width:'+pct+'%;background:'+colors[i]+'"></div></div></div>'}).join("");
     zoneHtml='<section class="perf-zones"><h3>Minhas zonas cardíacas</h3><div class="perf-zone-layout"><div class="perf-donut">'+donut+'</div><div class="perf-zone-bars">'+bars+'</div></div></section>';
   }
-  const other=(bike?[["Velocidade máxima",p.speed_max_kmh,"km/h"]]:[["Frequência média",p.hr_avg,"bpm"],["Frequência máxima",p.hr_max,"bpm"],["Cadência média",p.rpm_avg,"RPM"],["Cadência máxima",p.rpm_max,"RPM"],["Velocidade média",p.speed_avg_kmh,"km/h"],["Velocidade máxima",p.speed_max_kmh,"km/h"],["Distância",p.distance_km,"km"]]).filter(x=>x[1]!=null);
+  const other=(bike?[]:[["Frequência média",p.hr_avg,"bpm"],["Frequência máxima",p.hr_max,"bpm"],["Cadência média",p.rpm_avg,"RPM"],["Cadência máxima",p.rpm_max,"RPM"],["Velocidade média",p.speed_avg_kmh,"km/h"],["Velocidade máxima",p.speed_max_kmh,"km/h"],["Distância",p.distance_km,"km"]]).filter(x=>x[1]!=null);
   const otherHtml=other.length?'<section class="perf-extra"><h3>Outras métricas</h3><div class="perf-extra-grid">'+other.map(x=>'<div><small>'+esc(x[0])+'</small><strong>'+Number(x[1]).toLocaleString("pt-BR",{maximumFractionDigits:1})+' '+esc(x[2])+'</strong></div>').join("")+'</div></section>':"";
   const timeHtml=!bike&&monitoredSeconds!=null?'<p class="perf-note">Tempo monitorado: '+fmtDuration(monitoredSeconds)+' de '+fmtDuration(p.duration_seconds)+' de sessão.</p>':"";
   const bikeNote=bike?'<section class="perf-zones"><h3>Meu Percurso Virtual</h3><p class="perf-note">Trechos de subida, reta e sprint serão apresentados quando os tempos por faixa de RPM estiverem registrados nesta aula. Os quilômetros são equivalentes calculados pela roda de inércia.</p></section>':'';
@@ -71,18 +71,30 @@ async function savePerformancePng(){
   const date=String(p.starts_at||"").slice(0,10).split("-").reverse().join("/"),hour=String(p.starts_at||"").slice(11,16);
   txt(unitName(p.unit).toUpperCase()+"   ·   "+date,82,185,28,"#f5a4d1","800");
   const lastY=wrap(p.class_name||"Aula monitorada",82,254,910,48);
-  txt(hour+"  ·  Aula finalizada",82,Math.min(343,lastY+54),27,"#d3c1d8");
+  txt(hour+"  ·  Aula finalizada"+(p.unit==="bike"?"  ·  "+Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60)+" min":""),82,Math.min(343,lastY+54),27,"#d3c1d8");
   const kcal=v=>Math.ceil(Math.max(0,Number(v)||0)).toLocaleString("pt-BR");
-  const cards=[["MINHAS CALORIAS",kcal(p.calories_estimated),"kcal"],["CALORIAS DA TURMA",p.class_calories==null?"—":kcal(p.class_calories),"kcal"],["DURAÇÃO",String(Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60)),"min"],["MINHA POSIÇÃO",p.calorie_rank==null?"—":p.calorie_rank+"º","de "+Number(p.monitored_members||0)+" monitorados"]];
-  cards.forEach((a,i)=>{const x=50+(i%2)*500,y=402+Math.floor(i/2)*174;rect(x,y,480,153,"#302038",22);txt(a[0],x+25,y+41,23,"#d3c1d8","700");txt(a[1],x+25,y+103,52,"#fff","800");txt(a[2],x+215,y+102,23,"#d3c1d8")});
-  rect(50,774,980,536,"#302038",26);txt("MINHAS ZONAS CARDÍACAS",82,833,30,"#fff","800");
-  const zones=Array.isArray(p.zones)&&p.zones.length===5?p.zones.map(v=>Math.max(0,Number(v)||0)):null;
-  const colors=["#24d8e3","#168fe8","#26cc66","#fa8730","#f43f5e"],total=zones?zones.reduce((a,b)=>a+b,0):0;
-  const cx=285,cy=1046,r=126;ctx.lineWidth=35;ctx.strokeStyle="#493650";ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();
-  if(zones&&total>0){let a=-Math.PI/2;zones.forEach((v,i)=>{if(v<=0)return;const end=a+2*Math.PI*v/total;ctx.strokeStyle=colors[i];ctx.beginPath();ctx.arc(cx,cy,r,a,end);ctx.stroke();a=end})}
-  txt(String(Math.round(total/60)),cx-30,cy+4,62,"#fff","800");txt("min monitorados",cx-98,cy+48,24,"#d3c1d8");
-  for(let i=0;i<5;i++){const y=909+i*73,v=zones?zones[i]:0,pct=total?Math.min(1,v/total):0;txt("Zona "+(i+1),492,y,25,"#e7d9ea");txt(Math.round(v/60)+" min",884,y,24,"#d3c1d8");rect(492,y+15,440,11,"#493650",5);if(pct>0)rect(492,y+15,440*pct,11,colors[i],5)}
-  txt("Calorias estimadas · Total da turma: alunos monitorados",64,1366,24,"#bcb1c8");
+  if(p.unit==="bike"){
+   const number=(v,d=1)=>v==null?"—":Number(v).toLocaleString("pt-BR",{maximumFractionDigits:d});
+   const bikeCards=[["CALORIAS ESTIMADAS",kcal(p.calories_estimated),"kcal"],["DISTÂNCIA EQUIVALENTE",number(p.distance_km,2),"km"],["RPM MÉDIO",number(p.rpm_avg,0),"rpm"],["RPM MÁXIMO",number(p.rpm_max,0),"rpm"],["VELOCIDADE MÉDIA",number(p.speed_avg_kmh,1),"km/h"],["VELOCIDADE MÁXIMA",number(p.speed_max_kmh,1),"km/h"]];
+   bikeCards.forEach((a,i)=>{const x=50+(i%2)*500,y=402+Math.floor(i/2)*174;rect(x,y,480,153,"#302038",22);txt(a[0],x+25,y+41,22,"#d3c1d8","700");txt(a[1],x+25,y+103,50,"#fff","800");txt(a[2],x+260,y+103,22,"#d3c1d8")});
+   rect(50,955,980,350,"#302038",26);
+   txt("MEU PERCURSO VIRTUAL",82,1017,31,"#fff","800");
+   txt("Trechos de subida, reta e sprint",82,1083,26,"#d3c1d8");
+   txt("aparecerão após o registro do percurso.",82,1122,26,"#d3c1d8");
+   txt("Distância equivalente calculada pela roda de inércia.",82,1226,22,"#bcb1c8");
+   txt("Bike Pop · Cadência, velocidade e calorias estimadas",64,1366,23,"#bcb1c8");
+  }else{
+   const cards=[["MINHAS CALORIAS",kcal(p.calories_estimated),"kcal"],["CALORIAS DA TURMA",p.class_calories==null?"—":kcal(p.class_calories),"kcal"],["DURAÇÃO",String(Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60)),"min"],["MINHA POSIÇÃO",p.calorie_rank==null?"—":p.calorie_rank+"º","de "+Number(p.monitored_members||0)+" monitorados"]];
+   cards.forEach((a,i)=>{const x=50+(i%2)*500,y=402+Math.floor(i/2)*174;rect(x,y,480,153,"#302038",22);txt(a[0],x+25,y+41,23,"#d3c1d8","700");txt(a[1],x+25,y+103,52,"#fff","800");txt(a[2],x+215,y+102,23,"#d3c1d8")});
+   rect(50,774,980,536,"#302038",26);txt("MINHAS ZONAS CARDÍACAS",82,833,30,"#fff","800");
+   const zones=Array.isArray(p.zones)&&p.zones.length===5?p.zones.map(v=>Math.max(0,Number(v)||0)):null;
+   const colors=["#24d8e3","#168fe8","#26cc66","#fa8730","#f43f5e"],total=zones?zones.reduce((a,b)=>a+b,0):0;
+   const cx=285,cy=1046,r=126;ctx.lineWidth=35;ctx.strokeStyle="#493650";ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();
+   if(zones&&total>0){let a=-Math.PI/2;zones.forEach((v,i)=>{if(v<=0)return;const end=a+2*Math.PI*v/total;ctx.strokeStyle=colors[i];ctx.beginPath();ctx.arc(cx,cy,r,a,end);ctx.stroke();a=end})}
+   txt(String(Math.round(total/60)),cx-30,cy+4,62,"#fff","800");txt("min monitorados",cx-98,cy+48,24,"#d3c1d8");
+   for(let i=0;i<5;i++){const y=909+i*73,v=zones?zones[i]:0,pct=total?Math.min(1,v/total):0;txt("Zona "+(i+1),492,y,25,"#e7d9ea");txt(Math.round(v/60)+" min",884,y,24,"#d3c1d8");rect(492,y+15,440,11,"#493650",5);if(pct>0)rect(492,y+15,440*pct,11,colors[i],5)}
+   txt("Calorias estimadas · Total da turma: alunos monitorados",64,1366,24,"#bcb1c8");
+  }
   const blob=await new Promise(resolve=>c.toBlob(resolve,"image/png"));if(!blob)throw Error("Falha ao gerar PNG");
   const fileName="pop-fit-desempenho-"+String(p.starts_at||"aula").slice(0,10)+".png";
   const file=new File([blob],fileName,{type:"image/png"});
