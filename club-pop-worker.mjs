@@ -2040,7 +2040,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const table=devices?"pop_live_devices":"pop_live_sessions";
         try{
           if(request.method==="GET"){
-            if(devices){const r=await env.DB.prepare("SELECT * FROM pop_live_devices ORDER BY device_type,reference_number").all();return json({ok:true,devices:r.results||[]})}
+            if(devices){const r=await env.DB.prepare("SELECT * FROM pop_live_devices ORDER BY device_type,reference_number").all();const drafts=await env.DB.prepare("SELECT id,unit,session_id,full_name,birth_date,status,created_at FROM pop_live_manual_drafts WHERE status='pending_review' ORDER BY id DESC LIMIT 100").all();return json({ok:true,devices:r.results||[],pending_drafts:drafts.results||[]})}
             const unit=url.searchParams.get("unit"),date=url.searchParams.get("date");
             if(!["bike","gym"].includes(unit)||!/^\d{4}-\d{2}-\d{2}$/.test(date||""))return json({ok:false,error:"FILTROS_INVALIDOS"},400);
             const r=await env.DB.prepare("SELECT * FROM pop_live_sessions WHERE unit=? AND substr(starts_at,1,10)=? ORDER BY starts_at").bind(unit,date).all();
