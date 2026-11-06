@@ -4488,7 +4488,25 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             const m=String(url.searchParams.get("month")||"2026-10");
             if(!/^2026-(09|10|11|12)$/.test(m))return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
             const q=await env.DB.prepare("SELECT id,activity_name,activity_date,start_time,calories FROM pop_fit_manual_activities WHERE member_id=? AND substr(activity_date,1,7)=? ORDER BY activity_date DESC,start_time DESC,id DESC").bind(base.id,m).all();
-            return json({ok:true,source:"d1",evoRequestsMade:0,activities:q.results||[]});
+            // Monitoramentos sem presença oficial ficam em Outras atividades, sem criar presença EVO.
+            const live=await env.DB.prepare(`SELECT p.session_id performance_session_id,p.unit,s.class_name activity_name,
+              substr(s.starts_at,1,10) activity_date,substr(s.starts_at,12,5) start_time,
+              p.calories_estimated calories,p.duration_seconds,s.source_class_id
+              FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id
+              WHERE p.member_id=? AND s.status='closed' AND substr(s.starts_at,1,7)=?
+                AND (?='club' OR p.unit=?) ORDER BY s.starts_at DESC LIMIT 100`).bind(base.id,m,scope,scope).all();
+            const extras=[];
+            for(const p of live.results||[]){
+              const u=p.unit,evoId=ids[u];let official=false;
+              if(evoId&&p.source_class_id){
+                const found=await env.DB.prepare(`SELECT 1 ok FROM evo_member_attendance
+                  WHERE unit=? AND evo_member_id=? AND id_activity_session=?
+                    AND attendance_date=? LIMIT 1`).bind(u,evoId,p.source_class_id,p.activity_date).first();
+                official=!!found;
+              }
+              if(!official)extras.push({...p,source:"pop_live"});
+            }
+            return json({ok:true,source:"d1",evoRequestsMade:0,activities:[...(q.results||[]),...extras]});
           }
           const month=String(url.searchParams.get("month")||"2026-10");
           if(!/^2026-(09|10|11|12)$/.test(month))return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
