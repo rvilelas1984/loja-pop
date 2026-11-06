@@ -36,10 +36,13 @@ async function openPerformance(sessionId){
   const monitoredSeconds=Array.isArray(zones)?zones.reduce((a,b)=>a+Math.max(0,Number(b)||0),0):null;
   const stat=(label,value,unit,icon)=>'<div class="perf-stat"><span class="perf-stat-icon">'+icon+'</span><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong><small>'+esc(unit)+'</small></div>';
   const header='<div class="perf-head"><span class="perf-tag">'+esc(unitName(p.unit))+'</span><span class="perf-date">'+esc(date)+'</span><h3>'+esc(p.class_name||"Aula monitorada")+'</h3><p>◷ '+esc(hour||"—")+' · Aula finalizada</p></div>';
-  const stats='<div class="perf-stats">'+stat("Minhas calorias",roundKcal(p.calories_estimated),"kcal","🔥")+stat("Calorias da turma",p.class_calories==null?"—":roundKcal(p.class_calories),"kcal · "+Number(p.monitored_members||0)+" monitorados","♧")+stat("Duração",Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60).toLocaleString("pt-BR"),"min","◷")+stat("Minha posição",p.calorie_rank==null?"—":Number(p.calorie_rank).toLocaleString("pt-BR")+"º","de "+Number(p.monitored_members||0)+" monitorados","🏆")+'</div>';
+  const bike=p.unit==="bike";
+  const stats=bike
+   ?'<div class="perf-stats">'+stat("Calorias estimadas",roundKcal(p.calories_estimated),"kcal","🔥")+stat("Distância equivalente",p.distance_km==null?"—":Number(p.distance_km).toLocaleString("pt-BR",{maximumFractionDigits:2}),"km","🚴")+stat("RPM médio",p.rpm_avg==null?"—":Math.round(Number(p.rpm_avg)),"rpm","◉")+stat("RPM máximo",p.rpm_max==null?"—":Math.round(Number(p.rpm_max)),"rpm","⚡")+stat("Velocidade média",p.speed_avg_kmh==null?"—":Number(p.speed_avg_kmh).toLocaleString("pt-BR",{maximumFractionDigits:1}),"km/h","◷")+stat("Duração",Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60).toLocaleString("pt-BR"),"min","⏱")+'</div>'
+   :'<div class="perf-stats">'+stat("Minhas calorias",roundKcal(p.calories_estimated),"kcal","🔥")+stat("Calorias da turma",p.class_calories==null?"—":roundKcal(p.class_calories),"kcal · "+Number(p.monitored_members||0)+" monitorados","♧")+stat("Duração",Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60).toLocaleString("pt-BR"),"min","◷")+stat("Minha posição",p.calorie_rank==null?"—":Number(p.calorie_rank).toLocaleString("pt-BR")+"º","de "+Number(p.monitored_members||0)+" monitorados","🏆")+'</div>';
   const colors=["#24d8e3","#168fe8","#26cc66","#fa8730","#f43f5e"];
   let zoneHtml="";
-  if(Array.isArray(zones)&&zones.length===5){
+  if(!bike&&Array.isArray(zones)&&zones.length===5){
     const total=Math.max(0,monitoredSeconds||0),radius=54,circumference=2*Math.PI*radius;
     let offset=0;
     const arcs=zones.map((raw,i)=>{const v=Math.max(0,Number(raw)||0),length=total?circumference*v/total:0;const arc='<circle cx="80" cy="80" r="'+radius+'" fill="none" stroke="'+colors[i]+'" stroke-width="17" stroke-dasharray="'+length+' '+circumference+'" stroke-dashoffset="'+(-offset)+'" transform="rotate(-90 80 80)"/>';offset+=length;return arc}).join("");
@@ -47,10 +50,11 @@ async function openPerformance(sessionId){
     const bars=zones.map((raw,i)=>{const v=Math.max(0,Number(raw)||0),pct=total?100*v/total:0;return '<div class="perf-zone"><div><span>Zona '+(i+1)+'</span><span>'+Math.round(v/60)+' min</span></div><div class="perf-track"><div style="width:'+pct+'%;background:'+colors[i]+'"></div></div></div>'}).join("");
     zoneHtml='<section class="perf-zones"><h3>Minhas zonas cardíacas</h3><div class="perf-zone-layout"><div class="perf-donut">'+donut+'</div><div class="perf-zone-bars">'+bars+'</div></div></section>';
   }
-  const other=[["Frequência média",p.hr_avg,"bpm"],["Frequência máxima",p.hr_max,"bpm"],["Cadência média",p.rpm_avg,"RPM"],["Cadência máxima",p.rpm_max,"RPM"],["Velocidade média",p.speed_avg_kmh,"km/h"],["Velocidade máxima",p.speed_max_kmh,"km/h"],["Distância",p.distance_km,"km"]].filter(x=>x[1]!=null);
+  const other=(bike?[["Velocidade máxima",p.speed_max_kmh,"km/h"]]:[["Frequência média",p.hr_avg,"bpm"],["Frequência máxima",p.hr_max,"bpm"],["Cadência média",p.rpm_avg,"RPM"],["Cadência máxima",p.rpm_max,"RPM"],["Velocidade média",p.speed_avg_kmh,"km/h"],["Velocidade máxima",p.speed_max_kmh,"km/h"],["Distância",p.distance_km,"km"]]).filter(x=>x[1]!=null);
   const otherHtml=other.length?'<section class="perf-extra"><h3>Outras métricas</h3><div class="perf-extra-grid">'+other.map(x=>'<div><small>'+esc(x[0])+'</small><strong>'+Number(x[1]).toLocaleString("pt-BR",{maximumFractionDigits:1})+' '+esc(x[2])+'</strong></div>').join("")+'</div></section>':"";
-  const timeHtml=monitoredSeconds!=null?'<p class="perf-note">Tempo monitorado: '+fmtDuration(monitoredSeconds)+' de '+fmtDuration(p.duration_seconds)+' de sessão.</p>':"";
-  content.innerHTML=header+stats+zoneHtml+otherHtml+timeHtml+'<p class="perf-note">Somente dados disponíveis dos sensores conectados. Calorias são estimativas; o total da turma considera apenas alunos monitorados.</p>';
+  const timeHtml=!bike&&monitoredSeconds!=null?'<p class="perf-note">Tempo monitorado: '+fmtDuration(monitoredSeconds)+' de '+fmtDuration(p.duration_seconds)+' de sessão.</p>':"";
+  const bikeNote=bike?'<section class="perf-zones"><h3>Meu Percurso Virtual</h3><p class="perf-note">Trechos de subida, reta e sprint serão apresentados quando os tempos por faixa de RPM estiverem registrados nesta aula. Os quilômetros são equivalentes calculados pela roda de inércia.</p></section>':'';
+  content.innerHTML=header+stats+zoneHtml+bikeNote+otherHtml+timeHtml+'<p class="perf-note">Somente dados disponíveis dos sensores conectados. Calorias são estimativas; o total da turma considera apenas alunos monitorados.</p>';
  }catch(e){performanceShareRow=null;performanceImageData=null;content.textContent="Não foi possível carregar o desempenho."}
 }
 async function savePerformancePng(){
