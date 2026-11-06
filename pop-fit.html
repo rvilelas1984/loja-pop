@@ -105,12 +105,41 @@ async function savePerformancePng(){
    const number=(v,d=1)=>v==null?"—":Number(v).toLocaleString("pt-BR",{maximumFractionDigits:d});
    const bikeCards=[["CALORIAS ESTIMADAS",kcal(p.calories_estimated),"kcal"],["DISTÂNCIA EQUIVALENTE",number(p.distance_km,2),"km"],["RPM MÉDIO",number(p.rpm_avg,0),"rpm"],["RPM MÁXIMO",number(p.rpm_max,0),"rpm"],["VELOCIDADE MÉDIA",number(p.speed_avg_kmh,1),"km/h"],["VELOCIDADE MÁXIMA",number(p.speed_max_kmh,1),"km/h"]];
    bikeCards.forEach((a,i)=>{const x=50+(i%2)*500,y=402+Math.floor(i/2)*174;rect(x,y,480,153,"#302038",22);txt(a[0],x+25,y+41,22,"#d3c1d8","700");txt(a[1],x+25,y+103,50,"#fff","800");txt(a[2],x+260,y+103,22,"#d3c1d8")});
-   rect(50,955,980,350,"#302038",26);
+   let route=[];try{const parsed=JSON.parse(p.metric_quality_json||'{}');if(Array.isArray(parsed.virtual_route))route=parsed.virtual_route}catch{}
+   const labels={recuperacao:"Recuperação",subida_ingreme:"Subida íngreme",subida_moderada:"Subida moderada",plano:"Estrada plana",reta_rapida:"Reta rápida",sprint:"Sprint",sprint_intenso:"Sprint intenso"};
+   const colors={recuperacao:"#a0a0a0",subida_ingreme:"#db8196",subida_moderada:"#d4a36c",plano:"#73b6e8",reta_rapida:"#9a92f0",sprint:"#e4a3f2",sprint_intenso:"#f68bc2"};
+   const totals={};let seconds=0,kms=0;
+   for(const segment of route){if(!labels[segment.kind])continue;const v=totals[segment.kind]||(totals[segment.kind]={seconds:0,km:0});const sec=Math.max(0,Number(segment.seconds)||0),km=Math.max(0,Number(segment.km)||0);v.seconds+=sec;v.km+=km;seconds+=sec;kms+=km}
+   const order=["subida_ingreme","subida_moderada","plano","reta_rapida","sprint","sprint_intenso","recuperacao"];
+   const active=order.filter(k=>totals[k]);const panelHeight=route.length?610+active.length*92:360;
+   c.height=1010+panelHeight+100;
+   // Redesenhar após redimensionamento do canvas (o redimensionamento limpa o contexto).
+   rect(0,0,c.width,c.height,"#17121e");txt("✦  CLUB POP  /  MEU DESEMPENHO",65,88,31,"#f5a4d1","800");
+   rect(50,130,980,245,"#302038",28);
+   txt(unitName(p.unit).toUpperCase()+"   ·   "+date,82,185,28,"#f5a4d1","800");
+   const titleY=wrap(p.class_name||"Aula monitorada",82,254,910,48);
+   txt(hour+"  ·  Aula finalizada  ·  "+Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60)+" min",82,Math.min(343,titleY+54),27,"#d3c1d8");
+   bikeCards.forEach((a,i)=>{const x=50+(i%2)*500,y=402+Math.floor(i/2)*174;rect(x,y,480,153,"#302038",22);txt(a[0],x+25,y+41,22,"#d3c1d8","700");txt(a[1],x+25,y+103,50,"#fff","800");txt(a[2],x+260,y+103,22,"#d3c1d8")});
+   rect(50,955,980,panelHeight,"#302038",26);
    txt("MEU PERCURSO VIRTUAL",82,1017,31,"#fff","800");
-   txt("Trechos de subida, reta e sprint",82,1083,26,"#d3c1d8");
-   txt("aparecerão após o registro do percurso.",82,1122,26,"#d3c1d8");
-   txt("Distância equivalente calculada pela roda de inércia.",82,1226,22,"#bcb1c8");
-   txt("Bike Pop · Cadência, velocidade e calorias estimadas",64,1366,23,"#bcb1c8");
+   if(route.length){
+    rect(82,1042,916,300,"#24192e",18);txt("PERFIL DO PERCURSO",106,1091,26,"#fff","700");
+    ctx.save();ctx.strokeStyle="#60476b";ctx.setLineDash([8,10]);ctx.lineWidth=2;for(const y of [1140,1190,1240]){ctx.beginPath();ctx.moveTo(115,y);ctx.lineTo(960,y);ctx.stroke()}ctx.restore();
+    const deltas={recuperacao:0,subida_ingreme:-28,subida_moderada:-14,plano:0,reta_rapida:0,sprint:23,sprint_intenso:34};
+    let px=115,py=1260;const pts=[[px,py]];
+    for(const s of route){const sec=Math.max(0,Number(s.seconds)||0);if(!sec)continue;px=Math.min(960,px+845*sec/Math.max(1,seconds));py=Math.max(1120,Math.min(1285,py+(deltas[s.kind]||0)*Math.min(1,sec/30)));pts.push([px,py])}
+    ctx.beginPath();pts.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.lineWidth=6;ctx.lineJoin="round";ctx.lineCap="round";ctx.strokeStyle="#e4a1f8";ctx.stroke();
+    txt("Início",115,1317,21,"#cbb9d3");txt(Math.round(seconds/60)+" min",895,1317,21,"#cbb9d3");
+    let yy=1395;
+    for(const k of active){const v=totals[k],minutes=(v.seconds/60).toLocaleString("pt-BR",{maximumFractionDigits:1});txt(labels[k],82,yy,26,"#f4eaf7","600");txt(minutes+" min · "+v.km.toLocaleString("pt-BR",{maximumFractionDigits:2})+" km",660,yy,25,"#fff","700");rect(82,yy+17,916,12,"#523c5d",6);rect(82,yy+17,916*v.seconds/Math.max(1,seconds),12,colors[k],6);yy+=92}
+    const main=active.slice().sort((a,b)=>totals[b].seconds-totals[a].seconds)[0];
+    if(main)txt("Terreno predominante: "+labels[main],82,yy+24,25,"#d3c1d8");
+    txt("Perfil virtual por RPM, sem medição de altitude.",82,955+panelHeight-34,21,"#bcb1c8");
+   }else{
+    txt("Resumo consolidado · "+number(p.distance_km,2)+" km",82,1100,29,"#fff");
+    txt("Sem histórico de trechos para esta aula.",82,1160,25,"#d3c1d8");
+   }
+   txt("Bike Pop · Cadência, velocidade e calorias estimadas",64,c.height-42,23,"#bcb1c8");
   }else{
    const cards=[["MINHAS CALORIAS",kcal(p.calories_estimated),"kcal"],["CALORIAS DA TURMA",p.class_calories==null?"—":kcal(p.class_calories),"kcal"],["DURAÇÃO",String(Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60)),"min"],["MINHA POSIÇÃO",p.calorie_rank==null?"—":p.calorie_rank+"º","de "+Number(p.monitored_members||0)+" monitorados"]];
    cards.forEach((a,i)=>{const x=50+(i%2)*500,y=402+Math.floor(i/2)*174;rect(x,y,480,153,"#302038",22);txt(a[0],x+25,y+41,23,"#d3c1d8","700");txt(a[1],x+25,y+103,52,"#fff","800");txt(a[2],x+215,y+102,23,"#d3c1d8")});
