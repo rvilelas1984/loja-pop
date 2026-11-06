@@ -61,7 +61,7 @@ async function savePerformancePng(){
   const c=document.createElement("canvas");c.width=1080;c.height=1440;const ctx=c.getContext("2d");
   const rect=(x,y,w,h,color,r=0)=>{ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()};
   const txt=(value,x,y,size=30,color="#fff",weight="600")=>{ctx.fillStyle=color;ctx.font=weight+" "+size+"px system-ui,Arial,sans-serif";ctx.fillText(String(value),x,y)};
-  const wrap=(value,x,y,maxWidth,size=46)=>{ctx.font="800 "+size+"px system-ui,Arial,sans-serif";const words=String(value).split(/\\s+/);let line="",lineY=y;for(const word of words){const test=line?line+" "+word:word;if(ctx.measureText(test).width>maxWidth&&line){txt(line,x,lineY,size,"#fff","800");line=word;lineY+=size+12}else line=test}if(line)txt(line,x,lineY,size,"#fff","800");return lineY};
+  const wrap=(value,x,y,maxWidth,size=46)=>{ctx.font="800 "+size+"px system-ui,Arial,sans-serif";const words=String(value).split(/\s+/);let line="",lineY=y;for(const word of words){const test=line?line+" "+word:word;if(ctx.measureText(test).width>maxWidth&&line){txt(line,x,lineY,size,"#fff","800");line=word;lineY+=size+12}else line=test}if(line)txt(line,x,lineY,size,"#fff","800");return lineY};
   rect(0,0,1080,1440,"#17121e");txt("✦  CLUB POP  /  MEU DESEMPENHO",65,88,31,"#f5a4d1","800");
   rect(50,130,980,245,"#302038",28);
   const date=String(p.starts_at||"").slice(0,10).split("-").reverse().join("/"),hour=String(p.starts_at||"").slice(11,16);
