@@ -4506,7 +4506,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           if(action==="performance"){
             const sessionId=Number(url.searchParams.get("id"));
             if(!Number.isSafeInteger(sessionId)||sessionId<1)return json({ok:false,error:"SESSAO_INVALIDA"},400);
-            const q=await env.DB.prepare(`SELECT p.session_id,p.unit,p.sensor_types_json,p.duration_seconds,p.hr_avg,p.hr_max,p.calories_estimated,p.zones_seconds_json,p.rpm_avg,p.rpm_max,p.speed_avg_kmh,p.speed_max_kmh,p.distance_km,s.class_name,s.starts_at
+            const q=await env.DB.prepare(`SELECT p.session_id,p.unit,p.sensor_types_json,p.duration_seconds,p.hr_avg,p.hr_max,p.calories_estimated,p.zones_seconds_json,p.rpm_avg,p.rpm_max,p.speed_avg_kmh,p.speed_max_kmh,p.distance_km,p.metric_quality_json,s.class_name,s.starts_at
               FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id
               WHERE p.session_id=? AND p.member_id=? AND s.status='closed' LIMIT 1`).bind(sessionId,base.id).first();
             if(!q)return json({ok:false,error:"DESEMPENHO_NAO_ENCONTRADO"},404);
