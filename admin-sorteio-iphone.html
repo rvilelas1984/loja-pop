@@ -34,7 +34,8 @@ let done=0;for(let i=0;i<rows.length;i+=100){const response=await fetch('/api/ad
 const check=await iphoneD1Status();if(Number(check.bilhetes)!==6596||Number(check.bike)!==4997||Number(check.gym)!==1599)throw Error('Gravação terminou, mas totais D1 divergentes: '+JSON.stringify(check));
 st.textContent='✅ Consolidado salvo no D1: 6.596 bilhetes (Bike 4.997, Gym 1.599), inclusive registros sem CPF.';
 }catch(e){st.textContent='🚫 '+(e.message||e)+'. Confira o D1 antes de tentar novamente.'}finally{btn.disabled=false}};
-</script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script>
+</script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
+
 let output=null,issues=[];const $=id=>document.getElementById(id);
 function findCol(row,kind){return row.findIndex(v=>{const s=String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');return kind==='id'?['idevo','iddoaluno','idmember','idcliente','idaluno','evoid','id'].includes(s):s==='cpf'})}
 function digits(v){return String(v??'').replace(/\D/g,'')}
@@ -111,4 +112,5 @@ function consolidateOfficial(){
 $('generateBike').onclick=()=>generateUnit('bike');$('generateGym').onclick=()=>generateUnit('gym');
 $('exportBike').onclick=()=>exportTickets('bike');$('exportGym').onclick=()=>exportTickets('gym');
 $('consolidate').onclick=consolidateOfficial;
+
 </script></body></html>
