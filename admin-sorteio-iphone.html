@@ -21,8 +21,8 @@ function numeric(v){if(typeof v==='number')return v;const t=String(v??'').trim()
 function detectColumns(header){
  const h=header.map(normHeader);
  const find=(terms)=>h.findIndex(v=>terms.some(t=>v===t));
- const month=(m)=>h.findIndex(v=>v.includes(m)&&(/aulas|presencas|frequencia/.test(v))&&!/numero|bilhete/.test(v));
- const nums=(m)=>h.findIndex(v=>v.includes(m)&&/numero|bilhete|cupom/.test(v));
+ const month=(m)=>h.findIndex(v=>(m==='setembro'?/(setembro|set)$/.test(v):/(outubro|out)$/.test(v))&&/aulas|presencas|frequencia/.test(v)&&!/numero|bilhete/.test(v));
+ const nums=(m)=>h.findIndex(v=>(m==='setembro'?/(setembro|set)$/.test(v):/(outubro|out)$/.test(v))&&/numero|bilhete|cupom/.test(v));
  return {id:findCol(header,'id'),cpf:findCol(header,'cpf'),
  name:find(['nome','nomecompleto','aluno','cliente']),
  sepA:month('setembro'),octA:month('outubro'),
