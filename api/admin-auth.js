@@ -112,8 +112,15 @@ async function iphoneExtraHandler(req,res){
    if(seq>99999)return send(res,409,{ok:false,error:"Sequência esgotada"});
    rows.push([(unit==="bike"?"Bike":"Gym")+id+(unit==="bike"?"B":"G")+String(seq).padStart(5,"0"),unit,id,cpf,nome,unit==="bike"?bs:gs,unit==="bike"?bs+bonus(bs):gs+bonus(gs),unit==="bike"?bo:go,unit==="bike"?bo+bonus(bo):go+bonus(go)]);
   }
-  const sql="INSERT INTO sorteio_iphone17_bilhetes (bilhete,unidade,id_evo,cpf,nome,aulas_set,numeros_set,aulas_out,numeros_out) VALUES "+rows.map(()=>"(?,?,?,?,?,?,?,?,?)").join(",");
-  await query(sql,rows.flat());
+  // D1 API imposes a limit on bound parameters; use small batches (8 x 9).
+  for(let offset=0;offset<rows.length;offset+=8){
+   const batch=rows.slice(offset,offset+8);
+   const sql="INSERT INTO sorteio_iphone17_bilhetes (bilhete,unidade,id_evo,cpf,nome,aulas_set,numeros_set,aulas_out,numeros_out) VALUES "+batch.map(()=>"(?,?,?,?,?,?,?,?,?)").join(",");
+   await query(sql,batch.flat());
+  }
+  const check=await query("SELECT unidade,COUNT(*) AS n FROM sorteio_iphone17_bilhetes WHERE cpf=? AND id_evo=? GROUP BY unidade",[cpf,id]);
+  const confirmed=Object.fromEntries(check.map(r=>[r.unidade,Number(r.n)]));
+  if(confirmed.bike!==bike&&bike>0||confirmed.gym!==gym&&gym>0)return send(res,503,{ok:false,error:"Gravação parcial detectada. Confira os bilhetes no D1 antes de repetir.",confirmed});
   return send(res,200,{ok:true,adicionados:rows.length,bike,gym,bilhetes:rows.map(r=>r[0])});
- }catch(e){return send(res,503,{ok:false,error:"Falha na operação D1. Nenhuma confirmação de inclusão.",detail:String(e.message||"").slice(0,160)})}
+ }catch(e){return send(res,503,{ok:false,error:"Falha na operação D1. Verifique se houve gravação parcial antes de tentar novamente.",detail:String(e.message||"").slice(0,160)})}
 }
