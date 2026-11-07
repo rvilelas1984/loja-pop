@@ -3,7 +3,7 @@ body{background:#f5f6fa;color:#1c2331;font-family:Inter,system-ui,sans-serif;mar
 <section class="panel unit"><h2>Bike Pop</h2><p class="muted">Selecione o Excel homologado com a coluna CPF vazia.</p><input type="file" id="bikeFile" accept=".xlsx,.xlsm"><button id="bikeBtn" type="button">Adicionar CPF — Bike Pop</button><p id="bikeStatus" class="muted">Aguardando planilha.</p></section>
 <section class="panel unit gym"><h2>Gym Pop</h2><p class="muted">Selecione o Excel homologado com a coluna CPF vazia.</p><input type="file" id="gymFile" accept=".xlsx,.xlsm"><button id="gymBtn" type="button">Adicionar CPF — Gym Pop</button><p id="gymStatus" class="muted">Aguardando planilha.</p></section></div>
 <section class="panel" id="result" hidden><h2>Resultado da conferência</h2><div class="stats"><div class="stat"><b id="total">0</b><small>Alunos</small></div><div class="stat"><b id="filled">0</b><small>CPFs adicionados</small></div><div class="stat"><b id="missing">0</b><small>Ausentes</small></div><div class="stat"><b id="conflicts">0</b><small>Divergências</small></div></div><p id="report"></p><button type="button" id="download">Baixar planilha com CPF</button><button type="button" id="downloadIssues">Baixar pendências (CSV)</button></section>
-<section class="panel"><h2>Etapa 3 — Planilha oficial conferida</h2><p class="muted">Depois de conferir os CPFs, envie a planilha definitiva de cada unidade. A validação confere ID EVO, CPF e duplicidades; não consulta nem altera o D1 nesta etapa.</p><div class="units"><div><h3>Bike Pop</h3><input type="file" id="bikeOfficial" accept=".xlsx,.xlsm"><button type="button" id="bikeValidate">Validar planilha oficial Bike</button><p class="muted" id="bikeOfficialStatus">Aguardando homologação.</p></div><div><h3>Gym Pop</h3><input type="file" id="gymOfficial" accept=".xlsx,.xlsm"><button type="button" id="gymValidate">Validar planilha oficial Gym</button><p class="muted" id="gymOfficialStatus">Aguardando homologação.</p></div></div></section><section class="panel"><h2>Etapa 4 — Gerar números da sorte</h2><p class="muted">A geração só será habilitada depois da implementação e homologação das regras de numeração e da confirmação explícita da planilha oficial. Não geraremos números automaticamente nesta fase.</p><button type="button" disabled title="Aguardando homologação das regras de geração">Gerar números — Bike Pop</button> <button type="button" disabled title="Aguardando homologação das regras de geração">Gerar números — Gym Pop</button></section><p class="muted">Processamento restrito ao administrador. O arquivo é processado no navegador; somente os IDs EVO são enviados para consulta ao D1. Não compartilhe planilhas com CPF publicamente.</p></main>
+<section class="panel"><h2>Etapa 3 — Planilha oficial conferida</h2><p class="muted">Depois de conferir os CPFs, envie a planilha definitiva de cada unidade. A validação confere ID EVO, CPF e duplicidades; não consulta nem altera o D1 nesta etapa.</p><div class="units"><div><h3>Bike Pop</h3><input type="file" id="bikeOfficial" accept=".xlsx,.xlsm"><button type="button" id="bikeValidate">Validar planilha oficial Bike</button><p class="muted" id="bikeOfficialStatus">Aguardando homologação.</p></div><div><h3>Gym Pop</h3><input type="file" id="gymOfficial" accept=".xlsx,.xlsm"><button type="button" id="gymValidate">Validar planilha oficial Gym</button><p class="muted" id="gymOfficialStatus">Aguardando homologação.</p></div></div></section><section class="panel"><h2>Etapa 4 — Gerar números da sorte</h2><p class="muted">Geração local, na ordem da planilha oficial. O total de números já calculado é preservado. Confira antes de exportar.</p><button id="generateBike" type="button" disabled>Gerar números — Bike Pop</button> <button id="generateGym" type="button" disabled>Gerar números — Gym Pop</button><p id="generationStatus" class="muted">Valide as planilhas oficiais para liberar.</p><button id="exportBike" type="button" hidden>Baixar bilhetes Bike</button> <button id="exportGym" type="button" hidden>Baixar bilhetes Gym</button></section><section class="panel"><h2>Etapa 5 — Consolidar Bike + Gym</h2><p class="muted">Reúne os resultados por CPF e mantém aulas e números de setembro/outubro separados por unidade. CPFs ausentes ficam em pendências.</p><button id="consolidate" type="button" disabled>Gerar planilha consolidada</button><p id="consolidationStatus" class="muted">Aguardando geração nas duas unidades.</p></section><p class="muted">Processamento restrito ao administrador. O arquivo é processado no navegador; somente os IDs EVO são enviados para consulta ao D1. Não compartilhe planilhas com CPF publicamente.</p></main>
 <script src="/admin-common.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script>
 let output=null,issues=[];const $=id=>document.getElementById(id);
 function findCol(row,kind){return row.findIndex(v=>{const s=String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');return kind==='id'?['idevo','iddoaluno','idmember','idcliente','idaluno','evoid','id'].includes(s):s==='cpf'})}
@@ -13,4 +13,72 @@ async function run(unit){const btn=$(unit+'Btn'),status=$(unit+'Status'),file=$(
 for(const unit of ['bike','gym'])$(unit+'Btn').onclick=()=>run(unit);
 $('download').onclick=()=>{if(output)XLSX.writeFile(output.book,output.name,{bookType:'xlsx'})};
 $('downloadIssues').onclick=()=>{const csv=['ID EVO;Linha;Pendência',...issues.map(x=>[x.id,x.row,x.reason].join(';'))].join('\r\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='pendencias-cpf.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
-async function validateOfficial(unit){const file=$(unit+'Official').files[0],status=$(unit+'OfficialStatus');if(!file){status.textContent='Selecione a planilha oficial.';return}try{if(!window.XLSX)throw Error('Leitor Excel indisponível');const book=XLSX.read(await file.arrayBuffer(),{type:'array'}),rows=XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]],{header:1,defval:''});const h=rows.findIndex(r=>findCol(r,'id')>=0&&findCol(r,'cpf')>=0);if(h<0)throw Error('É necessário ter as colunas ID EVO e CPF.');const idCol=findCol(rows[h],'id'),cpfCol=findCol(rows[h],'cpf'),seen=new Set();let total=0,empty=0,invalid=0,duplicates=0;for(const row of rows.slice(h+1)){const id=digits(row[idCol]);if(!id)continue;total++;if(seen.has(id))duplicates++;seen.add(id);const cpf=digits(row[cpfCol]);if(!cpf)empty++;else if(!validCpf(cpf))invalid++}if(!total)throw Error('Nenhum aluno encontrado');status.textContent='Conferência local: '+total+' alunos; '+empty+' CPFs ausentes; '+invalid+' CPFs inválidos; '+duplicates+' IDs EVO duplicados. '+(invalid||duplicates?'Corrija as divergências antes da homologação.':'Arquivo conferido localmente. A geração de números ainda não está liberada.');}catch(e){status.textContent=e.message||'Erro de leitura'}}for(const unit of ['bike','gym'])$(unit+'Validate').onclick=()=>validateOfficial(unit);</script></body></html>
+async function validateOfficial(unit){const file=$(unit+'Official').files[0],status=$(unit+'OfficialStatus');if(!file){status.textContent='Selecione a planilha oficial.';return}try{if(!window.XLSX)throw Error('Leitor Excel indisponível');const book=XLSX.read(await file.arrayBuffer(),{type:'array'}),rows=XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]],{header:1,defval:''});const h=rows.findIndex(r=>findCol(r,'id')>=0&&findCol(r,'cpf')>=0);if(h<0)throw Error('É necessário ter as colunas ID EVO e CPF.');const idCol=findCol(rows[h],'id'),cpfCol=findCol(rows[h],'cpf'),seen=new Set();let total=0,empty=0,invalid=0,duplicates=0;for(const row of rows.slice(h+1)){const id=digits(row[idCol]);if(!id)continue;total++;if(seen.has(id))duplicates++;seen.add(id);const cpf=digits(row[cpfCol]);if(!cpf)empty++;else if(!validCpf(cpf))invalid++}if(!total)throw Error('Nenhum aluno encontrado');if(invalid||duplicates){delete officialData[unit];$('generate'+(unit==='bike'?'Bike':'Gym')).disabled=true;}else{officialData[unit]=extractOfficial(book);delete generatedData[unit];$('generate'+(unit==='bike'?'Bike':'Gym')).disabled=false;$('consolidate').disabled=true;}status.textContent='Conferência local: '+total+' alunos; '+empty+' CPFs ausentes; '+invalid+' CPFs inválidos; '+duplicates+' IDs EVO duplicados. '+(invalid||duplicates?'Corrija as divergências antes da homologação.':'Arquivo conferido localmente. A geração de números ainda não está liberada.');}catch(e){status.textContent=e.message||'Erro de leitura'}}for(const unit of ['bike','gym'])$(unit+'Validate').onclick=()=>validateOfficial(unit);
+const officialData={},generatedData={};
+function normHeader(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'')}
+function colLike(header,variants){return header.findIndex(v=>variants.some(k=>normHeader(v)===k))}
+function numeric(v){if(typeof v==='number')return v;const t=String(v??'').trim();return t?Number(t.replace(/\./g,'').replace(',','.')):0}
+function detectColumns(header){
+ const h=header.map(normHeader);
+ const find=(terms)=>h.findIndex(v=>terms.some(t=>v===t));
+ const month=(m)=>h.findIndex(v=>v.includes(m)&&(/aulas|presencas|frequencia/.test(v))&&!/numero|bilhete/.test(v)));
+ const nums=(m)=>h.findIndex(v=>v.includes(m)&&/numero|bilhete|cupom/.test(v));
+ return {id:findCol(header,'id'),cpf:findCol(header,'cpf'),
+ name:find(['nome','nomecompleto','aluno','cliente']),
+ sepA:month('setembro'),octA:month('outubro'),
+ sepN:nums('setembro'),octN:nums('outubro'),
+ total:find(['totaldenumeros','numerostotais','totalnumeros','numerosgerados','quantidadedenumeros','qtdnumeros','numerosdasorte','totalbilhetes'])};
+}
+function extractOfficial(book){
+ const rows=XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]],{header:1,defval:''});
+ const hi=rows.findIndex(r=>findCol(r,'id')>=0&&findCol(r,'cpf')>=0);
+ if(hi<0)throw Error('Cabeçalho ID EVO / CPF não encontrado');
+ const c=detectColumns(rows[hi]);
+ if(c.total<0&&(c.sepN<0||c.octN<0))throw Error('Não foi possível identificar a quantidade de números. A planilha precisa ter Total de números ou Números Setembro e Números Outubro.');
+ const students=rows.slice(hi+1).filter(r=>digits(r[c.id])).map(r=>{
+ const sepN=c.sepN>=0?numeric(r[c.sepN]):null,octN=c.octN>=0?numeric(r[c.octN]):null;
+ const count=c.total>=0?numeric(r[c.total]):sepN+octN;
+ if(!Number.isSafeInteger(count)||count<0||count>108)throw Error('Quantidade de números inválida para ID '+digits(r[c.id])+': '+count);
+ return {id:digits(r[c.id]),cpf:digits(r[c.cpf]),name:c.name>=0?String(r[c.name]):'',sepA:c.sepA>=0?numeric(r[c.sepA]):null,octA:c.octA>=0?numeric(r[c.octA]):null,sepN,octN,count};
+ });
+ if(!students.length)throw Error('Planilha sem alunos');
+ return students;
+}
+function generateUnit(unit){
+ const students=officialData[unit];if(!students)return;
+ let seq=1;const prefix=unit==='bike'?'Bike':'Gym',letter=unit==='bike'?'B':'G';
+ const rows=students.map(st=>{
+ const tickets=Array.from({length:st.count},()=>prefix+st.id+letter+String(seq++).padStart(5,'0'));
+ return {...st,tickets};
+ });
+ generatedData[unit]=rows;
+ $('generationStatus').textContent=(unit==='bike'?'Bike':'Gym')+': '+rows.length+' alunos e '+(seq-1)+' bilhetes gerados. Sequência global de 00001 a '+String(seq-1).padStart(5,'0')+'.';
+ $('export'+(unit==='bike'?'Bike':'Gym')).hidden=false;
+ $('consolidate').disabled=!(generatedData.bike&&generatedData.gym);
+}
+function exportTickets(unit){
+ const data=generatedData[unit];if(!data)return;
+ const records=data.flatMap(s=>s.tickets.map(ticket=>({'Unidade':unit==='bike'?'Bike Pop':'Gym Pop','ID EVO':s.id,'Nome':s.name,'CPF':s.cpf,'Aulas Setembro':s.sepA,'Números Setembro':s.sepN,'Aulas Outubro':s.octA,'Números Outubro':s.octN,'Número da sorte':ticket})));
+ const ws=XLSX.utils.json_to_sheet(records);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Bilhetes');XLSX.writeFile(wb,'Bilhetes-'+unit+'-iPhone17.xlsx');
+}
+function consolidateOfficial(){
+ if(!generatedData.bike||!generatedData.gym)return;
+ const map=new Map(),pending=[];
+ for(const unit of ['bike','gym'])for(const s of generatedData[unit]){
+ if(!validCpf(s.cpf)){pending.push({Unidade:unit,'ID EVO':s.id,Nome:s.name,CPF:s.cpf,Problema:'CPF ausente ou inválido'});continue}
+ if(!map.has(s.cpf))map.set(s.cpf,{CPF:s.cpf,Nome:s.name});
+ const x=map.get(s.cpf),p=unit==='bike'?'Bike':'Gym';
+ if(x[p+' ID EVO']){pending.push({Unidade:unit,'ID EVO':s.id,Nome:s.name,CPF:s.cpf,Problema:'CPF repetido na mesma unidade'});continue}
+ x[p+' ID EVO']=s.id;x[p+' Aulas Setembro']=s.sepA;x[p+' Números Setembro']=s.sepN;x[p+' Aulas Outubro']=s.octA;x[p+' Números Outubro']=s.octN;
+ x[p+' Total de Números']=s.count;x[p+' Bilhetes']=s.tickets.join(' | ');
+ }
+ const wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([...map.values()]),'Consolidado');
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(pending.length?pending:[{Status:'Sem pendências'}]),'Pendencias');
+ XLSX.writeFile(wb,'Sorteio-iPhone17-Consolidado-Bike-Gym.xlsx');
+ $('consolidationStatus').textContent=map.size+' CPFs consolidados; '+pending.length+' pendências. Arquivo gerado localmente; consulta pública ainda não publicada.';
+}
+$('generateBike').onclick=()=>generateUnit('bike');$('generateGym').onclick=()=>generateUnit('gym');
+$('exportBike').onclick=()=>exportTickets('bike');$('exportGym').onclick=()=>exportTickets('gym');
+$('consolidate').onclick=consolidateOfficial;
+</script></body></html>
