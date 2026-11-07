@@ -95,14 +95,14 @@ async function iphoneExtraHandler(req,res){
    return send(res,200,{ok:true,bilhetes:rows.map(r=>r.bilhete),total:rows.length});
   }
   if(req.method!=="POST")return send(res,405,{ok:false});
-  const b=req.body||{},cpf=String(b.cpf||"").replace(/\D/g,""),nome=String(b.nome||"").trim(),id=String(b.id_evo||"").trim();
+  const b=req.body||{},cpf=String(b.cpf||"").replace(/\D/g,""),nome=String(b.nome||"").trim(),id=String(b.id_evo||"").trim(),gymId=String(b.gym_id_evo||id).trim(),gymOther=String(b.gym_id_adicional||"").trim(),gymOtherPres=Number(b.gym_presencas_adicionais||0);
   const pres=b.presencas||{},vals=["bike_set","bike_out","gym_set","gym_out"].map(k=>Number(pres[k]));
-  if(!/^\d{11}$/.test(cpf)||nome.length<5||nome.length>120||!/^\d{1,20}$/.test(id)||vals.some(n=>!Number.isSafeInteger(n)||n<0||n>12))return send(res,400,{ok:false,error:"Dados inválidos. Confira CPF, nome, ID EVO e presenças (0 a 12 por mês)."});
+  if(!/^\d{11}$/.test(cpf)||nome.length<5||nome.length>120||!/^\d{1,20}$/.test(id)||vals.some(n=>!Number.isSafeInteger(n)||n<0||n>12)||!/^[0-9]{1,20}$/.test(gymId)||(gymOther&&!/^[0-9]{1,20}$/.test(gymOther))||!Number.isSafeInteger(gymOtherPres)||gymOtherPres<0||gymOtherPres>12||gymOtherPres>vals[3]||(gymOtherPres>0&&!gymOther)||(gymOther&&gymOther===gymId))return send(res,400,{ok:false,error:"Dados inválidos. Confira CPF, nome, ID EVO e presenças (0 a 12 por mês)."});
   const bonus=n=>n>=12?10:n>=8?5:0;
   const [bs,bo,gs,go]=vals;
   const bike=bs+bonus(bs)+bo+bonus(bo),gym=gs+bonus(gs)+go+bonus(go);
   if(!bike&&!gym)return send(res,400,{ok:false,error:"Nenhuma participação informada"});
-  const existing=await query("SELECT unidade,id_evo,COUNT(*) AS total FROM sorteio_iphone17_bilhetes WHERE cpf=? OR id_evo=? GROUP BY unidade,id_evo",[cpf,id]);
+  const existing=await query("SELECT unidade,id_evo,COUNT(*) AS total FROM sorteio_iphone17_bilhetes WHERE cpf=? OR id_evo IN (?,?,?) GROUP BY unidade,id_evo",[cpf,id,gymId,gymOther||"0"]);
   if(existing.length)return send(res,409,{ok:false,error:"CPF ou ID EVO já possui bilhetes. Faça uma conferência antes de complementar.",existing});
   const limits=await query("SELECT unidade,MAX(CAST(substr(bilhete,-5) AS INTEGER)) AS ultimo FROM sorteio_iphone17_bilhetes GROUP BY unidade");
   const last=Object.fromEntries(limits.map(x=>[x.unidade,Number(x.ultimo)||0]));
@@ -110,7 +110,8 @@ async function iphoneExtraHandler(req,res){
   for(const [unit,n] of [["bike",bike],["gym",gym]])for(let i=1;i<=n;i++){
    const seq=(last[unit]||0)+i;
    if(seq>99999)return send(res,409,{ok:false,error:"Sequência esgotada"});
-   rows.push([(unit==="bike"?"Bike":"Gym")+id+(unit==="bike"?"B":"G")+String(seq).padStart(5,"0"),unit,id,cpf,nome,unit==="bike"?bs:gs,unit==="bike"?bs+bonus(bs):gs+bonus(gs),unit==="bike"?bo:go,unit==="bike"?bo+bonus(bo):go+bonus(go)]);
+   const targetId=unit==="bike"?id:(gymOther&&i>gym-gymOtherPres?gymOther:gymId);
+   rows.push([(unit==="bike"?"Bike":"Gym")+targetId+(unit==="bike"?"B":"G")+String(seq).padStart(5,"0"),unit,targetId,cpf,nome,unit==="bike"?bs:gs,unit==="bike"?bs+bonus(bs):gs+bonus(gs),unit==="bike"?bo:go,unit==="bike"?bo+bonus(bo):go+bonus(go)]);
   }
   // D1 API imposes a limit on bound parameters; use small batches (8 x 9).
   for(let offset=0;offset<rows.length;offset+=8){
@@ -118,7 +119,7 @@ async function iphoneExtraHandler(req,res){
    const sql="INSERT INTO sorteio_iphone17_bilhetes (bilhete,unidade,id_evo,cpf,nome,aulas_set,numeros_set,aulas_out,numeros_out) VALUES "+batch.map(()=>"(?,?,?,?,?,?,?,?,?)").join(",");
    await query(sql,batch.flat());
   }
-  const check=await query("SELECT unidade,COUNT(*) AS n FROM sorteio_iphone17_bilhetes WHERE cpf=? AND id_evo=? GROUP BY unidade",[cpf,id]);
+  const check=await query("SELECT unidade,COUNT(*) AS n FROM sorteio_iphone17_bilhetes WHERE cpf=? GROUP BY unidade",[cpf]);
   const confirmed=Object.fromEntries(check.map(r=>[r.unidade,Number(r.n)]));
   if(confirmed.bike!==bike&&bike>0||confirmed.gym!==gym&&gym>0)return send(res,503,{ok:false,error:"Gravação parcial detectada. Confira os bilhetes no D1 antes de repetir.",confirmed});
   return send(res,200,{ok:true,adicionados:rows.length,bike,gym,bilhetes:rows.map(r=>r[0])});
