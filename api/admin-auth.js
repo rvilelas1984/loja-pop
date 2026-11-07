@@ -29,6 +29,7 @@ async function iphoneImportHandler(req,res){
  if(session(req)?.role!=="admin")return iphoneSend(res,403,{error:"Acesso restrito ao administrador"});
  if(!token())return iphoneSend(res,503,{error:"Configure CLOUDFLARE_API_TOKEN na Vercel para habilitar gravação segura"});
  try{
+ await query("CREATE TABLE IF NOT EXISTS sorteio_iphone17_bilhetes (bilhete TEXT PRIMARY KEY, unidade TEXT NOT NULL, id_evo TEXT NOT NULL, cpf TEXT NOT NULL DEFAULT '', nome TEXT NOT NULL DEFAULT '', aulas_set INTEGER, numeros_set INTEGER, aulas_out INTEGER, numeros_out INTEGER, criado_em TEXT DEFAULT CURRENT_TIMESTAMP)");
  if(req.method==="GET"){const rows=await query("SELECT COUNT(*) AS bilhetes,COUNT(DISTINCT unidade || ':' || id_evo) AS alunos,COUNT(DISTINCT CASE WHEN cpf <> '' THEN cpf END) AS cpfs,SUM(CASE WHEN unidade='bike' THEN 1 ELSE 0 END) AS bike,SUM(CASE WHEN unidade='gym' THEN 1 ELSE 0 END) AS gym FROM sorteio_iphone17_bilhetes");return iphoneSend(res,200,{ok:true,...rows[0]})}
  if(req.method!=="POST")return iphoneSend(res,405,{error:"Método inválido"});
  const {rows,reset}=req.body||{};if(!Array.isArray(rows)||rows.length<1||rows.length>120) return iphoneSend(res,400,{error:"Lote inválido (1 a 120 bilhetes)"});
