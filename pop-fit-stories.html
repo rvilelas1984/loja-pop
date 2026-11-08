@@ -147,7 +147,7 @@ $('files').addEventListener('change',()=>{cutout=null;if(cutoutUrl){URL.revokeOb
 .story-stage[hidden]{display:none!important}
 .story-stage-title{font-size:18px;font-weight:800;margin:12px 0}
 .story-wizard-footer{display:flex;gap:9px;margin-top:18px}
-.story-wizard-footer button{flex:1}
+.story-wizard-footer button{flex:1}.preview .story-wizard-footer{width:100%;max-width:410px;margin:4px auto 0;position:sticky;bottom:8px;z-index:15;background:#211a2df0;padding:7px;border-radius:15px;box-shadow:0 5px 25px #0007}
 @media(max-width:800px){main{display:flex;flex-direction:column}.preview{order:0}.panel:first-child{order:1}.preview canvas{max-height:55vh;width:auto;max-width:100%;object-fit:contain}.preview .muted{display:none}}
 </style>
 <script>
@@ -179,7 +179,7 @@ let step=0;
 const footer=document.createElement('div');footer.className='story-wizard-footer';
 const prev=document.createElement('button');prev.type='button';prev.className='secondary';prev.textContent='← Voltar';
 const next=document.createElement('button');next.type='button';next.textContent='Próximo →';
-footer.append(prev,next);panel.append(footer);
+footer.append(prev,next);document.querySelector('main > section.preview')?.append(footer);
 function go(i){step=Math.max(0,Math.min(3,i));sections.forEach((el,j)=>el.hidden=j!==step);[...nav.children].forEach((b,j)=>b.classList.toggle('active',j===step));prev.disabled=step===0;next.textContent=step===3?'Voltar ao início':'Próximo →';}
 labels.forEach((label,i)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>go(i);nav.append(b)});
 panel.insertBefore(nav,sections[0]);prev.onclick=()=>go(step-1);next.onclick=()=>go(step===3?0:step+1);
