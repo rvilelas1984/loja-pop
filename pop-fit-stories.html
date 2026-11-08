@@ -173,7 +173,7 @@ $('files').addEventListener('change',()=>{cutout=null;if(cutoutUrl){URL.revokeOb
 @media(max-width:800px){main{display:flex;flex-direction:column}.preview{order:0}.panel:first-child{order:1}.preview canvas{max-height:55vh;width:auto;max-width:100%;object-fit:contain}.preview .muted{display:none}}
 </style>
 <script>
-document.addEventListener('DOMContentLoaded',function(){setupFraming();setupFreeTextEditor();
+document.addEventListener('DOMContentLoaded',function(){setupFraming();
 try{
 const panel=document.querySelector('main > section.panel');
 if(!panel||document.querySelector('.story-wizard'))return;
@@ -207,6 +207,9 @@ labels.forEach((label,i)=>{const b=document.createElement('button');b.type='butt
 panel.insertBefore(nav,sections[0]);prev.onclick=()=>go(step-1);next.onclick=()=>go(step===3?0:step+1);
 const intro=panel.querySelector('p.muted');if(intro)intro.textContent='Escolha o modelo, adicione fotos, personalize todos os textos e publique.';
 const ed=document.getElementById('editorialTexts');if(ed){const note=ed.querySelector('p.muted');if(note)note.textContent='Edite ou desative individualmente as chamadas do modelo; desativar não apaga o texto.'}
+setupFreeTextEditor();
+const textBox=document.getElementById('freeTextEditor');if(textBox)sections[2].insertBefore(textBox,sections[2].children[1]||null);
+const previewShell=document.querySelector('.photo-preview-shell');if(previewShell&&!document.getElementById('textSideTools')){const tools=document.createElement('div');tools.id='textSideTools';tools.className='text-side-tools';tools.innerHTML='<button type="button" class="text-aa" title="Adicionar e editar texto" aria-label="Adicionar e editar texto">Aa</button><button type="button" class="text-done" title="Finalizar edição do texto" aria-label="Finalizar edição do texto">✓</button>';previewShell.append(tools);const aa=tools.querySelector('.text-aa'),done=tools.querySelector('.text-done');aa.onclick=()=>{go(2);if(!freeTexts.length)document.getElementById('addFreeText')?.click();else{selectedFreeText=freeTexts.length-1;draw()}aa.classList.add('active');done.classList.add('active')};done.onclick=()=>{selectedFreeText=-1;aa.classList.remove('active');done.classList.remove('active');draw()};}
 go(0);
 }catch(error){console.error('Pop Fit Stories wizard:',error)}
 });
@@ -219,4 +222,4 @@ go(0);
 .photo-zoom-value{font-size:10px;font-weight:700;white-space:nowrap}
 .photo-zoom-side button{padding:6px;background:#50345f;font-size:18px}
 @media(max-width:800px){.photo-preview-shell{width:100%;padding-right:46px}.photo-preview-shell canvas{max-width:100%;max-height:55vh;width:auto;height:auto}.photo-zoom-side{right:0}}
-</style><style>.free-text-editor{margin:14px 0;padding:14px;border:1px solid #795187;background:#171120;border-radius:14px}.free-text-editor h3{margin:0 0 8px}.free-text-item{margin-top:12px;padding:12px;border-radius:12px;background:#291d34;border:1px solid #61466d}.free-text-item .row{margin:8px 0}.free-text-item label{margin:0}.free-text-item input[type=color]{width:42px;height:34px;vertical-align:middle}.free-text-item input[type=range]{width:110px;accent-color:#f246a6}.free-text-item button{padding:8px;font-size:12px}.free-text-item textarea{min-height:56px}</style></body></html>
+</style><style>.free-text-editor{margin:14px 0;padding:14px;border:1px solid #795187;background:#171120;border-radius:14px}.free-text-editor h3{margin:0 0 8px}.free-text-item{margin-top:12px;padding:12px;border-radius:12px;background:#291d34;border:1px solid #61466d}.free-text-item .row{margin:8px 0}.free-text-item label{margin:0}.free-text-item input[type=color]{width:42px;height:34px;vertical-align:middle}.free-text-item input[type=range]{width:110px;accent-color:#f246a6}.free-text-item button{padding:8px;font-size:12px}.free-text-item textarea{min-height:56px}</style><style>.text-side-tools{position:absolute;right:0;bottom:0;display:flex;flex-direction:column;gap:7px;z-index:6}.text-side-tools button{width:43px;height:43px;padding:0;border:1px solid #b774a6;border-radius:12px;background:#3a284b;color:#fff;font-size:18px;font-weight:900;box-shadow:0 3px 12px #0007}.text-side-tools .text-done{background:#257f65}.text-side-tools button.active{outline:2px solid #ff77c4}.photo-zoom-side{bottom:96px!important;top:7%!important}.story-stage[data-step="2"] .free-text-editor{display:block}</style></body></html>
