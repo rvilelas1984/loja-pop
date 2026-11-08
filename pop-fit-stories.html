@@ -300,13 +300,13 @@ toolbar.append(toolButton('▧','Foto',()=>document.getElementById('files')?.cli
 openBtn.hidden=true;openBtn.style.display='none';
 /* Modelos V29: navegação contextual, sem cobrir o cabeçalho nem duplicar a barra. */
 toolbar.style.gridTemplateColumns='repeat(6,minmax(0,1fr))';
-toolbar.style.gap='4px';
+toolbar.style.gap='7px';toolbar.style.width='calc(100% + 64px)';toolbar.style.maxWidth='calc(100vw - 48px)';toolbar.style.marginLeft='50%';toolbar.style.transform='translateX(-50%)';
 const modelButton=toolButton('▦','Modelos',()=>setModelPicker(!modelPickerOpen));
 toolbar.insertBefore(modelButton,toolbar.children[3]);
 let modelPickerOpen=false, activeTool='none';
 const toolbarButtons=[...toolbar.children];
 toolbarButtons.forEach((btn,i)=>{
- btn.style.padding='8px 1px';btn.style.minHeight='56px';
+ btn.style.padding='10px 2px';btn.style.minHeight='62px';
  const caption=btn.querySelector('span:last-child');if(caption)caption.style.fontSize='9px';
  const previous=btn.onclick;
  btn.onclick=()=>{if(i===3){setModelPicker(!modelPickerOpen);return}
@@ -337,7 +337,7 @@ previewShell.style.position='relative';previewShell.style.width='100%';previewSh
 const railLeft=document.createElement('div'),railRight=document.createElement('div');
 for(const rail of [railLeft,railRight]){
  rail.className='pop-model-rail';rail.hidden=true;
- rail.style.cssText='position:absolute;top:0;width:32px;display:none;flex-direction:column;gap:5px;z-index:5;max-height:80%;overflow-y:auto;scrollbar-width:none';
+ rail.style.cssText='position:absolute;top:0;width:32px;display:none;flex-direction:column;gap:5px;z-index:5;max-height:80%;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin';
  previewShell.append(rail);
 }
 railLeft.style.left='0';railRight.style.right='0';
@@ -354,14 +354,14 @@ function renderModelRails(){
   const art=document.createElement('span');art.style.cssText='display:block;width:21px;height:31px;border-radius:3px;background:linear-gradient(145deg,'+(['#e23c98','#8052d5','#2399ad','#d18a48','#c04e92'][index%5])+',#24102e);border:1px solid #ffffff66';
   b.append(art,n);
   b.onclick=()=>{const select=document.getElementById('model');select.value=String(index);select.dispatchEvent(new Event('change',{bubbles:true}));renderModelRails();requestAnimationFrame(positionModelRails)};
-  (index%2?railRight:railLeft).append(b);
+  railLeft.append(b);
  });
 }
 function setModelPicker(open){
  modelPickerOpen=!!open;
  pickerBar.hidden=!open;pickerBar.style.display=open?'flex':'none';
- railLeft.hidden=!open;railRight.hidden=!open;
- railLeft.style.display=open?'flex':'none';railRight.style.display=open?'flex':'none';
+ railLeft.hidden=!open;railRight.hidden=true;
+ railLeft.style.display=open?'flex':'none';railRight.style.display='none';
  previewShell.style.paddingLeft='48px';
  previewShell.style.paddingRight='48px';
  setActiveTool(open?'models':'none');
