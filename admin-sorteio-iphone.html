@@ -96,30 +96,40 @@ function sorteioRandom(n){const max=4294967296,limit=max-(max%n),buf=new Uint32A
 function sorteioShuffle(arr){for(let i=arr.length-1;i>0;i--){const j=sorteioRandom(i+1);[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
 $('shuffleGenerate').onclick=async()=>{const st=$('shuffleStatus');try{const bike=sorteioTickets(await sorteioRead($('shuffleBike').files[0])),gym=sorteioTickets(await sorteioRead($('shuffleGym').files[0]));if(!bike.length||!gym.length)throw Error('Os dois arquivos devem conter bilhetes.');const all=[...bike,...gym],ids=new Set(all.map(r=>r.bilhete));if(ids.size!==all.length)throw Error('Existem códigos de bilhetes duplicados. Corrija antes de sortear.');if(bike.some(r=>!r.bilhete.startsWith('Bike'))||gym.some(r=>!r.bilhete.startsWith('Gym')))throw Error('Arquivo Bike/Gym incorreto ou código de bilhete inválido.');if(bike.length!==4997||gym.length!==1599)throw Error('Totais diferentes da homologação: Bike '+bike.length+'/4997; Gym '+gym.length+'/1599.');sorteioShuffle(all);const output=all.map((r,i)=>({'Posição sorteada':i+1,'Número da sorte':r.bilhete,'Unidade':r.unidade,'ID EVO':r.id,'Nome':r.nome,'CPF':r.cpf,'Aulas Setembro':r.aulasSet,'Números Setembro':r.numerosSet,'Aulas Outubro':r.aulasOut,'Números Outubro':r.numerosOut}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(output),'Sorteio Oficial');XLSX.writeFile(wb,'Sorteio-iPhone17-6596-Bilhetes-Embaralhados.xlsx');st.textContent='Planilha gerada: 6.596 posições únicas, Bike 4.997 e Gym 1.599. Guarde este arquivo como versão oficial. Não clique novamente para não gerar outra ordem.';shuffleState.rows=output;}catch(e){st.textContent='Erro: '+(e.message||e)}};
 async function winnerRows(file){
- if(!file)throw Error('Selecione o CSV oficial ou o Excel embaralhado.');
+ if(!file)throw Error('Selecione o CSV oficial ou Excel de bilhetes.');
  const book=XLSX.read(await file.arrayBuffer(),{type:'array'});
  const result=[];
- for(const name of book.SheetNames){
-  const sheet=book.Sheets[name];
-  const matrix=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false});
+ const codePattern=/^(Bike|Gym)\d+[BG]\d+$/i;
+ const codeFields=['numerodasorte','bilhete','codigo','codigodobilhete','numerodobilhete','numerosorte','numerosdasorte'];
+ for(const sheetName of book.SheetNames){
+  const matrix=XLSX.utils.sheet_to_json(book.Sheets[sheetName],{header:1,defval:'',raw:false});
   if(!matrix.length)continue;
-  const header=matrix[0].map(v=>sorteioKey(String(v)));
-  const codeIndex=header.findIndex(v=>['numerodasorte','bilhete','codigo','codigodob ilhete'.replace(/ /g,'')].includes(v));
-  const posIndex=header.findIndex(v=>v==='posicaosorteada');
-  if(codeIndex>=0){
-   const objects=XLSX.utils.sheet_to_json(sheet,{defval:'',raw:false});
-   for(const [i,r] of objects.entries()){const code=sorteioValue(r,'Número da sorte','Bilhete','Código','Codigo');if(/^(Bike|Gym)\\d+[BG]\\d+$/i.test(code))result.push({code,position:posIndex>=0?Number(sorteioValue(r,'Posição sorteada')):null,row:i+2,data:r});}
-  }else{
-   for(let i=0;i<matrix.length;i++){const code=String(matrix[i][0]||'').trim();if(/^(Bike|Gym)\\d+[BG]\\d+$/i.test(code))result.push({code,position:null,row:i+1,data:{}});}
+  let headers=null,headerRow=-1,codeCol=-1,posCol=-1;
+  for(let h=0;h<Math.min(matrix.length,30);h++){
+   const normalized=matrix[h].map(v=>sorteioKey(String(v??'')));
+   const idx=normalized.findIndex(v=>codeFields.includes(v));
+   if(idx>=0){headers=matrix[h].map(v=>String(v??''));headerRow=h;codeCol=idx;posCol=normalized.indexOf('posicaosorteada');break;}
+  }
+  for(let i=headerRow>=0?headerRow+1:0;i<matrix.length;i++){
+   const row=matrix[i],data={};
+   if(headers)headers.forEach((h,j)=>{if(h)data[h]=row[j]??'';});
+   const indices=codeCol>=0?[codeCol]:row.map((_,j)=>j);
+   for(const j of indices){
+    const code=String(row[j]??'').trim();
+    if(!codePattern.test(code))continue;
+    const position=posCol>=0&&String(row[posCol]??'').trim()!==''?Number(row[posCol]):null;
+    result.push({code,position:Number.isInteger(position)&&position>0?position:null,row:i+1,data});
+   }
   }
   if(result.length)break;
  }
- if(!result.length)throw Error('Nenhum bilhete oficial encontrado. Envie o CSV com os códigos ou o Excel da Etapa 7.');
- const seen=new Set();for(const r of result){if(seen.has(r.code.toLowerCase()))throw Error('Arquivo contém bilhetes duplicados: '+r.code);seen.add(r.code.toLowerCase());}
+ if(!result.length)throw Error('Nenhum bilhete encontrado. Verifique se o arquivo contém códigos Bike...B... ou Gym...G... nas abas.');
+ const seen=new Set();
+ for(const r of result){const k=r.code.toLowerCase();if(seen.has(k))throw Error('Bilhete duplicado: '+r.code);seen.add(k);}
  return result;
 }
 function winnerIdentity(code){
- const m=/^(Bike|Gym)(\\d+)[BG](\\d+)$/i.exec(code);
+ const m=/^(Bike|Gym)(\d+)[BG](\d+)$/i.exec(code);
  return m?{unit:m[1],id:m[2]}:null;
 }
 async function winnerRoster(file,id,unit){
@@ -142,7 +152,7 @@ $('winnerFind').onclick=async()=>{
   const rows=await winnerRows($('winnerFile').files[0]);
   const term=$('winnerNumber').value.trim();
   if(!term)throw Error('Informe a posição sorteada ou o código completo do bilhete.');
-  const pos=/^\\d+$/.test(term)?Number(term):null;
+  const pos=/^\d+$/.test(term)?Number(term):null;
   if(pos!==null&&!rows.some(r=>r.position!==null))throw Error('Consulta por posição exige o Excel embaralhado da Etapa 7. Para o CSV oficial, informe o código completo sorteado.');
   const matches=rows.filter(r=>pos!==null?r.position===pos:r.code.toLowerCase()===term.toLowerCase());
   if(matches.length!==1)throw Error(matches.length?'Resultado ambíguo.':'Número não encontrado no arquivo carregado.');
