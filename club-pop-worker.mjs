@@ -982,8 +982,10 @@ export default {
         return json({ok:true,unit,days,online:unique(active),visitors:unique(list),sessions:list.length,averageSeconds:average(list),pages,updatedAt:new Date().toISOString(),note:list.length===10000?"LIMITED_TO_10000_SESSIONS":null});
       }
 
-      if(url.pathname==='/pop-stickers/upload')return popStickerUpload(request,env);
-      if(url.pathname.startsWith('/admin/pop-stickers')||url.pathname.startsWith('/pop-stickers/'))return popStickerRoute(request,env);
+      if(url.pathname==='/pop-stickers/upload'||url.pathname.startsWith('/admin/pop-stickers')||url.pathname.startsWith('/pop-stickers/')){
+        const result=url.pathname==='/pop-stickers/upload'?await popStickerUpload(request,env):await popStickerRoute(request,env);
+        if(result){const headers=new Headers(result.headers);for(const [key,value] of Object.entries(cors))headers.set(key,value);return new Response(result.body,{status:result.status,statusText:result.statusText,headers});}
+      }
       if(url.pathname === "/admin/media-token" || url.pathname === "/admin/media-delete" || url.pathname === "/tv/upload" || url.pathname.startsWith("/tv/multipart/") || url.pathname.startsWith("/tv/files/")) return partnerMedia(request,env,json,cors);
 
       // Partner TV campaigns: public active creatives, tracked QR redirects, authenticated reporting.
