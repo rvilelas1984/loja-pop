@@ -202,4 +202,66 @@ go(0);
 .photo-zoom-value{font-size:10px;font-weight:700;white-space:nowrap}
 .photo-zoom-side button{padding:6px;background:#50345f;font-size:18px}
 @media(max-width:800px){.photo-preview-shell{width:100%;padding-right:46px}.photo-preview-shell canvas{max-width:100%;max-height:55vh;width:auto;height:auto}.photo-zoom-side{right:0}}
-</style></body></html>
+</style>
+<style>
+#popTextOpen{background:#f246a6;color:white;border-radius:12px;padding:11px 16px;font-weight:800;border:0;margin:8px}
+#popTextModal[hidden]{display:none!important}
+#popTextModal{position:fixed;inset:0;z-index:99999;background:#0e0916;color:white;font-family:Arial,sans-serif;overflow:hidden}
+#popTextStage{position:absolute;inset:0;background:#160e23;overflow:hidden}
+#popTextBackground{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:.87;pointer-events:none}
+#popTextDim{position:absolute;inset:0;background:#0003;pointer-events:none}
+#popTextLayer{position:absolute;inset:0;pointer-events:none}
+.pop-text-piece{position:absolute;transform:translate(-50%,-50%);font-weight:900;font-size:38px;white-space:pre;line-height:1.15;max-width:none;min-width:12px;text-align:center;color:white;pointer-events:auto;touch-action:none;text-shadow:0 2px 3px #0007}
+.pop-text-piece[contenteditable=true]{touch-action:auto;outline:0;caret-color:white;user-select:text}
+#popTextTop{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:12px;right:12px;display:flex;align-items:center;justify-content:space-between;z-index:3;gap:5px}
+#popTextTop button{border:1px solid #fff6;border-radius:50%;padding:0;background:#0009;color:white;width:37px;height:37px;font-size:17px}
+#popTextTop #popTextDone{background:#f2359b;width:48px;height:48px;font-size:25px}
+#popTextTop #popTextExit{border-radius:14px;width:auto;padding:0 10px;font-size:13px}
+#popTextSize{position:absolute;left:8px;top:30%;height:32%;width:27px;writing-mode:vertical-lr;direction:rtl;accent-color:white;z-index:3}
+#popTextBottom{position:absolute;bottom:12px;left:0;right:0;z-index:4;padding:0 10px}
+#popTextFonts{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;white-space:nowrap;padding:6px 0}
+#popTextFonts button{font-size:14px;padding:7px 11px;background:#130b19b8;border:1px solid #fff7;border-radius:22px;white-space:nowrap;flex-shrink:0}
+#popTextFonts button.active{background:white;color:#201329}
+#popTextColors{display:none;gap:8px;justify-content:center;align-items:center;background:#180d22d9;border-radius:20px;padding:8px;overflow-x:auto}
+#popTextColors.active{display:flex}
+#popTextColors button{flex-shrink:0;width:25px;height:25px;border-radius:50%;border:2px solid #fff8;padding:0}
+#popTextHint{font-size:11px;color:#fff9;text-align:center;margin:3px}
+</style>
+<div id="popTextModal" hidden>
+ <div id="popTextStage"><img id="popTextBackground" alt=""><div id="popTextDim"></div><div id="popTextLayer"></div></div>
+ <div id="popTextTop"><button id="popTextExit" title="Voltar ao Pop Fit">← Voltar</button><button id="popTextColor" title="Cor">🌈</button><button id="popTextBox" title="Estilo da caixa">▣</button><button id="popTextAlign" title="Alinhamento">☰</button><button id="popTextBold" title="Negrito">B</button><button id="popTextDone" title="Concluir texto">✓</button></div>
+ <input id="popTextSize" type="range" min="18" max="90" value="38" aria-label="Tamanho">
+ <div id="popTextBottom"><div id="popTextColors"></div><div id="popTextFonts"></div><div id="popTextHint">Digite na arte · Enter cria nova linha</div></div>
+</div>
+<script>
+(function(){
+const $t=id=>document.getElementById(id),modal=$t('popTextModal'),stage=$t('popTextStage'),layer=$t('popTextLayer');
+const fontNames=['Moderno','Clássico','Máquina','Assinatura','Poster','Bubble','Editor','Deco','Neon'];
+const fontCSS=['Arial,sans-serif','Georgia,serif','monospace','cursive','Georgia,serif','Arial,sans-serif','Arial,sans-serif','Georgia,serif','Arial,sans-serif'];
+const colors=['#ffffff','#101010','#ff369b','#ffe454','#52eaff','#85ff72','#a987ff','#ff794d'];
+let pieces=[],active=-1,editing=false,drag=null,background='',keyboard=0;
+function selected(){return pieces[active]}
+function size(){return {w:stage.clientWidth,h:stage.clientHeight}}
+function font(t){return (t.bold?'900 ':'400 ')+t.size+'px '+fontCSS[t.font]}
+function pieceStyle(el,t){el.style.left=t.x*100+'%';el.style.top=t.y*100+'%';el.style.font=font(t);el.style.color=t.box===1?'#171020':t.color;el.style.textAlign=t.align;el.style.background=t.box===1?'#fff':t.box===2?'#000b':t.box===3?'#ffffff77':'transparent';el.style.borderRadius=t.box?'9px':'0';el.style.padding=t.box?'4px 9px':'0';el.style.textShadow=t.box?'none':'0 2px 4px #0008'}
+function render(){layer.replaceChildren();pieces.forEach((t,i)=>{const el=document.createElement('div');el.className='pop-text-piece';el.dataset.i=i;el.textContent=t.text;pieceStyle(el,t);if(editing&&active===i){el.contentEditable='true';el.addEventListener('input',()=>{t.text=el.innerText.replace(/\\r/g,'')})}else{el.addEventListener('pointerdown',e=>{active=i;drag={i,x:e.clientX,y:e.clientY,ox:t.x,oy:t.y,moved:false};el.setPointerCapture(e.pointerId);e.preventDefault()});el.addEventListener('pointermove',e=>{if(!drag||drag.i!==i)return;const sz=size(),dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>6)drag.moved=true;t.x=Math.max(.05,Math.min(.95,drag.ox+dx/sz.w));t.y=Math.max(.07,Math.min(.93,drag.oy+dy/sz.h));pieceStyle(el,t)});el.addEventListener('pointerup',()=>{if(!drag)return;const moved=drag.moved;drag=null;if(!moved)edit(i)})}layer.append(el)})}
+function sync(){const t=selected();if(!t)return;$t('popTextSize').value=t.size;$t('popTextFonts').replaceChildren();fontNames.forEach((name,i)=>{const b=document.createElement('button');b.textContent=name;b.style.fontFamily=fontCSS[i];b.className=i===t.font?'active':'';b.onpointerdown=e=>e.preventDefault();b.onclick=()=>{t.font=i;updateStyle()};$t('popTextFonts').append(b)});$t('popTextColors').replaceChildren();colors.forEach(c=>{const b=document.createElement('button');b.style.background=c;b.onclick=()=>{t.color=c;updateStyle()};$t('popTextColors').append(b)})}
+function updateStyle(){const t=selected();if(!t)return;const el=layer.querySelector('[data-i="'+active+'"]');if(el){t.text=el.innerText;pieceStyle(el,t)}sync()}
+function edit(i){active=i;editing=true;render();sync();const el=layer.querySelector('[data-i="'+i+'"]');el?.focus({preventScroll:true});if(el){const r=document.createRange();r.selectNodeContents(el);r.collapse(false);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(r)}adjust()}
+function finish(){const el=layer.querySelector('[data-i="'+active+'"]');if(el&&editing)pieces[active].text=el.innerText.replace(/\\r/g,'');editing=false;document.activeElement?.blur();pieces=pieces.filter(t=>t.text.trim());active=-1;render()}
+function add(x=.5,y=.45){finish();pieces.push({text:'',x,y,size:38,font:0,color:'#fff',box:0,bold:true,align:'center'});edit(pieces.length-1)}
+function adjust(){const v=window.visualViewport;const h=v?Math.max(0,window.innerHeight-v.height-v.offsetTop):0;keyboard=h;const b=$t('popTextBottom');b.style.bottom=(h>100?h+8:12)+'px';const t=selected();if(editing&&t&&h>100){const topLimit=(window.innerHeight-h-120)/stage.clientHeight;if(t.y>topLimit){t.y=Math.max(.24,topLimit-.09);const el=layer.querySelector('[data-i="'+active+'"]');if(el)pieceStyle(el,t)}}}
+function paint(){const canvas=document.getElementById('story'),ctx=canvas.getContext('2d');const sx=canvas.width/stage.clientWidth,sy=canvas.height/stage.clientHeight;ctx.save();pieces.forEach(t=>{if(!t.text.trim())return;const lines=t.text.split('\\n');ctx.font=(t.bold?'900 ':'400 ')+(t.size*sx)+'px '+fontCSS[t.font];ctx.textAlign=t.align;ctx.textBaseline='middle';const w=Math.max(1,...lines.map(line=>ctx.measureText(line).width));const x=t.x*canvas.width,y=t.y*canvas.height,lh=t.size*sx*1.15;if(t.box){ctx.fillStyle=t.box===1?'#fff':t.box===2?'#000b':'#ffffff77';ctx.fillRect(x-w/2-15*sx,y-lh/2-5*sx,w+30*sx,lines.length*lh+10*sx)}ctx.fillStyle=t.box===1?'#171020':t.color;lines.forEach((line,j)=>ctx.fillText(line,t.align==='left'?x-w/2:t.align==='right'?x+w/2:x,y+j*lh))});ctx.restore()}
+const originalDraw=draw;draw=function(){originalDraw();paint()};
+const openBtn=document.createElement('button');openBtn.id='popTextOpen';openBtn.textContent='Aa  Adicionar texto';openBtn.type='button';const preview=document.querySelector('.preview');preview.insertBefore(openBtn,preview.querySelector('canvas'));openBtn.onclick=()=>{originalDraw();$t('popTextBackground').src=document.getElementById('story').toDataURL('image/png');modal.hidden=false;document.body.style.overflow='hidden';render();add()};
+$t('popTextDone').onclick=finish;$t('popTextExit').onclick=()=>{finish();modal.hidden=true;document.body.style.overflow='';draw()};
+$t('popTextColor').onclick=()=>$t('popTextColors').classList.toggle('active');
+$t('popTextBox').onclick=()=>{const t=selected();if(t){t.box=(t.box+1)%4;updateStyle()}};
+$t('popTextAlign').onclick=()=>{const t=selected();if(t){t.align=t.align==='center'?'left':t.align==='left'?'right':'center';updateStyle()}};
+$t('popTextBold').onclick=()=>{const t=selected();if(t){t.bold=!t.bold;updateStyle()}};
+$t('popTextSize').oninput=e=>{const t=selected();if(t){t.size=+e.target.value;const el=layer.querySelector('[data-i="'+active+'"]');if(el)pieceStyle(el,t)}};
+stage.addEventListener('click',e=>{if(editing||e.target.closest('.pop-text-piece'))return;const r=stage.getBoundingClientRect();add((e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height)});
+window.visualViewport?.addEventListener('resize',adjust);window.visualViewport?.addEventListener('scroll',adjust);
+})();
+</script>
+</body></html>
