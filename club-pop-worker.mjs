@@ -4606,7 +4606,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           }
           if(["add-manual-activity","update-manual-activity"].includes(String(b.action||""))){
             const updating=b.action==="update-manual-activity",id=Number(b.activityId),name=String(b.activityName||"").trim().slice(0,60),date=String(b.activityDate||""),time=String(b.startTime||"").trim(),cal=b.calories===""||b.calories==null?null:Number(b.calories);
-            if(!name||!/^20\\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$/.test(date))return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
+            if(!name||!/^20\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date))return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
             if(cal!==null&&(!Number.isFinite(cal)||cal<0||cal>5000))return json({ok:false,error:"CALORIAS_INVALIDAS"},400);
             const allowed={distance:10000,speedAvg:250,speedMax:250,duration:1440,rpmAvg:300,rpmMax:300,heartAvg:250,heartMax:250,steps:200000,elevation:10000};
             const incoming=b.extraMetrics&&typeof b.extraMetrics==="object"&&!Array.isArray(b.extraMetrics)?b.extraMetrics:{};
