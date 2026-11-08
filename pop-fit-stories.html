@@ -298,6 +298,48 @@ const openBtn=document.createElement('button');openBtn.id='popTextOpen';openBtn.
 function toolButton(symbol,label,handler,highlight=false){const b=document.createElement('button');b.type='button';b.setAttribute('aria-label',label);b.title=label;b.style.cssText='min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 2px;border-radius:12px;border:1px solid #76517e;background:'+(highlight?'#a52b84':'#32213e')+';color:#fff;min-height:64px;box-shadow:none';const ico=document.createElement('span');ico.textContent=symbol;ico.style.cssText='font-size:21px;line-height:1';const caption=document.createElement('span');caption.textContent=label;caption.style.cssText='font-size:10px;line-height:1.1;font-weight:700;white-space:nowrap';b.append(ico,caption);b.onclick=handler;return b}
 toolbar.append(toolButton('▧','Foto',()=>document.getElementById('files')?.click()),toolButton('T','Texto',()=>openBtn.click()),toolButton('✦','Figurinhas',()=>document.getElementById('stickersOpen')?.click(),true),toolButton('↓','Salvar',()=>document.getElementById('saveBtn')?.click()),toolButton('↗','Compart.',()=>document.getElementById('shareBtn')?.click()));
 openBtn.hidden=true;openBtn.style.display='none';
+/* Seletor lateral: utiliza o catálogo e os seletores originais, sem duplicar modelos. */
+toolbar.style.gridTemplateColumns='repeat(6,minmax(0,1fr))';
+toolbar.style.gap='4px';
+for(const btn of toolbar.children){btn.style.padding='8px 1px';btn.style.minHeight='56px';btn.querySelector('span:last-child').style.fontSize='9px'}
+const modelButton=toolButton('▦','Modelos',()=>setModelPicker(!modelPickerOpen));
+toolbar.insertBefore(modelButton,toolbar.children[3]);
+let modelPickerOpen=false;
+const pickerBar=document.createElement('div');pickerBar.id='popModelPickerBar';pickerBar.hidden=true;pickerBar.style.cssText='display:flex;align-items:center;gap:8px;width:100%;margin:0 auto 12px';
+const pickerCategory=document.createElement('select');pickerCategory.setAttribute('aria-label','Categoria de modelos');pickerCategory.style.cssText='flex:1;min-width:0;padding:10px;border-radius:11px;background:#33243f;color:white;border:1px solid #795c88';
+for(const opt of document.getElementById('category').options){const copy=document.createElement('option');copy.value=opt.value;copy.textContent=opt.textContent;pickerCategory.append(copy)}
+const pickerOk=document.createElement('button');pickerOk.type='button';pickerOk.textContent='✓ OK';pickerOk.style.cssText='flex:0 0 auto;padding:10px 14px;border-radius:11px;background:#e9369c;color:white;font-weight:800;border:0';pickerOk.onclick=()=>setModelPicker(false);
+pickerBar.append(pickerCategory,pickerOk);toolbar.insertAdjacentElement('afterend',pickerBar);
+const previewShell=document.getElementById('story').parentElement;
+const railLeft=document.createElement('div'),railRight=document.createElement('div');
+for(const rail of [railLeft,railRight]){rail.className='pop-model-rail';rail.hidden=true;rail.style.cssText='position:absolute;top:8px;width:36px;display:flex;flex-direction:column;gap:6px;z-index:5;max-height:95%;overflow-y:auto;scrollbar-width:none';previewShell.append(rail)}
+railLeft.style.left='0';railRight.style.right='0';
+function renderModelRails(){
+  const cat=document.getElementById('category').value;
+  pickerCategory.value=cat;
+  railLeft.replaceChildren();railRight.replaceChildren();
+  (catalog[cat]||[]).forEach(([name],index)=>{
+    const b=document.createElement('button');b.type='button';b.title=name;b.setAttribute('aria-label',name);
+    b.style.cssText='width:35px;height:59px;flex:0 0 59px;min-width:0;padding:3px;border-radius:7px;border:2px solid '+(index===modelIndex?'#ff69c5':'#735580')+';background:#30203d;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:space-between';
+    const n=document.createElement('span');n.textContent=String(index+1).padStart(2,'0');n.style.cssText='font-size:10px;font-weight:900';
+    const art=document.createElement('span');art.style.cssText='display:block;width:23px;height:34px;border-radius:3px;background:linear-gradient(145deg,'+(['#e23c98','#8052d5','#2399ad','#d18a48','#c04e92'][index%5])+',#24102e);border:1px solid #ffffff66';
+    b.append(art,n);
+    b.onclick=()=>{const select=document.getElementById('model');select.value=String(index);select.dispatchEvent(new Event('change',{bubbles:true}));renderModelRails()};
+    (index%2?railRight:railLeft).append(b);
+  });
+}
+function setModelPicker(open){
+ modelPickerOpen=!!open;pickerBar.hidden=!open;toolbar.hidden=!!open;railLeft.hidden=!open;railRight.hidden=!open;
+ previewShell.style.paddingLeft=open?'38px':'';
+ previewShell.style.paddingRight=open?'38px':'';
+ modelButton.setAttribute('aria-pressed',String(open));
+ if(open)renderModelRails();
+ window.syncSideZoom?.();
+}
+pickerCategory.onchange=()=>{const category=document.getElementById('category');category.value=pickerCategory.value;category.dispatchEvent(new Event('change',{bubbles:true}));renderModelRails()};
+document.getElementById('category').addEventListener('change',()=>{if(modelPickerOpen)renderModelRails()});
+document.getElementById('model').addEventListener('change',()=>{if(modelPickerOpen)renderModelRails()});
+
 const artCanvas=document.getElementById('story');let artHome=null,artNext=null;
 function fitCanvas(){const r=artCanvas.getBoundingClientRect(),p=stage.getBoundingClientRect();layer.style.cssText='position:absolute;left:'+(r.left-p.left)+'px;top:'+(r.top-p.top)+'px;width:'+r.width+'px;height:'+r.height+'px;pointer-events:none';}
 function closeText(){finish();modal.hidden=true;document.body.style.overflow='';artHome.insertBefore(artCanvas,artNext);artHome.style.removeProperty('min-height');artHome.style.removeProperty('height');artCanvas.style.removeProperty('max-height');artCanvas.style.removeProperty('height');artCanvas.style.removeProperty('width');draw();requestAnimationFrame(()=>{draw();window.syncSideZoom?.()})}
