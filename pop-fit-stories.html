@@ -383,7 +383,7 @@ if(zoomSide&&!document.getElementById('popStoryExpand')){
  overlay.style.cssText='position:fixed;inset:0;z-index:2147483646;background:#100b18;display:none;align-items:center;justify-content:center;padding:54px 12px 24px';
  overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','Visualização da arte');
  const close=document.createElement('button');close.type='button';close.textContent='✕';close.setAttribute('aria-label','Fechar visualização');
- close.style.cssText='position:absolute;top:12px;right:14px;border:1px solid #8d709c;background:#382546;color:white;border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer';
+ close.style.cssText='position:absolute;top:12px;right:14px;border:1px solid #8d709c;background:#382546;color:white;border-radius:50%;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;display:flex;align-items:center;justify-content:center;line-height:1;font-size:22px;font-family:Arial,sans-serif;font-weight:400;cursor:pointer';
  const previewImg=document.createElement('img');previewImg.alt='Arte completa, somente visualização';
  previewImg.style.cssText='display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain';
  overlay.append(close,previewImg);document.body.append(overlay);
