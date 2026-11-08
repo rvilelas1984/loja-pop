@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "collection": "TÁ PAGO!",
+  "status": "awaiting_png_upload",
+  "stickers": [
+    {
+      "id": "ta-pago-01",
+      "title": "TÁ PAGO!",
+      "variant": "classico-pop",
+      "keywords": [
+        "tá pago",
+        "ta pago",
+        "treino",
+        "pop",
+        "classico pop"
+      ],
+      "image": "./stickers/01-classico-pop.png",
+      "available": false
+    },
+    {
+      "id": "ta-pago-02",
+      "title": "TÁ PAGO!",
+      "variant": "estilo-brush",
+      "keywords": [
+        "tá pago",
+        "ta pago",
+        "treino",
+        "pop",
+        "estilo brush"
+      ],
+      "image": "./stickers/02-estilo-brush.png",
+      "available": false
+    },
+    {
+      "id": "ta-pago-03",
+      "title": "TÁ PAGO!",
+      "variant": "bike-pop",
+      "keywords": [
+        "tá pago",
+        "ta pago",
+        "treino",
+        "pop",
+        "bike pop"
+      ],
+      "image": "./stickers/03-bike-pop.png",
+      "available": false
+    },
+    {
+      "id": "ta-pago-04",
+      "title": "TÁ PAGO!",
+      "variant": "gym-pop",
+      "keywords": [
+        "tá pago",
+        "ta pago",
+        "treino",
+        "pop",
+        "gym pop"
+      ],
+      "image": "./stickers/04-gym-pop.png",
+      "available": false
+    },
+    {
+      "id": "ta-pago-05",
+      "title": "TÁ PAGO!",
+      "variant": "carimbo-treino",
+      "keywords": [
+        "tá pago",
+        "ta pago",
+        "treino",
+        "pop",
+        "carimbo treino"
+      ],
+      "image": "./stickers/05-carimbo-treino.png",
+      "available": false
+    },
+    {
+      "id": "ta-pago-06",
+      "title": "TÁ PAGO!",
+      "variant": "energia-total",
+      "keywords": [
+        "tá pago",
+        "ta pago",
+        "treino",
+        "pop",
+        "energia total"
+      ],
+      "image": "./stickers/06-energia-total.png",
+      "available": false
+    },
+    {
+      "id": "ta-pago-07",
+      "title": "TÁ PAGO!",
+      "variant": "missao-cumprida",
+      "keywords": [
+        "tá pago",
+        "ta pago",
+        "treino",
+        "pop",
+        "missao cumprida"
+      ],
+      "image": "./stickers/07-missao-cumprida.png",
+      "available": false
+    },
+    {
+      "id": "ta-pago-08",
+      "title": "TÁ PAGO!",
+      "variant": "forca-superacao",
+      "keywords": [
+        "tá pago",
+        "ta pago",
+        "treino",
+        "pop",
+        "forca superacao"
+      ],
+      "image": "./stickers/08-forca-superacao.png",
+      "available": false
+    },
+    {
+      "id": "ta-pago-09",
+      "title": "TÁ PAGO!",
+      "variant": "checklist-pop",
+      "keywords": [
+        "tá pago",
+        "ta pago",
+        "treino",
+        "pop",
+        "checklist pop"
+      ],
+      "image": "./stickers/09-checklist-pop.png",
+      "available": false
+    },
+    {
+      "id": "ta-pago-10",
+      "title": "TÁ PAGO!",
+      "variant": "saude-em-dia",
+      "keywords": [
+        "tá pago",
+        "ta pago",
+        "treino",
+        "pop",
+        "saude em dia"
+      ],
+      "image": "./stickers/10-saude-em-dia.png",
+      "available": false
+    }
+  ]
+}
