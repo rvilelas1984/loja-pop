@@ -4503,7 +4503,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!base)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_entries(member_id INTEGER NOT NULL,unit TEXT NOT NULL,attendance_key TEXT NOT NULL,weight REAL,height REAL,calories INTEGER,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(member_id,unit,attendance_key))").run();
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_images(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,scope TEXT NOT NULL,image_data TEXT NOT NULL,period_label TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
-        await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_manual_activities(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,activity_name TEXT NOT NULL,activity_date TEXT NOT NULL,start_time TEXT,calories INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_profile(member_id INTEGER PRIMARY KEY,height REAL,initial_weight REAL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_manual_activities(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,activity_name TEXT NOT NULL,activity_date TEXT NOT NULL,start_time TEXT,calories INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();const manualCols=await env.DB.prepare("PRAGMA table_info(pop_fit_manual_activities)").all();if(!manualCols.results?.some(c=>c.name==="extra_metrics")){try{await env.DB.prepare("ALTER TABLE pop_fit_manual_activities ADD COLUMN extra_metrics TEXT NOT NULL DEFAULT '{}'").run()}catch(e){if(!String(e).includes("duplicate column"))throw e}}await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_profile(member_id INTEGER PRIMARY KEY,height REAL,initial_weight REAL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         const scopeRaw=String(url.searchParams.get("scope")||"bike").toLowerCase(),scope=["bike","gym","club"].includes(scopeRaw)?scopeRaw:"bike";
         const ids={bike:base.evo_member_id?String(base.evo_member_id):null,gym:base.gym_client_id?String(base.gym_client_id):null};
         if(request.method==="GET"){
@@ -4527,7 +4527,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           if(action==="manual-activities"){
             const m=String(url.searchParams.get("month")||"2026-10");
             if(!/^2026-(09|10|11|12)$/.test(m))return json({ok:false,error:"PERIODO_NAO_DISPONIVEL"},400);
-            const q=await env.DB.prepare("SELECT id,activity_name,activity_date,start_time,calories FROM pop_fit_manual_activities WHERE member_id=? AND substr(activity_date,1,7)=? ORDER BY activity_date DESC,start_time DESC,id DESC").bind(base.id,m).all();
+            const q=await env.DB.prepare("SELECT id,activity_name,activity_date,start_time,calories,extra_metrics FROM pop_fit_manual_activities WHERE member_id=? AND substr(activity_date,1,7)=? ORDER BY activity_date DESC,start_time DESC,id DESC").bind(base.id,m).all();
             // Monitoramentos sem presença oficial ficam em Outras atividades, sem criar presença EVO.
             const live=await env.DB.prepare(`SELECT p.session_id performance_session_id,p.unit,s.class_name activity_name,
               substr(s.starts_at,1,10) activity_date,substr(s.starts_at,12,5) start_time,
@@ -4604,11 +4604,15 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             await audit(env,"MEMBER",String(base.id),"POP_FIT_MANUAL_DELETED","POP_FIT_MANUAL_ACTIVITY",String(id),{});
             return json({ok:true,deleted:true,source:"d1",evoRequestsMade:0});
           }
-          if(String(b.action||"")==="add-manual-activity"){
-            const name=String(b.activityName||"").trim().slice(0,60),date=String(b.activityDate||""),time=String(b.startTime||"").trim(),cal=b.calories===""||b.calories==null?null:Number(b.calories);
-            if(!name||date.length!==10||(date.slice(0,7)!=="2026-09"&&date.slice(0,7)!=="2026-10"))return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
+          if(["add-manual-activity","update-manual-activity"].includes(String(b.action||""))){
+            const updating=b.action==="update-manual-activity",id=Number(b.activityId),name=String(b.activityName||"").trim().slice(0,60),date=String(b.activityDate||""),time=String(b.startTime||"").trim(),cal=b.calories===""||b.calories==null?null:Number(b.calories);
+            if(!name||!/^20\\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$/.test(date))return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
             if(cal!==null&&(!Number.isFinite(cal)||cal<0||cal>5000))return json({ok:false,error:"CALORIAS_INVALIDAS"},400);
-            await env.DB.prepare("INSERT INTO pop_fit_manual_activities(member_id,activity_name,activity_date,start_time,calories) VALUES(?,?,?,?,?)").bind(base.id,name,date,time||null,cal).run();
+            const allowed={distance:10000,speedAvg:250,speedMax:250,duration:1440,rpmAvg:300,rpmMax:300,heartAvg:250,heartMax:250,steps:200000,elevation:10000};
+            const incoming=b.extraMetrics&&typeof b.extraMetrics==="object"&&!Array.isArray(b.extraMetrics)?b.extraMetrics:{};
+            const metrics={};for(const [key,max] of Object.entries(allowed)){const value=incoming[key];if(value===undefined||value===null||value==="")continue;const n=Number(value);if(!Number.isFinite(n)||n<0||n>max)return json({ok:false,error:"INDICADOR_INVALIDO:"+key},400);metrics[key]=n}
+            if(updating){if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);const owned=await env.DB.prepare("SELECT id,extra_metrics FROM pop_fit_manual_activities WHERE id=? AND member_id=?").bind(id,base.id).first();if(!owned)return json({ok:false,error:"ATIVIDADE_NAO_ENCONTRADA"},404);let previous={};try{previous=JSON.parse(owned.extra_metrics||"{}")||{}}catch{}const merged={...previous,...metrics};await env.DB.prepare("UPDATE pop_fit_manual_activities SET activity_name=?,activity_date=?,start_time=?,calories=?,extra_metrics=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=?").bind(name,date,time||null,cal,JSON.stringify(merged),id,base.id).run()}
+            else await env.DB.prepare("INSERT INTO pop_fit_manual_activities(member_id,activity_name,activity_date,start_time,calories,extra_metrics) VALUES(?,?,?,?,?,?)").bind(base.id,name,date,time||null,cal,JSON.stringify(metrics)).run();
             return json({ok:true,saved:true,source:"d1",evoRequestsMade:0});
           }
           if(String(b.action||"")==="save-image"){
