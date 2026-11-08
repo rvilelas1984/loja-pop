@@ -295,13 +295,49 @@ function paint(){
 }
 const originalDraw=draw;window.popTextPaint=paint;window.popTextPieces=pieces;window.popTextFinish=finish;
 const openBtn=document.createElement('button');openBtn.id='popTextOpen';openBtn.textContent='Aa  Adicionar texto';openBtn.type='button';const preview=document.querySelector('.preview');const shell=preview.querySelector('.photo-preview-shell');const nav=preview.querySelector('.story-nav,.story-wizard-nav,.wizard-actions');if(shell){shell.insertAdjacentElement('afterend',openBtn)}else{preview.insertBefore(openBtn,nav||preview.querySelector('canvas'))}openBtn.style.cssText='display:block!important;position:relative;z-index:5;flex:1;min-width:0;margin:0;padding:13px 10px;background:linear-gradient(110deg,#f246a6,#8856e8);color:#fff;border:0;border-radius:14px;font-size:14px;font-weight:800;box-shadow:0 5px 20px #0005';const addImageBtn=document.createElement('button');addImageBtn.type='button';addImageBtn.textContent='📷 Adicionar imagem';addImageBtn.style.cssText='flex:1;min-width:0;padding:13px 10px;border-radius:14px;border:1px solid #a77db6;background:#362244;color:#fff;font-weight:800;font-size:14px';addImageBtn.onclick=()=>document.getElementById('files')?.click();const toolbar=document.createElement('div');toolbar.id='popStoryToolbar';toolbar.style.cssText='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;width:100%;margin:10px auto 14px;position:relative;z-index:6';openBtn.parentNode.insertBefore(toolbar,openBtn);
-function toolButton(symbol,label,handler,highlight=false){const b=document.createElement('button');b.type='button';b.setAttribute('aria-label',label);b.title=label;b.style.cssText='min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 2px;border-radius:12px;border:1px solid #76517e;background:'+(highlight?'#a52b84':'#32213e')+';color:#fff;min-height:64px;box-shadow:none';const ico=document.createElement('span');ico.textContent=symbol;ico.style.cssText='font-size:21px;line-height:1';const caption=document.createElement('span');caption.textContent=label;caption.style.cssText='font-size:10px;line-height:1.1;font-weight:700;white-space:nowrap';b.append(ico,caption);b.onclick=handler;return b}
-toolbar.append(toolButton('▧','Foto',()=>document.getElementById('files')?.click()),toolButton('T','Texto',()=>openBtn.click()),toolButton('✦','Figurinhas',()=>document.getElementById('stickersOpen')?.click(),true),toolButton('↓','Salvar',()=>document.getElementById('saveBtn')?.click()),toolButton('↗','Compart.',()=>document.getElementById('shareBtn')?.click()));
+const popIcons={
+ camera:'<rect x="3" y="6" width="18" height="15" rx="2"/><path d="M8 6l1.5-2h5L16 6"/><circle cx="12" cy="13.5" r="3.2"/>',
+ type:'<path d="M4 7V4h16v3M12 4v16m-5 0h10"/>',
+ stickers:'<path d="M20 13V5a2 2 0 0 0-2-2H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h8z"/><path d="M14 21v-6a2 2 0 0 1 2-2h4"/><path d="M8 9h.01M15 9h.01M8 14c1.5 2 4.5 2 6 0"/>',
+ models:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M10 9v12M10 15h11"/>',
+ download:'<path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/>',
+ share:'<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.7 10.7 6.6-4.4m-6.6 7 6.6 4.4"/>',
+ instagram:'<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".8" fill="currentColor" stroke="none"/>'
+};
+function popSvg(name){return '<svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+popIcons[name]+'</svg>'}
+function toolButton(symbol,label,handler,highlight=false){const b=document.createElement('button');b.type='button';b.setAttribute('aria-label',label);b.title=label;b.style.cssText='min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 2px;border-radius:12px;border:1px solid #76517e;background:'+(highlight?'#a52b84':'#32213e')+';color:#fff;min-height:64px;box-shadow:none';const ico=document.createElement('span');ico.innerHTML=popIcons[symbol]?popSvg(symbol):symbol;ico.style.cssText='font-size:21px;line-height:1;display:flex;align-items:center;justify-content:center';const caption=document.createElement('span');caption.textContent=label;caption.style.cssText='font-size:10px;line-height:1.1;font-weight:700;white-space:nowrap';b.append(ico,caption);b.onclick=handler;return b}
+toolbar.append(toolButton('camera','Foto',()=>document.getElementById('files')?.click()),toolButton('type','Texto',()=>openBtn.click()),toolButton('stickers','Figurinhas',()=>document.getElementById('stickersOpen')?.click(),true),toolButton('download','Salvar',()=>document.getElementById('saveBtn')?.click()),toolButton('share','Compart.',()=>document.getElementById('shareBtn')?.click()));
 openBtn.hidden=true;openBtn.style.display='none';
+/* Atalho Instagram: reutiliza a exportação e o compartilhamento nativo, sem prometer publicação automática. */
+const artHeader=document.querySelector('.panel.preview .row');
+if(artHeader&&!document.getElementById('popInstagramShare')){
+ const insta=document.createElement('button');insta.id='popInstagramShare';insta.type='button';
+ insta.setAttribute('aria-label','Compartilhar no Instagram');insta.title='Compartilhar no Instagram';
+ insta.innerHTML=popSvg('instagram')+'<span>Compartilhar<br>no Instagram</span>';
+ insta.style.cssText='display:flex;align-items:center;justify-content:center;gap:7px;flex:0 0 auto;padding:9px 11px;border:1px solid #ed79c4;border-radius:12px;background:#b52b89;color:white;font-size:11px;line-height:1.15;font-weight:800;cursor:pointer;min-height:44px';
+ artHeader.style.gap='8px';artHeader.style.flexWrap='wrap';
+ artHeader.append(insta);
+ insta.onclick=async()=>{
+  if(insta.disabled)return;insta.disabled=true;
+  try{
+   const blob=await pngBlob();if(!blob)throw Error('Não foi possível gerar a arte');
+   const file=new File([blob],'bike-pop-story.png',{type:'image/png'});
+   if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:'Meu treino Bike Pop'})}
+    catch(e){if(e.name!=='AbortError')throw e}
+   }else{
+    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='bike-pop-story.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);
+    alert('Arte salva! Abra o Instagram e selecione a imagem nos Stories. Seu navegador não permite enviar a imagem diretamente ao aplicativo.');
+   }
+  }catch(e){alert('Não foi possível compartilhar. Use Salvar e escolha a imagem no Instagram.');}
+  finally{insta.disabled=false}
+ };
+}
+
 /* Modelos V29: navegação contextual, sem cobrir o cabeçalho nem duplicar a barra. */
 toolbar.style.gridTemplateColumns='repeat(6,minmax(0,1fr))';
 toolbar.style.gap='7px';toolbar.style.width='calc(100% + 64px)';toolbar.style.maxWidth='calc(100vw - 48px)';toolbar.style.marginLeft='50%';toolbar.style.transform='translateX(-50%)';
-const modelButton=toolButton('▦','Modelos',()=>setModelPicker(!modelPickerOpen));
+const modelButton=toolButton('models','Modelos',()=>setModelPicker(!modelPickerOpen));
 toolbar.insertBefore(modelButton,toolbar.children[3]);
 let modelPickerOpen=false, activeTool='none';
 const toolbarButtons=[...toolbar.children];
