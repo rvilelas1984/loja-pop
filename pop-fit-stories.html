@@ -141,31 +141,51 @@ $('files').addEventListener('change',()=>{cutout=null;if(cutoutUrl){URL.revokeOb
 })();
 </script>
 <style>
-.story-step-nav{display:flex;gap:6px;margin:14px 0 18px}.story-step-nav button{flex:1;min-width:0;padding:10px 4px;font-size:11px;background:#352940;border:1px solid #584465}.story-step-nav button.active{background:#e83d9b;border-color:#ff91cc}.story-stage[hidden]{display:none!important}.story-step-footer{display:flex;gap:10px;margin-top:18px}.story-step-footer button{flex:1}.story-stage-title{font-size:17px;font-weight:800;margin:4px 0 12px}.story-text-toggle{display:flex;align-items:center;gap:7px;margin-top:8px;font-size:13px}.story-text-toggle input{width:auto}.story-stage input[type=checkbox]{accent-color:#f246a6}
-@media(max-width:800px){.story-step-nav{position:sticky;top:0;z-index:20;background:#211a2d;padding:8px 0}.preview{order:initial}}
-</style><script>
-(function(){
-const panel=document.querySelector('main > section.panel'),nodes=[...panel.children];
-const findNode=id=>{const el=document.getElementById(id);return el&&nodes.find(n=>n===el||n.contains(el))};
-const first=findNode('unit'),end1=findNode('allBtn'),first2=findNode('files'),end2=findNode('photoPerformanceOptions'),first3=findNode('activity'),end3=findNode('showBrand'),first4=findNode('randomBtn');
-if(!first||!end1||!first2||!end2||!first3||!end3||!first4)return;
-const a=nodes.indexOf(first),b=nodes.indexOf(end1),c=nodes.indexOf(first2)-1,d=nodes.indexOf(end2),e=nodes.indexOf(first3),g=nodes.indexOf(end3),h=nodes.indexOf(first4);
-if([a,b,c,d,e,g,h].some(x=>x<0))return;
-const ranges=[[a,b],[c,d],[e,g],[h,nodes.length-1]];
-const nav=document.createElement('div');nav.className='story-step-nav';nav.setAttribute('aria-label','Etapas da criação');
-const labels=['1 Modelo','2 Fotos','3 Personalizar','4 Publicar'],titles=['Escolha seu modelo','Adicione suas fotos','Personalize seu Story','Revise e publique'];
-const stages=ranges.map(([start,end],i)=>{const sec=document.createElement('div');sec.className='story-stage';sec.dataset.stage=i;const title=document.createElement('div');title.className='story-stage-title';title.textContent=titles[i];sec.append(title);nodes.slice(start,end+1).forEach(n=>sec.append(n));panel.append(sec);return sec});
-let current=0;
-function show(i){current=Math.max(0,Math.min(3,i));stages.forEach((sec,j)=>sec.hidden=j!==current);[...nav.children].forEach((btn,j)=>{btn.classList.toggle('active',j===current);btn.setAttribute('aria-current',j===current?'step':'false')});document.querySelector('.story-step-footer .previous').disabled=current===0;document.querySelector('.story-step-footer .next').textContent=current===3?'Voltar ao modelo':'Próximo →';}
-labels.forEach((label,i)=>{const btn=document.createElement('button');btn.type='button';btn.textContent=label;btn.onclick=()=>show(i);nav.append(btn)});
-panel.insertBefore(nav,stages[0]);
-const footer=document.createElement('div');footer.className='story-step-footer';footer.innerHTML='<button type="button" class="secondary previous">← Voltar</button><button type="button" class="next">Próximo →</button>';panel.append(footer);
-footer.querySelector('.previous').onclick=()=>show(current-1);footer.querySelector('.next').onclick=()=>show(current===3?0:current+1);
-const intro=panel.querySelector('p.muted');if(intro)intro.textContent='Crie seu Story em quatro passos. Os modelos, fotos, indicadores e recursos originais foram preservados.';
-const editorial=document.getElementById('editorialTexts');if(editorial){const p=editorial.querySelector('p.muted');if(p)p.textContent='Todos os textos decorativos podem ser editados ou ocultados individualmente.'}
-const toggles=[['showPhrase','Frase'],['showTime','Horário'],['showBrand','Marca do estúdio']];
-toggles.forEach(([id])=>{const el=document.getElementById(id);if(el)el.title='Desative para ocultar sem apagar o conteúdo'});
-const activity=document.getElementById('activity');if(activity){const row=activity.closest('.two');if(row){const label=document.createElement('label');label.className='story-text-toggle';label.innerHTML='<input type="checkbox" id="showActivity" checked> Exibir nome da atividade';row.after(label);const oldDraw=window.draw; if(typeof oldDraw==='function'){window.draw=function(){oldDraw();if(!document.getElementById('showActivity').checked){const cv=document.getElementById('story');const cx=cv.getContext('2d');cx.save();cx.fillStyle='rgba(0,0,0,.0)';cx.restore()}}}label.querySelector('input').addEventListener('change',()=>{const input=document.getElementById('activity');input.dataset.previous=input.value;if(!label.querySelector('input').checked){input.dataset.savedValue=input.value;input.value=' '}else{input.value=input.dataset.savedValue||input.value}draw()})}}}
-show(0);
-})();
+.story-wizard{display:flex;gap:5px;margin:14px 0;padding:7px;background:#171020;border-radius:14px;position:sticky;top:0;z-index:12}
+.story-wizard button{flex:1;min-width:0;font-size:11px;padding:10px 3px;border-radius:9px;background:#382b46;color:#fff}
+.story-wizard button.active{background:#f246a6}
+.story-stage[hidden]{display:none!important}
+.story-stage-title{font-size:18px;font-weight:800;margin:12px 0}
+.story-wizard-footer{display:flex;gap:9px;margin-top:18px}
+.story-wizard-footer button{flex:1}
+@media(max-width:800px){main{display:flex;flex-direction:column}.preview{order:0}.panel:first-child{order:1}.preview canvas{max-height:55vh;width:auto;max-width:100%;object-fit:contain}.preview .muted{display:none}}
+</style>
+<script>
+document.addEventListener('DOMContentLoaded',function(){
+try{
+const panel=document.querySelector('main > section.panel');
+if(!panel||document.querySelector('.story-wizard'))return;
+const original=[...panel.children];
+function parentFor(id){const el=document.getElementById(id);return original.find(node=>node===el||node.contains(el))}
+const starts=['unit','files','activity','randomBtn'].map(parentFor);
+if(starts.some(x=>!x))throw Error('Etapa não localizada');
+const indexes=starts.map(x=>original.indexOf(x));
+if(indexes.some((x,i)=>x<0||(i&&x<=indexes[i-1])))throw Error('Ordem das etapas inválida');
+const groups=[
+original.slice(indexes[0],indexes[1]),
+original.slice(indexes[1],indexes[2]),
+original.slice(indexes[2],indexes[3]),
+original.slice(indexes[3])
+];
+const labels=['1 Modelo','2 Fotos','3 Texto','4 Publicar'];
+const titles=['Escolher modelo','Adicionar fotos','Personalizar textos e indicadores','Revisar e publicar'];
+const nav=document.createElement('div');nav.className='story-wizard';
+const sections=groups.map((group,i)=>{
+const sec=document.createElement('div');sec.className='story-stage';sec.dataset.step=String(i);
+const title=document.createElement('div');title.className='story-stage-title';title.textContent=titles[i];sec.append(title);
+group.forEach(el=>sec.append(el));panel.append(sec);return sec;
+});
+let step=0;
+const footer=document.createElement('div');footer.className='story-wizard-footer';
+const prev=document.createElement('button');prev.type='button';prev.className='secondary';prev.textContent='← Voltar';
+const next=document.createElement('button');next.type='button';next.textContent='Próximo →';
+footer.append(prev,next);panel.append(footer);
+function go(i){step=Math.max(0,Math.min(3,i));sections.forEach((el,j)=>el.hidden=j!==step);[...nav.children].forEach((b,j)=>b.classList.toggle('active',j===step));prev.disabled=step===0;next.textContent=step===3?'Voltar ao início':'Próximo →';}
+labels.forEach((label,i)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>go(i);nav.append(b)});
+panel.insertBefore(nav,sections[0]);prev.onclick=()=>go(step-1);next.onclick=()=>go(step===3?0:step+1);
+const intro=panel.querySelector('p.muted');if(intro)intro.textContent='Escolha o modelo, adicione fotos, personalize todos os textos e publique.';
+const ed=document.getElementById('editorialTexts');if(ed){const note=ed.querySelector('p.muted');if(note)note.textContent='Edite ou desative individualmente as chamadas do modelo; desativar não apaga o texto.'}
+go(0);
+}catch(error){console.error('Pop Fit Stories wizard:',error)}
+});
 </script></body></html>
