@@ -333,14 +333,16 @@ pickerOk.style.cssText='flex:0 0 auto;padding:10px 14px;border-radius:11px;backg
 pickerOk.onclick=()=>setModelPicker(false);
 pickerBar.append(pickerCategory,pickerOk);toolbar.insertAdjacentElement('afterend',pickerBar);
 const previewShell=document.getElementById('story').closest('.photo-preview-shell')||document.getElementById('story').parentElement;
-previewShell.style.position='relative';
+previewShell.style.position='relative';previewShell.style.width='100%';previewShell.style.display='flex';previewShell.style.justifyContent='center';previewShell.style.alignItems='center';
 const railLeft=document.createElement('div'),railRight=document.createElement('div');
 for(const rail of [railLeft,railRight]){
  rail.className='pop-model-rail';rail.hidden=true;
- rail.style.cssText='position:absolute;top:8px;width:32px;display:none;flex-direction:column;gap:5px;z-index:5;max-height:90%;overflow-y:auto;scrollbar-width:none';
+ rail.style.cssText='position:absolute;top:0;width:32px;display:none;flex-direction:column;gap:5px;z-index:5;max-height:80%;overflow-y:auto;scrollbar-width:none';
  previewShell.append(rail);
 }
 railLeft.style.left='0';railRight.style.right='0';
+function positionModelRails(){if(!modelPickerOpen)return;const canvas=document.getElementById('story');const shellRect=previewShell.getBoundingClientRect(),canvasRect=canvas.getBoundingClientRect();const top=Math.max(0,canvasRect.top-shellRect.top);const left=Math.max(0,canvasRect.left-shellRect.left-35);const right=Math.max(0,shellRect.right-canvasRect.right-35);railLeft.style.top=top+'px';railRight.style.top=top+'px';railLeft.style.left=left+'px';railRight.style.right=right+'px';const height=Math.max(100,canvasRect.height);railLeft.style.maxHeight=height+'px';railRight.style.maxHeight=height+'px'}
+window.addEventListener('resize',positionModelRails);
 function renderModelRails(){
  const cat=document.getElementById('category').value;
  pickerCategory.value=cat;
@@ -351,7 +353,7 @@ function renderModelRails(){
   const n=document.createElement('span');n.textContent=String(index+1).padStart(2,'0');n.style.cssText='font-size:9px;font-weight:900';
   const art=document.createElement('span');art.style.cssText='display:block;width:21px;height:31px;border-radius:3px;background:linear-gradient(145deg,'+(['#e23c98','#8052d5','#2399ad','#d18a48','#c04e92'][index%5])+',#24102e);border:1px solid #ffffff66';
   b.append(art,n);
-  b.onclick=()=>{const select=document.getElementById('model');select.value=String(index);select.dispatchEvent(new Event('change',{bubbles:true}));renderModelRails()};
+  b.onclick=()=>{const select=document.getElementById('model');select.value=String(index);select.dispatchEvent(new Event('change',{bubbles:true}));renderModelRails();requestAnimationFrame(positionModelRails)};
   (index%2?railRight:railLeft).append(b);
  });
 }
@@ -360,10 +362,10 @@ function setModelPicker(open){
  pickerBar.hidden=!open;pickerBar.style.display=open?'flex':'none';
  railLeft.hidden=!open;railRight.hidden=!open;
  railLeft.style.display=open?'flex':'none';railRight.style.display=open?'flex':'none';
- previewShell.style.paddingLeft=open?'34px':'0';
- previewShell.style.paddingRight=open?'34px':'48px';
+ previewShell.style.paddingLeft='0';
+ previewShell.style.paddingRight='48px';
  setActiveTool(open?'models':'none');
- if(open)renderModelRails();
+ if(open){renderModelRails();requestAnimationFrame(positionModelRails)}
  window.syncSideZoom?.();
 }
 pickerCategory.onchange=()=>{const category=document.getElementById('category');category.value=pickerCategory.value;category.dispatchEvent(new Event('change',{bubbles:true}));renderModelRails()};
