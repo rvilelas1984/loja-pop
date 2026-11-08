@@ -333,7 +333,7 @@ pickerOk.style.cssText='flex:0 0 auto;padding:10px 14px;border-radius:11px;backg
 pickerOk.onclick=()=>setModelPicker(false);
 pickerBar.append(pickerCategory,pickerOk);toolbar.insertAdjacentElement('afterend',pickerBar);
 const previewShell=document.getElementById('story').closest('.photo-preview-shell')||document.getElementById('story').parentElement;
-previewShell.style.position='relative';previewShell.style.width='100%';previewShell.style.display='flex';previewShell.style.justifyContent='center';previewShell.style.alignItems='center';
+previewShell.style.position='relative';previewShell.style.width='100%';previewShell.style.display='flex';previewShell.style.justifyContent='center';previewShell.style.alignItems='center';previewShell.style.marginInline='auto';
 const railLeft=document.createElement('div'),railRight=document.createElement('div');
 for(const rail of [railLeft,railRight]){
  rail.className='pop-model-rail';rail.hidden=true;
@@ -362,7 +362,7 @@ function setModelPicker(open){
  pickerBar.hidden=!open;pickerBar.style.display=open?'flex':'none';
  railLeft.hidden=!open;railRight.hidden=!open;
  railLeft.style.display=open?'flex':'none';railRight.style.display=open?'flex':'none';
- previewShell.style.paddingLeft='0';
+ previewShell.style.paddingLeft='48px';
  previewShell.style.paddingRight='48px';
  setActiveTool(open?'models':'none');
  if(open){renderModelRails();requestAnimationFrame(positionModelRails)}
