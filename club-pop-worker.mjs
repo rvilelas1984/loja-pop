@@ -10,6 +10,7 @@ import {eventParams,readEventCenter,ensureEventSourceCapture} from './lib/event-
 import {canonicalEvoId,normalizeMemberIds,resolveEvoClubMember} from './lib/member-identity.mjs';
 import {activeContract,drawCandidates,ensureDrawMember,drawAttendance,ticketSession,acquireDrawLease,releaseDrawLease} from './lib/lucky-draw-data.mjs';
 import { partnerMedia } from "./lib/partner-media.mjs";
+import {popStickerRoute,popStickerUpload} from './lib/pop-stickers.mjs';
 import {popDrawAdmin,popDrawTick} from './lib/pop-draws.mjs';
 import {luckyDrawTick,luckyDrawStatus} from './lib/lucky-draw-official.mjs';
 import {flashClasses} from './lib/flash-mission-classes.mjs';
@@ -981,6 +982,8 @@ export default {
         return json({ok:true,unit,days,online:unique(active),visitors:unique(list),sessions:list.length,averageSeconds:average(list),pages,updatedAt:new Date().toISOString(),note:list.length===10000?"LIMITED_TO_10000_SESSIONS":null});
       }
 
+      if(url.pathname==='/pop-stickers/upload')return popStickerUpload(request,env);
+      if(url.pathname.startsWith('/admin/pop-stickers')||url.pathname.startsWith('/pop-stickers/'))return popStickerRoute(request,env);
       if(url.pathname === "/admin/media-token" || url.pathname === "/admin/media-delete" || url.pathname === "/tv/upload" || url.pathname.startsWith("/tv/multipart/") || url.pathname.startsWith("/tv/files/")) return partnerMedia(request,env,json,cors);
 
       // Partner TV campaigns: public active creatives, tracked QR redirects, authenticated reporting.
