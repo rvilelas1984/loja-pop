@@ -57,39 +57,43 @@ function parseOFX(raw){const blocks=raw.match(/<STMTTRN>[\s\S]*?(?:<\/STMTTRN>|(
 
 let pdfPending=null;
 async function parsePdf(f){
- if(!window.pdfjsLib)await new Promise((ok,fail)=>{const el=document.createElement('script');el.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';el.onload=ok;el.onerror=()=>fail(Error('Não foi possível carregar o leitor PDF.'));document.head.appendChild(el)});
- const lib=window.pdfjsLib;lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';const pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
- const payment=$('paymentMonth').value,pm=Number(payment.slice(5)),py=Number(payment.slice(0,4));let rows=[],total=null;
- const normalized=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+ if(!window.pdfjsLib)await new Promise((ok,fail)=>{const el=document.createElement('script');el.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';el.onload=ok;el.onerror=()=>fail(Error('Falha ao carregar leitor PDF'));document.head.appendChild(el)});
+ const lib=window.pdfjsLib;lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ const pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+ const pay=$('paymentMonth').value,pm=Number(pay.slice(5)),py=Number(pay.slice(0,4)),rows=[];let total=null;
+ const normPdf=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
  for(let p=1;p<=pdf.numPages;p++){
-  const page=await pdf.getPage(p),tc=await page.getTextContent(),width=page.view[2]-page.view[0],leftLimit=width*.56;
-  const parts=tc.items.map(x=>({x:x.transform[4],y:x.transform[5],t:String(x.str||'').trim()})).filter(x=>x.t);
-  const left=parts.filter(x=>x.x<leftLimit),groups=[];
-  for(const item of left.sort((a,b)=>b.y-a.y||a.x-b.x)){let g=groups.find(g=>Math.abs(g.y-item.y)<7);if(!g){g={y:item.y,parts:[]};groups.push(g)}g.parts.push(item)}
-  const lines=groups.sort((a,b)=>b.y-a.y).map(g=>({y:g.y,text:g.parts.sort((a,b)=>a.x-b.x).map(x=>x.t).join(' ').replace(/\s+/g,' ').trim()}));
-  const current=lines.find(l=>{const n=normalized(l.text);return n.includes('lancamentos')&&n.includes('compras')&&n.includes('saques')});
-  const future=lines.find(l=>{const n=normalized(l.text);return n.includes('compras parceladas')&&n.includes('proximas faturas')});
-  const stop=lines.find(l=>normalized(l.text).includes('lancamentos no cartao'));
-  // If PDF.js splits the section title into different baselines, use
-  // the purchase-table header and total as spatial boundaries.
-  const header=lines.find(l=>{const n=normalized(l.text);return n.includes('data')&&n.includes('estabelecimento')&&n.includes('valor')});
-  const top=current?.y??header?.y;
-  const bottom=stop?.y??future?.y;
-  if(top===undefined||bottom===undefined||top<=bottom)continue;
-  const candidates=lines.filter(l=>l.y<top-3&&l.y>bottom+3);
-  for(const l of candidates){
-   const m=l.text.match(/^(\d{2})[\/.-](\d{2})(?:[\/.-](\d{2,4}))?\s+(.+?)\s+(-?\s*(?:R\$\s*)?[\d.]+,\d{2})\s*$/);
-   if(!m)continue;const desc=m[4].trim();if(desc.length<3||/^(total|subtotal|saldo|limite|pagamento|principal|juros)/i.test(desc))continue;
-   let year=m[3]?Number(m[3]):py;if(year<100)year+=2000;if(!m[3]&&Number(m[2])>pm)year--;
-   const date=year+'-'+m[2]+'-'+m[1],value=Math.abs(num(m[5]));if(!Number.isFinite(value)||value<=0||value>10000000)continue;
-   rows.push({date,description:desc,amount:/\b(estorno|cr[eé]dito|devolu[cç][aã]o)\b/i.test(desc)||m[5].trim().startsWith('-')?value:-value});
+  const page=await pdf.getPage(p),tc=await page.getTextContent(),width=page.view[2]-page.view[0];
+  const parts=tc.items.map(i=>({x:i.transform[4],y:i.transform[5],t:String(i.str||'').trim()})).filter(i=>i.t);
+  const left=parts.filter(i=>i.x<width*.57);
+  const groups=[];
+  for(const i of left.sort((a,b)=>b.y-a.y||a.x-b.x)){let g=groups.find(g=>Math.abs(g.y-i.y)<=5);if(!g){g={y:i.y,parts:[]};groups.push(g)}g.parts.push(i)}
+  const lines=groups.sort((a,b)=>b.y-a.y).map(g=>({y:g.y,parts:g.parts.sort((a,b)=>a.x-b.x),text:g.parts.map(i=>i.t).join(' ').replace(/\s+/g,' ').trim()}));
+  const section=lines.find(l=>{const n=normPdf(l.text);return n.includes('lancamentos')&&n.includes('compras')&&n.includes('saques')});
+  const end=lines.find(l=>normPdf(l.text).includes('lancamentos no cartao'));
+  const future=lines.find(l=>normPdf(l.text).includes('compras parceladas'));
+  // PDF.js coordinates are bottom-up. The purchase heading has higher Y than purchases.
+  // Fallback: only allow rows in a table headed DATA / ESTABELECIMENTO / VALOR EM R$.
+  const header=lines.find(l=>l.text.includes('ESTABELECIMENTO')&&l.text.includes('DATA')&&l.text.includes('VALOR'));
+  const upper=section?.y??header?.y,lower=end?.y??future?.y;
+  if(upper===undefined||lower===undefined||upper<=lower)continue;
+  for(const line of lines.filter(l=>l.y<upper&&l.y>lower)){
+   const datePart=line.parts.find(i=>/^\d{2}\/\d{2}(?:\/\d{2,4})?$/.test(i.t));
+   if(!datePart||datePart.x>width*.3)continue;
+   const moneyParts=line.parts.filter(i=>/^-?(?:R\$\s*)?[\d.]+,\d{2}$/.test(i.t)&&i.x>datePart.x+90&&i.x<width*.57);
+   if(moneyParts.length!==1)continue;
+   const amountPart=moneyParts[0],desc=line.parts.filter(i=>i.x>datePart.x+10&&i.x<amountPart.x).map(i=>i.t).join(' ').trim();
+   if(desc.length<3||/^(principal|total|saldo|limite|pagamento)/i.test(desc))continue;
+   const d=datePart.t.split('/');let year=d[2]?Number(d[2]):py;if(year<100)year+=2000;if(!d[2]&&Number(d[1])>pm)year--;
+   const value=Math.abs(num(amountPart.t));if(!Number.isFinite(value)||value<=0)continue;
+   rows.push({date:year+'-'+d[1]+'-'+d[0],description:desc,amount:/\b(estorno|credito|crédito|devolucao|devolução)\b/i.test(desc)||amountPart.t.startsWith('-')?value:-value});
   }
-  // Read the invoice total from the first-page summary, never from a limit field.
-  const full=parts.map(x=>x.t).join(' ');const mt=full.match(/Total desta fatura\s+([\d.]+,\d{2})/i);if(mt)total=num(mt[1]);
+  // Read total independently, without borrowing amounts from other columns.
+  const summary=parts.filter(i=>normPdf(i.t).includes('total desta fatura'));
+  for(const label of summary){const same=parts.filter(i=>Math.abs(i.y-label.y)<6&&i.x>label.x).sort((a,b)=>a.x-b.x);const value=same.find(i=>/^[\d.]+,\d{2}$/.test(i.t));if(value)total=num(value.t)}
  }
- if(!rows.length)throw Error('Não consegui identificar compras com segurança. Nenhum lançamento foi importado. Envie a fatura para conferência.');
- const sum=rows.reduce((v,x)=>v-x.amount,0);
- return {rows,pages:pdf.numPages,expectedTotal:total,recognizedTotal:Math.round(sum*100)/100,totalMatches:total!==null&&Math.abs(sum-total)<0.011};
+ if(!rows.length)throw Error('Não consegui identificar compras com segurança. Nenhum lançamento foi importado.');
+ const sum=rows.reduce((n,r)=>n-r.amount,0);return {rows,pages:pdf.numPages,expectedTotal:total,recognizedTotal:Math.round(sum*100)/100,totalMatches:total!==null&&Math.abs(sum-total)<0.011};
 }
 async function saveParsed(records,account,unit,kind,status,paymentMonth){const rows=[];for(const x of records){if(!x.date||!x.description||!Number.isFinite(x.amount)||!x.amount)continue;rows.push({...x,id:await hash([account,x.fid||'',x.date,norm(x.description),Math.round(x.amount*100)].join('|'))})}if(!rows.length)throw Error('Nenhum lançamento válido.');for(let i=0;i<rows.length;i+=200)await call('import',{account,unit,kind,status,paymentMonth,rows:rows.slice(i,i+200)});if(kind==='card'&&$('importCard').value)await call('linkInvoice',{documentKey:['card',account.toUpperCase(),paymentMonth,unit||'indefinida'].join('|'),cardId:$('importCard').value});$('message').textContent=rows.length+' lançamentos importados no D1.';await load();document.querySelector('[data-tab="pending"]').click()}
 $('pdfCancel').onclick=()=>{pdfPending=null;$('pdfPreview').classList.add('hidden')};
