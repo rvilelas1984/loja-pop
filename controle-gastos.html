@@ -58,30 +58,39 @@ function parseOFX(raw){const blocks=raw.match(/<STMTTRN>[\s\S]*?(?:<\/STMTTRN>|(
 let pdfPending=null;
 async function parsePdf(f){
  if(!window.pdfjsLib)await new Promise((ok,fail)=>{const el=document.createElement('script');el.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';el.onload=ok;el.onerror=()=>fail(Error('Não foi possível carregar o leitor PDF.'));document.head.appendChild(el)});
- const lib=window.pdfjsLib;lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';const pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+ const lib=window.pdfjsLib;lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ const pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
  const payment=$('paymentMonth').value,pm=Number(payment.slice(5)),py=Number(payment.slice(0,4));let rows=[],total=null,detectedSections=0;
+ const normalized=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
  for(let p=1;p<=pdf.numPages;p++){
-  const page=await pdf.getPage(p),tc=await page.getTextContent(),groups=new Map();
-  for(const x of tc.items){const t=String(x.str||'').trim();if(!t)continue;const y=Math.round(x.transform[5]/2)*2;groups.set(y,[...(groups.get(y)||[]),{x:x.transform[4],t}])}
-  const lines=[...groups].sort((a,b)=>b[0]-a[0]).map(([y,a])=>({y,parts:a.sort((x,y)=>x.x-y.x)}));
-  let section='';const width=page.view[2]-page.view[0],leftLimit=width*.58;
-  for(const line of lines){
-   const all=line.parts.map(x=>x.t).join(' ').replace(/\s+/g,' ').trim();
-   if(/Lan[cç]amentos:\s*compras e saques/i.test(all)){section='current';detectedSections++;continue}
-   if(/Compras parceladas\s*-\s*pr[oó]ximas faturas/i.test(all)){section='future';continue}
-   if(/Pagamentos efetuados/i.test(all)&&section!=='current')section='payments';
-   const totalMatch=all.match(/(?:Total desta fatura|Total dos lan[cç]amentos atuais)\s+(?:R\$\s*)?([\d.]+,\d{2})/i);
-   if(totalMatch)total=num(totalMatch[1]);
-   if(section!=='current')continue;
-   const left=line.parts.filter(x=>x.x<leftLimit),leftText=left.map(x=>x.t).join(' ').replace(/\s+/g,' ').trim();
-   const m=leftText.match(/^(\d{2})[\/.-](\d{2})(?:[\/.-](\d{2,4}))?\s+(.+?)\s+(-?\s*(?:R\$\s*)?[\d.]+,\d{2})\s*$/);
+  const page=await pdf.getPage(p),tc=await page.getTextContent(),width=page.view[2]-page.view[0],leftLimit=width*.56;
+  const parts=tc.items.map(x=>({x:x.transform[4],y:x.transform[5],t:String(x.str||'').trim()})).filter(x=>x.t);
+  // A fatura Itaú usa duas colunas. Delimitamos a seção por coordenadas
+  // e nunca misturamos valores do quadro "Limites de crédito" à direita.
+  const left=parts.filter(x=>x.x<leftLimit);
+  const headings=left.filter(x=>/lancamentos/i.test(normalized(x.t))||/compras parceladas/i.test(normalized(x.t)));
+  let currentY=null,futureY=null;
+  for(const h of headings){const near=left.filter(x=>Math.abs(x.y-h.y)<12).sort((a,b)=>a.x-b.x).map(x=>x.t).join(' '),n=normalized(near);
+   if(n.includes('lancamentos')&&n.includes('compras')&&n.includes('saques'))currentY=h.y;
+   if(n.includes('compras parceladas')&&n.includes('proximas faturas'))futureY=h.y;
+  }
+  if(currentY===null)continue;detectedSections++;
+  const candidates=left.filter(x=>x.y<currentY-3&&(futureY===null||x.y>futureY+3)).sort((a,b)=>b.y-a.y||a.x-b.x);
+  const groups=[];
+  for(const item of candidates){let g=groups.find(g=>Math.abs(g.y-item.y)<5);if(!g){g={y:item.y,parts:[]};groups.push(g)}g.parts.push(item)}
+  for(const g of groups){
+   const line=g.parts.sort((a,b)=>a.x-b.x).map(x=>x.t).join(' ').replace(/\s+/g,' ').trim();
+   const m=line.match(/^(\d{2})[\/.-](\d{2})(?:[\/.-](\d{2,4}))?\s+(.+?)\s+(-?\s*(?:R\$\s*)?[\d.]+,\d{2})\s*$/);
    if(!m)continue;const desc=m[4].trim();if(desc.length<3||/^(total|subtotal|saldo|limite|pagamento|principal|juros)/i.test(desc))continue;
    let year=m[3]?Number(m[3]):py;if(year<100)year+=2000;if(!m[3]&&Number(m[2])>pm)year--;
    const date=year+'-'+m[2]+'-'+m[1],value=Math.abs(num(m[5]));if(!Number.isFinite(value)||value<=0||value>10000000)continue;
    rows.push({date,description:desc,amount:/\b(estorno|cr[eé]dito|devolu[cç][aã]o)\b/i.test(desc)||m[5].trim().startsWith('-')?value:-value});
   }
+  // Total do documento é encontrado no resumo, não nas linhas de compra.
+  const full=parts.map(x=>x.t).join(' ');const m=full.match(/Total desta fatura\s+([\d.]+,\d{2})/i);if(m)total=num(m[1]);
  }
- if(!detectedSections)throw Error('Não identifiquei a seção de compras desta fatura. Nenhum lançamento foi importado.');
+ if(!detectedSections)throw Error('Não encontrei a tabela de compras do Itaú. Nenhum lançamento foi importado.');
+ if(!rows.length)throw Error('Tabela encontrada, mas não foi possível extrair as compras. Nenhum lançamento foi importado.');
  const sum=rows.reduce((v,x)=>v-x.amount,0);
  return {rows,pages:pdf.numPages,expectedTotal:total,recognizedTotal:Math.round(sum*100)/100,totalMatches:total!==null&&Math.abs(sum-total)<0.011};
 }
