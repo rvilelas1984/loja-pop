@@ -264,6 +264,33 @@ async function parseImageInvoices(files){
    $('message').textContent='Reconhecendo imagem '+(n+1)+' de '+files.length;
    const bitmap=await createImageBitmap(f),canvas=document.createElement('canvas');canvas.width=bitmap.width*2;canvas.height=bitmap.height*2;const ctx=canvas.getContext('2d');ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
    const result=await worker.recognize(canvas,{}, {blocks:true});
+   // Mercado Pago app: dates are purchase dates, while installment number appears below the amount.
+   // Parse the vertical transaction blocks rather than relying on Itaú's two-column layout.
+   const isMercado=/mercado\\s*pago/i.test(($('importCard').selectedOptions?.[0]?.textContent||'')+' '+$('accounts').value);
+   if(isMercado){
+    const raw=String(result.data.text||'').split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);
+    let date='',merchant='',last=null;
+    const moneyLine=/(?:-\\s*)?R\\$\\s*([\\d.]+,\\d{2})/i;
+    const partLine=/parcela\\s*(\\d{1,3})\\s*(?:de|\\/)\\s*(\\d{1,3})/i;
+    for(const line of raw){
+     const foundDate=dateOf(line);
+     if(foundDate){date=foundDate;merchant='';last=null;continue}
+     if(!date||invalid(line)||/^(?:compra|movimenta[cç][oõ]es|faturas|resumo|estornos)$/i.test(line))continue;
+     const part=line.match(partLine);
+     if(part){if(last){last.description=last.description.replace(/\\s+\\d{1,3}\\/\\d{1,3}$/,'')+' '+part[1]+'/'+part[2];}continue}
+     const m=line.match(moneyLine);
+     if(m){
+      const before=line.slice(0,m.index).trim();
+      const desc=before||merchant;
+      if(desc&&!/^(?:compra|parcela|r\\$)$/i.test(desc)){
+       const prior=rows.length;add(date,desc,m[1]);if(rows.length>prior)last=rows[rows.length-1];
+      }
+      merchant='';continue;
+     }
+     if(/^[\\p{L}][\\p{L}\\d* ._/-]{2,}$/iu.test(line)&&!/mercado pago|antecipar pagamento|parcelamento/i.test(line))merchant=line;
+    }
+    if(rows.length)continue;
+   }
    const words=[];for(const block of result.data.blocks||[])for(const para of block.paragraphs||[])for(const line of para.lines||[])for(const w of line.words||[])if(w.text?.trim()&&w.bbox)words.push({t:w.text.trim(),x:w.bbox.x0,y:(w.bbox.y0+w.bbox.y1)/2,h:w.bbox.y1-w.bbox.y0});
    if(words.length){
     // Parse the left merchant column and right amount column independently.
