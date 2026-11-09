@@ -98,7 +98,7 @@ function renderInvoices(){
  const audits=auditMonths.map(month=>{
   const parts=visibleCards.flatMap(card=>{
    const docs=filtered.filter(d=>d.paymentMonth===month&&invoiceInfo(d).c?.id===card.id);
-   const predicted=docs.length?docs.flatMap(d=>invoiceInfo(d).missing):installments.filter(x=>x.active&&/^\\d{4}-\\d{2}$/.test(x.firstMonth||'')).flatMap(x=>{
+   const predicted=docs.length?docs.flatMap(d=>invoiceInfo(d).missing):installments.filter(x=>x.active&&/^\d{4}-\d{2}$/.test(x.firstMonth||'')).flatMap(x=>{
     const link=docItems.find(z=>z.itemId===x.sourceId),origin=documents.find(z=>z.id===link?.documentKey),originCard=links.find(z=>z.documentKey===origin?.id)?.cardId;
     const step=(Number(month.slice(0,4))-Number(x.firstMonth.slice(0,4)))*12+Number(month.slice(5))-Number(x.firstMonth.slice(5));
     if(originCard!==card.id||step<1||step>Number(x.totalParts)-Number(x.currentPart))return [];
