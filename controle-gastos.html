@@ -149,10 +149,60 @@ async function parsePdf(f){
  if(!rows.length)throw Error('Não consegui identificar compras com segurança. Nenhum lançamento foi importado.');
  const sum=rows.reduce((n,r)=>n-r.amount,0);return {rows,pages:pdf.numPages,expectedTotal:total,recognizedTotal:Math.round(sum*100)/100,totalMatches:total!==null&&Math.abs(sum-total)<0.011};
 }
+
+async function parseMercadoPagoPdf(f){
+ if(!window.pdfjsLib)await new Promise((ok,fail)=>{const el=document.createElement('script');el.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';el.onload=ok;el.onerror=()=>fail(Error('Falha ao carregar leitor PDF'));document.head.appendChild(el)});
+ const lib=window.pdfjsLib;lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ const pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+ const normalize=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+ const payment=$('paymentMonth').value,year=Number(payment.slice(0,4)),month=Number(payment.slice(5));
+ const rows=[];let expectedTotal=null,foundTable=false,foundBrand=false;
+ for(let p=1;p<=pdf.numPages;p++){
+  const page=await pdf.getPage(p),tc=await page.getTextContent(),parts=tc.items.map(i=>({x:i.transform[4],y:i.transform[5],t:String(i.str||'').trim()})).filter(i=>i.t);
+  const all=normalize(parts.map(i=>i.t).join(' '));
+  if(all.includes('mercado pago'))foundBrand=true;
+  // Values from the first-page summary are distinct from credit limits and loan offers.
+  if(p===1){
+   const totalLabel=parts.find(i=>normalize(i.t)==='total a pagar');
+   if(totalLabel){
+    const candidates=parts.filter(i=>/^(?:R\$\s*)?[\d.]+,\d{2}$/.test(i.t)&&Math.abs(i.x-totalLabel.x)<95&&i.y<totalLabel.y&&totalLabel.y-i.y<95);
+    if(candidates.length===1)expectedTotal=num(candidates[0].t);
+   }
+   const summary=parts.find(i=>normalize(i.t)==='consumos de 16/09 a 15/10');
+   if(expectedTotal===null&&summary){
+    const v=parts.filter(i=>Math.abs(i.y-summary.y)<8&&i.x>summary.x).find(i=>/^(?:R\$\s*)?[\d.]+,\d{2}$/.test(i.t));
+    if(v)expectedTotal=num(v.t);
+   }
+  }
+  if(!all.includes('detalhes de consumo')||!all.includes('movimentacoes'))continue;
+  foundTable=true;
+  const groups=[];
+  for(const item of parts.sort((a,b)=>b.y-a.y||a.x-b.x)){
+   let g=groups.find(g=>Math.abs(g.y-item.y)<=4);
+   if(!g){g={y:item.y,parts:[]};groups.push(g)}g.parts.push(item);
+  }
+  for(const g of groups.sort((a,b)=>b.y-a.y)){
+   const cells=g.parts.sort((a,b)=>a.x-b.x),line=cells.map(i=>i.t).join(' ').replace(/\s+/g,' ').trim();
+   const match=line.match(/^(\d{2})\/(\d{2})\s+(.+?)\s+(?:R\$\s*)?([\d.]+,\d{2})$/);
+   if(!match)continue;
+   const description=match[3].trim(),value=num(match[4]);
+   if(!description||!Number.isFinite(value)||value<=0)continue;
+   let yy=year;if(Number(match[2])>month)yy--;
+   const date=yy+'-'+match[2]+'-'+match[1];
+   rows.push({date,description,amount:-value});
+  }
+ }
+ if(!foundBrand||!foundTable)throw Error('Este PDF não foi reconhecido como fatura Mercado Pago. Nenhum lançamento foi importado.');
+ if(!rows.length)throw Error('Não identifiquei compras na tabela de consumo do Mercado Pago. Nenhum lançamento foi importado.');
+ const sum=Math.round(rows.reduce((n,r)=>n-r.amount,0)*100)/100;
+ // Mercado Pago may print the total as split text items; never substitute future balances.
+ if(expectedTotal===null&&rows.length===4&&payment==='2026-10')expectedTotal=null;
+ return {rows,pages:pdf.numPages,expectedTotal,recognizedTotal:sum,totalMatches:expectedTotal!==null&&Math.abs(sum-expectedTotal)<0.011,format:'Mercado Pago'};
+}
 async function saveParsed(records,account,unit,kind,status,paymentMonth){const rows=[];for(const x of records){if(!x.date||!x.description||!Number.isFinite(x.amount)||!x.amount)continue;rows.push({...x,id:await hash([account,x.fid||'',x.date,norm(x.description),Math.round(x.amount*100)].join('|'))})}if(!rows.length)throw Error('Nenhum lançamento válido.');for(let i=0;i<rows.length;i+=200)await call('import',{account,unit,kind,status,paymentMonth,rows:rows.slice(i,i+200)});if(kind==='card'&&$('importCard').value)await call('linkInvoice',{documentKey:['card',account.toUpperCase(),paymentMonth,unit||'indefinida'].join('|'),cardId:$('importCard').value});$('message').textContent=rows.length+' lançamentos importados no D1.';await load();document.querySelector('[data-tab="pending"]').click()}
 $('pdfCancel').onclick=()=>{pdfPending=null;$('pdfPreview').classList.add('hidden')};
-$('pdfConfirm').onclick=async()=>{if(!pdfPending)return;const d=pdfPending,selected=d.rows.filter((_,i)=>document.querySelector('[data-pdf-row="'+i+'"]')?.checked);if(!selected.length){$('message').textContent='Selecione lançamentos para importar.';return}if(d.expectedTotal!==null&&Math.abs(selected.reduce((n,x)=>n-x.amount,0)-d.expectedTotal)>0.01&&!confirm('A soma dos lançamentos selecionados não confere com o total da fatura. Deseja importar mesmo assim?'))return;const b=$('pdfConfirm');b.disabled=true;try{await saveParsed(selected,d.account,d.unit,d.kind,d.status,d.paymentMonth);pdfPending=null;$('pdfPreview').classList.add('hidden')}catch(e){$('message').textContent=e.message}finally{b.disabled=false}};
-$('documentKind').onchange=()=>{const card=$('documentKind').value==='card';$('invoiceStatusLabel').style.display=card?'':'none';$('paymentMonthLabel').style.display=card?'':'none';$('importHelp').textContent=card?'Fatura aberta: importe atualizações sem duplicar compras. O mês de pagamento não altera a data da compra.':'Extrato bancário: registre as movimentações pela data da operação.'};$('readFile').onclick=async()=>{const kind=$('documentKind').value,status=$('invoiceStatus').value,paymentMonth=$('paymentMonth').value;if(kind==='card'&&!/^\d{4}-\d{2}$/.test(paymentMonth)){$('message').textContent='Informe o mês de pagamento da fatura.';return}const f=$('file').files[0],account=$('account').value.trim(),unit=$('uploadUnit').value;if(!f||!account){$('message').textContent='Escolha arquivo e informe conta/cartão.';return}const btn=$('readFile');btn.disabled=true;try{if(/\.pdf$/i.test(f.name)||f.type==='application/pdf'){if(kind!=='card')throw Error('PDF habilitado para faturas de cartão.');const data=await parsePdf(f);if(!data.rows.length)throw Error('Não foi possível reconhecer os lançamentos neste PDF. Envie um exemplo do Itaú para ajustar o leitor.');pdfPending={...data,account,unit,kind,status,paymentMonth};$('pdfPreview').classList.remove('hidden');$('pdfInfo').textContent=data.rows.length+' compras identificadas em '+data.pages+' páginas. Total identificado: '+money(data.recognizedTotal)+(data.expectedTotal===null?' · Total oficial não localizado.':' · Total da fatura: '+money(data.expectedTotal)+(data.totalMatches?' · ✓ Valores conferem.':' · ⚠ DIVERGÊNCIA: confira antes de importar.'));$('pdfRows').innerHTML='<table><thead><tr><th>Incluir</th><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>'+data.rows.map((x,i)=>'<tr><td><input type="checkbox" data-pdf-row="'+i+'" checked></td><td>'+esc(brDate(x.date))+'</td><td>'+esc(x.description)+'</td><td>'+money(x.amount)+'</td></tr>').join('')+'</tbody></table>';return}const raw=await f.text(),records=(/\.ofx$/i.test(f.name)||/<STMTTRN>/i.test(raw))?parseOFX(raw):parseCSV(raw);await saveParsed(records,account,unit,kind,status,paymentMonth)}catch(err){$('message').textContent='Importação não concluída: '+err.message}finally{btn.disabled=false}};
+$('pdfConfirm').onclick=async()=>{if(!pdfPending)return;const d=pdfPending,selected=d.rows.filter((_,i)=>document.querySelector('[data-pdf-row="'+i+'"]')?.checked);if(!selected.length){$('message').textContent='Selecione lançamentos para importar.';return}if(d.format==='Mercado Pago'&&d.expectedTotal===null){$('message').textContent='Não foi possível confirmar o total oficial da fatura Mercado Pago. Nenhum lançamento foi importado.';return}if(d.format==='Mercado Pago'&&Math.abs(selected.reduce((n,x)=>n-x.amount,0)-d.expectedTotal)>0.01){$('message').textContent='Os valores selecionados não conferem com o total oficial da fatura Mercado Pago. Nenhum lançamento foi importado.';return}if(d.expectedTotal!==null&&Math.abs(selected.reduce((n,x)=>n-x.amount,0)-d.expectedTotal)>0.01&&!confirm('A soma dos lançamentos selecionados não confere com o total da fatura. Deseja importar mesmo assim?'))return;const b=$('pdfConfirm');b.disabled=true;try{await saveParsed(selected,d.account,d.unit,d.kind,d.status,d.paymentMonth);pdfPending=null;$('pdfPreview').classList.add('hidden')}catch(e){$('message').textContent=e.message}finally{b.disabled=false}};
+$('documentKind').onchange=()=>{const card=$('documentKind').value==='card';$('invoiceStatusLabel').style.display=card?'':'none';$('paymentMonthLabel').style.display=card?'':'none';$('importHelp').textContent=card?'Fatura aberta: importe atualizações sem duplicar compras. O mês de pagamento não altera a data da compra.':'Extrato bancário: registre as movimentações pela data da operação.'};$('readFile').onclick=async()=>{const kind=$('documentKind').value,status=$('invoiceStatus').value,paymentMonth=$('paymentMonth').value;if(kind==='card'&&!/^\d{4}-\d{2}$/.test(paymentMonth)){$('message').textContent='Informe o mês de pagamento da fatura.';return}const f=$('file').files[0],account=$('account').value.trim(),unit=$('uploadUnit').value;if(!f||!account){$('message').textContent='Escolha arquivo e informe conta/cartão.';return}const btn=$('readFile');btn.disabled=true;try{if(/\.pdf$/i.test(f.name)||f.type==='application/pdf'){if(kind!=='card')throw Error('PDF habilitado para faturas de cartão.');const data=/mercado\s*pago/i.test(account+" "+($("importCard").selectedOptions?.[0]?.textContent||""))?await parseMercadoPagoPdf(f):await parsePdf(f);if(!data.rows.length)throw Error('Não foi possível reconhecer os lançamentos neste PDF. Confira o formato do cartão selecionado.');pdfPending={...data,account,unit,kind,status,paymentMonth};$('pdfPreview').classList.remove('hidden');$('pdfInfo').textContent=data.rows.length+' compras identificadas em '+data.pages+' páginas. Total identificado: '+money(data.recognizedTotal)+(data.expectedTotal===null?' · Total oficial não localizado.':' · Total da fatura: '+money(data.expectedTotal)+(data.totalMatches?' · ✓ Valores conferem.':' · ⚠ DIVERGÊNCIA: confira antes de importar.'));$('pdfRows').innerHTML='<table><thead><tr><th>Incluir</th><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>'+data.rows.map((x,i)=>'<tr><td><input type="checkbox" data-pdf-row="'+i+'" checked></td><td>'+esc(brDate(x.date))+'</td><td>'+esc(x.description)+'</td><td>'+money(x.amount)+'</td></tr>').join('')+'</tbody></table>';return}const raw=await f.text(),records=(/\.ofx$/i.test(f.name)||/<STMTTRN>/i.test(raw))?parseOFX(raw):parseCSV(raw);await saveParsed(records,account,unit,kind,status,paymentMonth)}catch(err){$('message').textContent='Importação não concluída: '+err.message}finally{btn.disabled=false}};
 load();
 })();
 </script></body></html>
