@@ -36,7 +36,15 @@ function invoiceMissingInstallments(d,entries){
  const step=(Number(d.paymentMonth.slice(0,4))-Number(x.firstMonth.slice(0,4)))*12+Number(d.paymentMonth.slice(5))-Number(x.firstMonth.slice(5));
  if(step<1||step>Number(x.totalParts)-Number(x.currentPart))return [];
  const source=items.find(z=>z.id===x.sourceId),amount=Math.abs(Number(x.amount||0)),description=source?.description||x.description||'';
- if(!amount||entries.some(e=>Math.abs(Math.abs(Number(e.amount||0))-amount)<.011&&norm(e.description||e.memo)===norm(description)))return [];
+ // Reconcile the actual installment (e.g. 2/06) against the forecast, not its predecessor (1/06).
+ // Merchant alone is insufficient: retain amount and explicit installment position to avoid false matches.
+ const expectedPart=Number(x.currentPart)+step,expectedTotal=Number(x.totalParts);
+ if(!amount||entries.some(e=>{
+  const actual=e.description||e.memo||'',parsed=detectParts(actual);
+  return Math.abs(Math.abs(Number(e.amount||0))-amount)<.011
+   &&norm(actual)===norm(description)
+   &&(!parsed||(parsed.current===expectedPart&&parsed.total===expectedTotal));
+ }))return [];
  return [{...x,step,description,amount,part:Number(x.currentPart)+step}];
  });
 }
