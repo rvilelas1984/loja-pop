@@ -4504,7 +4504,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_entries(member_id INTEGER NOT NULL,unit TEXT NOT NULL,attendance_key TEXT NOT NULL,weight REAL,height REAL,calories INTEGER,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(member_id,unit,attendance_key))").run();
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_images(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,scope TEXT NOT NULL,image_data TEXT NOT NULL,period_label TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_manual_activities(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,activity_name TEXT NOT NULL,activity_date TEXT NOT NULL,start_time TEXT,calories INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();const manualCols=await env.DB.prepare("PRAGMA table_info(pop_fit_manual_activities)").all();if(!manualCols.results?.some(c=>c.name==="extra_metrics")){try{await env.DB.prepare("ALTER TABLE pop_fit_manual_activities ADD COLUMN extra_metrics TEXT NOT NULL DEFAULT '{}'").run()}catch(e){if(!String(e).includes("duplicate column"))throw e}}await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_profile(member_id INTEGER PRIMARY KEY,height REAL,initial_weight REAL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
-        const entryCols=await env.DB.prepare("PRAGMA table_info(pop_fit_entries)").all();if(!entryCols.results?.some(c=>c.name==="extra_metrics")){try{await env.DB.prepare("ALTER TABLE pop_fit_entries ADD COLUMN extra_metrics TEXT NOT NULL DEFAULT '{}'").run()}catch(e){if(!String(e).includes("duplicate column"))throw e}}
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_live_overrides(member_id INTEGER NOT NULL,session_id INTEGER NOT NULL,calories REAL,extra_metrics TEXT NOT NULL DEFAULT '{}',updated_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(member_id,session_id))").run();const entryCols=await env.DB.prepare("PRAGMA table_info(pop_fit_entries)").all();if(!entryCols.results?.some(c=>c.name==="extra_metrics")){try{await env.DB.prepare("ALTER TABLE pop_fit_entries ADD COLUMN extra_metrics TEXT NOT NULL DEFAULT '{}'").run()}catch(e){if(!String(e).includes("duplicate column"))throw e}}
         const scopeRaw=String(url.searchParams.get("scope")||"bike").toLowerCase(),scope=["bike","gym","club"].includes(scopeRaw)?scopeRaw:"bike";
         const ids={bike:base.evo_member_id?String(base.evo_member_id):null,gym:base.gym_client_id?String(base.gym_client_id):null};
         if(request.method==="GET"){
@@ -4516,9 +4516,10 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
               FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id
               WHERE p.session_id=? AND p.member_id=? AND s.status='closed' LIMIT 1`).bind(sessionId,base.id).first();
             if(!q)return json({ok:false,error:"DESEMPENHO_NAO_ENCONTRADO"},404);
+            const overlay=await env.DB.prepare("SELECT calories,extra_metrics FROM pop_fit_live_overrides WHERE member_id=? AND session_id=?").bind(base.id,sessionId).first();
             const totals=await env.DB.prepare("SELECT COUNT(*) monitored_members,COALESCE(SUM(calories_estimated),0) class_calories FROM pop_live_member_performance WHERE session_id=? AND calories_estimated IS NOT NULL AND calories_estimated>=0").bind(sessionId).first();
             const rank=await env.DB.prepare("SELECT 1+COUNT(*) position FROM pop_live_member_performance WHERE session_id=? AND calories_estimated IS NOT NULL AND calories_estimated>=0 AND calories_estimated>?").bind(sessionId,q.calories_estimated??-1).first();
-            return json({ok:true,source:"d1",evoRequestsMade:0,performance:{...q,class_calories:totals?.class_calories??null,monitored_members:totals?.monitored_members??0,calorie_rank:q.calories_estimated==null?null:rank?.position??null}});
+            return json({ok:true,source:"d1",evoRequestsMade:0,performance:{...q,manual_calories:overlay?.calories??null,extra_metrics:overlay?.extra_metrics||"{}",class_calories:totals?.class_calories??null,monitored_members:totals?.monitored_members??0,calorie_rank:q.calories_estimated==null?null:rank?.position??null}});
           }
           if(action==="profile"){const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
           if(action==="images"){
@@ -4532,8 +4533,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             // Monitoramentos sem presença oficial ficam em Outras atividades, sem criar presença EVO.
             const live=await env.DB.prepare(`SELECT p.session_id performance_session_id,p.unit,s.class_name activity_name,
               substr(s.starts_at,1,10) activity_date,substr(s.starts_at,12,5) start_time,
-              p.calories_estimated calories,p.duration_seconds,s.source_class_id
-              FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id
+              COALESCE(o.calories,p.calories_estimated) calories,o.extra_metrics,p.duration_seconds,s.source_class_id
+              FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id LEFT JOIN pop_fit_live_overrides o ON o.member_id=p.member_id AND o.session_id=p.session_id
               WHERE p.member_id=? AND s.status='closed' AND substr(s.starts_at,1,7)=?
                 AND (?='club' OR p.unit=?) ORDER BY s.starts_at DESC LIMIT 100`).bind(base.id,m,scope,scope).all();
             const extras=[];
@@ -4571,7 +4572,18 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           return json({ok:true,source:"d1",evoRequestsMade:0,scope,month,student:{firstName:base.first_name||"Aluno",lastName:base.last_name||""},linked:{bike:!!ids.bike,gym:!!ids.gym},activities:rows});
         }
         if(request.method==="PUT"){
-          const b=await readJson(request),unit=String(b.unit||"").toLowerCase(),key=String(b.attendanceKey||"");
+          const b=await readJson(request);
+          if(b.action==="edit-live"){
+            const id=Number(b.sessionId);if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"SESSAO_INVALIDA"},400);
+            const owned=await env.DB.prepare("SELECT 1 ok FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id WHERE p.member_id=? AND p.session_id=? AND s.status='closed'").bind(base.id,id).first();if(!owned)return json({ok:false,error:"SESSAO_NAO_ENCONTRADA"},404);
+            const incoming=b.extraMetrics&&typeof b.extraMetrics==="object"&&!Array.isArray(b.extraMetrics)?b.extraMetrics:{};
+            const limits={distance:10000,speedAvg:250,speedMax:250,duration:1440,rpmAvg:300,rpmMax:300,heartAvg:250,heartMax:250,steps:200000,elevation:10000};const metrics={};
+            for(const [k,max] of Object.entries(limits)){if(incoming[k]==null||incoming[k]==="")continue;const n=Number(incoming[k]);if(!Number.isFinite(n)||n<0||n>max)return json({ok:false,error:"INDICADOR_INVALIDO:"+k},400);metrics[k]=n}
+            if(String(incoming.customName||"").trim()){metrics.customName=String(incoming.customName).trim().slice(0,50);metrics.customValue=String(incoming.customValue||"").trim().slice(0,80)}
+            const calories=b.calories===""||b.calories==null?null:Number(b.calories);if(calories!==null&&(!Number.isFinite(calories)||calories<0||calories>5000))return json({ok:false,error:"CALORIAS_INVALIDAS"},400);
+            await env.DB.prepare("INSERT INTO pop_fit_live_overrides(member_id,session_id,calories,extra_metrics) VALUES(?,?,?,?) ON CONFLICT(member_id,session_id) DO UPDATE SET calories=excluded.calories,extra_metrics=excluded.extra_metrics,updated_at=CURRENT_TIMESTAMP").bind(base.id,id,calories,JSON.stringify(metrics)).run();return json({ok:true,saved:true,evoRequestsMade:0});
+          }
+          const unit=String(b.unit||"").toLowerCase(),key=String(b.attendanceKey||"");
           if(!["bike","gym"].includes(unit)||!key||!ids[unit])return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
           const exists=await env.DB.prepare("SELECT 1 ok FROM evo_member_attendance WHERE unit=? AND evo_member_id=? AND attendance_key=? LIMIT 1").bind(unit,ids[unit],key).first();
           if(!exists)return json({ok:false,error:"ATIVIDADE_NAO_ENCONTRADA"},404);
