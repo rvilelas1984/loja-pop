@@ -2047,7 +2047,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           if(request.method==="GET"){
             const unit=url.searchParams.get("unit");
             if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
-            const drafts=await env.DB.prepare("SELECT id,unit,session_id,full_name,birth_date,status,created_at,cpf_hash IS NOT NULL AS has_cpf FROM pop_live_manual_drafts WHERE unit=? AND status IN ('pending_review','verified_internal','linked') ORDER BY id DESC LIMIT 100").bind(unit).all();
+            const drafts=await env.DB.prepare("SELECT id,unit,session_id,full_name,birth_date,CASE WHEN status='pending_review' AND verified_internal_at IS NOT NULL THEN 'verified_internal' ELSE status END AS status,created_at,cpf_hash IS NOT NULL AS has_cpf FROM pop_live_manual_drafts WHERE unit=? AND status IN ('pending_review','verified_internal','linked') ORDER BY id DESC LIMIT 100").bind(unit).all();
             if(!id)return json({ok:true,drafts:drafts.results||[]});
             const draft=await env.DB.prepare("SELECT id,unit,full_name,birth_date FROM pop_live_manual_drafts WHERE id=? AND unit=?").bind(id,unit).first();
             if(!draft)return json({ok:false,error:"CADASTRO_NAO_ENCONTRADO"},404);
@@ -2059,9 +2059,9 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           const draft=await env.DB.prepare("SELECT id,unit,status FROM pop_live_manual_drafts WHERE id=?").bind(id).first();
           if(!draft)return json({ok:false,error:"CADASTRO_NAO_ENCONTRADO"},404);
           if(b.action==="confirm_internal"){
-            const r=await env.DB.prepare("UPDATE pop_live_manual_drafts SET status='verified_internal' WHERE id=? AND status='pending_review' AND cpf_hash IS NOT NULL").bind(id).run();
+            const r=await env.DB.prepare("UPDATE pop_live_manual_drafts SET verified_internal_at=COALESCE(verified_internal_at,CURRENT_TIMESTAMP) WHERE id=? AND status='pending_review' AND cpf_hash IS NOT NULL").bind(id).run();
             if(!r.meta?.changes)return json({ok:false,error:"CPF_NAO_VALIDADO_OU_JA_RESOLVIDO"},409);
-            return json({ok:true,id,status:"verified_internal"});
+            return json({ok:true,id,status:"verified_internal",evo_linked:false});
           }
           if(b.action==="link_member"){
             const memberId=Number(b.member_id);
