@@ -261,7 +261,22 @@ function syncFinanceScope(){const u=activeUnit();$('financeUnit').value=u;$('act
 document.addEventListener('click',async ev=>{const b=ev.target.closest('[data-save-category-nature]');if(!b)return;const name=b.dataset.saveCategoryNature,select=[...document.querySelectorAll('[data-category-nature]')].find(x=>x.dataset.categoryNature===name);if(!select||!select.value){$('message').textContent='Escolha Receita ou Despesa antes de confirmar.';return}const nature=select.value;b.disabled=true;b.textContent='…';try{await call('categoryNature',{name,nature});const existing=categoryKinds.find(k=>k.name===name);if(existing)existing.nature=nature;else categoryKinds.push({name,nature});render();$('message').textContent='✔ Categoria '+name+' salva como '+(nature==='income'?'Receita':'Despesa')+'.'}catch(err){b.disabled=false;b.textContent='✔';$('message').textContent='Não foi possível salvar '+name+': '+err.message}});
 $('linkKind').onchange=()=>{$('invoiceLinkFields').classList.toggle('hidden',$('linkKind').value!=='invoice');$('transferLinkFields').classList.toggle('hidden',$('linkKind').value!=='transfer')};$('linkClose').onclick=()=>$('linkModal').classList.add('hidden');
 document.addEventListener('click',async ev=>{const b=ev.target.closest('[data-link]');if(!b)return;const e=items.find(x=>x.id===b.dataset.link);if(!e)return;if(transactionLinks.some(v=>v.itemId===e.id)){if(confirm('Desfazer vínculo?')){await call('removeTransactionLink',{itemId:e.id});await load()}return}linkItemId=e.id;$('linkDescription').textContent=e.description+' · '+money(e.amount);$('linkInvoice').innerHTML=documents.filter(d=>d.kind==='card').map(d=>'<option value="'+esc(d.id)+'">'+esc(d.account)+'</option>').join('');const opts=accounts.map(a=>'<option value="'+esc(a.id)+'">'+esc(a.name)+'</option>').join('');$('linkSource').innerHTML=opts;$('linkDestination').innerHTML=opts;$('linkKind').value=e.type==='transfer'?'transfer':'invoice';$('linkKind').onchange();$('linkModal').classList.remove('hidden')});
-$('linkSave').onclick=async()=>{try{await call('saveTransactionLink',{itemId:linkItemId,kind:$('linkKind').value,documentKey:$('linkInvoice').value,sourceId:$('linkSource').value,destinationId:$('linkDestination').value});$('linkModal').classList.add('hidden');await load()}catch(e){$('message').textContent=e.message}};
+async function offerTransferMatch(id){
+ try{
+  const result=await call('findTransferMatches',{itemId:id});
+  if(result.alreadyMatched){$('message').textContent='Transferência já conciliada.';return}
+  if(!result.matches?.length){$('message').textContent='Transferência salva. Aguardando lançamento correspondente na outra conta.';return}
+  const choices=result.matches.map((m,i)=>(i+1)+'. '+m.account+' · '+brDate(m.date)+' · '+money(m.amount)+' · '+m.description.slice(0,65)+(m.linked?' (já marcado como transferência)':'')).join('\\n');
+  const chosen=prompt('Encontramos '+result.matches.length+' possível(is) entrada(s)/saída(s) correspondente(s).\\nEscolha o número para conciliar ou Cancelar para manter pendente:\\n'+choices);
+  if(chosen===null)return;
+  const index=Number(chosen)-1;if(!Number.isInteger(index)||index<0||index>=result.matches.length){$('message').textContent='Seleção inválida. Nenhuma conciliação realizada.';return}
+  const candidate=result.matches[index];
+  if(!confirm('Confirmar conciliação entre os dois extratos?\\n'+candidate.account+' · '+brDate(candidate.date)+' · '+money(candidate.amount)+'\\nOs dois lançamentos serão preservados e não serão contabilizados como receita ou despesa.'))return;
+  await call('confirmTransferMatch',{itemId:id,counterpartId:candidate.id});
+  await load();$('message').textContent='✔ Transferência conciliada entre as duas contas.';
+ }catch(err){$('message').textContent='Vínculo salvo; conciliação pendente: '+err.message}
+}
+$('linkSave').onclick=async()=>{const id=linkItemId,kind=$('linkKind').value;try{await call('saveTransactionLink',{itemId:id,kind,documentKey:$('linkInvoice').value,sourceId:$('linkSource').value,destinationId:$('linkDestination').value});$('linkModal').classList.add('hidden');await load();if(kind==='transfer')await offerTransferMatch(id)}catch(e){$('message').textContent=e.message}};
 let bankSelectedAccount='all',bankPeriod='all',bankKind='all',bankSearch='';
 function bankMonth(e){return String(e.date||'').slice(0,7)}
 function bankTxFor(a,u){return items.filter(e=>e.account===a.name&&(u==='all'||e.unit===u))}
