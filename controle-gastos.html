@@ -378,6 +378,25 @@ function parseBankStatementText(text,referenceMonth){
  }
  return rows;
 }
+/* Nubank PJ: data em cabeçalho diário, movimentação em linha separada e totais/saldos não são lançamentos. */
+function parseNubankPJText(text,referenceMonth){
+ const lines=String(text||'').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+ if(!lines.some(x=>/NUBANK|NU PAGAMENTOS|NU FINANCEIRA/i.test(x))||!lines.some(x=>/TRANSFERÊNCIA (RECEBIDA|ENVIADA) PELO PIX/i.test(x)))return null;
+ const months={JAN:1,FEV:2,MAR:3,ABR:4,MAI:5,JUN:6,JUL:7,AGO:8,SET:9,OUT:10,NOV:11,DEZ:12};
+ const rows=[];let date='',seenMovements=false;
+ for(const line of lines){
+  const header=line.match(/^(\d{2})\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\s+(20\d{2})\b/i);
+  if(header){date=header[3]+'-'+String(months[header[2].toUpperCase()]).padStart(2,'0')+'-'+header[1];seenMovements=true;continue}
+  if(!seenMovements||!date)continue;
+  const tx=line.match(/^(Transferência (recebida|enviada) pelo Pix|Pagamento de boleto|Pagamento efetuado|Compra no débito|Depósito recebido|Resgate|Aplicação|Rendimento)(?:\s+(.+?))?\s+([+-]?\s*\d[\d.]*,\d{2})$/i);
+  if(!tx)continue;
+  const amount=Math.abs(num(tx[4].replace(/\s/g,'')))*( /enviada|pagamento|compra|aplicação/i.test(tx[1])?-1:1);
+  if(!Number.isFinite(amount)||!amount)continue;
+  const description=[tx[1],tx[3]||''].join(' ').trim();
+  rows.push({date,description,amount});
+ }
+ return rows;
+}
 async function parseBankPdf(file,month){
  if(!window.pdfjsLib)await new Promise((ok,fail)=>{const e=document.createElement('script');e.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';e.onload=ok;e.onerror=()=>fail(Error('Falha ao carregar leitor PDF'));document.head.appendChild(e)});
  const lib=window.pdfjsLib;lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -386,7 +405,7 @@ async function parseBankPdf(file,month){
   for(const item of items.sort((a,b)=>b.y-a.y||a.x-b.x)){let group=groups.find(g=>Math.abs(g.y-item.y)<4);if(!group){group={y:item.y,items:[]};groups.push(group)}group.items.push(item)}
   for(const group of groups.sort((a,b)=>b.y-a.y))lines.push(group.items.sort((a,b)=>a.x-b.x).map(i=>i.t).join(' '));
  }
- return parseBankStatementText(lines.join('\n'),month);
+ const text=lines.join('\n');const nubank=parseNubankPJText(text,month);return nubank!==null?nubank:parseBankStatementText(text,month);
 }
 async function parseBankImages(files,month){
  if(!window.Tesseract)await new Promise((ok,fail)=>{const e=document.createElement('script');e.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';e.onload=ok;e.onerror=()=>fail(Error('Falha ao carregar OCR'));document.head.appendChild(e)});
