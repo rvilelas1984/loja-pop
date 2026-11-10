@@ -468,19 +468,31 @@ body.free-story-active #story{touch-action:none;cursor:grab}
 body.free-story-active #story:active{cursor:grabbing}
 </style>
 <script>
-/* POP_FREE_STORY_V1 — additive, sem mudar as rotinas dos modelos existentes */
+/* POP_FREE_STORY_V2 — indicadores iniciais, foto original e marca legível */
 (function(){
 const c=document.getElementById('story'),cat=document.getElementById('category'),model=document.getElementById('model');
 const tools=document.createElement('div');tools.id='freeStoryTools';
 tools.innerHTML='<strong>🎨 Editor Livre</strong><p class="free-help">Toque em um indicador e arraste pela imagem. Use os botões para adicionar dados, textos e figurinhas. Os demais modelos continuam inalterados.</p><div class="row"><button type="button" id="freeAddMetric">＋ Indicador</button><button type="button" id="freeAddText">＋ Texto</button><button type="button" id="freeAddSticker">＋ Figurinha</button></div><div class="row"><button type="button" id="freeSmaller" class="secondary">− Menor</button><button type="button" id="freeBigger" class="secondary">＋ Maior</button><button type="button" id="freeRemove" class="secondary">Excluir selecionado</button><button type="button" id="freeUndo" class="outline">↶ Desfazer</button></div><p id="freeStatus" class="free-help" aria-live="polite">Selecione um indicador na arte para editar.</p>';
 const anchor=document.getElementById('modelDescription');anchor?.parentNode.insertBefore(tools,anchor.nextSibling);
-let items=[],selected=-1,drag=null,history=[],counter=0;
+let items=[],selected=-1,drag=null,history=[],counter=0,initialized=false;
 const clone=()=>items.map(a=>({...a}));
 const checkpoint=()=>{history.push(clone());if(history.length>25)history.shift()};
 const point=e=>{const b=c.getBoundingClientRect();return{x:(e.clientX-b.left)/b.width*1080,y:(e.clientY-b.top)/b.height*1920}};
 const active=()=>cat.value==='free';
 const status=t=>document.getElementById('freeStatus').textContent=t;
-function sync(){document.body.classList.toggle('free-story-active',active());if(active()){draw();status('Arraste os indicadores diretamente na imagem.')} }
+function seedMetrics(){
+ const available=vals();
+ if(!initialized){items=available.map((m,i)=>({id:m.id,x:i%2===0?295:785,y:1250+Math.floor(i/2)*175,size:.87}));initialized=true;selected=-1}
+ draw();
+}
+function sync(){document.body.classList.toggle('free-story-active',active());if(active()){seedMetrics();status('Indicadores carregados. Arraste-os para qualquer posição da foto.')} }
+document.querySelectorAll('[data-show]').forEach(input=>input.addEventListener('change',()=>{
+ if(!active()||!initialized)return;
+ const data=vals(),ids=new Set(data.map(m=>m.id));
+ items=items.filter(a=>ids.has(a.id));
+ data.forEach(m=>{if(!items.some(a=>a.id===m.id)){const i=items.length;items.push({id:m.id,x:i%2===0?295:785,y:1250+Math.floor(i/2)*175,size:.87})}});
+ selected=-1;draw();
+}));
 cat.addEventListener('change',()=>setTimeout(sync,0));
 model.addEventListener('change',()=>setTimeout(sync,0));
 function addMetric(){
@@ -506,7 +518,7 @@ window.drawFree=function(){
  photoRects.length=0;const p=palettes[palette],data=vals();
  ctx.clearRect(0,0,W,H);fill(0,0,W,H,gradient(p[0],'#25142f'));
  drawPhoto(0,0,0,W,H,0);
- ctx.fillStyle='#100b1a55';ctx.fillRect(0,0,W,H);
+ /* A foto original deve manter seu brilho e suas cores, sem camada escura. */
  for(const [i,a] of items.entries()){
  const m=data.find(v=>v.id===a.id);if(!m)continue;
  const w=490*a.size,h=145*a.size,x=a.x-w/2,y=a.y-h/2;
@@ -516,7 +528,12 @@ window.drawFree=function(){
  ctx.fillStyle='#fff';ctx.font=`900 ${47*a.size}px system-ui`;ctx.fillText(m.value,a.x,y+102*a.size,w-30);
  if(i===selected){ctx.strokeStyle='#ff6bbb';ctx.lineWidth=5;ctx.strokeRect(x-5,y-5,w+10,h+10)}ctx.restore();
  }
- if(document.getElementById('showBrand')?.checked){ctx.fillStyle='#180f28bb';ctx.fillRect(0,1815,W,105);ctx.fillStyle='#fff';ctx.font='900 46px system-ui';ctx.fillText(document.getElementById('unit').value==='bike'?'BIKE POP':'GYM POP',70,1880)}
+ if(document.getElementById('showBrand')?.checked){
+ ctx.save();ctx.fillStyle='#180f28cc';ctx.fillRect(0,1815,W,105);
+ ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillStyle='#fff';ctx.font='900 46px system-ui';
+ ctx.fillText(document.getElementById('unit').value==='bike'?'BIKE POP':'GYM POP',65,1880,450);
+ ctx.restore();
+}
  document.getElementById('variant').textContent='LIVRE · Sua criação';
  if(window.popTextPaint)window.popTextPaint();if(window.popStickerPaint)window.popStickerPaint();
 };
