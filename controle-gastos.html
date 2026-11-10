@@ -268,23 +268,42 @@ function bankTxFor(a,u){return items.filter(e=>e.account===a.name&&(u==='all'||e
 function bankIsInternal(e){return transactionLinks.some(v=>v.itemId===e.id)}
 function bankFilterTx(tx){return tx.filter(e=>(bankPeriod==='all'||bankMonth(e)===bankPeriod)&&(bankKind==='all'||(bankKind==='in'&&e.amount>0)||(bankKind==='out'&&e.amount<0)||(bankKind==='linked'&&bankIsInternal(e))||(bankKind==='pending'&&!bankIsInternal(e)))&&(!bankSearch||String(e.description||'').toLowerCase().includes(bankSearch.toLowerCase())))}
 function bankKpi(label,value,sub){return '<div class="bank-kpi"><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong><span class="bank-muted">'+esc(sub||'')+'</span></div>'}
-document.addEventListener('click',async ev=>{
+/* Reclassificação com seletor acessível, sem prompt numérico. */
+document.addEventListener('click',ev=>{
  const button=ev.target.closest?.('[data-bank-reclass]');if(!button)return;
  const entry=items.find(x=>String(x.id)===button.dataset.bankReclass);if(!entry)return;
- if(bankIsInternal(entry)){alert('Este lançamento possui vínculo financeiro. Para evitar duplicidade, revise o vínculo antes de reclassificar.');return}
+ if(bankIsInternal(entry)){alert('Este lançamento tem vínculo financeiro. Revise o vínculo antes de alterar a categoria.');return}
+ const existing=document.getElementById('bankReclassDialog');if(existing)existing.remove();
  const nature=entry.amount>=0?'income':'expense';
- const options=cats.filter(c=>!hidden.some(h=>h.kind==='category'&&h.name===c)&&categoryKinds.some(k=>k.name===c&&k.nature===nature));
- if(entry.category&&!options.includes(entry.category))options.unshift(entry.category);
- if(!options.length){alert('Cadastre uma categoria de '+(nature==='income'?'receita':'despesa')+' antes de reclassificar.');return}
- const value=prompt('RECLASSIFICAR LANÇAMENTO\n'+entry.description+'\nCategoria atual: '+(entry.category||'Não classificado')+'\n\nCategorias disponíveis:\n'+options.map((c,i)=>(i+1)+'. '+c).join('\n')+'\n\nDigite o número da nova categoria:');
- if(value===null)return;
- const index=Number(value)-1;if(!Number.isInteger(index)||index<0||index>=options.length){alert('Categoria inválida. Nenhuma alteração realizada.');return}
- const category=options[index],type=entry.type&&entry.type!=='unknown'?entry.type:(nature==='income'?'income':'variable');
- if(!confirm('Alterar somente este lançamento de "'+(entry.category||'Sem categoria')+'" para "'+category+'"?'))return;
- button.disabled=true;
- try{await call('classify',{id:entry.id,unit:entry.unit||activeUnit(),type,category,recurring:!!entry.recurring});await load();$('message').textContent='Lançamento reclassificado: '+category}
- catch(error){$('message').textContent='Falha ao reclassificar: '+error.message;alert($('message').textContent)}
- finally{button.disabled=false}
+ const options=[...new Set([...cats,entry.category].filter(Boolean).filter(c=>!hidden.some(h=>h.kind==='category'&&h.name===c)))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+ const dialog=document.createElement('dialog');dialog.id='bankReclassDialog';
+ dialog.style.cssText='border:1px solid #dce2ed;border-radius:16px;padding:24px;width:min(94vw,520px);max-height:85vh;box-shadow:0 20px 60px #0003';
+ const title=document.createElement('h3');title.textContent='Reclassificar lançamento';title.style.marginTop='0';dialog.appendChild(title);
+ const description=document.createElement('p');description.textContent=entry.description+' — '+money(entry.amount);dialog.appendChild(description);
+ const current=document.createElement('p');current.textContent='Categoria atual: '+(entry.category||'Sem categoria');dialog.appendChild(current);
+ const label=document.createElement('label');label.textContent='Escolha a nova categoria';label.style.cssText='display:block;font-weight:600;margin:14px 0';
+ const select=document.createElement('select');select.style.cssText='display:block;width:100%;margin-top:8px';select.setAttribute('aria-label','Nova categoria');
+ const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Selecione uma categoria';select.appendChild(placeholder);
+ for(const category of options){const opt=document.createElement('option');opt.value=category;opt.textContent=category;select.appendChild(opt)}
+ select.value=entry.category||'';label.appendChild(select);dialog.appendChild(label);
+ const search=document.createElement('input');search.placeholder='Buscar categoria pelo nome';search.style.cssText='width:100%;margin-bottom:14px';search.setAttribute('aria-label','Buscar categoria');dialog.insertBefore(search,label);
+ search.addEventListener('input',()=>{const term=search.value.toLocaleLowerCase('pt-BR');for(const option of select.options){if(!option.value)continue;option.hidden=!option.value.toLocaleLowerCase('pt-BR').includes(term)}});
+ const status=document.createElement('p');status.style.color='#b42318';dialog.appendChild(status);
+ const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap';
+ const cancel=document.createElement('button');cancel.textContent='Cancelar';cancel.type='button';cancel.className='secondary';cancel.onclick=()=>dialog.close();
+ const save=document.createElement('button');save.textContent='Salvar reclassificação';save.type='button';
+ save.onclick=async()=>{
+  const category=select.value;if(!category){status.textContent='Selecione uma categoria.';return}
+  if(category===entry.category){dialog.close();return}
+  const kind=categoryKinds.find(k=>k.name===category)?.nature;
+  if(kind&&kind!=='unknown'&&kind!==nature){status.textContent='A categoria escolhida está cadastrada como '+(kind==='income'?'receita':'despesa')+'. Escolha uma categoria compatível.';return}
+  save.disabled=true;status.textContent='';
+  try{await call('classify',{id:entry.id,unit:entry.unit||activeUnit(),type:entry.type&&entry.type!=='unknown'?entry.type:(nature==='income'?'income':'variable'),category,recurring:!!entry.recurring});dialog.close();await load();$('message').textContent='Categoria atualizada para '+category}
+  catch(error){status.textContent='Não foi possível salvar: '+error.message}
+  finally{save.disabled=false}
+ };
+ actions.append(cancel,save);dialog.appendChild(actions);document.body.appendChild(dialog);
+ dialog.addEventListener('close',()=>dialog.remove());dialog.showModal();search.focus();
 });
 let bankCategoryFilter='',bankPage=1;
 document.addEventListener('change',e=>{if(e.target.matches('[data-bank-category]')){bankCategoryFilter=e.target.value;bankPage=1;renderAccounts()}});
