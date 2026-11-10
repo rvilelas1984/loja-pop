@@ -266,12 +266,20 @@ async function offerTransferMatch(id){
   const result=await call('findTransferMatches',{itemId:id});
   if(result.alreadyMatched){$('message').textContent='Transferência já conciliada.';return}
   if(!result.matches?.length){$('message').textContent='Transferência salva. Aguardando lançamento correspondente na outra conta.';return}
-  const choices=result.matches.map((m,i)=>(i+1)+'. '+m.account+' · '+brDate(m.date)+' · '+money(m.amount)+' · '+m.description.slice(0,65)+(m.linked?' (já marcado como transferência)':'')).join('\\n');
-  const chosen=prompt('Encontramos '+result.matches.length+' possível(is) entrada(s)/saída(s) correspondente(s).\\nEscolha o número para conciliar ou Cancelar para manter pendente:\\n'+choices);
-  if(chosen===null)return;
-  const index=Number(chosen)-1;if(!Number.isInteger(index)||index<0||index>=result.matches.length){$('message').textContent='Seleção inválida. Nenhuma conciliação realizada.';return}
-  const candidate=result.matches[index];
-  if(!confirm('Confirmar conciliação entre os dois extratos?\\n'+candidate.account+' · '+brDate(candidate.date)+' · '+money(candidate.amount)+'\\nOs dois lançamentos serão preservados e não serão contabilizados como receita ou despesa.'))return;
+  const candidate=await new Promise(resolve=>{
+   const dialog=document.createElement('dialog');dialog.style.cssText='width:min(94vw,560px);max-height:85vh;border:1px solid #ddd;border-radius:14px;padding:20px;box-shadow:0 12px 45px #0003';
+   const heading=document.createElement('h3');heading.textContent='Correspondência encontrada';dialog.appendChild(heading);
+   const detail=document.createElement('p');detail.textContent='Selecione a movimentação correspondente. Os dois extratos serão preservados.';dialog.appendChild(detail);
+   const select=document.createElement('select');select.style.cssText='width:100%;margin:12px 0;padding:12px';select.setAttribute('aria-label','Movimentação correspondente');
+   for(const [i,m] of result.matches.entries()){const option=document.createElement('option');option.value=String(i);option.textContent=m.account+' · '+brDate(m.date)+' · '+money(m.amount)+' · '+m.description.slice(0,75)+(m.linked?' · transferência já marcada':'');select.appendChild(option)}
+   dialog.appendChild(select);
+   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Agora não';cancel.style.marginRight='8px';
+   const confirmButton=document.createElement('button');confirmButton.type='button';confirmButton.textContent='Mesclar movimentações';
+   const close=v=>{dialog.close();dialog.remove();resolve(v)};
+   cancel.onclick=()=>close(null);confirmButton.onclick=()=>close(result.matches[Number(select.value)]||null);
+   dialog.oncancel=ev=>{ev.preventDefault();close(null)};dialog.append(cancel,confirmButton);document.body.appendChild(dialog);dialog.showModal();
+  });
+  if(!candidate)return;
   await call('confirmTransferMatch',{itemId:id,counterpartId:candidate.id});
   await load();$('message').textContent='✔ Transferência conciliada entre as duas contas.';
  }catch(err){$('message').textContent='Vínculo salvo; conciliação pendente: '+err.message}
