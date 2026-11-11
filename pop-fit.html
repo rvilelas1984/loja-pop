@@ -96,7 +96,58 @@ async function openPerformance(sessionId){
   content.innerHTML=header+stats+zoneHtml+bikeNote+otherHtml+timeHtml+'<p class="perf-note">Somente dados disponíveis dos sensores conectados. Calorias são estimativas; o total da turma considera apenas alunos monitorados.</p>';
  }catch(e){performanceShareRow=null;performanceImageData=null;content.textContent="Não foi possível carregar o desempenho."}
 }
+
+let gymStoryPhoto=null;
+function gymStoryCanvas(p){
+ const canvas=document.createElement("canvas");canvas.width=1080;canvas.height=1920;const g=canvas.getContext("2d"),W=1080;
+ const col=["#20d6e7","#218cff","#25d886","#ff963d","#ff3e77"];
+ const box=(x,y,w,h,color,r=0)=>{g.fillStyle=color;g.beginPath();g.roundRect(x,y,w,h,r);g.fill()};
+ const text=(s,x,y,size=30,color="#fff",weight=800,align="left")=>{g.textAlign=align;g.fillStyle=color;g.font=weight+" "+size+"px Arial,sans-serif";g.fillText(String(s),x,y)};
+ const grad=(x,y,stops)=>{let a=g.createLinearGradient(0,x,1080,y);stops.forEach(([n,c])=>a.addColorStop(n,c));return a};
+ box(0,0,1080,1920,"#100719");
+ const bg=g.createRadialGradient(850,280,40,700,600,1100);bg.addColorStop(0,"#641344");bg.addColorStop(.5,"#2c0a37");bg.addColorStop(1,"#100719");box(0,0,1080,1920,bg);
+ g.save();g.strokeStyle="#f33ca9";g.lineWidth=5;g.beginPath();g.moveTo(480,0);g.bezierCurveTo(700,210,980,40,1080,0);g.stroke();g.restore();
+ text("✦",55,111,66,"#ff42a7");text("CLUB POP",135,105,61);text("SEU TREINO.",1010,74,27,"#fff",900,"right");text("SUA HISTÓRIA.",1010,110,27,"#fff",900,"right");
+ box(52,172,243,68,"#f72a94",34);text("GYM POP",174,217,33,"#fff",900,"center");
+ const date=String(p.starts_at||"").slice(0,10).split("-").reverse().join("/");text(date,1010,216,30,"#f5e4f3",700,"right");
+ text("CADA AULA,",56,360,81);text("UMA",56,455,97,"#ff4ba9");text("VITÓRIA.",56,557,97,"#ff4ba9");text("O esforço é seu.",62,630,30);text("A conquista também.",62,670,30);
+ const x=605,y=360,rad=255;g.save();g.beginPath();g.arc(x,y,rad,0,Math.PI*2);g.clip();
+ const ph=g.createLinearGradient(380,200,950,620);ph.addColorStop(0,"#772467");ph.addColorStop(1,"#251144");box(x-rad,y-rad,rad*2,rad*2,ph);
+ if(gymStoryPhoto){const im=gymStoryPhoto;const scale=Math.max(rad*2/im.width,rad*2/im.height);g.drawImage(im,x-im.width*scale/2,y-im.height*scale/2,im.width*scale,im.height*scale)}
+ else{text("✦",x,y+78,210,"#ff9bcb",900,"center")}g.restore();
+ g.save();g.shadowColor="#ff3da9";g.shadowBlur=45;g.strokeStyle="#ff77d4";g.lineWidth=15;g.beginPath();g.arc(x,y,rad,0,Math.PI*2);g.stroke();g.restore();
+ box(50,740,980,205,"#260d30",32);g.strokeStyle="#ef3199";g.lineWidth=4;g.strokeRect(52,743,976,199);
+ const name=String(p.member_name||p.name||"MINHA CONQUISTA").toUpperCase();let sz=72;while(sz>36){g.font="900 "+sz+"px Arial";if(g.measureText(name).width<880)break;sz-=3}text(name,85,828,sz);
+ text(String(p.class_name||"Aula monitorada").slice(0,42)+"  •  Aula finalizada",85,901,30,"#ead6e9",600);
+ if(p.calorie_rank!=null){box(770,650,220,150,"#ffb926",70);text(Number(p.calorie_rank)+"º",880,714,67,"#4c2200",900,"center");text("LUGAR",880,756,32,"#4c2200",900,"center")}
+ box(50,989,475,224,"#841051",35);box(548,989,482,224,"#2b143c",35);
+ text("🔥  CALORIAS ESTIMADAS",80,1052,29);text("⏱  TEMPO DE TREINO",578,1052,29);
+ text(Math.ceil(Number(p.calories_estimated)||0),83,1158,95);text("kcal",345,1157,35,"#f5d8ef");
+ text(Math.floor(Math.max(0,Number(p.duration_seconds)||0)/60),581,1158,95);text("min",794,1157,35,"#f5d8ef");
+ box(50,1250,980,507,"#391047",36);text("♥  MINHAS ZONAS CARDÍACAS",80,1320,40);
+ const zs=Array.isArray(p.zones)?p.zones.map(z=>Math.max(0,Number(z)||0)).slice(0,5):[];while(zs.length<5)zs.push(0);const sum=zs.reduce((a,b)=>a+b,0);
+ let a=-Math.PI/2;g.lineWidth=38;g.strokeStyle="#654064";g.beginPath();g.arc(250,1510,145,0,Math.PI*2);g.stroke();
+ zs.forEach((z,i)=>{const arc=sum?z/sum*Math.PI*2:0;if(arc){g.beginPath();g.strokeStyle=col[i];g.arc(250,1510,145,a,a+arc);g.stroke();a+=arc}});
+ text(Math.round(sum/60),250,1515,78,"#fff",900,"center");text("min monitorados",250,1555,24,"#fff",600,"center");
+ zs.forEach((z,i)=>{const yy=1390+i*70;const pct=sum?z/sum:0;text("Z"+(i+1),453,yy,31);box(510,yy-25,300,23,"#684269",12);if(z)box(510,yy-25,Math.max(5,300*pct),23,col[i],12);text(Math.round(z/60)+" min",985,yy,27,"#fff",700,"right")});
+ box(0,1800,1080,120,"#4a0938");text("CLUB POP  /  POP FIT",55,1875,44);text("A SUA EVOLUÇÃO",1018,1848,23,"#f6d4ee",700,"right");text("MERECE SER COMPARTILHADA.",1018,1880,23,"#f6d4ee",700,"right");
+ return canvas;
+}
+async function gymStoryPreview(){
+ const p=performanceImageData;if(!p||p.unit!=="gym")return;
+ let modal=document.getElementById("gymStoryModal");
+ if(!modal){modal=document.createElement("div");modal.id="gymStoryModal";modal.style.cssText="position:fixed;inset:0;z-index:999999;background:#090410ee;overflow:auto;padding:18px;display:flex;align-items:flex-start;justify-content:center";
+ modal.innerHTML='<div style="width:min(100%,510px);background:#24132b;border:1px solid #a34788;border-radius:20px;padding:16px;color:white"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b>✦ Minha conquista • Gym Pop</b><button id="gymStoryClose" style="padding:10px;border-radius:9px">✕ Fechar</button></div><canvas id="gymStoryPreviewCanvas" style="width:100%;height:auto;border-radius:12px"></canvas><p style="font-size:12px;color:#e4c8dc">Foto opcional. Os indicadores são os dados deste treino.</p><label style="display:block;margin-bottom:12px">Trocar foto <input id="gymStoryUpload" type="file" accept="image/*" style="width:100%;margin-top:8px"></label><button id="gymStoryDownload" style="width:100%;padding:14px;background:#e62e92;color:white;border:0;border-radius:12px;font-weight:bold">↓ Salvar Story 1080 × 1920</button></div>';
+ document.body.appendChild(modal);modal.querySelector("#gymStoryClose").onclick=()=>modal.remove();
+ modal.querySelector("#gymStoryUpload").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;const u=URL.createObjectURL(f);try{const im=new Image();im.src=u;await im.decode();gymStoryPhoto=im;gymStoryRender()}finally{URL.revokeObjectURL(u)}};
+ modal.querySelector("#gymStoryDownload").onclick=()=>{const a=document.createElement("a");a.href=gymStoryCanvas(performanceImageData).toDataURL("image/png");a.download="club-pop-gym-conquista.png";a.click()};
+ }
+ gymStoryRender();
+}
+function gymStoryRender(){const target=document.getElementById("gymStoryPreviewCanvas");if(!target||!performanceImageData)return;const source=gymStoryCanvas(performanceImageData);target.width=source.width;target.height=source.height;target.getContext("2d").drawImage(source,0,0)}
+
 async function savePerformancePng(){
+ if(performanceImageData?.unit==="gym")return gymStoryPreview();
  const p=performanceImageData,btn=document.getElementById("savePerformanceImage");
  if(!p){alert("Aguarde o carregamento do desempenho.");return}
  btn.disabled=true;const previous=btn.textContent;btn.textContent="GERANDO IMAGEM...";
