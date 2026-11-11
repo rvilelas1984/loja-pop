@@ -20,7 +20,7 @@ function drawPhoto(i,x,y,w,h,r=30){if(photos.length){imageCover(photos[i%photos.
  const shell=document.querySelector('.photo-preview-shell');
  if(!shell)return;
  let rail=$('popTripleColorRail');
- if(!rail){rail=document.createElement('div');rail.id='popTripleColorRail';rail.setAttribute('aria-label','Cores do fundo do Mosaico Triplo');rail.style.cssText='position:absolute;left:-7px;top:8%;bottom:8%;width:39px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;z-index:5';shell.append(rail);
+ if(!rail){rail=document.createElement('div');rail.id='popTripleColorRail';rail.setAttribute('aria-label','Cores do fundo do Mosaico Triplo');rail.style.cssText='position:absolute;left:-43px;top:8%;bottom:8%;width:39px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;z-index:5';shell.append(rail);
  popTriplePalettes.forEach((p,i)=>{const b=document.createElement('button');b.type='button';b.title=p[0];b.setAttribute('aria-label','Fundo '+p[0]);b.style.cssText='width:30px;height:30px;min-height:30px;border-radius:50%;padding:0;background:linear-gradient(145deg,'+p[3]+','+p[1]+');border:2px solid '+(i===popTripleColor?'#fff':'#8a7495')+';box-shadow:0 0 6px #0008;cursor:pointer';b.onclick=()=>{popTripleColor=i;draw()};rail.append(b)})}
  rail.style.display=on?'flex':'none';
  shell.style.paddingLeft=on?'58px':'';
