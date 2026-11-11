@@ -41,6 +41,7 @@ async function openPerformance(sessionId){
   document.getElementById("gymStoryEntry").style.display=p.unit==="gym"?"block":"none";
   document.getElementById("savePerformanceImage").textContent=p.unit==="gym"?"✦ STORY PREMIUM":"▣ SALVAR IMAGEM";
   performanceShareRow=rows.find(x=>x.performance_session_id===sessionId)||manualRows.find(x=>x.source==="pop_live"&&x.performance_session_id===sessionId)||null;
+  performanceImageData.member_name=p.member_name||p.student_name||p.full_name||performanceShareRow?.student_name||performanceShareRow?.member_name||performanceShareRow?.name||"";
   document.getElementById("performanceMeta").textContent=(p.class_name||"Aula")+" • "+unitName(p.unit);
   const fmtDuration=n=>{const v=Math.max(0,Math.round(Number(n)||0));return Math.floor(v/60)+"min "+String(v%60).padStart(2,"0")+"s"};
   const roundKcal=v=>displayKcal(v).toLocaleString("pt-BR");
@@ -112,16 +113,16 @@ function gymStoryCanvas(p){
  text("✦",55,111,66,"#ff42a7");text("CLUB POP",135,105,61);text("SEU TREINO.",1010,74,27,"#fff",900,"right");text("SUA HISTÓRIA.",1010,110,27,"#fff",900,"right");
  box(52,172,243,68,"#f72a94",34);text("GYM POP",174,217,33,"#fff",900,"center");
  const date=String(p.starts_at||"").slice(0,10).split("-").reverse().join("/");text(date,1010,216,30,"#f5e4f3",700,"right");
- text("CADA AULA,",56,360,81);text("UMA",56,455,97,"#ff4ba9");text("VITÓRIA.",56,557,97,"#ff4ba9");text("O esforço é seu.",62,630,30);text("A conquista também.",62,670,30);
- const x=605,y=360,rad=255;g.save();g.beginPath();g.arc(x,y,rad,0,Math.PI*2);g.clip();
+ text("CADA AULA,",56,360,81);text("UMA",56,455,97,"#ff4ba9");text("VITÓRIA.",56,557,97,"#ff4ba9");text("O esforço é seu.",62,635,30);text("A conquista também.",62,678,30);
+ const x=775,y=445,rad=225;g.save();g.beginPath();g.arc(x,y,rad,0,Math.PI*2);g.clip();
  const ph=g.createLinearGradient(380,200,950,620);ph.addColorStop(0,"#772467");ph.addColorStop(1,"#251144");box(x-rad,y-rad,rad*2,rad*2,ph);
  if(gymStoryPhoto){const im=gymStoryPhoto;const scale=Math.max(rad*2/im.width,rad*2/im.height);g.drawImage(im,x-im.width*scale/2,y-im.height*scale/2,im.width*scale,im.height*scale)}
  else{text("✦",x,y+78,210,"#ff9bcb",900,"center")}g.restore();
  g.save();g.shadowColor="#ff3da9";g.shadowBlur=45;g.strokeStyle="#ff77d4";g.lineWidth=15;g.beginPath();g.arc(x,y,rad,0,Math.PI*2);g.stroke();g.restore();
- box(50,740,980,205,"#260d30",32);g.strokeStyle="#ef3199";g.lineWidth=4;g.strokeRect(52,743,976,199);
- const name=String(p.member_name||p.name||"MINHA CONQUISTA").toUpperCase();let sz=72;while(sz>36){g.font="900 "+sz+"px Arial";if(g.measureText(name).width<880)break;sz-=3}text(name,85,828,sz);
+ box(50,745,980,205,"#260d30",32);g.strokeStyle="#ef3199";g.lineWidth=4;g.beginPath();g.roundRect(52,747,976,199,32);g.stroke();
+ const name=String(document.getElementById("gymStoryName")?.value||p.member_name||p.name||"MINHA CONQUISTA").toUpperCase();let sz=72;while(sz>36){g.font="900 "+sz+"px Arial";if(g.measureText(name).width<880)break;sz-=3}text(name,85,828,sz);
  text(String(p.class_name||"Aula monitorada").slice(0,42)+"  •  Aula finalizada",85,901,30,"#ead6e9",600);
- if(p.calorie_rank!=null){box(770,650,220,150,"#ffb926",70);text(Number(p.calorie_rank)+"º",880,714,67,"#4c2200",900,"center");text("LUGAR",880,756,32,"#4c2200",900,"center")}
+ if(p.calorie_rank!=null){g.save();g.shadowColor="#ffbd28";g.shadowBlur=35;const gold=g.createLinearGradient(760,650,980,800);gold.addColorStop(0,"#fff0a3");gold.addColorStop(.5,"#ffc52c");gold.addColorStop(1,"#ce7d04");box(780,625,210,210,gold,105);g.restore();text(Number(p.calorie_rank)+"º",885,723,83,"#5d3100",900,"center");text("LUGAR",885,765,33,"#5d3100",900,"center")}
  box(50,989,475,224,"#841051",35);box(548,989,482,224,"#2b143c",35);
  text("🔥  CALORIAS ESTIMADAS",80,1052,29);text("⏱  TEMPO DE TREINO",578,1052,29);
  text(Math.ceil(Number(p.calories_estimated)||0),83,1158,95);text("kcal",345,1157,35,"#f5d8ef");
@@ -139,11 +140,12 @@ async function gymStoryPreview(){
  const p=performanceImageData;if(!p||p.unit!=="gym")return;
  let modal=document.getElementById("gymStoryModal");
  if(!modal){modal=document.createElement("div");modal.id="gymStoryModal";modal.style.cssText="position:fixed;inset:0;z-index:999999;background:#090410ee;overflow:auto;padding:18px;display:flex;align-items:flex-start;justify-content:center";
- modal.innerHTML='<div style="width:min(100%,510px);background:#24132b;border:1px solid #a34788;border-radius:20px;padding:16px;color:white"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b>✦ Minha conquista • Gym Pop</b><button id="gymStoryClose" style="padding:10px;border-radius:9px">✕ Fechar</button></div><canvas id="gymStoryPreviewCanvas" style="width:100%;height:auto;border-radius:12px"></canvas><p style="font-size:12px;color:#e4c8dc">Foto opcional. Os indicadores são os dados deste treino.</p><label style="display:block;margin-bottom:12px">Trocar foto <input id="gymStoryUpload" type="file" accept="image/*" style="width:100%;margin-top:8px"></label><button id="gymStoryDownload" style="width:100%;padding:14px;background:#e62e92;color:white;border:0;border-radius:12px;font-weight:bold">↓ Salvar Story 1080 × 1920</button></div>';
- document.body.appendChild(modal);modal.querySelector("#gymStoryClose").onclick=()=>modal.remove();
+ modal.innerHTML='<div style="width:min(100%,510px);background:#24132b;border:1px solid #a34788;border-radius:20px;padding:16px;color:white"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b>✦ Minha conquista • Gym Pop</b><button id="gymStoryClose" style="padding:10px;border-radius:9px">✕ Fechar</button></div><canvas id="gymStoryPreviewCanvas" style="width:100%;height:auto;border-radius:12px"></canvas><p style="font-size:12px;color:#e4c8dc">Foto opcional. Os indicadores são os dados deste treino.</p><label style="display:block;margin-bottom:12px">Nome na arte <input id="gymStoryName" style="display:block;width:100%;padding:12px;margin-top:8px;border-radius:10px;border:1px solid #a34788;background:#170c1d;color:#fff" maxlength="34"></label><label style="display:block;margin-bottom:12px">Trocar foto <input id="gymStoryUpload" type="file" accept="image/*" style="width:100%;margin-top:8px"></label><button id="gymStoryDownload" style="width:100%;padding:14px;background:#e62e92;color:white;border:0;border-radius:12px;font-weight:bold">↓ Salvar Story 1080 × 1920</button></div>';
+ document.body.appendChild(modal);modal.querySelector("#gymStoryName").oninput=gymStoryRender;modal.querySelector("#gymStoryClose").onclick=()=>modal.remove();
  modal.querySelector("#gymStoryUpload").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;const u=URL.createObjectURL(f);try{const im=new Image();im.src=u;await im.decode();gymStoryPhoto=im;gymStoryRender()}finally{URL.revokeObjectURL(u)}};
  modal.querySelector("#gymStoryDownload").onclick=()=>{const a=document.createElement("a");a.href=gymStoryCanvas(performanceImageData).toDataURL("image/png");a.download="club-pop-gym-conquista.png";a.click()};
  }
+ const nameField=modal.querySelector("#gymStoryName");if(nameField&&!nameField.value)nameField.value=p.member_name||p.name||"";
  gymStoryRender();
 }
 function gymStoryRender(){const target=document.getElementById("gymStoryPreviewCanvas");if(!target||!performanceImageData)return;const source=gymStoryCanvas(performanceImageData);target.width=source.width;target.height=source.height;target.getContext("2d").drawImage(source,0,0)}
