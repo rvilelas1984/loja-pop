@@ -1,3 +1,4 @@
+import {profilePhotoRoute} from './lib/profile-photo.mjs';
 import {readCheckinMirror,assertCheckinSessionDate} from './lib/checkin-mirror.mjs';
 import {popLiveOperation} from './lib/pop-live-operation.mjs';
 import {memberUnitAccess,readAccessSettings,saveAccessSettings,accessCatalog} from './lib/unit-access.mjs';
@@ -3798,6 +3799,11 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           expiresAt: auth.expiresAt,
           member: {...publicMember(member),activeUnits},
         });
+      }
+
+      if(url.pathname==="/member/profile-photo"||url.pathname.startsWith("/member/profile-photo/image/")){
+        const member=url.pathname.startsWith("/member/profile-photo/image/")?null:await authenticatedMember(request,env);
+        return profilePhotoRoute(request,env,member);
       }
 
       // =====================================================
