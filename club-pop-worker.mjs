@@ -2036,6 +2036,36 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const inserted=await env.DB.prepare("INSERT INTO student_tutorial_videos(title,description,category,unit,drive_file_id,sort_order,published) VALUES(?,?,?,?,?,?,?)").bind(title,description,category,unit,driveId,sortOrder,published).run();
         return json({ok:true,id:inserted.meta?.last_row_id},201);
       }
+      // Auditoria de aulas Pop Live — rota usada pela Central de Dispositivos.
+      if(url.pathname==="/admin/pop-live-monitoring"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(request.method!=="GET")return json({ok:false,error:"OPERACAO_NAO_DISPONIVEL"},405);
+        const sid=Number(url.searchParams.get("id"));
+        if(url.searchParams.has("id")){
+          if(!Number.isSafeInteger(sid)||sid<1)return json({ok:false,error:"ID_INVALIDO"},400);
+          const session=await env.DB.prepare("SELECT * FROM pop_live_sessions WHERE id=? AND status IN ('finished','closed') LIMIT 1").bind(sid).first();
+          if(!session)return json({ok:false,error:"AULA_NAO_ENCONTRADA"},404);
+          const students=await env.DB.prepare(`SELECT p.*,COALESCE(NULLIF(trim(m.first_name||' '||m.last_name),''),'Aluno') AS name,
+            (SELECT COUNT(*) FROM pop_live_session_devices sd WHERE sd.session_id=p.session_id AND (sd.member_id=CAST(p.member_id AS TEXT) OR sd.member_id=CAST(m.evo_member_id AS TEXT) OR sd.member_id=CAST(m.gym_client_id AS TEXT))) AS device_count
+            FROM pop_live_member_performance p LEFT JOIN members m ON m.id=p.member_id
+            WHERE p.session_id=? ORDER BY p.calories_estimated DESC,p.member_id`).bind(sid).all();
+          return json({ok:true,session,students:students.results||[]});
+        }
+        const unit=url.searchParams.get("unit")||"all";
+        const day=url.searchParams.get("date")||new Date().toISOString().slice(0,10);
+        if(!["all","bike","gym"].includes(unit)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(day))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        const sessions=await env.DB.prepare(`SELECT s.id,s.unit,s.class_name,s.starts_at,s.started_at,s.finished_at,s.closed_at,s.status,
+          (SELECT COUNT(*) FROM pop_live_session_devices d WHERE d.session_id=s.id) AS monitored_devices,
+          (SELECT COUNT(*) FROM pop_live_member_performance p WHERE p.session_id=s.id) AS recorded_students
+          FROM pop_live_sessions s WHERE s.status IN ('finished','closed')
+          AND substr(s.starts_at,1,10)=? AND (?='all' OR s.unit=?)
+          ORDER BY s.starts_at DESC,s.id DESC LIMIT 150`).bind(day,unit,unit).all();
+        return json({ok:true,sessions:sessions.results||[]});
+      }
       if(["/admin/pop-live-devices","/admin/pop-live-sessions","/admin/pop-live-drafts"].includes(url.pathname)){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
