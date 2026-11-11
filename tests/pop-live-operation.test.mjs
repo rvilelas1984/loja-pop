@@ -36,7 +36,11 @@ const route='/pop-live/sessions/'+id;
 assert.equal((await call(route+'/participants',{member_id:'88',watch:'21'})).status,409);
 sql.exec("INSERT INTO checkin_reservation_snapshots VALUES('gym','123',date('now','-3 hours'),'88','Aluno real',1,0,'checked_in',1)");
 assert.equal((await call(route+'/participants',{member_id:'88',watch:'21'})).status,200);
-const p=(await call(route+'/participants')).body.participants[0];assert.equal(p.watch,'21');assert.equal(p.profileComplete,true);
+assert.equal((await call(route+'/participants',null,'bad')).status,401);
+const p=(await call(route+'/participants')).body.participants[0];assert.equal(p.photoUrl,null);assert.equal(p.watch,'21');assert.equal(p.profileComplete,true);
+sql.exec("CREATE TABLE club_profile_photos(member_id INTEGER PRIMARY KEY,photo_token TEXT);INSERT INTO club_profile_photos VALUES(1,'33333333-3333-4333-8333-333333333333')");
+assert.equal((await call(route+'/participants')).body.participants[0].photoUrl,'https://test/member/profile-photo/image/33333333-3333-4333-8333-333333333333');
+assert.equal((await call(route+'/participants',null,'bad')).status,401);
 const rules={type:'zone',target:10,zone:3,podium:'z3',showTV:false};
 assert.throws(()=>validateRules({...rules,target:-1}));
 a=await call(route+'/start',{operation_key:key,rules});assert.equal(a.body.session.status,'running');const started=a.body.session.started_at;
@@ -74,7 +78,10 @@ assert.equal(startedManual.status,'running');
 assert.equal((await call(manualRoute+'/finish',{operation_key:key,finished_at:startedManual.started_at,people:[{member_id:'88',watch:'21',kcal:0,zones:[0,0,0,0,0]}]})).body.session.status,'finished');
 assert.equal((await call(manualRoute+'/close',{operation_key:key})).body.session.status,'closed');
 assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_session_devices').get().n,linkedBefore+1);
-assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_member_performance').get().n,1);
+// Manual monitored sessions now also save performance; verify this session and idempotency.
+assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_member_performance WHERE session_id=?').get(manualId).n,1);
+assert.equal((await call(manualRoute+'/close',{operation_key:key})).body.saved,true);
+assert.equal(sql.prepare('SELECT count(*) n FROM pop_live_member_performance WHERE session_id=?').get(manualId).n,1);
 
 const cpfHash=createHash('sha256').update('52998224725').digest('hex');
 sql.prepare('UPDATE members SET cpf_hash=? WHERE id=1').run(cpfHash);
