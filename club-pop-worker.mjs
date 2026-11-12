@@ -4679,16 +4679,17 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           return json({ok:true,saved:true,source:"d1",evoRequestsMade:0});
         }
         if(request.method==="POST"){
-          if(action==="weight-manual"&&request.method==="POST"){
-            const body=await readJson(request);
-            const weight=Number(String(body.weight??"").replace(",","."));
+          const b=await readJson(request);
+          if(b.action==="weight-manual"){
+            
+            const weight=Number(String(b.weight??"").replace(",","."));
             if(!Number.isFinite(weight)||weight<20||weight>350)return json({ok:false,error:"PESO_INVALIDO"},400);
             await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_weight_manual(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER NOT NULL,weight REAL NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
             await env.DB.prepare("INSERT INTO pop_fit_weight_manual(member_id,weight) VALUES(?,?)").bind(base.id,weight).run();
             return json({ok:true,saved:true,source:"d1"});
           }
           
-          const b=await readJson(request);
+          
           if(b.action==="share-click"){
             if(!["bike","gym","club"].includes(scopeRaw)||(scope!=="club"&&!ids[scope]))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
             const imageId=Number(b.imageId);
