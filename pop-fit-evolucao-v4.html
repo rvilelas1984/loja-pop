@@ -63,7 +63,7 @@ function node(name,attrs,text,parent){const e=document.createElementNS(ns,name);
 function dateBR(d){const a=String(d||'').slice(0,10).split('-');return a.length===3?a[2]+'/'+a[1]+'/'+a[0]:'—'}
 function draw(){
  const now=new Date(),month=now.toISOString().slice(0,7),start3=new Date(now.getFullYear(),now.getMonth()-2,1).toISOString().slice(0,10);
- const source=all.filter(p=>p.source!=='Peso inicial').sort((a,b)=>String(a.recordedAt||a.date).localeCompare(String(b.recordedAt||b.date)));
+ const source=all.filter(p=>p.source!=='Peso inicial').sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.recordedAt||'').localeCompare(String(b.recordedAt||'')));
  const filtered=source.filter(p=>active==='all'||(active==='month'?p.date?.slice(0,7)===month:p.date>=start3));
  const rows=[];for(const p of filtered){const day=String(p.date);if(rows.length&&rows.at(-1).date===day){rows[rows.length-1]=p}else rows.push(p)}
  const title=active==='all'?'Todo o histórico':active==='3m'?'Últimos 3 meses':now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
