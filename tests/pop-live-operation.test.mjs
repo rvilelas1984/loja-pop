@@ -152,3 +152,30 @@ for(const [unit,target,sensor,type] of [['bike','965062',12,'cadence'],['gym','8
  assert.deepEqual(attendance(),before);
  console.log('PASS remove, release, refresh, failed and successful re-enrollment, other participant and original attendance:',unit);
 }
+
+// Teacher admission has no commercial contract dependency (no contracts table exists here).
+sql.exec("INSERT INTO members(id,evo_member_id,gym_client_id,birth_date,first_name,last_name) VALUES(21,'121',NULL,'1980-01-01','Bike','Only'),(22,NULL,'122','1980-01-01','Gym','Only');");
+for(const unit of ['gym','bike'])for(const status of ['planned','running']){
+ const sid=Number(sql.prepare("INSERT INTO pop_live_sessions(source,unit,status,class_name,starts_at) VALUES('manual',?,?, 'Admission',datetime('now'))").run(unit,status).lastInsertRowid),r='/pop-live/sessions/'+sid;
+ const localId=unit==='gym'?'122':'121',otherId=unit==='gym'?'121':'122';
+ assert.equal((await call(r+'/lookup',{member_id:localId})).body.member.source_unit,unit);
+ const cross=await call(r+'/lookup',{member_id:otherId});assert.equal(cross.status,200);assert.equal(cross.body.cross_unit,true);
+ const mid=cross.body.member.member_id;
+ assert.equal((await call(r+'/select-member',{member_id:mid})).status,200);
+ assert.equal((await call(r+'/members/'+mid+'/health',{sex:'f',weight:70,idempotency_key:crypto.randomUUID()})).status,200);
+ const did=unit==='gym'?501:502;
+ sql.prepare("INSERT OR IGNORE INTO pop_live_devices(id,reference_number,device_type,active,unit_gym,unit_bike) VALUES(502,'502','cadence',1,0,1)").run();
+ assert.equal((await call(r+'/assign-device',{member_id:mid,device_id:did})).body.assigned,true);
+ const people=(await call(r+'/participants')).body.participants;assert.equal(people.find(p=>p.member_id===mid).sex,'f');
+ assert.equal((await call(r+'/lookup',{member_id:'99999999999'})).body.manualDraftAllowed,true);
+ sql.prepare("UPDATE pop_live_sessions SET status='finished' WHERE id=?").run(sid);
+ assert.equal((await call(r+'/lookup',{member_id:otherId})).status,409);
+ assert.equal((await call(r+'/assign-device',{member_id:mid,device_id:did})).status,409);
+}
+const lateId=Number(sql.prepare("INSERT INTO pop_live_sessions(source,unit,status,class_name,starts_at) VALUES('manual','gym','running','Late manual',datetime('now'))").run().lastInsertRowid);
+const late='/pop-live/sessions/'+lateId;
+const draft=await call(late+'/manual-drafts',{name:'Manual Student',cpf:'11144477735',birth_date:'1985-01-01',weight_kg:70,height_cm:170,idempotency_key:crypto.randomUUID()});assert.equal(draft.status,200);
+assert.equal((await call(late+'/manual-drafts/'+draft.body.draft_id+'/assign',{device_id:501,sex:'f',weight_kg:72})).body.assigned,true);
+assert.equal((await call(late+'/participants')).body.participants[0].weight,72);
+assert.equal((await call(late+'/lookup',{cpf:'11144477735'})).body.temporary,true);
+console.log('PASS: both units, local priority, cross-unit ID, no contracts, late health/device assignment, manual late admission and finished-class rejection');
