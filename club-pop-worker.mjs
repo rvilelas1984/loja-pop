@@ -2078,7 +2078,19 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
             (SELECT COUNT(*) FROM pop_live_session_devices sd WHERE sd.session_id=p.session_id AND (sd.member_id=CAST(p.member_id AS TEXT) OR sd.member_id=CAST(m.evo_member_id AS TEXT) OR sd.member_id=CAST(m.gym_client_id AS TEXT))) AS device_count
             FROM pop_live_member_performance p LEFT JOIN members m ON m.id=p.member_id
             WHERE p.session_id=? ORDER BY p.calories_estimated DESC,p.member_id`).bind(sid).all();
-          return json({ok:true,session,students:students.results||[]});
+          // Access timestamps are first-party page activity, not proof of viewing this workout.
+          let accessRows=[];
+          try{
+            const ids=(students.results||[]).map(p=>String(p.member_id)).filter(x=>/^\\d+$/.test(x));
+            if(ids.length){
+              const placeholders=ids.map(()=>"?").join(",");
+              const access=await env.DB.prepare(`SELECT member_id,MAX(last_seen) AS last_club_access,MAX(CASE WHEN page='pop-fit' THEN last_seen END) AS last_popfit_access FROM club_app_page_sessions WHERE member_id IN (${placeholders}) GROUP BY member_id`).bind(...ids).all();
+              accessRows=access.results||[];
+            }
+          }catch(e){console.warn("pop-live-monitoring access unavailable",String(e));}
+          const accessMap=new Map(accessRows.map(a=>[String(a.member_id),a]));
+          const enriched=(students.results||[]).map(p=>({...p,last_club_access:accessMap.get(String(p.member_id))?.last_club_access??null,last_popfit_access:accessMap.get(String(p.member_id))?.last_popfit_access??null,performance_status:p.calories_estimated==null?"Sem medição":Number(p.calories_estimated)>0?"Gravado":"Sem calorias"}));
+          return json({ok:true,session,students:enriched});
         }
         const unit=url.searchParams.get("unit")||"all";
         const day=url.searchParams.get("date")||new Date().toISOString().slice(0,10);
