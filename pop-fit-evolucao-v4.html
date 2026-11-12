@@ -70,7 +70,7 @@ function draw(){
  const label=document.getElementById('periodLabel');label.textContent='▦  '+title;let size=29;label.setAttribute('font-size',size);while(size>18&&label.getComputedTextLength()>245)label.setAttribute('font-size',--size);
  const chart=document.getElementById('chartData');chart.replaceChildren();
  const initial=all.find(p=>p.source==='Peso inicial');
- const selected=rows.length>7?rows.filter((_,i)=>i===0||i===rows.length-1||i%Math.ceil(rows.length/6)===0):rows;
+ const selected=rows; // Keep every dated weigh-in visible; do not silently skip intermediate records.
  const chartRows=initial?[{...initial,isBaseline:true},...selected]:selected;
  if(chartRows.length){
   const vals=chartRows.map(p=>Number(p.weight)),min=Math.min(...vals)-1,max=Math.max(...vals)+1;
