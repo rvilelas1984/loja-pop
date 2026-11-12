@@ -2081,7 +2081,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           // Access timestamps are first-party page activity, not proof of viewing this workout.
           let accessRows=[];
           try{
-            const ids=(students.results||[]).map(p=>String(p.member_id)).filter(x=>/^\\d+$/.test(x));
+            const ids=(students.results||[]).map(p=>String(p.member_id)).filter(x=>/^\d+$/.test(x));
             if(ids.length){
               const placeholders=ids.map(()=>"?").join(",");
               const access=await env.DB.prepare(`SELECT member_id,MAX(last_seen) AS last_club_access,MAX(CASE WHEN page='pop-fit' THEN last_seen END) AS last_popfit_access FROM club_app_page_sessions WHERE member_id IN (${placeholders}) GROUP BY member_id`).bind(...ids).all();
