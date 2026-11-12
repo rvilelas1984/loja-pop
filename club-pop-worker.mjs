@@ -4697,7 +4697,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const b=await readJson(request);
           if(["weight-manual","weight-manual-edit","weight-manual-delete"].includes(b.action)){
             await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_weight_manual_controls (weight_id INTEGER PRIMARY KEY,member_id INTEGER NOT NULL,measured_on TEXT NOT NULL,deleted_at TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
-            const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+            const dateParts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const dateValue=type=>dateParts.find(p=>p.type===type)?.value;const today=dateValue('year')+'-'+dateValue('month')+'-'+dateValue('day');
             const measured=String(b.measuredOn||today);
             if(b.action!=="weight-manual-delete"&&(!/^\\d{4}-\\d{2}-\\d{2}$/.test(measured)||!Number.isFinite(Date.parse(measured+"T12:00:00Z"))||new Date(measured+"T12:00:00Z").toISOString().slice(0,10)!==measured||measured>today))return json({ok:false,error:"DATA_INVALIDA"},400);
             const weight=Number(String(b.weight??"").replace(",","."));
