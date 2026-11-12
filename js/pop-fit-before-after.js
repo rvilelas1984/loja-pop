@@ -29,31 +29,49 @@
   const api = {frames, contain, hit};
   if (typeof module !== 'undefined' && module.exports) { module.exports=api; return; }
   const colors=[['#fffffff2','#231a2c'],['#ad5ae4','#fff'],['#ed5ca4','#fff'],['#24202bf2','#fff']];
-  let arrangement=0, selected=-1, dragging=null;
+  let arrangement=0, selected=-1, dragging=null, draft=null, returnFocus=null;
   const blocks=[makeBlock('Antes',280,1325),makeBlock('Depois',800,1325)];
   function makeBlock(stage,x=540,y=960) {return {stage,weight:'',date:'',color:0,scale:1,angle:0,x,y};}
   const panel=document.createElement('div');panel.id='beforeAfterTools';panel.hidden=true;
-  panel.innerHTML='<strong>Antes & Depois</strong><p class="note">Escolha as fotos na ordem da evolução. Elas aparecem inteiras, sem cortes. Toque em um bloco para editar ou arraste para posicionar.</p><div class="row"><button type="button" data-add="Antes">＋ Antes</button><button type="button" data-add="Durante">＋ Durante</button><button type="button" data-add="Depois">＋ Depois</button><button type="button" id="baShuffle">🔀 Embaralhar</button></div>';
-  document.getElementById('popStoryToolbar').after(panel);
+  panel.innerHTML='<button type="button" id="baAdd" class="outline">＋ BLOCO</button><button type="button" id="baShuffle" class="outline">🔀 Embaralhar</button>';
+  (canvas.closest('.photo-preview-shell')||canvas).after(panel);
   const controls=document.createElement('div');controls.id='beforeAfterControls';controls.hidden=true;
-  controls.innerHTML='<div class="two"><label>Etapa<input id="baStage" type="text" maxlength="32"></label><label>Peso (kg)<input id="baWeight" type="number" min="1" max="500" step="0.1" placeholder="Opcional"></label></div><label>Data opcional<input id="baDate" type="date"></label><div class="row" id="baColors"></div><div class="row"><button type="button" data-action="smaller" aria-label="Diminuir bloco">−</button><button type="button" data-action="rotate" aria-label="Girar bloco">↻</button><button type="button" data-action="bigger" aria-label="Aumentar bloco">＋</button><button type="button" data-action="horizontal">Centralizar ↔</button><button type="button" data-action="vertical">Centralizar ↕</button><button type="button" data-action="duplicate">Duplicar</button><button type="button" data-action="delete">Excluir</button><button type="button" data-action="done">OK</button></div>';
+  controls.innerHTML='<button type="button" data-action="edit">Editar</button><button type="button" data-action="smaller" aria-label="Diminuir bloco">−</button><button type="button" data-action="rotate" aria-label="Girar bloco">↻</button><button type="button" data-action="bigger" aria-label="Aumentar bloco">＋</button><button type="button" data-action="horizontal" aria-label="Centralizar horizontalmente">↔</button><button type="button" data-action="vertical" aria-label="Centralizar verticalmente">↕</button><button type="button" data-action="duplicate">Duplicar</button><button type="button" data-action="delete">Excluir</button><button type="button" data-action="done">OK</button>';
   document.body.append(controls);
-  const style=document.createElement('style');style.textContent='#beforeAfterTools[hidden],#beforeAfterControls[hidden]{display:none!important}#beforeAfterTools{width:100%;padding:12px;border:1px solid #805586;border-radius:14px;background:#302039}#beforeAfterTools button,#beforeAfterControls button{padding:9px;font-size:12px}#beforeAfterControls{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:9998;width:min(420px,calc(100vw - 24px));max-height:65vh;overflow:auto;padding:12px;background:#251a32;border:1px solid #9c5a96;border-radius:14px;box-shadow:0 8px 25px #0009}#beforeAfterControls label{margin:4px 0 8px}#beforeAfterControls input{padding:7px;width:100%;background:#15101e;color:white;border:1px solid #775a87;border-radius:8px}#baColors{margin:8px 0}body.before-after-active #photoZoomSide,body.before-after-active #photoFraming{display:none!important}';document.head.append(style);
+  const modal=document.createElement('dialog');modal.id='beforeAfterModal';modal.setAttribute('aria-labelledby','baModalTitle');
+  modal.innerHTML='<h3 id="baModalTitle">Editar bloco</h3><label>Etapa<input id="baStage" type="text" list="baStages" maxlength="32"><datalist id="baStages"><option value="Antes"><option value="Durante"><option value="Depois"></datalist></label><div class="two"><label>Peso (kg)<input id="baWeight" type="number" min="1" max="500" step="0.1" placeholder="Opcional"></label><label>Data opcional<input id="baDate" type="date"></label></div><label>Cor do bloco</label><div class="row" id="baColors"></div><div class="row"><button type="button" id="baCancel" class="outline">Cancelar</button><button type="button" id="baSave">Aplicar</button></div>';
+  document.body.append(modal);
+  const style=document.createElement('style');style.textContent='#beforeAfterTools[hidden],#beforeAfterControls[hidden]{display:none!important}#beforeAfterTools{display:flex;justify-content:center;gap:8px;width:100%;margin:6px 0;background:none;border:0;padding:0}#beforeAfterTools button{padding:7px 12px;font-size:12px;background:transparent;border:1px solid #775a87;color:#e6cbe8;border-radius:10px}#beforeAfterControls{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:9998;display:flex;flex-wrap:wrap;justify-content:center;gap:5px;width:max-content;max-width:calc(100vw - 24px);padding:8px;background:#251a32;border:1px solid #9c5a96;border-radius:14px;box-shadow:0 8px 25px #0009}#beforeAfterControls button{padding:8px;font-size:12px}#beforeAfterModal{width:min(420px,calc(100vw - 24px));max-height:80dvh;overflow:auto;padding:20px;background:#251a32;color:#fff;border:1px solid #9c5a96;border-radius:18px}#beforeAfterModal::backdrop{background:#0009}#beforeAfterModal h3{margin:0 0 14px}#beforeAfterModal label{margin:8px 0}#beforeAfterModal input{box-sizing:border-box;padding:10px;width:100%;min-width:0;background:#15101e;color:white;border:1px solid #775a87;border-radius:8px}#baColors{margin:10px 0 18px}#baColors [aria-pressed="true"]{outline:2px solid #fff;outline-offset:2px}body.before-after-active #photoZoomSide,body.before-after-active #photoFraming{display:none!important}';document.head.append(style);
   const el=id=>document.getElementById(id);
   ['popTextOpen','stickersOpen'].forEach(id=>el(id)?.addEventListener('click',()=>{selected=-1;dragging=null;syncControls()}));
   function syncControls() {
-    controls.hidden=layout!=='beforeAfter'||selected<0;
-    if(controls.hidden)return;
-    const b=blocks[selected];el('baStage').value=b.stage;el('baWeight').value=b.weight;el('baDate').value=b.date;
-    [...el('baColors').children].forEach((button,i)=>button.setAttribute('aria-pressed',String(i===b.color)));
+    controls.hidden=layout!=='beforeAfter'||selected<0||modal.open;
   }
-  colors.forEach(([background,ink],i)=>{const button=document.createElement('button');button.type='button';button.textContent=['Branco','Roxo','Rosa','Escuro'][i];button.style.background=background;button.style.color=ink;button.onclick=()=>{if(selected<0)return;blocks[selected].color=i;syncControls();draw()};el('baColors').append(button)});
-  [['baStage','stage'],['baWeight','weight'],['baDate','date']].forEach(([id,key])=>el(id).addEventListener('input',()=>{if(selected<0)return;blocks[selected][key]=el(id).value;draw()}));
-  panel.querySelectorAll('[data-add]').forEach(button=>button.onclick=()=>{blocks.push(makeBlock(button.dataset.add));selected=blocks.length-1;syncControls();draw()});
+  function syncColors(){[...el('baColors').children].forEach((button,i)=>button.setAttribute('aria-pressed',String(i===draft?.color)));}
+  function openEditor(isNew=false){
+    returnFocus=document.activeElement;
+    draft=isNew?makeBlock('Antes'):{...blocks[selected]};
+    draft.isNew=isNew;
+    el('baModalTitle').textContent=isNew?'Adicionar bloco':'Editar bloco';
+    el('baStage').value=draft.stage;el('baWeight').value=draft.weight;el('baDate').value=draft.date;
+    syncColors();modal.showModal();syncControls();el('baStage').focus();
+  }
+  function closeEditor(){modal.close();draft=null;syncControls();returnFocus?.focus();}
+  modal.addEventListener('cancel',e=>{e.preventDefault();closeEditor()});
+  el('baCancel').onclick=closeEditor;
+  el('baSave').onclick=()=>{
+    if(!draft||!el('baWeight').reportValidity()||!el('baDate').reportValidity())return;
+    const block={...draft,stage:el('baStage').value.trim()||'Antes',weight:el('baWeight').value,date:el('baDate').value};delete block.isNew;
+    if(draft.isNew){blocks.push(block);selected=blocks.length-1}else blocks[selected]=block;
+    closeEditor();draw();
+  };
+  colors.forEach(([background,ink],i)=>{const button=document.createElement('button');button.type='button';button.textContent=['Branco','Roxo','Rosa','Escuro'][i];button.style.background=background;button.style.color=ink;button.onclick=()=>{if(!draft)return;draft.color=i;syncColors()};el('baColors').append(button)});
+  el('baAdd').onclick=()=>openEditor(true);
   el('baShuffle').onclick=()=>{arrangement=(arrangement+1)%randomLayouts.length;draw()};
   controls.querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{
     const b=blocks[selected];if(!b)return;
     switch(button.dataset.action){
+      case 'edit':openEditor();break;
       case 'smaller':b.scale=Math.max(.55,b.scale-.1);break;
       case 'bigger':b.scale=Math.min(1.9,b.scale+.1);break;
       case 'rotate':b.angle=(b.angle+Math.PI/12)%(Math.PI*2);break;
@@ -66,7 +84,7 @@
   });
   function point(e){const r=canvas.getBoundingClientRect();return {x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height};}
   canvas.addEventListener('pointerdown',e=>{
-    if(layout!=='beforeAfter'||!el('popTextModal').hidden)return;
+    if(layout!=='beforeAfter'||modal.open||!el('popTextModal').hidden)return;
     const p=point(e);selected=blocks.findLastIndex(b=>hit(b,p.x,p.y));syncControls();
     if(selected<0)return;
     dragging={id:e.pointerId,dx:p.x-blocks[selected].x,dy:p.y-blocks[selected].y};canvas.setPointerCapture(e.pointerId);e.preventDefault();e.stopImmediatePropagation();
@@ -80,7 +98,7 @@
   ['pointerup','pointercancel'].forEach(name=>canvas.addEventListener(name,e=>{if(dragging?.id===e.pointerId){dragging=null;window.popCenterGuides?.hide();e.stopImmediatePropagation()}},true));
   window.popBeforeAfter={...api,sync(){
     const active=layout==='beforeAfter';panel.hidden=!active;document.body.classList.toggle('before-after-active',active);
-    el('baShuffle').hidden=modelIndex!==3;if(!active){selected=-1;dragging=null;}syncControls();
+    el('baShuffle').hidden=modelIndex!==3;if(!active){selected=-1;dragging=null;if(modal.open)closeEditor();}syncControls();
   },paint(){
     photoRects.length=0;ctx.clearRect(0,0,W,H);
     fill(0,0,W,H,gradient(el('unit').value==='gym'?'#74184d':'#310d45','#140b2c'));
