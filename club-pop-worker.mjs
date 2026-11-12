@@ -4594,6 +4594,14 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             const rank=await env.DB.prepare("SELECT 1+COUNT(*) position FROM pop_live_member_performance WHERE session_id=? AND calories_estimated IS NOT NULL AND calories_estimated>=0 AND calories_estimated>?").bind(sessionId,q.calories_estimated??-1).first();
             return json({ok:true,source:"d1",evoRequestsMade:0,performance:{...q,manual_calories:overlay?.calories??null,extra_metrics:overlay?.extra_metrics||"{}",class_calories:totals?.class_calories??null,monitored_members:totals?.monitored_members??0,calorie_rank:q.calories_estimated==null?null:rank?.position??null}});
           }
+          if(action==="weight-history"){
+            const profile=await env.DB.prepare("SELECT initial_weight,updated_at FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();
+            const entries=await env.DB.prepare("SELECT unit,attendance_key,weight,updated_at FROM pop_fit_entries WHERE member_id=? AND weight>=20 AND weight<=350 ORDER BY updated_at ASC LIMIT 500").bind(base.id).all();
+            const points=(entries.results||[]).map(x=>({weight:Number(x.weight),date:String(x.attendance_key||"").match(/20\\d{2}-\\d{2}-\\d{2}/)?.[0]||String(x.updated_at).slice(0,10),source:"Pop Fit",unit:x.unit,recordedAt:x.updated_at}));
+            if(profile?.initial_weight>0)points.unshift({weight:Number(profile.initial_weight),date:String(profile.updated_at||"").slice(0,10),source:"Peso inicial",unit:null});
+            points.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+            return json({ok:true,source:"d1",points});
+          }
           if(action==="profile"){const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
           if(action==="images"){
             const q=await env.DB.prepare("SELECT id,scope,image_data,period_label,created_at FROM pop_fit_images WHERE member_id=? AND scope=? ORDER BY id DESC LIMIT 3").bind(base.id,scope).all();
