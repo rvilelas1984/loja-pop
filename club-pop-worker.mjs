@@ -2043,6 +2043,31 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(request.method==="POST"){
+          const body=await request.json().catch(()=>null);
+          if(!body||body.action!=="recalculate_calories")return json({ok:false,error:"ACAO_INVALIDA"},400);
+          const sessionId=Number(body.session_id),memberId=Number(body.member_id),weight=Number(body.weight_kg),sex=body.sex;
+          if(!Number.isSafeInteger(sessionId)||sessionId<1||!Number.isSafeInteger(memberId)||memberId<1||!Number.isFinite(weight)||weight<20||weight>300||!["f","m"].includes(sex))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+          if(body.confirm!==true&&body.preview!==true)return json({ok:false,error:"CONFIRMACAO_OBRIGATORIA"},400);
+          const p=await env.DB.prepare(`SELECT p.*,s.status AS session_status FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id WHERE p.session_id=? AND p.member_id=? LIMIT 1`).bind(sessionId,memberId).first();
+          if(!p||!["finished","closed"].includes(p.session_status))return json({ok:false,error:"DESEMPENHO_NAO_ENCONTRADO"},404);
+          if(Number(p.calories_estimated)>0)return json({ok:false,error:"CALORIAS_ORIGINAIS_EXISTENTES"},409);
+          let zones;try{zones=JSON.parse(p.zones_seconds_json||"null")}catch{}
+          const seconds=Array.isArray(zones)?zones.slice(0,5).map(Number):zones&&typeof zones==="object"?[1,2,3,4,5].map(i=>Number(zones["zone"+i]??zones["z"+i]??zones[i]??0)):[];
+          if(seconds.length!==5||seconds.some(v=>!Number.isFinite(v)||v<0)||seconds.reduce((a,b)=>a+b,0)<60)return json({ok:false,error:"ZONAS_INSUFICIENTES"},422);
+          const met=[2.5,4,6,8,10];
+          const calories=Math.ceil(seconds.reduce((sum,s,i)=>sum+s/60*met[i]*3.5*weight/200,0));
+          if(!Number.isFinite(calories)||calories<1||calories>10000)return json({ok:false,error:"ESTIMATIVA_INVALIDA"},422);
+          if(body.preview===true)return json({ok:true,calories_estimated:calories,estimated:true,method:"MET_ZONES_APPROXIMATION"});
+          if(body.confirm!==true)return json({ok:false,error:"CONFIRMACAO_OBRIGATORIA"},400);
+          await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_live_overrides(member_id INTEGER NOT NULL,session_id INTEGER NOT NULL,calories REAL,extra_metrics TEXT NOT NULL DEFAULT '{}',updated_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(member_id,session_id))").run();
+          await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_live_calorie_repair_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,session_id INTEGER NOT NULL,member_id INTEGER NOT NULL,original_calories REAL,estimated_calories REAL NOT NULL,weight_kg REAL NOT NULL,sex TEXT NOT NULL,method TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+          const existing=await env.DB.prepare("SELECT calories FROM pop_fit_live_overrides WHERE session_id=? AND member_id=?").bind(sessionId,memberId).first();
+          if(existing?.calories!=null)return json({ok:false,error:"CORRECAO_JA_EXISTENTE"},409);
+          await env.DB.prepare("INSERT INTO pop_fit_live_overrides(member_id,session_id,calories,extra_metrics) VALUES(?,?,?,?) ON CONFLICT(member_id,session_id) DO UPDATE SET calories=excluded.calories,updated_at=CURRENT_TIMESTAMP").bind(memberId,sessionId,calories,JSON.stringify({calorie_estimate:true,method:"MET_ZONES_APPROXIMATION"})).run();
+          await env.DB.prepare("INSERT INTO pop_live_calorie_repair_audit(session_id,member_id,original_calories,estimated_calories,weight_kg,sex,method) VALUES(?,?,?,?,?,?,?)").bind(sessionId,memberId,p.calories_estimated,calories,weight,sex,"MET_ZONES_APPROXIMATION").run();
+          return json({ok:true,calories_estimated:calories,estimated:true});
+        }
         if(request.method!=="GET")return json({ok:false,error:"OPERACAO_NAO_DISPONIVEL"},405);
         const sid=Number(url.searchParams.get("id"));
         if(url.searchParams.has("id")){
