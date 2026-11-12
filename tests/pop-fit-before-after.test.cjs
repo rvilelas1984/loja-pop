@@ -43,7 +43,7 @@ test('editor actions, dragging, overlay rendering and category isolation',()=>{
     constructor(){this.children=[];this.listeners={};this.style={};this.hidden=false;this.value='';this.dataset={};}
     set id(v){this._id=v;elements.set(v,this)} get id(){return this._id}
     set innerHTML(v){this.html=v;for(const m of v.matchAll(/id="([^"]+)"/g))get(m[1]);}
-    append(...v){this.children.push(...v)} after(v){this.afterElement=v} closest(){return this} setAttribute(){} focus(){} showModal(){this.open=true} close(){this.open=false} reportValidity(){return true}
+    append(...v){this.children.push(...v);v.forEach(e=>e.parentElement=this)} after(v){this.afterElement=v} closest(){return this} setAttribute(){} focus(){} showModal(){this.open=true} close(){this.open=false} reportValidity(){return true}
     addEventListener(n,f){(this.listeners[n]??=[]).push(f)}
     querySelectorAll(q){const key=q.includes('data-add')?'add':'action';return [...this.html.matchAll(new RegExp('data-'+key+'="([^"]+)"','g'))].map(m=>{const e=new Element();e.dataset[key]=m[1];elements.set(key+':'+m[1],e);return e})}
     getBoundingClientRect(){return {left:0,top:0,width:1080,height:1920}}setPointerCapture(){}
@@ -51,8 +51,10 @@ test('editor actions, dragging, overlay rendering and category isolation',()=>{
   function get(id){if(!elements.has(id)){const e=new Element();e.id=id;}return elements.get(id)}
   const calls=[],canvas=get('story');get('popTextModal').hidden=true;get('showBrand').checked=true;
   const context={document:{createElement:()=>new Element(),getElementById:get,body:Object.assign(new Element(),{classList:{toggle(){}}}),head:new Element()},window:{popTextPaint:()=>calls.push('text'),popStickerPaint:()=>calls.push('sticker')},canvas,W:1080,H:1920,layout:'beforeAfter',modelIndex:0,catalog:{beforeAfter:[['2']]},photos:[{width:900,height:1600}],photoRects:[{}],fill(){},gradient:(...a)=>{calls.push(['gradient',...a])},txt:(...a)=>calls.push(a),ctx:new Proxy({},{get:(_,name)=>(...args)=>{if(name==='drawImage')calls.push(args)}}),draw:()=>{context.window.popBeforeAfter.sync();context.window.popBeforeAfter.paint()}};
+  const shell=new Element();let shellReady=false;canvas.closest=()=>shellReady?shell:null;
   vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(root,'js/pop-fit-before-after.js'),'utf8'),context);
-  context.draw();assert.equal(get('beforeAfterTools').hidden,false);assert.equal(context.photoRects.length,0);assert.ok(calls.includes('text')&&calls.includes('sticker'));
+  assert.equal(get('beforeAfterColorRail').parentElement,undefined);shellReady=true;
+  context.draw();assert.equal(get('beforeAfterColorRail').parentElement,shell);assert.equal(get('beforeAfterTools').hidden,false);assert.equal(context.photoRects.length,0);assert.ok(calls.includes('text')&&calls.includes('sticker'));
   const rail=get('beforeAfterColorRail');assert.equal(rail.children.length,6);assert.equal(rail.hidden,false);
   rail.children[2].onclick();assert.ok(calls.some(a=>Array.isArray(a)&&a[0]==='gradient'&&a[1]==='#071a45'));
   context.modelIndex=0;context.draw();assert.equal(calls.filter(a=>Array.isArray(a)&&a[0]==='gradient').at(-1)[1],'#071a45');

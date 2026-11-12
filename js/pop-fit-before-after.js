@@ -37,11 +37,9 @@
   const panel=document.createElement('div');panel.id='beforeAfterTools';panel.hidden=true;
   panel.innerHTML='<button type="button" id="baAdd" class="outline">＋ BLOCO</button><button type="button" id="baShuffle" class="outline">🔀 Embaralhar</button>';
   (canvas.closest('.photo-preview-shell')||canvas).after(panel);
-  const shell=canvas.closest('.photo-preview-shell');
   const colorRail=document.createElement('div');colorRail.id='beforeAfterColorRail';colorRail.hidden=true;
   colorRail.setAttribute('aria-label','Cor do fundo Antes & Depois');
   colorRail.style.cssText='position:absolute;left:-43px;top:8%;bottom:8%;width:39px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;z-index:5';
-  shell?.append(colorRail);
   backgrounds.forEach(([name,dark,,accent],i)=>{
     const button=document.createElement('button');button.type='button';button.title=name;button.setAttribute('aria-label','Fundo '+name);
     button.style.cssText='width:30px;height:30px;min-height:30px;border-radius:50%;padding:0;background:linear-gradient(145deg,'+accent+','+dark+');border:2px solid #8a7495;cursor:pointer';
@@ -138,6 +136,9 @@
   ['pointerup','pointercancel'].forEach(name=>canvas.addEventListener(name,e=>{if(dragging?.id===e.pointerId){dragging=null;window.popCenterGuides?.hide();e.stopImmediatePropagation()}},true));
   window.popBeforeAfter={...api,sync(){
     const active=layout==='beforeAfter';panel.hidden=!active;document.body.classList.toggle('before-after-active',active);
+    const shell=canvas.closest('.photo-preview-shell');
+    // The framing shell is created on DOMContentLoaded, after this script runs.
+    if(shell&&colorRail.parentElement!==shell)shell.append(colorRail);
     colorRail.hidden=!active;
     if(active&&shell)shell.style.paddingLeft='58px';
     [...colorRail.children].forEach((button,i)=>{const chosen=i===backgroundIndex();button.setAttribute('aria-pressed',String(chosen));button.style.borderColor=chosen?'#fff':'#8a7495';button.style.boxShadow=chosen?'0 0 0 2px #f246a6,0 0 12px '+backgrounds[i][3]:'0 0 6px #0008'});
