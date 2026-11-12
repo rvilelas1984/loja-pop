@@ -26,7 +26,9 @@ function draw(){
  const title=active==='all'?'Todo o histórico':active==='3m'?'Últimos 3 meses':now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
  document.getElementById('periodLabel').textContent='▦  '+title;
  const chart=document.getElementById('chartData');chart.replaceChildren();
- const chartRows=rows.length>8?rows.filter((_,i)=>i===0||i===rows.length-1||i%Math.ceil(rows.length/7)===0):rows;
+ const initial=all.find(p=>p.source==='Peso inicial');
+ const selected=rows.length>7?rows.filter((_,i)=>i===0||i===rows.length-1||i%Math.ceil(rows.length/6)===0):rows;
+ const chartRows=initial?[{...initial,isBaseline:true},...selected]:selected;
  if(chartRows.length){
   const vals=chartRows.map(p=>Number(p.weight)),min=Math.min(...vals)-1,max=Math.max(...vals)+1;
   const xs=chartRows.map((_,i)=>chartRows.length===1?460:148+i*630/(chartRows.length-1));
@@ -34,11 +36,10 @@ function draw(){
   const pts=xs.map((x,i)=>x+','+ys[i]).join(' ');
   node('polygon',{points:pts+' '+xs.at(-1)+',815 '+xs[0]+',815',fill:'url(#area)'},undefined,chart);
   node('polyline',{points:pts,fill:'none',stroke:'#19f6dc','stroke-width':7,'stroke-linecap':'round','stroke-linejoin':'round',filter:'url(#glow)'},undefined,chart);
-  chartRows.forEach((p,i)=>{const x=xs[i],y=ys[i];node('circle',{cx:x,cy:y,r:10,fill:'#fff',stroke:'#24f5df','stroke-width':5},undefined,chart);node('text',{x,y:y-23,'text-anchor':'middle','font-size':20,'font-weight':800,fill:'#fff'},fmt(p.weight)+' kg',chart);node('text',{x,y:843,'text-anchor':'middle','font-size':18,fill:'#b7c9d3'},dateBR(p.date).slice(0,5),chart)});
+  chartRows.forEach((p,i)=>{const x=xs[i],y=ys[i];node('circle',{cx:x,cy:y,r:10,fill:'#fff',stroke:'#24f5df','stroke-width':5},undefined,chart);node('text',{x,y:y-23,'text-anchor':'middle','font-size':20,'font-weight':800,fill:'#fff'},fmt(p.weight)+' kg',chart);node('text',{x,y:843,'text-anchor':'middle','font-size':18,fill:'#b7c9d3'},(p.isBaseline?'Início':dateBR(p.date).slice(0,5)),chart)});
  }else node('text',{x:430,y:700,'text-anchor':'middle','font-size':27,fill:'#fff'},'Sem pesagens neste período',chart);
- const initial=all.find(p=>p.source==='Peso inicial');
- const first=initial&&active==='all'?initial:rows[0];
- const last=rows.at(-1)||source.at(-1);
+ const first=initial||source[0];
+ const last=source.at(-1);
  document.getElementById('statInitial').textContent=first?fmt(first.weight)+' kg':'—';
  document.getElementById('statCurrent').textContent=last?fmt(last.weight)+' kg':'—';
  const delta=first&&last?Number(last.weight)-Number(first.weight):null;
