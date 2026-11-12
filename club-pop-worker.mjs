@@ -2057,7 +2057,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         }
         const unit=url.searchParams.get("unit")||"all";
         const day=url.searchParams.get("date")||new Date().toISOString().slice(0,10);
-        if(!["all","bike","gym"].includes(unit)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(day))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
+        if(!["all","bike","gym"].includes(unit)||!/^\d{4}-\d{2}-\d{2}$/.test(day))return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
         const sessions=await env.DB.prepare(`SELECT s.id,s.unit,s.class_name,s.starts_at,s.started_at,s.finished_at,s.closed_at,s.status,
           (SELECT COUNT(*) FROM pop_live_session_devices d WHERE d.session_id=s.id) AS monitored_devices,
           (SELECT COUNT(*) FROM pop_live_member_performance p WHERE p.session_id=s.id) AS recorded_students
