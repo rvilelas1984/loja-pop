@@ -67,7 +67,7 @@ function draw(){
  const filtered=source.filter(p=>active==='all'||(active==='month'?p.date?.slice(0,7)===month:p.date>=start3));
  const rows=[];for(const p of filtered){const day=String(p.date);if(rows.length&&rows.at(-1).date===day){rows[rows.length-1]=p}else rows.push(p)}
  const title=active==='all'?'Todo o histórico':active==='3m'?'Últimos 3 meses':now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
- const label=document.getElementById('periodLabel');label.textContent='▦  '+title;let size=29;label.setAttribute('font-size',size);while(size>18&&label.getComputedTextLength()>270)label.setAttribute('font-size',--size);
+ const label=document.getElementById('periodLabel');label.textContent='▦  '+title;let size=29;label.setAttribute('font-size',size);while(size>18&&label.getComputedTextLength()>245)label.setAttribute('font-size',--size);
  const chart=document.getElementById('chartData');chart.replaceChildren();
  const initial=all.find(p=>p.source==='Peso inicial');
  const selected=rows.length>7?rows.filter((_,i)=>i===0||i===rows.length-1||i%Math.ceil(rows.length/6)===0):rows;
@@ -101,5 +101,38 @@ async function load(){try{
  if(pr.ok){const photo=await pr.json();if(photo.photoUrl){photoReady=(async()=>{const response=await fetch(photo.photoUrl,{credentials:'same-origin'});if(!response.ok)throw Error('Foto indisponível');const blob=await response.blob();const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Falha ao incorporar foto'));reader.readAsDataURL(blob)});document.querySelector('#poster image.photo').setAttribute('href',dataUrl)})();await photoReady}}
  }catch(e){document.getElementById('periodLabel').textContent='Não foi possível carregar o histórico';draw()}}
 load();styleStory();
-async function png(){await photoReady;const svg=document.getElementById('poster');const clone=svg.cloneNode(true);const photo=clone.querySelector('image.photo');if(photo){photo.setAttribute('clip-path','url(#photoClip)');photo.setAttribute('style','clip-path:url(#photoClip)')}const xml=new XMLSerializer().serializeToString(clone);const blob=new Blob([xml],{type:'image/svg+xml;charset=utf-8'});const url=URL.createObjectURL(blob);try{const img=new Image();await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url});const canvas=document.createElement('canvas');canvas.width=1080;canvas.height=1920;canvas.getContext('2d').drawImage(img,0,0,1080,1920);return await new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error('Falha ao exportar')),'image/png'))}finally{URL.revokeObjectURL(url)}}function download(blob){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='popfit-evolucao.png';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}document.getElementById('save').onclick=async()=>{try{download(await png())}catch(e){alert('Não foi possível salvar neste navegador: '+e.message)}};document.getElementById('share').onclick=async()=>{try{let blob=await png();let file=new File([blob],'popfit-evolucao.png',{type:'image/png'});if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:'Minha evolução · Pop Fit'});else download(blob)}catch(e){if(e.name!=='AbortError')alert('Compartilhamento indisponível: '+e.message)}};
+async function png(){
+ await photoReady;
+ const svg=document.getElementById('poster');
+ // Preserve the exact typography and styles used by the on-screen SVG.
+ // A serialized SVG does not inherit the page's stylesheet.
+ const clone=svg.cloneNode(true);
+ const originalNodes=[svg,...svg.querySelectorAll('*')];
+ const cloneNodes=[clone,...clone.querySelectorAll('*')];
+ originalNodes.forEach((el,i)=>{
+  const target=cloneNodes[i];if(!target)return;
+  const style=getComputedStyle(el);
+  if(el instanceof SVGTextElement || el instanceof SVGTSpanElement){
+   for(const prop of ['font-family','font-size','font-weight','font-style','letter-spacing','word-spacing','text-anchor','dominant-baseline','fill','stroke']){
+    const value=style.getPropertyValue(prop);
+    if(value)target.style.setProperty(prop,value);
+   }
+  }
+ });
+ const portrait=clone.querySelector('image.photo');
+ if(portrait){portrait.setAttribute('clip-path','url(#photoClip)');portrait.setAttribute('style','clip-path:url(#photoClip)')}
+ clone.setAttribute('width','864');clone.setAttribute('height','1536');
+ const xml=new XMLSerializer().serializeToString(clone);
+ const blob=new Blob([xml],{type:'image/svg+xml;charset=utf-8'});
+ const url=URL.createObjectURL(blob);
+ try{
+  const img=new Image();
+  await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('Falha ao renderizar a prévia'));img.src=url});
+  const canvas=document.createElement('canvas');canvas.width=1080;canvas.height=1920;
+  const context=canvas.getContext('2d');if(!context)throw Error('Canvas indisponível');
+  context.drawImage(img,0,0,1080,1920);
+  return await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Falha ao exportar')),'image/png'));
+ }finally{URL.revokeObjectURL(url)}
+}
+function download(blob){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='popfit-evolucao.png';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}document.getElementById('save').onclick=async()=>{try{download(await png())}catch(e){alert('Não foi possível salvar neste navegador: '+e.message)}};document.getElementById('share').onclick=async()=>{try{let blob=await png();let file=new File([blob],'popfit-evolucao.png',{type:'image/png'});if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:'Minha evolução · Pop Fit'});else download(blob)}catch(e){if(e.name!=='AbortError')alert('Compartilhamento indisponível: '+e.message)}};
 </script></body></html>
