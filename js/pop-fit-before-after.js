@@ -29,19 +29,59 @@
   const api = {frames, contain, hit};
   if (typeof module !== 'undefined' && module.exports) { module.exports=api; return; }
   const colors=[['#fffffff2','#231a2c'],['#ad5ae4','#fff'],['#ed5ca4','#fff'],['#24202bf2','#fff']];
+  const backgrounds=[['Roxo Neon','#140b2c','#310d45','#b65cff'],['Rosa Pop','#300c2c','#74184d','#ff4aa9'],['Azul Elétrico','#071a45','#153e9b','#54b6ff'],['Vermelho','#330d22','#821b43','#ff5c82'],['Verde','#082b2b','#126a62','#4df0c4'],['Preto','#0b0b15','#252333','#a49bff']];
+  let background=null;
   let arrangement=0, selected=-1, dragging=null, draft=null, returnFocus=null;
   const blocks=[makeBlock('Antes',280,1325),makeBlock('Depois',800,1325)];
   function makeBlock(stage,x=540,y=960) {return {stage,weight:'',date:'',color:0,scale:1,angle:0,x,y};}
   const panel=document.createElement('div');panel.id='beforeAfterTools';panel.hidden=true;
   panel.innerHTML='<button type="button" id="baAdd" class="outline">＋ BLOCO</button><button type="button" id="baShuffle" class="outline">🔀 Embaralhar</button>';
   (canvas.closest('.photo-preview-shell')||canvas).after(panel);
+  const shell=canvas.closest('.photo-preview-shell');
+  const colorRail=document.createElement('div');colorRail.id='beforeAfterColorRail';colorRail.hidden=true;
+  colorRail.setAttribute('aria-label','Cor do fundo Antes & Depois');
+  colorRail.style.cssText='position:absolute;left:-43px;top:8%;bottom:8%;width:39px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;z-index:5';
+  shell?.append(colorRail);
+  backgrounds.forEach(([name,dark,,accent],i)=>{
+    const button=document.createElement('button');button.type='button';button.title=name;button.setAttribute('aria-label','Fundo '+name);
+    button.style.cssText='width:30px;height:30px;min-height:30px;border-radius:50%;padding:0;background:linear-gradient(145deg,'+accent+','+dark+');border:2px solid #8a7495;cursor:pointer';
+    button.onclick=()=>{background=i;draw()};colorRail.append(button);
+  });
+  function backgroundIndex(){return background??(document.getElementById('unit').value==='gym'?1:0);}
+  function paintBackground(){
+    const [,dark,light,accent]=backgrounds[backgroundIndex()];
+    fill(0,0,W,H,gradient(dark,light));
+    ctx.save();ctx.strokeStyle=accent;ctx.lineCap='round';
+    // Flowing ribbons stay behind the photographs, with stronger accents at the edges.
+    ctx.globalAlpha=.16;ctx.lineWidth=90;
+    ctx.beginPath();ctx.moveTo(-100,360);ctx.bezierCurveTo(380,-80,760,480,1180,100);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-100,1710);ctx.bezierCurveTo(260,1340,820,1930,1180,1480);ctx.stroke();
+    ctx.globalAlpha=.5;ctx.lineWidth=3;ctx.shadowColor=accent;ctx.shadowBlur=18;
+    for(let i=0;i<3;i++){
+      ctx.beginPath();ctx.moveTo(-100,210+i*35);ctx.bezierCurveTo(300,-80+i*35,760,420+i*35,1180,60+i*35);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(-100,1700+i*30);ctx.bezierCurveTo(300,1450+i*30,780,1950+i*30,1180,1610+i*30);ctx.stroke();
+    }
+    ctx.shadowBlur=0;ctx.globalAlpha=.4;ctx.fillStyle=accent;
+    for(let row=0;row<3;row++)for(let col=0;col<9;col++){
+      ctx.beginPath();ctx.arc(68+col*29,90+row*29,4,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(780+col*29,1740+row*29,4,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=.9;ctx.lineWidth=9;ctx.shadowBlur=14;
+    [[52,1110],[994,600]].forEach(([x,y])=>{
+      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+22,y+30);ctx.moveTo(x,y+48);ctx.lineTo(x+22,y+78);ctx.stroke();
+    });
+    [[955,160,20],[112,1615,16]].forEach(([x,y,r])=>{
+      ctx.beginPath();ctx.moveTo(x,y-r);ctx.quadraticCurveTo(x+3,y-3,x+r,y);ctx.quadraticCurveTo(x+3,y+3,x,y+r);ctx.quadraticCurveTo(x-3,y+3,x-r,y);ctx.quadraticCurveTo(x-3,y-3,x,y-r);ctx.fill();
+    });
+    ctx.restore();
+  }
   const controls=document.createElement('div');controls.id='beforeAfterControls';controls.hidden=true;
   controls.innerHTML='<button type="button" data-action="edit">Editar</button><button type="button" data-action="smaller" aria-label="Diminuir bloco">−</button><button type="button" data-action="rotate" aria-label="Girar bloco">↻</button><button type="button" data-action="bigger" aria-label="Aumentar bloco">＋</button><button type="button" data-action="horizontal" aria-label="Centralizar horizontalmente">↔</button><button type="button" data-action="vertical" aria-label="Centralizar verticalmente">↕</button><button type="button" data-action="duplicate">Duplicar</button><button type="button" data-action="delete">Excluir</button><button type="button" data-action="done">OK</button>';
   document.body.append(controls);
   const modal=document.createElement('dialog');modal.id='beforeAfterModal';modal.setAttribute('aria-labelledby','baModalTitle');
   modal.innerHTML='<h3 id="baModalTitle">Editar bloco</h3><label>Etapa<input id="baStage" type="text" list="baStages" maxlength="32"><datalist id="baStages"><option value="Antes"><option value="Durante"><option value="Depois"></datalist></label><div class="two"><label>Peso (kg)<input id="baWeight" type="number" min="1" max="500" step="0.1" placeholder="Opcional"></label><label>Data opcional<input id="baDate" type="date"></label></div><label>Cor do bloco</label><div class="row" id="baColors"></div><div class="row"><button type="button" id="baCancel" class="outline">Cancelar</button><button type="button" id="baSave">Aplicar</button></div>';
   document.body.append(modal);
-  const style=document.createElement('style');style.textContent='#beforeAfterTools[hidden],#beforeAfterControls[hidden]{display:none!important}#beforeAfterTools{display:flex;justify-content:center;gap:8px;width:100%;margin:6px 0;background:none;border:0;padding:0}#beforeAfterTools button{padding:7px 12px;font-size:12px;background:transparent;border:1px solid #775a87;color:#e6cbe8;border-radius:10px}#beforeAfterControls{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:9998;display:flex;flex-wrap:wrap;justify-content:center;gap:5px;width:max-content;max-width:calc(100vw - 24px);padding:8px;background:#251a32;border:1px solid #9c5a96;border-radius:14px;box-shadow:0 8px 25px #0009}#beforeAfterControls button{padding:8px;font-size:12px}#beforeAfterModal{width:min(420px,calc(100vw - 24px));max-height:80dvh;overflow:auto;padding:20px;background:#251a32;color:#fff;border:1px solid #9c5a96;border-radius:18px}#beforeAfterModal::backdrop{background:#0009}#beforeAfterModal h3{margin:0 0 14px}#beforeAfterModal label{margin:8px 0}#beforeAfterModal input{box-sizing:border-box;padding:10px;width:100%;min-width:0;background:#15101e;color:white;border:1px solid #775a87;border-radius:8px}#baColors{margin:10px 0 18px}#baColors [aria-pressed="true"]{outline:2px solid #fff;outline-offset:2px}body.before-after-active #photoZoomSide,body.before-after-active #photoFraming{display:none!important}';document.head.append(style);
+  const style=document.createElement('style');style.textContent='#beforeAfterColorRail[hidden],#beforeAfterTools[hidden],#beforeAfterControls[hidden]{display:none!important}#beforeAfterTools{display:flex;justify-content:center;gap:8px;width:100%;margin:6px 0;background:none;border:0;padding:0}#beforeAfterTools button{padding:7px 12px;font-size:12px;background:transparent;border:1px solid #775a87;color:#e6cbe8;border-radius:10px}#beforeAfterControls{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:9998;display:flex;flex-wrap:wrap;justify-content:center;gap:5px;width:max-content;max-width:calc(100vw - 24px);padding:8px;background:#251a32;border:1px solid #9c5a96;border-radius:14px;box-shadow:0 8px 25px #0009}#beforeAfterControls button{padding:8px;font-size:12px}#beforeAfterModal{width:min(420px,calc(100vw - 24px));max-height:80dvh;overflow:auto;padding:20px;background:#251a32;color:#fff;border:1px solid #9c5a96;border-radius:18px}#beforeAfterModal::backdrop{background:#0009}#beforeAfterModal h3{margin:0 0 14px}#beforeAfterModal label{margin:8px 0}#beforeAfterModal input{box-sizing:border-box;padding:10px;width:100%;min-width:0;background:#15101e;color:white;border:1px solid #775a87;border-radius:8px}#baColors{margin:10px 0 18px}#baColors [aria-pressed="true"]{outline:2px solid #fff;outline-offset:2px}body.before-after-active #photoZoomSide,body.before-after-active #photoFraming{display:none!important}';document.head.append(style);
   const el=id=>document.getElementById(id);
   ['popTextOpen','stickersOpen'].forEach(id=>el(id)?.addEventListener('click',()=>{selected=-1;dragging=null;syncControls()}));
   function syncControls() {
@@ -98,10 +138,13 @@
   ['pointerup','pointercancel'].forEach(name=>canvas.addEventListener(name,e=>{if(dragging?.id===e.pointerId){dragging=null;window.popCenterGuides?.hide();e.stopImmediatePropagation()}},true));
   window.popBeforeAfter={...api,sync(){
     const active=layout==='beforeAfter';panel.hidden=!active;document.body.classList.toggle('before-after-active',active);
+    colorRail.hidden=!active;
+    if(active&&shell)shell.style.paddingLeft='58px';
+    [...colorRail.children].forEach((button,i)=>{const chosen=i===backgroundIndex();button.setAttribute('aria-pressed',String(chosen));button.style.borderColor=chosen?'#fff':'#8a7495';button.style.boxShadow=chosen?'0 0 0 2px #f246a6,0 0 12px '+backgrounds[i][3]:'0 0 6px #0008'});
     el('baShuffle').hidden=modelIndex!==3;if(!active){selected=-1;dragging=null;if(modal.open)closeEditor();}syncControls();
   },paint(){
     photoRects.length=0;ctx.clearRect(0,0,W,H);
-    fill(0,0,W,H,gradient(el('unit').value==='gym'?'#74184d':'#310d45','#140b2c'));
+    paintBackground();
     frames(modelIndex,arrangement).forEach((frame,i)=>{
       fill(frame.x,frame.y,frame.w,frame.h,'#ffffff16',12);
       const image=photos[i];

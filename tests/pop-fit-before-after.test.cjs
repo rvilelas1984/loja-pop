@@ -50,9 +50,12 @@ test('editor actions, dragging, overlay rendering and category isolation',()=>{
   }
   function get(id){if(!elements.has(id)){const e=new Element();e.id=id;}return elements.get(id)}
   const calls=[],canvas=get('story');get('popTextModal').hidden=true;get('showBrand').checked=true;
-  const context={document:{createElement:()=>new Element(),getElementById:get,body:Object.assign(new Element(),{classList:{toggle(){}}}),head:new Element()},window:{popTextPaint:()=>calls.push('text'),popStickerPaint:()=>calls.push('sticker')},canvas,W:1080,H:1920,layout:'beforeAfter',modelIndex:0,catalog:{beforeAfter:[['2']]},photos:[{width:900,height:1600}],photoRects:[{}],fill(){},gradient(){},txt:(...a)=>calls.push(a),ctx:new Proxy({},{get:(_,name)=>(...args)=>{if(name==='drawImage')calls.push(args)}}),draw:()=>{context.window.popBeforeAfter.sync();context.window.popBeforeAfter.paint()}};
+  const context={document:{createElement:()=>new Element(),getElementById:get,body:Object.assign(new Element(),{classList:{toggle(){}}}),head:new Element()},window:{popTextPaint:()=>calls.push('text'),popStickerPaint:()=>calls.push('sticker')},canvas,W:1080,H:1920,layout:'beforeAfter',modelIndex:0,catalog:{beforeAfter:[['2']]},photos:[{width:900,height:1600}],photoRects:[{}],fill(){},gradient:(...a)=>{calls.push(['gradient',...a])},txt:(...a)=>calls.push(a),ctx:new Proxy({},{get:(_,name)=>(...args)=>{if(name==='drawImage')calls.push(args)}}),draw:()=>{context.window.popBeforeAfter.sync();context.window.popBeforeAfter.paint()}};
   vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(root,'js/pop-fit-before-after.js'),'utf8'),context);
   context.draw();assert.equal(get('beforeAfterTools').hidden,false);assert.equal(context.photoRects.length,0);assert.ok(calls.includes('text')&&calls.includes('sticker'));
+  const rail=get('beforeAfterColorRail');assert.equal(rail.children.length,6);assert.equal(rail.hidden,false);
+  rail.children[2].onclick();assert.ok(calls.some(a=>Array.isArray(a)&&a[0]==='gradient'&&a[1]==='#071a45'));
+  context.modelIndex=0;context.draw();assert.equal(calls.filter(a=>Array.isArray(a)&&a[0]==='gradient').at(-1)[1],'#071a45');
   assert.equal(canvas.afterElement,get('beforeAfterTools'));
   assert.ok(!get('beforeAfterTools').html.includes('data-add'));
   get('baAdd').onclick();assert.ok(get('beforeAfterModal').open);assert.ok(get('beforeAfterControls').hidden);
@@ -70,5 +73,6 @@ test('editor actions, dragging, overlay rendering and category isolation',()=>{
   canvas.listeners.pointerdown[0]({...e,clientX:100,clientY:600});
   elements.get('action:edit').onclick();assert.equal(get('baStage').value,'Antes');get('baCancel').onclick();
   get('baAdd').onclick();get('beforeAfterModal').listeners.cancel[0]({preventDefault(){}});assert.ok(!get('beforeAfterModal').open);
-  context.layout='magazine';context.window.popBeforeAfter.sync();assert.ok(get('beforeAfterTools').hidden&&get('beforeAfterControls').hidden);
+  context.layout='magazine';context.window.popBeforeAfter.sync();assert.ok(get('beforeAfterTools').hidden&&get('beforeAfterControls').hidden);assert.ok(rail.hidden);
+  context.layout='beforeAfter';context.draw();assert.equal(rail.hidden,false);assert.equal(calls.filter(a=>Array.isArray(a)&&a[0]==='gradient').at(-1)[1],'#071a45');
 });
