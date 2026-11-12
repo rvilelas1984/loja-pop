@@ -4594,13 +4594,19 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             const rank=await env.DB.prepare("SELECT 1+COUNT(*) position FROM pop_live_member_performance WHERE session_id=? AND calories_estimated IS NOT NULL AND calories_estimated>=0 AND calories_estimated>?").bind(sessionId,q.calories_estimated??-1).first();
             return json({ok:true,source:"d1",evoRequestsMade:0,performance:{...q,manual_calories:overlay?.calories??null,extra_metrics:overlay?.extra_metrics||"{}",class_calories:totals?.class_calories??null,monitored_members:totals?.monitored_members??0,calorie_rank:q.calories_estimated==null?null:rank?.position??null}});
           }
+          if(action==="weight-manual-list"){
+            await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_weight_manual_controls (weight_id INTEGER PRIMARY KEY,member_id INTEGER NOT NULL,measured_on TEXT NOT NULL,deleted_at TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+            const rows=await env.DB.prepare("SELECT w.id,w.weight_kg,COALESCE(c.measured_on,substr(w.recorded_at,1,10)) measured_on,w.recorded_at FROM pop_fit_weight_history w LEFT JOIN pop_fit_weight_manual_controls c ON c.weight_id=w.id AND c.member_id=w.member_id WHERE w.member_id=? AND w.source='pop_fit' AND c.deleted_at IS NULL ORDER BY measured_on DESC,w.id DESC LIMIT 500").bind(base.id).all();
+            return json({ok:true,rows:rows.results||[]});
+          }
           if(action==="weight-history"){
             // The authenticated member_id is global across Bike Pop and Gym Pop.
             const profile=await env.DB.prepare("SELECT initial_weight,updated_at FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();
-            const live=await env.DB.prepare("SELECT w.id,w.weight_kg,w.recorded_at,w.source,s.unit FROM pop_fit_weight_history w LEFT JOIN pop_live_sessions s ON s.id=w.session_id WHERE w.member_id=? AND w.weight_kg BETWEEN 20 AND 350 ORDER BY w.recorded_at ASC,w.id ASC LIMIT 1000").bind(base.id).all();
+            await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_weight_manual_controls (weight_id INTEGER PRIMARY KEY,member_id INTEGER NOT NULL,measured_on TEXT NOT NULL,deleted_at TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+            const live=await env.DB.prepare("SELECT w.id,w.weight_kg,w.recorded_at,w.source,s.unit,c.measured_on FROM pop_fit_weight_history w LEFT JOIN pop_live_sessions s ON s.id=w.session_id LEFT JOIN pop_fit_weight_manual_controls c ON c.weight_id=w.id AND c.member_id=w.member_id WHERE w.member_id=? AND w.weight_kg BETWEEN 20 AND 350 AND (w.source<>'pop_fit' OR c.deleted_at IS NULL) ORDER BY w.recorded_at ASC,w.id ASC LIMIT 1000").bind(base.id).all();
             const entries=await env.DB.prepare("SELECT unit,attendance_key,weight,updated_at FROM pop_fit_entries WHERE member_id=? AND weight BETWEEN 20 AND 350 ORDER BY updated_at ASC LIMIT 500").bind(base.id).all();
             const manualRows=await env.DB.prepare("SELECT weight,created_at FROM pop_fit_weight_manual WHERE member_id=? ORDER BY created_at ASC LIMIT 500").bind(base.id).all().catch(()=>({results:[]}));
-            const points=(live.results||[]).map(x=>({weight:Number(x.weight_kg),date:String(x.recorded_at).slice(0,10),source:x.source==="pop_fit"?"Atualizado manualmente":"Pop Live",unit:x.unit||null,recordedAt:x.recorded_at,id:x.id}));
+            const points=(live.results||[]).map(x=>({weight:Number(x.weight_kg),date:String(x.measured_on||x.recorded_at).slice(0,10),source:x.source==="pop_fit"?"Atualizado manualmente":"Pop Live",unit:x.unit||null,recordedAt:x.recorded_at,id:x.id}));
             // Legacy Pop Fit edits are kept for backwards compatibility; deduplicate matching readings.
             for(const x of entries.results||[]){
               const day=String(x.attendance_key||"").match(/20\\d{2}-\\d{2}-\\d{2}/)?.[0]||String(x.updated_at).slice(0,10);
@@ -4611,7 +4617,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
               if(!points.some(p=>p.date===day&&p.source==="Atualizado manualmente"&&p.weight===Number(x.weight)))points.push({weight:Number(x.weight),date:day,source:"Atualizado manualmente",unit:null,recordedAt:x.created_at});
             }
             if(profile?.initial_weight>0)points.push({weight:Number(profile.initial_weight),date:String(profile.updated_at||"").slice(0,10),source:"Peso inicial",unit:null,recordedAt:profile.updated_at});
-            points.sort((a,b)=>String(a.recordedAt||a.date).localeCompare(String(b.recordedAt||b.date)));
+            points.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.recordedAt||"").localeCompare(String(b.recordedAt||"")));
             return json({ok:true,source:"d1",points});
           }
           if(action==="profile"){const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
@@ -4689,12 +4695,30 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         }
         if(request.method==="POST"){
           const b=await readJson(request);
-          if(b.action==="weight-manual"){
+          if(["weight-manual","weight-manual-edit","weight-manual-delete"].includes(b.action)){
+            await env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_fit_weight_manual_controls (weight_id INTEGER PRIMARY KEY,member_id INTEGER NOT NULL,measured_on TEXT NOT NULL,deleted_at TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+            const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+            const measured=String(b.measuredOn||today);
+            if(b.action!=="weight-manual-delete"&&(!/^\\d{4}-\\d{2}-\\d{2}$/.test(measured)||!Number.isFinite(Date.parse(measured+"T12:00:00Z"))||new Date(measured+"T12:00:00Z").toISOString().slice(0,10)!==measured||measured>today))return json({ok:false,error:"DATA_INVALIDA"},400);
             const weight=Number(String(b.weight??"").replace(",","."));
-            if(!Number.isFinite(weight)||weight<20||weight>350)return json({ok:false,error:"PESO_INVALIDO"},400);
-            const key="pop-fit-manual:"+base.id+":"+crypto.randomUUID();
-            await env.DB.prepare("INSERT INTO pop_fit_weight_history(member_id,weight_kg,source,idempotency_key) VALUES(?,?,'pop_fit',?)").bind(base.id,weight,key).run();
-            return json({ok:true,saved:true,source:"d1"});
+            if(b.action!=="weight-manual-delete"&&(!Number.isFinite(weight)||weight<20||weight>350))return json({ok:false,error:"PESO_INVALIDO"},400);
+            if(b.action==="weight-manual"){
+              const key="pop-fit-manual:"+base.id+":"+crypto.randomUUID();
+              const inserted=await env.DB.prepare("INSERT INTO pop_fit_weight_history(member_id,weight_kg,source,idempotency_key) VALUES(?,?,'pop_fit',?)").bind(base.id,weight,key).run();
+              await env.DB.prepare("INSERT INTO pop_fit_weight_manual_controls(weight_id,member_id,measured_on) VALUES(?,?,?)").bind(inserted.meta.last_row_id,base.id,measured).run();
+              return json({ok:true,saved:true,id:inserted.meta.last_row_id});
+            }
+            const id=Number(b.id);
+            if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"REGISTRO_INVALIDO"},400);
+            const owned=await env.DB.prepare("SELECT w.id FROM pop_fit_weight_history w LEFT JOIN pop_fit_weight_manual_controls c ON c.weight_id=w.id AND c.member_id=w.member_id WHERE w.id=? AND w.member_id=? AND w.source='pop_fit' AND c.deleted_at IS NULL").bind(id,base.id).first();
+            if(!owned)return json({ok:false,error:"PESAGEM_MANUAL_NAO_ENCONTRADA"},404);
+            if(b.action==="weight-manual-delete"){
+              await env.DB.prepare("INSERT INTO pop_fit_weight_manual_controls(weight_id,member_id,measured_on,deleted_at) VALUES(?,?,substr((SELECT recorded_at FROM pop_fit_weight_history WHERE id=?),1,10),CURRENT_TIMESTAMP) ON CONFLICT(weight_id) DO UPDATE SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP").bind(id,base.id,id).run();
+              return json({ok:true,deleted:true});
+            }
+            await env.DB.prepare("UPDATE pop_fit_weight_history SET weight_kg=? WHERE id=? AND member_id=? AND source='pop_fit'").bind(weight,id,base.id).run();
+            await env.DB.prepare("INSERT INTO pop_fit_weight_manual_controls(weight_id,member_id,measured_on) VALUES(?,?,?) ON CONFLICT(weight_id) DO UPDATE SET measured_on=excluded.measured_on,updated_at=CURRENT_TIMESTAMP").bind(id,base.id,measured).run();
+            return json({ok:true,updated:true});
           }
           
           if(b.action==="share-click"){
