@@ -113,14 +113,16 @@ function fitPodiumName(el,fullName){
 function refreshPodiumNames(){
  for(const id of ['gold','silver','bronze'])if(podiumFullNames[id])fitPodiumName(document.getElementById(id+'Name'),podiumFullNames[id]);
 }
+function rankingPhoto(p){return /^\/api\/profile-photo\/image\/[0-9a-f-]{36}$/i.test(String(p?.photoUrl||''))?p.photoUrl:initialsAvatar(p?.name)}
+function rankingPhotoFallback(img,name){img.onerror=null;img.src=initialsAvatar(name)}
 function renderRealStudents(students){
  const ranked=[...students].sort((a,b)=>(Number(b.calories_estimated)||0)-(Number(a.calories_estimated)||0));
  const ids=[['gold',0],['silver',1],['bronze',2]];
- for(const [id,index] of ids){const p=ranked[index];podiumFullNames[id]=p?.name||'—';fitPodiumName(document.getElementById(id+'Name'),podiumFullNames[id]);document.getElementById(id+'Kcal').textContent=fmtNumber(p?.calories_estimated);const img=document.querySelector('.pod-col.'+({gold:'first',silver:'second',bronze:'third'}[id])+' .avatar');if(img)img.src=initialsAvatar(p?.name)}
+ for(const [id,index] of ids){const p=ranked[index];podiumFullNames[id]=p?.name||'—';fitPodiumName(document.getElementById(id+'Name'),podiumFullNames[id]);document.getElementById(id+'Kcal').textContent=fmtNumber(p?.calories_estimated);const img=document.querySelector('.pod-col.'+({gold:'first',silver:'second',bronze:'third'}[id])+' .avatar');if(img){img.onerror=()=>rankingPhotoFallback(img,p?.name);img.src=rankingPhoto(p)}}
  const rows=ranked.slice(3);
  const metric=p=>unit==='bike'?(p.distance_km==null?'—':fmtNumber(p.distance_km)+' km'):(p.hr_max==null||!Number.isFinite(Number(p.hr_max))?'—':Math.round(Number(p.hr_max))+' bpm');
  const visible=rows.slice(0,7);
- document.getElementById('rankRows').innerHTML=visible.map((p,i)=>'<div class="rank-row"><div class="position">'+(i+4)+'º</div><div class="student"><img class="tiny-avatar" src="'+initialsAvatar(p.name)+'"><span>'+safeText(p.name||'Aluno')+'</span></div><div class="pill">'+fmtNumber(p.calories_estimated)+' <small style="font-size:14px">kcal</small></div><div class="metric">'+metric(p)+'</div><div class="metric">'+fmtDuration(p.duration_seconds)+'</div></div>').join('');
+ document.getElementById('rankRows').innerHTML=visible.map((p,i)=>'<div class="rank-row"><div class="position">'+(i+4)+'º</div><div class="student"><img class="tiny-avatar" data-member="'+safeText(p.member_id)+'" src="'+rankingPhoto(p)+'"><span>'+safeText(p.name||'Aluno')+'</span></div><div class="pill">'+fmtNumber(p.calories_estimated)+' <small style="font-size:14px">kcal</small></div><div class="metric">'+metric(p)+'</div><div class="metric">'+fmtDuration(p.duration_seconds)+'</div></div>').join('');
  const total=ranked.reduce((a,p)=>a+(Number(p.calories_estimated)||0),0);
  document.getElementById('totalKcal').innerHTML=fmtNumber(total)+' <small style="font-size:18px">kcal</small>';
  document.getElementById('totalStudents').textContent=ranked.length;

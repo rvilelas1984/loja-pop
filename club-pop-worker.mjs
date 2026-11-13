@@ -2106,7 +2106,18 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
             }
           }catch(e){console.warn("pop-live-monitoring access unavailable",String(e));}
           const accessMap=new Map(accessRows.map(a=>[String(a.member_id),a]));
-          const enriched=(students.results||[]).map(p=>({...p,last_club_access:accessMap.get(String(p.member_id))?.last_club_access??null,last_popfit_access:accessMap.get(String(p.member_id))?.last_popfit_access??null,performance_status:p.calories_estimated==null?"Sem medição":Number(p.calories_estimated)>0?"Gravado":"Sem calorias"}));
+          // Resolve existing Club Pop profile photos in one bounded query for this session.
+          // Performance member_id is the canonical members.id; never guess by display name.
+          const photoMap=new Map();
+          try{
+            const ids=[...new Set((students.results||[]).map(p=>Number(p.member_id)).filter(n=>Number.isSafeInteger(n)&&n>0&&n<800000000000))];
+            if(ids.length){
+              const placeholders=ids.map(()=>'?').join(',');
+              const photos=await env.DB.prepare('SELECT member_id,photo_token FROM club_profile_photos WHERE member_id IN ('+placeholders+')').bind(...ids).all();
+              for(const row of photos.results||[])if(/^[0-9a-f-]{36}$/i.test(String(row.photo_token||'')))photoMap.set(String(row.member_id),'/api/profile-photo/image/'+row.photo_token);
+            }
+          }catch(photoError){console.warn('pop-live-ranking-photo-unavailable',String(photoError))}
+          const enriched=(students.results||[]).map(p=>({...p,photoUrl:photoMap.get(String(p.member_id))||null,last_club_access:accessMap.get(String(p.member_id))?.last_club_access??null,last_popfit_access:accessMap.get(String(p.member_id))?.last_popfit_access??null,performance_status:p.calories_estimated==null?"Sem medição":Number(p.calories_estimated)>0?"Gravado":"Sem calorias"}));
           return json({ok:true,session,students:enriched,recovered});
         }
         const unit=url.searchParams.get("unit")||"all";
