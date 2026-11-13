@@ -27,7 +27,21 @@ body{background:#e9eff3;color:#fff}.poster{color:#fff}.ranking-editor{max-width:
 .poster .pod-col .pod-cal small{font-size:18px!important;margin-left:0!important}
 .poster .rank-table{position:relative;z-index:3}
 .poster .note{display:none!important}
-</style><style id="ranking-name-fit">.poster .pod-col .pod-name{white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important;max-width:100%;font-size:29px}</style></head><body><div class="ranking-editor">
+</style><style id="ranking-name-fit">.poster .pod-col .pod-name{white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important;max-width:100%;font-size:29px}</style><style id="ranking-name-responsive-v8">
+.poster[data-model="3"] .pod-col:not(.first) .pod-name,
+.poster[data-model="4"] .pod-col .pod-name{
+ white-space:normal!important;overflow:hidden!important;text-overflow:clip!important;
+ display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;
+ width:100%!important;height:90px!important;min-width:0!important;padding:2px 4px!important;
+ font-size:23px!important;line-height:1.05!important;overflow-wrap:normal!important
+}
+.poster[data-model="3"] .pod-col:not(.first) .pod-name .name-line,
+.poster[data-model="4"] .pod-col .pod-name .name-line{
+ display:block!important;max-width:100%!important;white-space:nowrap!important;
+ overflow:hidden!important;text-overflow:ellipsis!important;text-align:center!important
+}
+.poster[data-model="3"] .pod-col:not(.first) .pod-name{font-size:21px!important}
+</style></head><body><div class="ranking-editor">
   <div class="editor-topline"><div><strong>Ranking da Aula</strong><small>Prévia do layout · indicadores demonstrativos</small></div><div class="unit-switch"><button id="bikeBtn" class="active" onclick="changeUnit('bike')">Bike Pop</button><button id="gymBtn" onclick="changeUnit('gym')">Gym Pop</button></div></div>
   <div class="editor-fields">
     <label>Modelo de texto<select id="modelPicker" onchange="setModel(Number(this.value))"><option value="1">Modelo 1 — Pódio clássico</option><option value="2">Modelo 2 — Cards lado a lado</option><option value="3">Modelo 3 — Campeão em destaque</option><option value="4">Modelo 4 — Ranking completo</option></select></label>
@@ -59,7 +73,7 @@ const portraits=['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMcAAADICAIAAADT
  }catch(e){console.error('Falha PNG',e);if(status)status.textContent='Não foi possível gerar o PNG: '+e.message;else alert(e.message)}
  finally{button.disabled=false;button.textContent=original}
 }
-let selectedModel=1,selectedColor='purple';function setModel(m){selectedModel=m;document.getElementById('poster').dataset.model=String(m);document.getElementById('modelPicker').value=String(m);document.getElementById('backgroundWord').textContent=m===2?'NOSSO TIME BRILHOU':m===3?'SUPERAÇÃO':m===4?'MISSÃO CUMPRIDA':'TREINO CONCLUÍDO'}function setColor(c){selectedColor=c;document.getElementById('poster').dataset.color=c;document.querySelectorAll('[data-color-button]').forEach(b=>b.classList.toggle('selected',b.dataset.colorButton===c));document.getElementById('colorPicker').value=c}
+let selectedModel=1,selectedColor='purple';function setModel(m){selectedModel=m;document.getElementById('poster').dataset.model=String(m);document.getElementById('modelPicker').value=String(m);document.getElementById('backgroundWord').textContent=m===2?'NOSSO TIME BRILHOU':m===3?'SUPERAÇÃO':m===4?'MISSÃO CUMPRIDA':'TREINO CONCLUÍDO';requestAnimationFrame(refreshPodiumNames)}function setColor(c){selectedColor=c;document.getElementById('poster').dataset.color=c;document.querySelectorAll('[data-color-button]').forEach(b=>b.classList.toggle('selected',b.dataset.colorButton===c));document.getElementById('colorPicker').value=c}
 
 const activeSessionId=Number(new URLSearchParams(location.search).get('session'));
 const fmtNumber=(v,d=1)=>v==null||v===''||!Number.isFinite(Number(v))?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -67,32 +81,42 @@ const fmtDuration=sec=>sec!=null&&Number.isFinite(Number(sec))?Math.round(Number
 const safeText=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sessionDate=v=>{const d=String(v||'').slice(0,10).split('-');if(d.length!==3)return 'DATA NÃO INFORMADA';const date=new Date(Number(d[0]),Number(d[1])-1,Number(d[2]));return Number(d[2])+' '+['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'][Number(d[1])-1]+' ('+['DOM','SEG','TER','QUA','QUI','SEX','SÁB'][date.getDay()]+')'};
 function initialsAvatar(name){const initials=String(name||'Aluno').trim().split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();const svg='<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><rect width="180" height="180" fill="#241032"/><circle cx="90" cy="90" r="83" fill="#53266d"/><text x="90" y="109" font-size="58" font-family="Arial" fill="white" font-weight="bold" text-anchor="middle">'+initials.replace(/[^A-ZÀ-Ú]/g,'')+'</text></svg>';return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg)}
+const podiumFullNames={gold:'',silver:'',bronze:''};
 function fitPodiumName(el,fullName){
  const full=String(fullName||'—').trim().replace(/\s+/g,' ');
  el.title=full;
+ const model=Number(document.getElementById('poster').dataset.model||1);
+ const compact=(model===3&&!el.closest('.pod-col').classList.contains('first'))||model===4;
  const parts=full.split(' ').filter(Boolean);
  const ctx=document.createElement('canvas').getContext('2d');
- const width=Math.max(90,el.clientWidth-16);
  const family=getComputedStyle(el).fontFamily||'Arial';
+ const width=compact?Math.max(65,el.clientWidth-8):Math.max(90,el.clientWidth-16);
  const fits=(value,size)=>{ctx.font='italic 1000 '+size+'px '+family;return ctx.measureText(value).width<=width};
- let name=full,size=29;
- for(const candidateSize of [29,27,25,23]){
-  if(fits(name,candidateSize)){size=candidateSize;break}
-  size=23;
+ if(compact){
+  const first=parts[0]||'—',last=parts.slice(1).join(' ');
+  const size=model===3?21:23;
+  const shorten=(word)=>{if(fits(word,size))return word;for(let n=word.length-1;n>=2;n--){const candidate=word.slice(0,n)+'.';if(fits(candidate,size))return candidate}return word.slice(0,1)+'.'};
+  el.replaceChildren();
+  for(const word of [first,last].filter(Boolean)){const line=document.createElement('span');line.className='name-line';line.textContent=shorten(word);el.appendChild(line)}
+  el.style.removeProperty('font-size');
+  return;
  }
+ let name=full,size=29;
+ for(const candidateSize of [29,27,25,23]){size=candidateSize;if(fits(name,candidateSize))break}
  if(!fits(name,size)&&parts.length>1){
   const first=parts[0],last=parts[parts.length-1];
-  const options=[first+' '+last,first+' '+last.slice(0,3)+'.',first+' '+last.slice(0,2)+'.',first+' '+last.charAt(0)+'.',first];
-  for(const option of options){if(fits(option,23)){name=option;break}name=option}
+  for(const option of [first+' '+last,first+' '+last.slice(0,3)+'.',first+' '+last.slice(0,2)+'.',first+' '+last.charAt(0)+'.',first]){name=option;if(fits(option,23))break}
  }
  while(!fits(name,23)&&name.length>2)name=name.slice(0,-1);
- el.textContent=name;
- el.style.setProperty('font-size',size+'px','important');
+ el.textContent=name;el.style.setProperty('font-size',size+'px','important');
+}
+function refreshPodiumNames(){
+ for(const id of ['gold','silver','bronze'])if(podiumFullNames[id])fitPodiumName(document.getElementById(id+'Name'),podiumFullNames[id]);
 }
 function renderRealStudents(students){
  const ranked=[...students].sort((a,b)=>(Number(b.calories_estimated)||0)-(Number(a.calories_estimated)||0));
  const ids=[['gold',0],['silver',1],['bronze',2]];
- for(const [id,index] of ids){const p=ranked[index];fitPodiumName(document.getElementById(id+'Name'),p?.name||'—');document.getElementById(id+'Kcal').textContent=fmtNumber(p?.calories_estimated);const img=document.querySelector('.pod-col.'+({gold:'first',silver:'second',bronze:'third'}[id])+' .avatar');if(img)img.src=initialsAvatar(p?.name)}
+ for(const [id,index] of ids){const p=ranked[index];podiumFullNames[id]=p?.name||'—';fitPodiumName(document.getElementById(id+'Name'),podiumFullNames[id]);document.getElementById(id+'Kcal').textContent=fmtNumber(p?.calories_estimated);const img=document.querySelector('.pod-col.'+({gold:'first',silver:'second',bronze:'third'}[id])+' .avatar');if(img)img.src=initialsAvatar(p?.name)}
  const rows=ranked.slice(3);
  const metric=p=>unit==='bike'?(p.distance_km==null?'—':fmtNumber(p.distance_km)+' km'):(p.hr_max==null||!Number.isFinite(Number(p.hr_max))?'—':Math.round(Number(p.hr_max))+' bpm');
  const visible=rows.slice(0,7);
