@@ -2119,7 +2119,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
             if(!id)return json({ok:true,drafts:drafts.results||[]});
             const draft=await env.DB.prepare("SELECT id,unit,full_name,birth_date FROM pop_live_manual_drafts WHERE id=? AND unit=?").bind(id,unit).first();
             if(!draft)return json({ok:false,error:"CADASTRO_NAO_ENCONTRADO"},404);
-            const matches=await env.DB.prepare("SELECT id,first_name,last_name,birth_date,evo_member_id,gym_client_id FROM members WHERE birth_date=? AND lower(trim(first_name||' '||last_name))=lower(?) AND (CASE WHEN ?='gym' THEN gym_client_id ELSE evo_member_id END) IS NOT NULL LIMIT 10").bind(draft.birth_date,draft.full_name,unit).all();
+            const matches=await env.DB.prepare("SELECT m.id,m.first_name,m.last_name,m.birth_date,m.evo_member_id,m.gym_client_id FROM members m JOIN pop_live_manual_drafts d ON d.id=? WHERE m.birth_date=d.birth_date AND ((d.cpf_hash IS NOT NULL AND m.cpf_hash=d.cpf_hash) OR (d.cpf_hash IS NULL AND lower(trim(m.first_name||' '||m.last_name))=lower(trim(d.full_name)))) ORDER BY CASE WHEN (?='gym' AND m.gym_client_id IS NOT NULL) OR (?='bike' AND m.evo_member_id IS NOT NULL) THEN 0 ELSE 1 END,m.id LIMIT 10").bind(id,unit,unit).all();
             return json({ok:true,draft,matches:matches.results||[]});
           }
           if(request.method!=="POST")return json({ok:false,error:"METODO_INVALIDO"},405);
@@ -2134,7 +2134,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           if(b.action==="link_member"){
             const memberId=Number(b.member_id);
             if(!Number.isSafeInteger(memberId)||memberId<1)return json({ok:false,error:"ALUNO_INVALIDO"},400);
-            const match=await env.DB.prepare("SELECT id FROM members WHERE id=? AND birth_date=(SELECT birth_date FROM pop_live_manual_drafts WHERE id=?) AND lower(trim(first_name||' '||last_name))=lower((SELECT full_name FROM pop_live_manual_drafts WHERE id=?)) AND (CASE WHEN ?='gym' THEN gym_client_id ELSE evo_member_id END) IS NOT NULL").bind(memberId,id,id,draft.unit).first();
+            const match=await env.DB.prepare("SELECT m.id FROM members m JOIN pop_live_manual_drafts d ON d.id=? WHERE m.id=? AND m.birth_date=d.birth_date AND ((d.cpf_hash IS NOT NULL AND m.cpf_hash=d.cpf_hash) OR (d.cpf_hash IS NULL AND lower(trim(m.first_name||' '||m.last_name))=lower(trim(d.full_name))))").bind(id,memberId).first();
             if(!match)return json({ok:false,error:"CORRESPONDENCIA_NAO_CONFIRMADA"},409);
             await env.DB.prepare("UPDATE pop_live_manual_drafts SET status='linked',linked_member_id=? WHERE id=? AND status IN ('pending_review','verified_internal')").bind(memberId,id).run();
             return json({ok:true,id,status:"linked",member_id:memberId,note:"Correspondência confirmada; histórico temporário preservado"});
