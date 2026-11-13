@@ -2135,18 +2135,29 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           for(const d of rows.results||[]){
             let v;try{v=JSON.parse(d.result_json)}catch{continue}
             const provisional=String(v?.member_id||d.member_id||"");
-            if(!/^800000000[0-9]+$/.test(provisional))continue;
-            const memberId=Number(provisional.slice(9));
+            let memberId=null;
+            let draftId=null;
+            if(/^800000000[0-9]+$/.test(provisional)){
+              const candidate=Number(provisional.slice(9));
+              if(!Number.isSafeInteger(candidate)||candidate<1)continue;
+              const selected=await env.DB.prepare("SELECT 1 ok FROM pop_live_selected_members WHERE session_id=? AND member_id=? AND evo_member_id=?").bind(sid,candidate,provisional).first();
+              if(!selected)continue;
+              memberId=candidate;
+            }else if(/^900000000[0-9]+$/.test(provisional)){
+              const candidate=Number(provisional.slice(9));
+              if(!Number.isSafeInteger(candidate)||candidate<1)continue;
+              const draft=await env.DB.prepare("SELECT id,linked_member_id FROM pop_live_manual_drafts WHERE id=? AND session_id=? AND unit=? AND status='linked' AND linked_member_id IS NOT NULL").bind(candidate,sid,session.unit).first();
+              if(!draft)continue;
+              draftId=draft.id;
+              memberId=Number(draft.linked_member_id);
+            }else continue;
             if(!Number.isSafeInteger(memberId)||memberId<1)continue;
-            const selected=await env.DB.prepare("SELECT 1 ok FROM pop_live_selected_members WHERE session_id=? AND member_id=? AND evo_member_id=?").bind(sid,memberId,provisional).first();
-            const linked=await env.DB.prepare("SELECT 1 ok FROM pop_live_manual_drafts WHERE session_id=? AND linked_member_id=? AND status='linked'").bind(sid,memberId).first();
-            if(!selected&&!linked)continue;
             const member=await env.DB.prepare("SELECT id FROM members WHERE id=?").bind(memberId).first();
             if(!member)continue;
             const zones=v.zones,kcal=Number(v.kcal);
             if(!Array.isArray(zones)||zones.length!==5||zones.some(x=>!Number.isFinite(Number(x))||Number(x)<0)||!Number.isFinite(kcal)||kcal<0)continue;
             const duration=Math.round(zones.reduce((sum,x)=>sum+Number(x),0));
-            const audit=JSON.stringify({recovered_from:"pop_live_session_devices",device_id:d.device_id,original_member_id:provisional});
+            const audit=JSON.stringify({recovered_from:"pop_live_session_devices",device_id:d.device_id,original_member_id:provisional,...(draftId?{draft_id:draftId}:{})});
             const inserted=await env.DB.prepare("INSERT INTO pop_live_member_performance(session_id,member_id,unit,sensor_types_json,duration_seconds,calories_estimated,zones_seconds_json,metric_quality_json,status) SELECT ?,?,?,?,?,?,?,?,'final' WHERE NOT EXISTS(SELECT 1 FROM pop_live_member_performance WHERE session_id=? AND member_id=?)").bind(sid,memberId,session.unit,JSON.stringify(Array.isArray(v.sensor_types)?v.sensor_types:[]),duration,kcal,JSON.stringify(zones),audit,sid,memberId).run();
             if(inserted.meta?.changes)recovered++;
           }
