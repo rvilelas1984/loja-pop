@@ -2118,7 +2118,58 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           FROM pop_live_sessions s WHERE s.status IN ('finished','closed')
           AND substr(s.starts_at,1,10)=? AND (?='all' OR s.unit=?)
           ORDER BY s.starts_at DESC,s.id DESC LIMIT 150`).bind(day,unit,unit).all();
-        return json({ok:true,sessions:sessions.results||[]});
+        // Audit only divergent closed sessions, with bounded work to protect D1 usage.
+        // The reconciliation helper is shared with the session detail route below.
+        const list=sessions.results||[];
+        const divergent=list.filter(x=>Number(x.monitored_devices)>Number(x.recorded_students)).slice(0,12);
+        if(divergent.length){
+          for(const item of divergent){
+            try{
+              const deviceRows=await env.DB.prepare("SELECT device_id,member_id,result_json FROM pop_live_session_devices WHERE session_id=? AND result_json IS NOT NULL").bind(item.id).all();
+              const recorded=await env.DB.prepare("SELECT member_id FROM pop_live_member_performance WHERE session_id=?").bind(item.id).all();
+              const existing=new Set((recorded.results||[]).map(x=>String(x.member_id)));
+              let recovered=0,unresolved=0;
+              for(const device of deviceRows.results||[]){
+                let data;try{data=JSON.parse(device.result_json)}catch{unresolved++;continue}
+                const original=String(data?.member_id||device.member_id||"");
+                let memberId=null,draftId=null;
+                if(/^800000000[0-9]+$/.test(original)){
+                  const candidate=Number(original.slice(9));
+                  if(Number.isSafeInteger(candidate)&&candidate>0){
+                    const selected=await env.DB.prepare("SELECT member_id FROM pop_live_selected_members WHERE session_id=? AND member_id=? AND evo_member_id=?").bind(item.id,candidate,original).first();
+                    if(selected)memberId=candidate;
+                  }
+                }else if(/^900000000[0-9]+$/.test(original)){
+                  const candidate=Number(original.slice(9));
+                  if(Number.isSafeInteger(candidate)&&candidate>0){
+                    const draft=await env.DB.prepare("SELECT id,linked_member_id FROM pop_live_manual_drafts WHERE id=? AND session_id=? AND unit=? AND status='linked' AND linked_member_id IS NOT NULL").bind(candidate,item.id,item.unit).first();
+                    if(draft){memberId=Number(draft.linked_member_id);draftId=draft.id}
+                  }
+                }else{
+                  const linked=await env.DB.prepare("SELECT id FROM members WHERE (?='gym' AND gym_client_id=?) OR (?='bike' AND CAST(evo_member_id AS TEXT)=?) LIMIT 2").bind(item.unit,original,item.unit,original).all();
+                  if((linked.results||[]).length===1)memberId=linked.results[0].id;
+                }
+                if(!Number.isSafeInteger(memberId)||memberId<1){unresolved++;continue}
+                if(existing.has(String(memberId)))continue;
+                const member=await env.DB.prepare("SELECT id FROM members WHERE id=?").bind(memberId).first();
+                const zones=data?.zones,kcal=Number(data?.kcal);
+                if(!member||!Array.isArray(zones)||zones.length!==5||zones.some(v=>!Number.isFinite(Number(v))||Number(v)<0)||!Number.isFinite(kcal)||kcal<0){unresolved++;continue}
+                const duration=Math.round(zones.reduce((total,v)=>total+Number(v),0));
+                const audit=JSON.stringify({recovered_from:"pop_live_session_devices",device_id:device.device_id,original_member_id:original,...(draftId?{draft_id:draftId}:{})});
+                const result=await env.DB.prepare("INSERT INTO pop_live_member_performance(session_id,member_id,unit,sensor_types_json,duration_seconds,calories_estimated,zones_seconds_json,metric_quality_json,status) SELECT ?,?,?,?,?,?,?,?,'final' WHERE NOT EXISTS(SELECT 1 FROM pop_live_member_performance WHERE session_id=? AND member_id=?)").bind(item.id,memberId,item.unit,JSON.stringify(Array.isArray(data.sensor_types)?data.sensor_types:[]),duration,kcal,JSON.stringify(zones),audit,item.id,memberId).run();
+                if(result.meta?.changes){recovered++;existing.add(String(memberId))}
+              }
+              item.recorded_students=existing.size;
+              item.recovered_students=recovered;
+              item.unresolved_devices=unresolved;
+              item.audit_status=unresolved?"pending_review":"checked";
+            }catch(e){
+              item.audit_status="error";
+              console.error("POP_LIVE_AUTO_AUDIT_FAILED",item.id,String(e));
+            }
+          }
+        }
+        return json({ok:true,sessions:list});
       }
       if(["/admin/pop-live-devices","/admin/pop-live-sessions","/admin/pop-live-drafts"].includes(url.pathname)){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
