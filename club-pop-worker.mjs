@@ -2089,7 +2089,8 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           if(!Number.isSafeInteger(sid)||sid<1)return json({ok:false,error:"ID_INVALIDO"},400);
           const session=await env.DB.prepare("SELECT * FROM pop_live_sessions WHERE id=? AND status IN ('finished','closed') LIMIT 1").bind(sid).first();
           if(!session)return json({ok:false,error:"AULA_NAO_ENCONTRADA"},404);
-          const recovered=await recoverProvisionalPerformance(sid);
+          let recovered=0;
+          try{recovered=await recoverProvisionalPerformance(sid)}catch(recoveryError){console.error("POP_LIVE_RECOVERY_FAILED",sid,String(recoveryError))}
           const students=await env.DB.prepare(`SELECT p.*,COALESCE(NULLIF(trim(m.first_name||' '||m.last_name),''),'Aluno') AS name,
             (SELECT COUNT(*) FROM pop_live_session_devices sd WHERE sd.session_id=p.session_id AND (sd.member_id=CAST(p.member_id AS TEXT) OR sd.member_id=CAST(m.evo_member_id AS TEXT) OR sd.member_id=CAST(m.gym_client_id AS TEXT))) AS device_count
             FROM pop_live_member_performance p LEFT JOIN members m ON m.id=p.member_id
@@ -2180,7 +2181,8 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
             if(!match)return json({ok:false,error:"CORRESPONDENCIA_NAO_CONFIRMADA"},409);
             await env.DB.prepare("UPDATE pop_live_manual_drafts SET status='linked',linked_member_id=? WHERE id=? AND status IN ('pending_review','verified_internal')").bind(memberId,id).run();
             const draftSession=await env.DB.prepare("SELECT session_id FROM pop_live_manual_drafts WHERE id=?").bind(id).first();
-            const recovered=await recoverProvisionalPerformance(Number(draftSession?.session_id));
+            let recovered=0;
+            try{recovered=await recoverProvisionalPerformance(Number(draftSession?.session_id))}catch(recoveryError){console.error("POP_LIVE_LINK_RECOVERY_FAILED",id,String(recoveryError))}
             return json({ok:true,id,status:"linked",member_id:memberId,recovered,note:"Correspondência confirmada; histórico temporário preservado"});
           }
           return json({ok:false,error:"ACAO_INVALIDA"},400);
