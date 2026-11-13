@@ -5969,6 +5969,30 @@ async function currentStudentJob(env, body) {
     }
   }
   for(let i=0;i<masterStatements.length;i+=40)await db.batch(masterStatements.slice(i,i+40));
+
+  // Keep canonical member identities aligned with both manual and scheduled EVO snapshots.
+  // Match only complete CPF hashes; never merge by name or CPF suffix.
+  for(const student of rows){
+    const p=student.raw||{},cpf=String(p.document||"").replace(/\D/g,"");
+    if(!/^\d{11}$/.test(cpf))continue;
+    const hash=await sha256(cpf),evoId=String(student.id);
+    const byCpf=await db.prepare("SELECT id,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first();
+    const byUnit=await db.prepare("SELECT id,cpf_hash FROM members WHERE "+(unit==="gym"?"gym_client_id":"CAST(evo_member_id AS TEXT)")+"=? LIMIT 1").bind(evoId).first();
+    if((byUnit&&byUnit.cpf_hash!==hash)||(byCpf&&byUnit&&byCpf.id!==byUnit.id))continue;
+    const current=byCpf||byUnit,existingUnit=current&&(unit==="gym"?current.gym_client_id:current.evo_member_id);
+    if(existingUnit&&String(existingUnit)!==evoId)continue;
+    if(current){
+      if(!existingUnit)await db.prepare("UPDATE members SET "+(unit==="gym"?"gym_client_id":"evo_member_id")+"=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(unit==="gym"?evoId:Number(evoId),current.id).run();
+    }else{
+      await db.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date) VALUES(?,?,?,?,?,?,?,?)").bind(unit==="bike"?Number(evoId):null,unit==="gym"?evoId:null,hash,cpf.slice(-4),String(p.firstName||p.registerName||"").slice(0,120),String(p.lastName||p.registerLastName||"").slice(0,160),normalizeEmail(p.email||"")||null,normalizeDate(p.birthDate||"")||null).run();
+    }
+    if(unit==="gym"){
+      const memberId=current?.id||(await db.prepare("SELECT id FROM members WHERE cpf_hash=?").bind(hash).first())?.id;
+      const prior=await db.prepare("SELECT member_id FROM gym_member_links WHERE gym_client_id=?").bind(evoId).first();
+      if(memberId&&(!prior||Number(prior.member_id)===Number(memberId)))await db.prepare("INSERT INTO gym_member_links(gym_client_id,member_id,link_source,status) VALUES(?,?,'AUTO_CURRENT_SYNC','ACTIVE') ON CONFLICT(gym_client_id) DO UPDATE SET status='ACTIVE'").bind(evoId,memberId).run();
+    }
+  }
+
   for(let i=0;i<contractStatements.length;i+=40)await db.batch(contractStatements.slice(i,i+40));
   if(!done)return {ok:true,runId:run.id,nextSkip:next,pageSize:unit==='bike'?600:25,done:false};
   const fresh=(await db.prepare('SELECT payload FROM evo_current_stage_v2 WHERE run_id=?').bind(run.id).all()).results.map(x=>JSON.parse(x.payload));
