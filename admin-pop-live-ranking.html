@@ -27,7 +27,7 @@ body{background:#e9eff3;color:#fff}.poster{color:#fff}.ranking-editor{max-width:
 .poster .pod-col .pod-cal small{font-size:18px!important;margin-left:0!important}
 .poster .rank-table{position:relative;z-index:3}
 .poster .note{display:none!important}
-</style></head><body><div class="ranking-editor">
+</style><style id="ranking-name-fit">.poster .pod-col .pod-name{white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important;max-width:100%;font-size:29px}</style></head><body><div class="ranking-editor">
   <div class="editor-topline"><div><strong>Ranking da Aula</strong><small>Prévia do layout · indicadores demonstrativos</small></div><div class="unit-switch"><button id="bikeBtn" class="active" onclick="changeUnit('bike')">Bike Pop</button><button id="gymBtn" onclick="changeUnit('gym')">Gym Pop</button></div></div>
   <div class="editor-fields">
     <label>Modelo de texto<select id="modelPicker" onchange="setModel(Number(this.value))"><option value="1">Modelo 1 — Pódio clássico</option><option value="2">Modelo 2 — Cards lado a lado</option><option value="3">Modelo 3 — Campeão em destaque</option><option value="4">Modelo 4 — Ranking completo</option></select></label>
@@ -67,10 +67,32 @@ const fmtDuration=sec=>sec!=null&&Number.isFinite(Number(sec))?Math.round(Number
 const safeText=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sessionDate=v=>{const d=String(v||'').slice(0,10).split('-');if(d.length!==3)return 'DATA NÃO INFORMADA';const date=new Date(Number(d[0]),Number(d[1])-1,Number(d[2]));return Number(d[2])+' '+['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'][Number(d[1])-1]+' ('+['DOM','SEG','TER','QUA','QUI','SEX','SÁB'][date.getDay()]+')'};
 function initialsAvatar(name){const initials=String(name||'Aluno').trim().split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();const svg='<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><rect width="180" height="180" fill="#241032"/><circle cx="90" cy="90" r="83" fill="#53266d"/><text x="90" y="109" font-size="58" font-family="Arial" fill="white" font-weight="bold" text-anchor="middle">'+initials.replace(/[^A-ZÀ-Ú]/g,'')+'</text></svg>';return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg)}
+function fitPodiumName(el,fullName){
+ const full=String(fullName||'—').trim().replace(/\s+/g,' ');
+ el.title=full;
+ const parts=full.split(' ').filter(Boolean);
+ const ctx=document.createElement('canvas').getContext('2d');
+ const width=Math.max(90,el.clientWidth-16);
+ const family=getComputedStyle(el).fontFamily||'Arial';
+ const fits=(value,size)=>{ctx.font='italic 1000 '+size+'px '+family;return ctx.measureText(value).width<=width};
+ let name=full,size=29;
+ for(const candidateSize of [29,27,25,23]){
+  if(fits(name,candidateSize)){size=candidateSize;break}
+  size=23;
+ }
+ if(!fits(name,size)&&parts.length>1){
+  const first=parts[0],last=parts[parts.length-1];
+  const options=[first+' '+last,first+' '+last.slice(0,3)+'.',first+' '+last.slice(0,2)+'.',first+' '+last.charAt(0)+'.',first];
+  for(const option of options){if(fits(option,23)){name=option;break}name=option}
+ }
+ while(!fits(name,23)&&name.length>2)name=name.slice(0,-1);
+ el.textContent=name;
+ el.style.setProperty('font-size',size+'px','important');
+}
 function renderRealStudents(students){
  const ranked=[...students].sort((a,b)=>(Number(b.calories_estimated)||0)-(Number(a.calories_estimated)||0));
  const ids=[['gold',0],['silver',1],['bronze',2]];
- for(const [id,index] of ids){const p=ranked[index];document.getElementById(id+'Name').textContent=p?.name||'—';document.getElementById(id+'Kcal').textContent=fmtNumber(p?.calories_estimated);const img=document.querySelector('.pod-col.'+({gold:'first',silver:'second',bronze:'third'}[id])+' .avatar');if(img)img.src=initialsAvatar(p?.name)}
+ for(const [id,index] of ids){const p=ranked[index];fitPodiumName(document.getElementById(id+'Name'),p?.name||'—');document.getElementById(id+'Kcal').textContent=fmtNumber(p?.calories_estimated);const img=document.querySelector('.pod-col.'+({gold:'first',silver:'second',bronze:'third'}[id])+' .avatar');if(img)img.src=initialsAvatar(p?.name)}
  const rows=ranked.slice(3);
  const metric=p=>unit==='bike'?(p.distance_km==null?'—':fmtNumber(p.distance_km)+' km'):(p.hr_avg==null?'—':Math.round(Number(p.hr_avg))+' bpm');
  const visible=rows.slice(0,7);
