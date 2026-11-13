@@ -1834,15 +1834,30 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const b=await request.json().catch(()=>({})),unit=String(b.unit||""),x=b.member||{},evoId=Number(x.idMember||x.id||b.idMember);
         if(!["bike","gym"].includes(unit)||!Number.isSafeInteger(evoId)||evoId<=0)return json({ok:false,error:"PARAMETROS_INVALIDOS"},400);
         const email=String(x.email||x.emailAddress||x.mail||"").trim().toLowerCase()||null,birth=String(x.birthDate||x.dateBirth||x.birthdate||x.birthday||"").slice(0,10)||null,full=String(x.name||"").trim(),first=String(x.firstName||full).trim(),last=String(x.lastName||"").trim(),cpf=String(x.document||x.cpf||"").replace(/\D/g,""),now=new Date().toISOString();
-        const before=await env.DB.prepare("SELECT id,email,birth_date FROM members WHERE evo_member_id=? LIMIT 1").bind(evoId).first();
-        let memberId=before?.id||null;
-        if(memberId){
-          await env.DB.prepare("UPDATE members SET first_name=?,last_name=?,email=?,birth_date=?,cpf_last4=COALESCE(?,cpf_last4),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(first,last,email,birth,cpf?cpf.slice(-4):null,memberId).run();
-        }else if(/^\d{11}$/.test(cpf)){
-          const byCpf=await env.DB.prepare("SELECT id,evo_member_id,email,birth_date FROM members WHERE cpf_last4=? ORDER BY updated_at DESC LIMIT 20").bind(cpf.slice(-4)).all();
-          const exact=(byCpf.results||[]).find(r=>Number(r.evo_member_id)===evoId);
-          if(exact){memberId=exact.id;await env.DB.prepare("UPDATE members SET first_name=?,last_name=?,email=?,birth_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(first,last,email,birth,memberId).run()}
+        // Consolidate identity on every individual EVO synchronization, for either unit.
+        // Never identify a person using only the last four CPF digits.
+        const validCpf=/^\d{11}$/.test(cpf);
+        const hash=validCpf?await sha256(cpf):null;
+        const byId=await env.DB.prepare("SELECT id,cpf_hash,evo_member_id,gym_client_id,email,birth_date FROM members WHERE "+(unit==="gym"?"gym_client_id":"evo_member_id")+"=? LIMIT 1").bind(unit==="gym"?String(evoId):evoId).first();
+        const byCpf=hash?await env.DB.prepare("SELECT id,cpf_hash,evo_member_id,gym_client_id,email,birth_date FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first():null;
+        if(byId&&hash&&byId.cpf_hash!==hash)return json({ok:false,error:"CONFLITO_CPF_ID_EVO"},409);
+        if(byId&&byCpf&&byId.id!==byCpf.id)return json({ok:false,error:"CADASTROS_CONFLITANTES"},409);
+        const existing=byId||byCpf;
+        const linkedId=existing&&(unit==="gym"?existing.gym_client_id:existing.evo_member_id);
+        if(linkedId&&String(linkedId)!==String(evoId))return json({ok:false,error:"CPF_VINCULADO_A_OUTRO_EVO"},409);
+        let memberId=existing?.id||null;
+        if(existing){
+          await env.DB.prepare("UPDATE members SET "+(unit==="gym"?"gym_client_id":"evo_member_id")+"=?,first_name=COALESCE(NULLIF(?,''),first_name),last_name=COALESCE(NULLIF(?,''),last_name),email=COALESCE(?,email),birth_date=COALESCE(?,birth_date),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(unit==="gym"?String(evoId):evoId,first,last,email,birth,memberId).run();
+        }else if(validCpf){
+          const inserted=await env.DB.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date) VALUES(?,?,?,?,?,?,?,?)").bind(unit==="bike"?evoId:null,unit==="gym"?String(evoId):null,hash,cpf.slice(-4),first,last,email,birth).run();
+          memberId=inserted.meta?.last_row_id||null;
         }
+        if(memberId&&unit==="gym"){
+          const prior=await env.DB.prepare("SELECT member_id FROM gym_member_links WHERE gym_client_id=?").bind(String(evoId)).first();
+          if(prior&&Number(prior.member_id)!==Number(memberId))return json({ok:false,error:"CONFLITO_VINCULO_GYM"},409);
+          await env.DB.prepare("INSERT INTO gym_member_links(gym_client_id,member_id,link_source,status) VALUES(?,?,'AUTO_SYNC_CPF','ACTIVE') ON CONFLICT(gym_client_id) DO UPDATE SET status='ACTIVE'").bind(String(evoId),memberId).run();
+        }
+        const before=existing||null;
         const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND CAST(evo_member_id AS TEXT)=? LIMIT 1").bind(unit,String(evoId)).first();
         let personal={};try{personal=JSON.parse(master?.personal_json||"{}")}catch{}
         personal={...personal,...x,idMember:evoId,document:cpf||personal.document||null};
