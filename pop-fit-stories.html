@@ -626,4 +626,69 @@ if(cat.value==='free')sync();
  document.addEventListener('pointerup',hide,true);document.addEventListener('pointercancel',hide,true);
  window.addEventListener('blur',hide);window.addEventListener('resize',hide);
 })();
-</script><script src="/js/pop-fit-before-after.js"></script></body></html>
+</script><script src="/js/pop-fit-before-after.js"></script>
+<script>
+/* POP_REDE_SOCIAL_V1 — extensão isolada, sem alterar os renderizadores existentes */
+(()=>{
+const category=document.getElementById('category'),unit=document.getElementById('unit');
+if(!category||!unit||typeof draw!=='function'||typeof catalog==='undefined')return;
+catalog.social=[['Instagram','Publicação com moldura e interações'],['TikTok','Publicação vertical com interações laterais']];
+const opt=document.createElement('option');opt.value='social';opt.textContent='📱 Rede Social';category.append(opt);
+const controls=document.createElement('div');controls.id='popSocialControls';controls.style.cssText='display:none;margin:14px 0;padding:14px;border:1px solid #76547f;border-radius:14px;background:#171220';
+controls.innerHTML='<b>📱 Rede Social</b><p class="note">O perfil acompanha a unidade da atividade selecionada.</p><label>Legenda</label><input id="popSocialCaption" type="text" value="Você sempre na sua melhor versão."><div class="two"><div><label>Curtidas</label><input id="popSocialLikes" type="text" value="12,3 mil"></div><div><label>Comentários</label><input id="popSocialComments" type="text" value="843"></div></div>';
+category.closest('.panel')?.append(controls);
+for(const id of ['popSocialCaption','popSocialLikes','popSocialComments'])document.getElementById(id).addEventListener('input',()=>{if(category.value==='social')draw()});
+const oldDraw=draw;
+const bikeLogo=new Image();bikeLogo.src='/assets/bike-pop-logo-original.png';bikeLogo.onload=()=>{if(category.value==='social')draw()};
+const line=(x1,y1,x2,y2)=>{ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke()};
+const icon=(name,x,y,size=48,color='#111')=>{
+ ctx.save();ctx.translate(x,y);ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=5;ctx.lineCap='round';ctx.lineJoin='round';
+ if(name==='heart'){ctx.beginPath();ctx.moveTo(0,19);ctx.bezierCurveTo(-65,-22,-28,-60,0,-28);ctx.bezierCurveTo(28,-60,65,-22,0,19);ctx.stroke()}
+ else if(name==='comment'){ctx.beginPath();ctx.roundRect(-22,-22,44,38,15);ctx.stroke();line(-8,16,-15,26)}
+ else if(name==='share'){ctx.beginPath();ctx.moveTo(-24,-8);ctx.lineTo(24,-25);ctx.lineTo(6,24);ctx.lineTo(-1,3);ctx.closePath();ctx.stroke();line(-1,3,24,-25)}
+ else if(name==='bookmark'){ctx.beginPath();ctx.moveTo(-18,-24);ctx.lineTo(18,-24);ctx.lineTo(18,24);ctx.lineTo(0,10);ctx.lineTo(-18,24);ctx.closePath();ctx.stroke()}
+ else if(name==='home'){ctx.beginPath();ctx.moveTo(-22,-2);ctx.lineTo(0,-23);ctx.lineTo(22,-2);ctx.lineTo(22,23);ctx.lineTo(-22,23);ctx.closePath();ctx.stroke()}
+ else if(name==='search'){ctx.beginPath();ctx.arc(-5,-5,17,0,Math.PI*2);ctx.stroke();line(8,8,25,25)}
+ else if(name==='plus'){line(-17,0,17,0);line(0,-17,0,17)}
+ else if(name==='music'){ctx.font='bold 52px sans-serif';ctx.fillText('♫',-25,17)}
+ ctx.restore();
+};
+const text=(s,x,y,size=32,color='#111',weight=500)=>{ctx.fillStyle=color;ctx.font=weight+' '+size+'px system-ui,Arial';ctx.fillText(String(s),x,y)};
+const avatar=(x,y,r)=>{ctx.save();ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.clip();ctx.fillStyle=unit.value==='bike'?'#5e32a5':'#d72c9b';ctx.fillRect(x-r,y-r,2*r,2*r);if(unit.value==='bike'&&bikeLogo.complete&&bikeLogo.naturalWidth)ctx.drawImage(bikeLogo,x-r,y-r,2*r,2*r);else{ctx.textAlign='center';text('GP',x-r*.55,y+r*.3,r*.85,'#fff',800)}ctx.restore()};
+const renderSocial=()=>{
+ const insta=Number(document.getElementById('model').value||0)===0;
+ const handle=unit.value==='gym'?'studiogympop':'studiobikepop';
+ const caption=document.getElementById('popSocialCaption').value;
+ const likes=document.getElementById('popSocialLikes').value;
+ const comments=document.getElementById('popSocialComments').value;
+ ctx.clearRect(0,0,W,H);
+ ctx.fillStyle=insta?'#fff':'#080808';ctx.fillRect(0,0,W,H);
+ if(insta){
+  text('12:12',62,72,36,'#151515',700);text('● ᴡɪғɪ ▰',840,72,30,'#151515',700);
+  text('＋',58,155,70);text('Instagram',325,151,62,'#161616',700);icon('heart',985,126);
+  ctx.strokeStyle='#e6e6e6';ctx.lineWidth=2;line(0,185,W,185);
+  avatar(90,248,46);text(handle,156,262,35,'#171717',700);text('•••',967,261,37);
+  drawPhoto(0,0,318,1080,1195,0);
+  icon('heart',68,1574);icon('comment',175,1574);icon('share',283,1574);icon('bookmark',1000,1574);
+  text(likes+' curtidas',58,1655,36,'#111',700);
+  text(handle,58,1720,31,'#111',700);text(caption.slice(0,45),300,1720,29,'#222');
+  text('Ver todos os '+comments+' comentários',58,1770,27,'#888');
+  ctx.strokeStyle='#eee';line(0,1810,W,1810);
+  icon('home',105,1863);icon('search',315,1863);icon('plus',540,1863);icon('heart',770,1863);avatar(978,1863,29);
+ }else{
+  drawPhoto(0,0,0,W,H,0);
+  ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(0,0,W,155);ctx.fillRect(0,1610,W,310);
+  text('Seguindo',350,98,39,'#fff',600);text('Para você',565,98,39,'#fff',800);
+  avatar(975,1130,52);
+  for(const [name,y,count] of [['heart',1275,likes],['comment',1405,comments],['bookmark',1535,'Salvar'],['share',1665,'Compartilhar']]){
+   icon(name,975,y,48,'#fff');ctx.textAlign='center';text(count,920,y+68,25,'#fff',700);ctx.textAlign='left';
+  }
+  text('@'+handle,42,1685,41,'#fff',800);text(caption.slice(0,48),42,1750,32,'#fff');
+  icon('music',60,1812,48,'#fff');text('Som original · Pop Fit',110,1827,28,'#fff');
+  icon('home',110,1890,45,'#fff');icon('search',345,1890,45,'#fff');icon('plus',560,1890,45,'#fff');icon('comment',795,1890,45,'#fff');
+ }
+};
+draw=function(){controls.style.display=category.value==='social'?'block':'none';if(category.value==='social'){renderSocial();return}return oldDraw.apply(this,arguments)};
+category.addEventListener('change',()=>{controls.style.display=category.value==='social'?'block':'none'});
+})();
+</script></body></html>
