@@ -4731,7 +4731,21 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
             await clubMissionWhatsappEvent(env,base,scope,"share_clicked");
             return json({ok:true,source:"d1",evoRequestsMade:0});
           }
-          if(String(b.action||"")==="save-profile"){const num=(v,min,max)=>v===null||v===undefined||v===""?null:(Number.isFinite(Number(v))&&Number(v)>=min&&Number(v)<=max?Number(v):NaN),height=num(b.height,0.8,2.5),initialWeight=num(b.initialWeight,20,350);if([height,initialWeight].some(Number.isNaN))return json({ok:false,error:"VALOR_INVALIDO"},400);await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=excluded.height,initial_weight=COALESCE(pop_fit_profile.initial_weight,excluded.initial_weight),updated_at=CURRENT_TIMESTAMP").bind(base.id,height,initialWeight).run();const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();return json({ok:true,saved:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}})}
+          if(String(b.action||"")==="save-profile"){
+            const num=(v,min,max)=>{
+              if(v===null||v===undefined||v==="")return null;
+              const n=Number(String(v).trim().replace(",","."));
+              return Number.isFinite(n)&&n>=min&&n<=max?n:NaN;
+            };
+            const height=num(b.height,0.8,2.5),initialWeight=num(b.initialWeight,20,350);
+            if(Number.isNaN(height))return json({ok:false,error:"Informe a altura em metros, por exemplo 1,75."},400);
+            if(Number.isNaN(initialWeight))return json({ok:false,error:"Informe um peso inicial entre 20 e 350 kg."},400);
+            // A referencia inicial pode ser corrigida sem alterar pesagens ou dados de treinos.
+            // Preserve a data do marco existente, usada pelo historico de evolucao.
+            await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=COALESCE(excluded.height,pop_fit_profile.height),initial_weight=COALESCE(excluded.initial_weight,pop_fit_profile.initial_weight),updated_at=CASE WHEN pop_fit_profile.initial_weight IS NULL THEN CURRENT_TIMESTAMP ELSE pop_fit_profile.updated_at END").bind(base.id,height,initialWeight).run();
+            const p=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=? LIMIT 1").bind(base.id).first();
+            return json({ok:true,saved:true,source:"d1",evoRequestsMade:0,profile:{height:p?.height??null,initialWeight:p?.initial_weight??null}});
+          }
           if(String(b.action||"")==="delete-manual-activity"){
             const id=Number(b.activityId);
             if(!Number.isSafeInteger(id)||id<1)return json({ok:false,error:"ATIVIDADE_INVALIDA"},400);
