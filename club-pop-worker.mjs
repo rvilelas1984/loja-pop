@@ -2089,6 +2089,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           if(!Number.isSafeInteger(sid)||sid<1)return json({ok:false,error:"ID_INVALIDO"},400);
           const session=await env.DB.prepare("SELECT * FROM pop_live_sessions WHERE id=? AND status IN ('finished','closed') LIMIT 1").bind(sid).first();
           if(!session)return json({ok:false,error:"AULA_NAO_ENCONTRADA"},404);
+          const recovered=await recoverProvisionalPerformance(sid);
           const students=await env.DB.prepare(`SELECT p.*,COALESCE(NULLIF(trim(m.first_name||' '||m.last_name),''),'Aluno') AS name,
             (SELECT COUNT(*) FROM pop_live_session_devices sd WHERE sd.session_id=p.session_id AND (sd.member_id=CAST(p.member_id AS TEXT) OR sd.member_id=CAST(m.evo_member_id AS TEXT) OR sd.member_id=CAST(m.gym_client_id AS TEXT))) AS device_count
             FROM pop_live_member_performance p LEFT JOIN members m ON m.id=p.member_id
@@ -2105,7 +2106,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           }catch(e){console.warn("pop-live-monitoring access unavailable",String(e));}
           const accessMap=new Map(accessRows.map(a=>[String(a.member_id),a]));
           const enriched=(students.results||[]).map(p=>({...p,last_club_access:accessMap.get(String(p.member_id))?.last_club_access??null,last_popfit_access:accessMap.get(String(p.member_id))?.last_popfit_access??null,performance_status:p.calories_estimated==null?"Sem medição":Number(p.calories_estimated)>0?"Gravado":"Sem calorias"}));
-          return json({ok:true,session,students:enriched});
+          return json({ok:true,session,students:enriched,recovered});
         }
         const unit=url.searchParams.get("unit")||"all";
         const day=url.searchParams.get("date")||new Date().toISOString().slice(0,10);
@@ -2124,6 +2125,32 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const recoverProvisionalPerformance=async(sid)=>{
+          if(!Number.isSafeInteger(Number(sid))||Number(sid)<1)return 0;
+          const session=await env.DB.prepare("SELECT id,unit FROM pop_live_sessions WHERE id=? AND status IN ('finished','closed')").bind(sid).first();
+          if(!session)return 0;
+          const rows=await env.DB.prepare("SELECT device_id,member_id,result_json FROM pop_live_session_devices WHERE session_id=? AND result_json IS NOT NULL").bind(sid).all();
+          let recovered=0;
+          for(const d of rows.results||[]){
+            let v;try{v=JSON.parse(d.result_json)}catch{continue}
+            const provisional=String(v?.member_id||d.member_id||"");
+            if(!/^800000000[0-9]+$/.test(provisional))continue;
+            const memberId=Number(provisional.slice(9));
+            if(!Number.isSafeInteger(memberId)||memberId<1)continue;
+            const selected=await env.DB.prepare("SELECT 1 ok FROM pop_live_selected_members WHERE session_id=? AND member_id=? AND evo_member_id=?").bind(sid,memberId,provisional).first();
+            const linked=await env.DB.prepare("SELECT 1 ok FROM pop_live_manual_drafts WHERE session_id=? AND linked_member_id=? AND status='linked'").bind(sid,memberId).first();
+            if(!selected&&!linked)continue;
+            const member=await env.DB.prepare("SELECT id FROM members WHERE id=?").bind(memberId).first();
+            if(!member)continue;
+            const zones=v.zones,kcal=Number(v.kcal);
+            if(!Array.isArray(zones)||zones.length!==5||zones.some(x=>!Number.isFinite(Number(x))||Number(x)<0)||!Number.isFinite(kcal)||kcal<0)continue;
+            const duration=Math.round(zones.reduce((sum,x)=>sum+Number(x),0));
+            const audit=JSON.stringify({recovered_from:"pop_live_session_devices",device_id:d.device_id,original_member_id:provisional});
+            const inserted=await env.DB.prepare("INSERT INTO pop_live_member_performance(session_id,member_id,unit,sensor_types_json,duration_seconds,calories_estimated,zones_seconds_json,metric_quality_json,status) SELECT ?,?,?,?,?,?,?,?,'final' WHERE NOT EXISTS(SELECT 1 FROM pop_live_member_performance WHERE session_id=? AND member_id=?)").bind(sid,memberId,session.unit,JSON.stringify(Array.isArray(v.sensor_types)?v.sensor_types:[]),duration,kcal,JSON.stringify(zones),audit,sid,memberId).run();
+            if(inserted.meta?.changes)recovered++;
+          }
+          return recovered;
+        };
         if(url.pathname.endsWith("drafts")){
           const b=request.method==="POST"?await request.json().catch(()=>({})):{};
           const id=Number(b.id||url.searchParams.get("id"));
@@ -2152,7 +2179,9 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
             const match=await env.DB.prepare("SELECT m.id FROM members m JOIN pop_live_manual_drafts d ON d.id=? WHERE m.id=? AND m.birth_date=d.birth_date AND ((d.cpf_hash IS NOT NULL AND m.cpf_hash=d.cpf_hash) OR (d.cpf_hash IS NULL AND lower(trim(m.first_name||' '||m.last_name))=lower(trim(d.full_name))))").bind(id,memberId).first();
             if(!match)return json({ok:false,error:"CORRESPONDENCIA_NAO_CONFIRMADA"},409);
             await env.DB.prepare("UPDATE pop_live_manual_drafts SET status='linked',linked_member_id=? WHERE id=? AND status IN ('pending_review','verified_internal')").bind(memberId,id).run();
-            return json({ok:true,id,status:"linked",member_id:memberId,note:"Correspondência confirmada; histórico temporário preservado"});
+            const draftSession=await env.DB.prepare("SELECT session_id FROM pop_live_manual_drafts WHERE id=?").bind(id).first();
+            const recovered=await recoverProvisionalPerformance(Number(draftSession?.session_id));
+            return json({ok:true,id,status:"linked",member_id:memberId,recovered,note:"Correspondência confirmada; histórico temporário preservado"});
           }
           return json({ok:false,error:"ACAO_INVALIDA"},400);
         }
