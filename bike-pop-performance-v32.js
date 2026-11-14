@@ -86,6 +86,46 @@ sheet.after(actions);
 const compact=document.createElement('style');
 compact.textContent='@media(max-width:800px){.sheet{width:min(100%,calc((100dvh - 192px)*.5625))!important;margin-left:auto!important;margin-right:auto!important}#bike-v32-actions{margin:6px auto 8px!important;padding:0 12px!important;gap:8px!important}#bike-v32-actions button{padding:10px!important;font-size:14px!important;min-width:120px!important}}';
 document.head.appendChild(compact);
+const editor=document.createElement('div');
+editor.id='bike-v32-editor';
+editor.style.cssText='max-width:864px;margin:8px auto 22px;padding:0 12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:stretch;color:#fff;font:600 13px system-ui';
+const nameBox=document.createElement('label');
+nameBox.style.cssText='display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:#32113e;border:1px solid #a64caf;border-radius:12px;min-width:0';
+nameBox.textContent='Nome na imagem';
+const nameInput=document.createElement('input');
+nameInput.type='text';nameInput.maxLength=50;nameInput.placeholder='Ex.: Nato, Cris';nameInput.value=record.memberName||'';
+nameInput.setAttribute('aria-label','Nome ou apelido na imagem');
+nameInput.style.cssText='width:100%;min-width:0;padding:9px 10px;border-radius:8px;border:1px solid #8e4a9e;background:#1c082a;color:white;font:600 14px system-ui';
+nameBox.appendChild(nameInput);
+const photoBox=document.createElement('label');
+photoBox.style.cssText='display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:#32113e;border:1px solid #a64caf;border-radius:12px;cursor:pointer;min-width:0';
+photoBox.textContent='Trocar foto';
+const photoHint=document.createElement('span');
+photoHint.textContent='Escolher da galeria';
+photoHint.style.cssText='display:block;text-align:center;padding:9px 4px;border-radius:8px;background:#ef4ba5;color:white;font:700 14px system-ui';
+const photoInput=document.createElement('input');
+photoInput.type='file';photoInput.accept='image/*';photoInput.setAttribute('aria-label','Escolher foto da galeria');
+photoInput.style.cssText='position:absolute;width:1px;height:1px;opacity:0;pointer-events:none';
+photoBox.append(photoHint,photoInput);
+editor.append(nameBox,photoBox);
+actions.after(editor);
+const studentName=sheet.querySelector('.student');
+nameInput.addEventListener('input',()=>{if(studentName)studentName.textContent=nameInput.value.trim()||record.memberName||'Aluno Bike Pop'});
+let customPhotoUrl=null;
+photoInput.addEventListener('change',async()=>{
+ const file=photoInput.files?.[0];if(!file)return;
+ if(!file.type.startsWith('image/')){alert('Selecione uma imagem válida.');return}
+ const url=URL.createObjectURL(file);
+ const img=sheet.querySelector('.portrait img, .profile img, .avatar img, .photo img')||Array.from(sheet.querySelectorAll('img')).at(-1);
+ if(!img){URL.revokeObjectURL(url);alert('Não foi possível localizar a foto no cartão.');return}
+ try{
+  const test=new Image();test.src=url;await test.decode();
+  img.src=url;img.removeAttribute('crossorigin');
+  if(customPhotoUrl)URL.revokeObjectURL(customPhotoUrl);
+  customPhotoUrl=url;photoHint.textContent='Foto selecionada';
+ }catch(e){URL.revokeObjectURL(url);alert('Não foi possível abrir a foto escolhida.')}
+});
+
 const existing=sheet.querySelector('footer button.share');if(existing)existing.onclick=e=>{e.preventDefault();share()};
 function loadCapture(){return new Promise((resolve,reject)=>{if(window.htmlToImage)return resolve();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js';sc.onload=resolve;sc.onerror=()=>reject(Error('Não foi possível carregar o gerador PNG'));document.head.appendChild(sc)})}
 async function png(){await loadCapture();await document.fonts.ready;const width=sheet.offsetWidth,height=sheet.offsetHeight;const dataUrl=await htmlToImage.toPng(sheet,{pixelRatio:Math.max(2,2160/width),cacheBust:true,backgroundColor:'#180d26',canvasWidth:Math.round(width*Math.max(2,2160/width)),canvasHeight:Math.round(height*Math.max(2,2160/width))});const response=await fetch(dataUrl);return response.blob()}
