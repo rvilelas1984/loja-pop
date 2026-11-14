@@ -127,11 +127,32 @@ photoInput.addEventListener('change',async()=>{
 });
 
 const existing=sheet.querySelector('footer button.share');if(existing)existing.onclick=e=>{e.preventDefault();share()};
-function loadCapture(){return new Promise((resolve,reject)=>{if(window.htmlToImage)return resolve();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js';sc.onload=resolve;sc.onerror=()=>reject(Error('Não foi possível carregar o gerador PNG'));document.head.appendChild(sc)})}
-async function png(){await loadCapture();await document.fonts.ready;const width=sheet.offsetWidth,height=sheet.offsetHeight;const dataUrl=await htmlToImage.toPng(sheet,{pixelRatio:Math.max(2,2160/width),cacheBust:true,backgroundColor:'#180d26',canvasWidth:Math.round(width*Math.max(2,2160/width)),canvasHeight:Math.round(height*Math.max(2,2160/width))});const response=await fetch(dataUrl);return response.blob()}
+function loadLibrary(globalName,url){return new Promise((resolve,reject)=>{if(window[globalName])return resolve(window[globalName]);const script=document.createElement('script');script.src=url;script.onload=()=>window[globalName]?resolve(window[globalName]):reject(new Error('Biblioteca de imagem não inicializou'));script.onerror=()=>reject(new Error('Falha ao carregar a biblioteca de imagem'));document.head.appendChild(script)})}
+function describeError(e){return e instanceof Error?e.message:String(e||'Falha desconhecida na exportação')}
+async function png(){
+ await document.fonts.ready;
+ const width=sheet.offsetWidth,height=sheet.offsetHeight;
+ if(!width||!height)throw new Error('O cartão não está visível');
+ const ratio=Math.min(3,Math.max(2,1440/width));
+ const imageOptions={pixelRatio:ratio,cacheBust:false,backgroundColor:'#180d26',skipFonts:false};
+ const errors=[];
+ try{
+  const lib=await loadLibrary('htmlToImage','https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js');
+  const blob=await lib.toBlob(sheet,imageOptions);
+  if(blob&&blob.size>10000)return blob;
+  throw new Error('PNG gerado vazio');
+ }catch(e){errors.push('Método 1: '+describeError(e));console.warn('Bike Pop exportação método 1',e)}
+ try{
+  const lib=await loadLibrary('domtoimage','https://cdnjs.cloudflare.com/ajax/libs/dom-to-image-more/3.3.0/dom-to-image-more.min.js');
+  const blob=await lib.toBlob(sheet,{bgcolor:'#180d26',cacheBust:false,scale:ratio});
+  if(blob&&blob.size>10000)return blob;
+  throw new Error('PNG gerado vazio');
+ }catch(e){errors.push('Método 2: '+describeError(e));console.warn('Bike Pop exportação método 2',e)}
+ throw new Error('Não foi possível gerar a imagem. '+errors.join(' | '));
+}
 const filename='bike-pop-desempenho-'+id+'.png';
-async function save(){try{const blob=await png();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000)}catch(e){alert(e.message)}}
-async function share(){try{const blob=await png();const file=new File([blob],filename,{type:'image/png'});if(navigator.canShare?.({files:[file]})&&navigator.share){await navigator.share({files:[file],title:'Meu desempenho Bike Pop'})}else{await save();alert('Imagem salva. Compartilhe pela galeria do celular.')}}catch(e){if(e.name!=='AbortError')alert(e.message)}}
+async function save(){try{const blob=await png();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000)}catch(e){alert(describeError(e))}}
+async function share(){try{const blob=await png();const file=new File([blob],filename,{type:'image/png'});if(navigator.canShare?.({files:[file]})&&navigator.share){await navigator.share({files:[file],title:'Meu desempenho Bike Pop'})}else{const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000);alert('Compartilhamento direto indisponível neste navegador. PNG salvo para compartilhar pela galeria.')}}catch(e){if(e?.name!=='AbortError')alert(describeError(e))}}
 document.getElementById('bike-save-png').onclick=save;
 document.getElementById('bike-share-png').onclick=share;
 })();
