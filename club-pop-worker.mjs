@@ -6024,7 +6024,7 @@ async function currentStudentJob(env, body) {
     if(running)return {status:409,ok:false,error:'SINCRONIZACAO_JA_EM_ANDAMENTO'};
     const id=crypto.randomUUID();
     await db.prepare("INSERT INTO evo_current_runs_v2(id,unit,state) VALUES(?,?,'running')").bind(id,unit).run();
-    return {ok:true,runId:id,nextSkip:0,pageSize:100};
+    return {ok:true,runId:id,nextSkip:0,pageSize:600};
   }
   const run=await db.prepare("SELECT * FROM evo_current_runs_v2 WHERE id=? AND unit=?").bind(String(body.runId||''),unit).first();
   if(!run||run.state!=='running')return {status:409,ok:false,error:'SINCRONIZACAO_INATIVA'};
@@ -6032,7 +6032,7 @@ async function currentStudentJob(env, body) {
     await db.prepare("UPDATE evo_current_runs_v2 SET state='failed',error=?,requests=requests+?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='running'").bind(String(body.error||'EVO_FALHOU').slice(0,80),Number(body.requests||0),run.id).run();
     return {ok:true};
   }
-  if(body.action==='check')return {ok:true,runId:run.id,nextSkip:run.next_skip,pageSize:100};
+  if(body.action==='check')return {ok:true,runId:run.id,nextSkip:run.next_skip,pageSize:600};
   const rows=body.students,pageSize=Number(body.pageSize||25);
   if(![25,50,75,100,150,250,500,600].includes(pageSize))return {status:422,ok:false,error:'TAMANHO_LOTE_INVALIDO'};
   if(body.action!=='ingest'||!Array.isArray(rows)||rows.length>pageSize||body.skip!==run.next_skip)return {status:409,ok:false,error:'LOTE_FORA_DE_ORDEM'};
