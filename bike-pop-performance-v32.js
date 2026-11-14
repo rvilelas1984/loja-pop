@@ -57,9 +57,11 @@ if(second[0])second[0].innerHTML=number(p.calories_estimated)+' <small>kcal</sma
 if(second[1]){
  const seatLabel=second[1].closest('.metric')?.querySelector('.title');
  if(seatLabel)seatLabel.innerHTML='Posição<br>na Sala';
+ const seatIcon=second[1].closest('.metric')?.querySelector('.emoji');
+ if(seatIcon)seatIcon.innerHTML="<svg aria-hidden=\"true\" viewBox=\"0 0 48 48\" width=\"34\" height=\"34\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" style=\"color:#ff5acb;filter:drop-shadow(0 0 5px #ff4cc4)\"><circle cx=\"31\" cy=\"31\" r=\"12\" stroke=\"currentColor\" stroke-width=\"3.2\"/><circle cx=\"31\" cy=\"31\" r=\"4\" stroke=\"currentColor\" stroke-width=\"2.5\"/><path d=\"M10 38h33M18 30l8-17h9M26 13l-5-5h-7M35 13l4 6M15 31l6-12h8\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M10 30h9\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\"/></svg>";
  const quality=(()=>{try{return typeof p.metric_quality_json==='string'?JSON.parse(p.metric_quality_json||'{}'):(p.metric_quality_json||{})}catch{return {}}})();
  const seat=[p.bike_position,p.bike_number,p.bike_slot,p.seat_number,p.device_number,p.sensor_position,quality.bike_position,quality.bike_number].find(v=>v!==null&&v!==undefined&&/^(?:[1-9]|[12][0-9]|3[0-4])$/.test(String(v).trim()));
- second[1].innerHTML=seat==null?'— <small>bike</small>':String(Number(seat))+' <small>bike</small>';
+ second[1].textContent=seat==null?'—':'Bike '+String(Number(seat));
 }
 if(second[2])second[2].textContent=number(p.monitored_members);
 const distance=number(p.distance_km,2);
