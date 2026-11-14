@@ -53,7 +53,8 @@ if(second[0])second[0].innerHTML=number(p.calories_estimated)+' <small>kcal</sma
 if(second[1]){
  const seatLabel=second[1].closest('.metric')?.querySelector('.title');
  if(seatLabel)seatLabel.innerHTML='Posição<br>na Sala';
- const seat=[p.bike_position,p.bike_number,p.bike_slot,p.seat_number,p.device_number,p.sensor_position].find(v=>v!==null&&v!==undefined&&/^(?:[1-9]|[12][0-9]|3[0-4])$/.test(String(v).trim()));
+ const quality=(()=>{try{return typeof p.metric_quality_json==='string'?JSON.parse(p.metric_quality_json||'{}'):(p.metric_quality_json||{})}catch{return {}}})();
+ const seat=[p.bike_position,p.bike_number,p.bike_slot,p.seat_number,p.device_number,p.sensor_position,quality.bike_position,quality.bike_number].find(v=>v!==null&&v!==undefined&&/^(?:[1-9]|[12][0-9]|3[0-4])$/.test(String(v).trim()));
  second[1].innerHTML=seat==null?'— <small>bike</small>':String(Number(seat))+' <small>bike</small>';
 }
 if(second[2])second[2].textContent=number(p.monitored_members);
