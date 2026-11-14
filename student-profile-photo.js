@@ -56,7 +56,20 @@
      }
      if(encoded&&encoded.length<=190000)break;
     }
-    if(!encoded||encoded.length>190000){alert("Não foi possível otimizar esta foto. Tente outra imagem.");return;}
+    if(!encoded||encoded.length>190000){
+     // Some mobile browsers can decode WebP but cannot encode it through canvas.
+     // JPEG is a supported fallback after the matching Worker update is deployed.
+     for(const dimension of [320,240,180,120]){
+      const output=document.createElement("canvas");output.width=dimension;output.height=dimension;
+      output.getContext("2d").drawImage(canvas,0,0,dimension,dimension);
+      for(const quality of [.8,.6,.4,.25]){
+       const candidate=output.toDataURL("image/jpeg",quality);
+       if(candidate.startsWith("data:image/jpeg;base64,")&&candidate.length<=190000){encoded=candidate;break;}
+      }
+      if(encoded&&encoded.length<=190000)break;
+     }
+    }
+    if(!encoded||encoded.length>190000){alert("Não foi possível preparar a foto. Tente novamente.");return;}
     finish(encoded);
    };
    draw();
