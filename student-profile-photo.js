@@ -40,7 +40,25 @@
    canvas.addEventListener("pointermove",e=>{if(!drag)return;const rect=canvas.getBoundingClientRect();dx=drag.dx+(e.clientX-drag.x)*320/rect.width;dy=drag.dy+(e.clientY-drag.y)*320/rect.height;draw()});
    canvas.addEventListener("pointerup",()=>drag=null);canvas.addEventListener("pointercancel",()=>drag=null);
    overlay.querySelector('[data-action="cancel"]').onclick=()=>finish(null);
-   save.onclick=()=>{draw();finish(canvas.toDataURL("image/webp",.78))};
+   save.onclick=()=>{
+    draw();
+    // The production Worker currently accepts at most 160 KB of WebP bytes.
+    // Keep reducing quality and, if needed, dimensions before uploading.
+    let encoded="",side=320;
+    for(const dimension of [320,280,240,200,160]){
+     const output=document.createElement("canvas");output.width=dimension;output.height=dimension;
+     output.getContext("2d").drawImage(canvas,0,0,dimension,dimension);
+     for(const quality of [.78,.65,.52,.4,.3]){
+      const candidate=output.toDataURL("image/webp",quality);
+      if(!candidate.startsWith("data:image/webp;base64,"))continue;
+      encoded=candidate;side=dimension;
+      if(candidate.length<=190000)break;
+     }
+     if(encoded&&encoded.length<=190000)break;
+    }
+    if(!encoded||encoded.length>190000){alert("Não foi possível otimizar esta foto. Tente outra imagem.");return;}
+    finish(encoded);
+   };
    draw();
   });
  }
