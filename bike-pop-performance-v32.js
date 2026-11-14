@@ -70,13 +70,47 @@ if(summary[0])summary[0].textContent=p.duration_seconds==null?'—':Math.round(N
 if(summary[1])summary[1].textContent=number(p.class_calories)+' kcal';
 let route=null;try{route=JSON.parse(p.metric_quality_json||'{}').virtual_route}catch{}
 const segments=sheet.querySelectorAll('.segments .segment');
-if(Array.isArray(route)&&route.length){
- const groups=[['subida_ingreme','subida_moderada'],['plano','reta_rapida'],['recuperacao'],['sprint','sprint_intenso']];
- const total=route.reduce((a,x)=>a+Math.max(0,Number(x.km)||0),0);
- groups.forEach((k,i)=>{const km=route.filter(x=>k.includes(x.kind)).reduce((a,x)=>a+Math.max(0,Number(x.km)||0),0);const b=segments[i]?.querySelector('b'),small=segments[i]?.querySelector('small');if(b)b.textContent=number(km,2)+' km';if(small)small.textContent=total?'('+Math.round(km/total*100)+'%)':'—'});
+const chart=sheet.querySelector('.route .chart');
+const groups=[['subida_ingreme','subida_moderada'],['plano','reta_rapida'],['recuperacao'],['sprint','sprint_intenso']];
+if(Array.isArray(route)&&route.some(x=>Number(x.seconds)>0)){
+ const valid=route.filter(x=>Number(x.seconds)>0);
+ const totalKm=valid.reduce((a,x)=>a+Math.max(0,Number(x.km)||0),0);
+ const totalSeconds=valid.reduce((a,x)=>a+Math.max(0,Number(x.seconds)||0),0);
+ groups.forEach((k,i)=>{
+  const km=valid.filter(x=>k.includes(x.kind)).reduce((a,x)=>a+Math.max(0,Number(x.km)||0),0);
+  const seconds=valid.filter(x=>k.includes(x.kind)).reduce((a,x)=>a+Math.max(0,Number(x.seconds)||0),0);
+  const b=segments[i]?.querySelector('b'),small=segments[i]?.querySelector('small');
+  if(b)b.textContent=number(km,2)+' km';
+  if(small)small.textContent=totalSeconds?'('+Math.round(seconds/totalSeconds*100)+'%)':'—';
+ });
+ if(chart){
+  // Mesmo perfil de RPM da versão anterior do Pop Fit, preservando a sequência da aula.
+  const deltas={recuperacao:0,subida_ingreme:-28,subida_moderada:-14,plano:0,reta_rapida:0,sprint:23,sprint_intenso:34};
+  let x=8,y=104;const points=[[x,y]];
+  for(const segment of valid){
+   const seconds=Math.max(0,Number(segment.seconds)||0);
+   const nx=Math.min(752,x+744*seconds/Math.max(1,totalSeconds));
+   y=Math.max(18,Math.min(130,y+(deltas[segment.kind]||0)*Math.min(1,seconds/30)));
+   points.push([nx,y]);x=nx;
+  }
+  const sx=760/760,sy=160/160;
+  const line=points.map(([px,py],i)=>(i?'L':'M')+px.toFixed(1)+' '+py.toFixed(1)).join(' ');
+  const area=line+' L'+x.toFixed(1)+' 142 L8 142 Z';
+  const ns='http://www.w3.org/2000/svg';
+  const defs=chart.querySelector('defs');
+  chart.replaceChildren();
+  if(defs)chart.appendChild(defs);
+  const fill=document.createElementNS(ns,'path');fill.setAttribute('d',area);fill.setAttribute('fill','url(#area)');chart.appendChild(fill);
+  const path=document.createElementNS(ns,'path');path.setAttribute('d',line);path.setAttribute('fill','none');path.setAttribute('stroke','url(#stroke)');path.setAttribute('stroke-width','7');path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');chart.appendChild(path);
+  for(const [px,py] of [points[0],...points.slice(1,-1),points.at(-1)]){
+   const circle=document.createElementNS(ns,'circle');circle.setAttribute('cx',String(px));circle.setAttribute('cy',String(py));circle.setAttribute('r','5');circle.setAttribute('fill','#fff');circle.setAttribute('stroke','#f85cff');circle.setAttribute('stroke-width','3');chart.appendChild(circle);
+  }
+  chart.style.opacity='1';
+  chart.setAttribute('aria-label','Perfil virtual estimado pelas faixas de RPM da aula, sem medição de altitude');
+ }
 }else{
  segments.forEach(el=>{const b=el.querySelector('b'),small=el.querySelector('small');if(b)b.textContent='—';if(small)small.textContent=''});
- const chart=sheet.querySelector('.route .chart');if(chart){chart.style.opacity='.25';chart.setAttribute('aria-label','Percurso não disponível para esta aula')}
+ if(chart){chart.replaceChildren();chart.setAttribute('aria-label','Sem dados de RPM suficientes para reconstruir o percurso virtual');}
 }
 const actions=document.createElement('div');actions.id='bike-v32-actions';
 actions.style.cssText='display:flex;gap:12px;justify-content:center;max-width:864px;margin:18px auto 40px;padding:0 16px;flex-wrap:wrap';
