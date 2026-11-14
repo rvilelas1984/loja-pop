@@ -58,7 +58,7 @@ if(second[1]){
  const seatLabel=second[1].closest('.metric')?.querySelector('.title');
  if(seatLabel)seatLabel.innerHTML='Posição<br>na Sala';
  const seatIcon=second[1].closest('.metric')?.querySelector('.emoji');
- if(seatIcon)seatIcon.innerHTML='<img src="/bike-pop-spinning-approved.svg" alt="" style="display:block;width:7.1cqw;height:7.1cqw;max-width:100%;object-fit:contain;filter:drop-shadow(0 0 3px #ff38bb)">';
+ if(seatIcon)seatIcon.innerHTML='<span class="bike-position-icon" role="img" aria-label="Bicicleta de spinning"></span>';
  const quality=(()=>{try{return typeof p.metric_quality_json==='string'?JSON.parse(p.metric_quality_json||'{}'):(p.metric_quality_json||{})}catch{return {}}})();
  const seat=[p.bike_position,p.bike_number,p.bike_slot,p.seat_number,p.device_number,p.sensor_position,quality.bike_position,quality.bike_number].find(v=>v!==null&&v!==undefined&&/^(?:[1-9]|[12][0-9]|3[0-4])$/.test(String(v).trim()));
  second[1].textContent=seat==null?'—':'Bike '+String(Number(seat));
@@ -138,6 +138,14 @@ sheet.after(actions);
 const compact=document.createElement('style');
 compact.textContent='@media(max-width:800px){.sheet{width:min(100%,calc((100dvh - 192px)*.5625))!important;margin-left:auto!important;margin-right:auto!important}#bike-v32-actions{margin:6px auto 8px!important;padding:0 12px!important;gap:8px!important}#bike-v32-actions button{padding:10px!important;font-size:14px!important;min-width:120px!important}}';
 document.head.appendChild(compact);
+const themedIcons=document.createElement('style');
+themedIcons.textContent=`
+/* Indicadores gerais seguem a cor ativa; cores semânticas do percurso permanecem intactas. */
+.sheet .second .metric .emoji,.sheet .second .metric .emoji .vector{color:var(--accent)!important}
+.sheet .second .metric .emoji .vector{fill:currentColor!important;stroke:currentColor!important}
+.sheet .second .metric .bike-position-icon{display:block;width:7.1cqw;height:7.1cqw;max-width:100%;background-color:var(--accent);-webkit-mask:url('/bike-pop-spinning-approved.svg') center/contain no-repeat;mask:url('/bike-pop-spinning-approved.svg') center/contain no-repeat;filter:drop-shadow(0 0 3px var(--accent))}
+`;
+document.head.appendChild(themedIcons);
 const editor=document.createElement('div');
 editor.id='bike-v32-editor';
 editor.style.cssText='max-width:864px;margin:8px auto 22px;padding:0 12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:stretch;color:#fff;font:600 13px system-ui';
