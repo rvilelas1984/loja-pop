@@ -1,13 +1,31 @@
-(function(){
+(async function(){
 'use strict';
 const stored=sessionStorage.getItem('bike_pop_performance_v32');
 let record=null;try{record=JSON.parse(stored||'null')}catch{}
-const id=new URLSearchParams(location.search).get('session');
-if(!record||String(record.sessionId)!==id||Date.now()-record.savedAt>30*60*1000||record.performance?.unit!=='bike'){
- document.querySelector('.sheet')?.replaceChildren(Object.assign(document.createElement('p'),{textContent:'Dados da aula indisponíveis. Volte ao Pop Fit e selecione Ver seu desempenho novamente.'}));
- return;
+const id=new URLSearchParams(location.search).get('session')||record?.sessionId;
+const sheet=document.querySelector('.sheet');
+if(!sheet)return;
+const fail=message=>{
+ const warning=document.createElement('div');
+ warning.style.cssText='margin:16px auto;padding:18px;max-width:650px;background:#280d37;color:white;border:1px solid #b45ac8;border-radius:12px;font:600 15px system-ui;text-align:center';
+ warning.textContent=message+' ';
+ const back=document.createElement('a');back.href='/pop-fit.html';back.textContent='Voltar ao Pop Fit';back.style.cssText='color:#ffb5e5;text-decoration:underline';
+ warning.append(back);sheet.before(warning);
+ sheet.style.display='none';
+};
+if(!id){fail('Não foi possível identificar a aula. Abra novamente pelo botão Ver seu desempenho.');return;}
+if(!record||String(record.sessionId)!==String(id)||Date.now()-Number(record.savedAt||0)>30*60*1000||record.performance?.unit!=='bike'){
+ try{
+  const token=sessionStorage.getItem('clubpop_token');
+  if(!token)throw Error('Sessão expirada');
+  const response=await fetch('/api/auth?route=pop-fit&action=performance&id='+encodeURIComponent(id),{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+  const data=await response.json();
+  if(!response.ok||!data.ok||data.performance?.unit!=='bike')throw Error(data.error||'Aula indisponível');
+  record={sessionId:id,performance:data.performance,memberName:data.performance.member_name||data.performance.student_name||data.performance.full_name||'',savedAt:Date.now()};
+  sessionStorage.setItem('bike_pop_performance_v32',JSON.stringify(record));
+ }catch(e){fail('Não foi possível carregar os dados reais desta aula: '+e.message);return;}
 }
-const p=record.performance, sheet=document.querySelector('.sheet');
+const p=record.performance;
 if(!sheet)return;
 const number=(v,d=0)=>v==null||v===''||!Number.isFinite(Number(v))?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
 const put=(selector,value)=>{const el=sheet.querySelector(selector);if(el)el.textContent=value};
