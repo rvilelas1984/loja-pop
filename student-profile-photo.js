@@ -17,8 +17,10 @@
  }
  async function refresh(){if(!token())return;try{const d=await call();photo=d.photoUrl||null;loaded=true;paint()}catch(e){console.warn("Club Pop foto:",e.message)}}
  async function previewCrop(file){
-  if(!file.type.startsWith("image/")||file.size>8*1024*1024)throw Error("Selecione uma imagem de até 8 MB.");
-  const bitmap=await createImageBitmap(file);
+  if(!file.type.startsWith("image/")&&!/\.(heic|heif|jpg|jpeg|png|webp|gif|bmp|avif)$/i.test(file.name))throw Error("Selecione um arquivo de imagem válido.");
+  // Decode locally and upload only the cropped 320px WebP, regardless of original file size.
+  let bitmap;
+  try{bitmap=await createImageBitmap(file,{imageOrientation:"from-image"});}catch(e){throw Error("Não foi possível abrir esta foto. Tente outra imagem da galeria.");}
   return new Promise(resolve=>{
    const overlay=document.createElement("div");
    overlay.style.cssText="position:fixed;inset:0;z-index:100000;background:#000b;display:flex;align-items:center;justify-content:center;padding:18px";
