@@ -72,7 +72,7 @@ let route=null;try{route=JSON.parse(p.metric_quality_json||'{}').virtual_route}c
 const segments=sheet.querySelectorAll('.segments .segment');
 const chart=sheet.querySelector('.route .chart');
 const groups=[['subida_ingreme','subida_moderada'],['plano','reta_rapida'],['recuperacao'],['sprint','sprint_intenso']];
-['Montanha','Reta','Estrada','Sprint'].forEach((label,i)=>{const el=segments[i];if(!el)return;const title=el.querySelector('strong')||el.querySelector('.name')||Array.from(el.children).find(x=>/^(Subida|Reta|Descida|Sprint)$/i.test(x.textContent.trim()));if(title)title.textContent=label;else{const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){if(/^(Subida|Reta|Descida|Sprint)$/.test(node.textContent.trim())){node.textContent=label;break}}}});
+['Montanha','Reta','Recuperação','Sprint'].forEach((label,i)=>{const el=segments[i];if(!el)return;const title=el.querySelector('strong')||el.querySelector('.name')||Array.from(el.children).find(x=>/^(Subida|Reta|Descida|Sprint)$/i.test(x.textContent.trim()));if(title)title.textContent=label;else{const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){if(/^(Subida|Reta|Descida|Sprint)$/.test(node.textContent.trim())){node.textContent=label;break}}}});
 if(Array.isArray(route)&&route.some(x=>Number(x.seconds)>0)){
  const valid=route.filter(x=>Number(x.seconds)>0);
  const totalKm=valid.reduce((a,x)=>a+Math.max(0,Number(x.km)||0),0);
