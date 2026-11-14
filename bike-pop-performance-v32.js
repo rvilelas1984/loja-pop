@@ -114,16 +114,57 @@ nameInput.addEventListener('input',()=>{if(studentName)studentName.textContent=n
 let customPhotoUrl=null;
 photoInput.addEventListener('change',async()=>{
  const file=photoInput.files?.[0];if(!file)return;
+ photoInput.value='';
  if(!file.type.startsWith('image/')){alert('Selecione uma imagem válida.');return}
  const url=URL.createObjectURL(file);
  const img=sheet.querySelector('.portrait img, .profile img, .avatar img, .photo img')||Array.from(sheet.querySelectorAll('img')).at(-1);
  if(!img){URL.revokeObjectURL(url);alert('Não foi possível localizar a foto no cartão.');return}
- try{
-  const test=new Image();test.src=url;await test.decode();
-  img.src=url;img.removeAttribute('crossorigin');
-  if(customPhotoUrl)URL.revokeObjectURL(customPhotoUrl);
-  customPhotoUrl=url;photoHint.textContent='Foto selecionada';
- }catch(e){URL.revokeObjectURL(url);alert('Não foi possível abrir a foto escolhida.')}
+ const source=new Image();
+ try{source.src=url;await source.decode()}catch{URL.revokeObjectURL(url);alert('Não foi possível abrir a foto escolhida.');return}
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:#08020deb;display:flex;align-items:center;justify-content:center;padding:16px;font:600 15px system-ui;color:white';
+ const panel=document.createElement('div');
+ panel.style.cssText='width:min(100%,410px);background:#2a1036;border:1px solid #d14bca;border-radius:20px;padding:18px;box-shadow:0 16px 60px #000b;display:flex;flex-direction:column;gap:12px';
+ const title=document.createElement('strong');title.textContent='Enquadrar sua foto';title.style.cssText='font-size:20px;text-align:center';
+ const hint=document.createElement('span');hint.textContent='Arraste para posicionar o rosto e use o zoom.';hint.style.cssText='font-size:13px;text-align:center;color:#e9c7ed';
+ const preview=document.createElement('canvas');preview.width=600;preview.height=600;
+ preview.style.cssText='width:min(100%,320px);aspect-ratio:1;border-radius:50%;border:3px solid #ef4ba5;touch-action:none;align-self:center;cursor:grab;background:#19051e';
+ const zoomLabel=document.createElement('label');zoomLabel.textContent='Zoom';zoomLabel.style.cssText='display:flex;gap:12px;align-items:center';
+ const zoom=document.createElement('input');zoom.type='range';zoom.min='1';zoom.max='3';zoom.step='.01';zoom.value='1';zoom.style.cssText='flex:1;accent-color:#ef4ba5';zoomLabel.append(zoom);
+ const buttons=document.createElement('div');buttons.style.cssText='display:flex;gap:10px';
+ const cancel=document.createElement('button');cancel.textContent='Cancelar';
+ const confirm=document.createElement('button');confirm.textContent='Usar esta foto';
+ for(const button of [cancel,confirm])button.style.cssText='flex:1;border:0;border-radius:10px;padding:13px 8px;color:white;font-weight:800;background:#69336f';
+ confirm.style.background='#ef4ba5';buttons.append(cancel,confirm);
+ panel.append(title,hint,preview,zoomLabel,buttons);overlay.append(panel);document.body.append(overlay);
+ const ctx=preview.getContext('2d');let dx=0,dy=0,scale=1;
+ const base=Math.max(preview.width/source.naturalWidth,preview.height/source.naturalHeight);
+ function draw(){
+  const w=source.naturalWidth*base*scale,h=source.naturalHeight*base*scale;
+  const maxX=Math.max(0,(w-preview.width)/2),maxY=Math.max(0,(h-preview.height)/2);
+  dx=Math.max(-maxX,Math.min(maxX,dx));dy=Math.max(-maxY,Math.min(maxY,dy));
+  ctx.clearRect(0,0,600,600);ctx.drawImage(source,(600-w)/2+dx,(600-h)/2+dy,w,h);
+ }
+ zoom.addEventListener('input',()=>{scale=Number(zoom.value);draw()});
+ let last=null;
+ preview.addEventListener('pointerdown',e=>{last={x:e.clientX,y:e.clientY};preview.setPointerCapture(e.pointerId)});
+ preview.addEventListener('pointermove',e=>{if(!last)return;const rect=preview.getBoundingClientRect();dx+=(e.clientX-last.x)*600/rect.width;dy+=(e.clientY-last.y)*600/rect.height;last={x:e.clientX,y:e.clientY};draw()});
+ const stop=()=>{last=null};preview.addEventListener('pointerup',stop);preview.addEventListener('pointercancel',stop);
+ let pinch=null;
+ preview.addEventListener('touchmove',e=>{if(e.touches.length!==2)return;const t=e.touches;const dist=Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);if(pinch){scale=Math.max(1,Math.min(3,scale*dist/pinch));zoom.value=String(scale);draw()}pinch=dist},{passive:true});
+ preview.addEventListener('touchend',()=>{pinch=null});
+ function close(){overlay.remove();URL.revokeObjectURL(url)}
+ cancel.onclick=close;
+ confirm.onclick=()=>{
+  try{
+   const cropped=preview.toDataURL('image/png');
+   img.src=cropped;img.removeAttribute('crossorigin');
+   if(customPhotoUrl){URL.revokeObjectURL(customPhotoUrl);customPhotoUrl=null}
+   photoHint.textContent='Foto enquadrada';
+   close();
+  }catch(e){alert('Falha ao aplicar o enquadramento: '+(e?.message||String(e)))}
+ };
+ draw();
 });
 
 const existing=sheet.querySelector('footer button.share');if(existing)existing.onclick=e=>{e.preventDefault();share()};
