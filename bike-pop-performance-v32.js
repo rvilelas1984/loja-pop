@@ -50,7 +50,12 @@ const values=[[p.rpm_avg,0,'rpm'],[p.rpm_max,0,'rpm'],[p.speed_avg_kmh,1,'km/h']
 metrics.forEach((el,i)=>{if(values[i])el.innerHTML=number(values[i][0],values[i][1])+' <small>'+values[i][2]+'</small>'});
 const second=sheet.querySelectorAll('.second .metric .val');
 if(second[0])second[0].innerHTML=number(p.calories_estimated)+' <small>kcal</small>';
-if(second[1])second[1].innerHTML=number(p.calorie_rank)+(p.calorie_rank==null?'':'º')+' <small>lugar</small>';
+if(second[1]){
+ const seatLabel=second[1].closest('.metric')?.querySelector('.title');
+ if(seatLabel)seatLabel.innerHTML='Posição<br>na Sala';
+ const seat=[p.bike_position,p.bike_number,p.bike_slot,p.seat_number,p.device_number,p.sensor_position].find(v=>v!==null&&v!==undefined&&/^(?:[1-9]|[12][0-9]|3[0-4])$/.test(String(v).trim()));
+ second[1].innerHTML=seat==null?'— <small>bike</small>':String(Number(seat))+' <small>bike</small>';
+}
 if(second[2])second[2].textContent=number(p.monitored_members);
 const distance=number(p.distance_km,2);
 const hero=sheet.querySelector('.hero-metric .big');
@@ -78,6 +83,9 @@ actions.style.cssText='display:flex;gap:12px;justify-content:center;max-width:86
 actions.innerHTML='<button type="button" id="bike-save-png">Salvar PNG</button><button type="button" id="bike-share-png">Compartilhar</button>';
 actions.querySelectorAll('button').forEach(b=>b.style.cssText='flex:1;min-width:135px;padding:14px;border:0;border-radius:12px;background:#ef4ba5;color:white;font-weight:800;font-size:15px');
 sheet.after(actions);
+const compact=document.createElement('style');
+compact.textContent='@media(max-width:800px){.sheet{width:min(100%,calc((100dvh - 192px)*.5625))!important;margin-left:auto!important;margin-right:auto!important}#bike-v32-actions{margin:6px auto 8px!important;padding:0 12px!important;gap:8px!important}#bike-v32-actions button{padding:10px!important;font-size:14px!important;min-width:120px!important}}';
+document.head.appendChild(compact);
 const existing=sheet.querySelector('footer button.share');if(existing)existing.onclick=e=>{e.preventDefault();share()};
 function loadCapture(){return new Promise((resolve,reject)=>{if(window.htmlToImage)return resolve();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js';sc.onload=resolve;sc.onerror=()=>reject(Error('Não foi possível carregar o gerador PNG'));document.head.appendChild(sc)})}
 async function png(){await loadCapture();await document.fonts.ready;const width=sheet.offsetWidth,height=sheet.offsetHeight;const dataUrl=await htmlToImage.toPng(sheet,{pixelRatio:Math.max(2,2160/width),cacheBust:true,backgroundColor:'#180d26',canvasWidth:Math.round(width*Math.max(2,2160/width)),canvasHeight:Math.round(height*Math.max(2,2160/width))});const response=await fetch(dataUrl);return response.blob()}
