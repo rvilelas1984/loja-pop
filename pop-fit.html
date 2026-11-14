@@ -43,6 +43,7 @@ async function openPerformance(sessionId){
  try{
   const d=await call("action=performance&id="+encodeURIComponent(sessionId));
   const p=d.performance,types=JSON.parse(p.sensor_types_json||"[]"),zones=JSON.parse(p.zones_seconds_json||"null");
+  if(p.unit==="bike"){bg.style.display="none";window.location.assign("/bike-pop-meu-desempenho.html");return;}
   performanceImageData={...p,zones};
   document.getElementById("savePerformanceImage").textContent="▣ SALVAR IMAGEM";
   performanceShareRow=rows.find(x=>x.performance_session_id===sessionId)||manualRows.find(x=>x.source==="pop_live"&&x.performance_session_id===sessionId)||null;
