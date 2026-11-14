@@ -4,7 +4,7 @@
 (async()=>{try{
 const urls=Array.from({length:10},(_,i)=>'/bike-pop-v3-1/parte-'+String(i+1).padStart(2,'0')+'.txt');
 const parts=await Promise.all(urls.map(async url=>{const r=await fetch(url,{cache:'force-cache'});if(!r.ok)throw Error('Parte indisponível: '+url);return r.text()}));
-const html=parts.join('').replace('</body></html>','<script src="/bike-pop-performance-v32.js"></scr'+'ipt></body></html>');
+const html=parts.join('').replace('</body></html>','<script src="/bike-pop-performance-v32.js?v=20261114-bike-pos"></scr'+'ipt></body></html>');
 if(!html.startsWith('<!DOCTYPE html>')||!html.trimEnd().endsWith('</html>'))throw Error('HTML incompleto');
 document.open();document.write(html);document.close();
 }catch(e){document.getElementById('loading').innerHTML='<p>Não foi possível carregar o desempenho.</p><button onclick="location.reload()">Tentar novamente</button>';console.error(e)}})();

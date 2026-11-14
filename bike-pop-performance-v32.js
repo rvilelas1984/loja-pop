@@ -14,16 +14,20 @@ const fail=message=>{
  sheet.style.display='none';
 };
 if(!id){fail('Não foi possível identificar a aula. Abra novamente pelo botão Ver seu desempenho.');return;}
-if(!record||String(record.sessionId)!==String(id)||Date.now()-Number(record.savedAt||0)>30*60*1000||record.performance?.unit!=='bike'){
- try{
-  const token=sessionStorage.getItem('clubpop_token');
-  if(!token)throw Error('Sessão expirada');
-  const response=await fetch('/api/auth?route=pop-fit&action=performance&id='+encodeURIComponent(id),{headers:{Authorization:'Bearer '+token},cache:'no-store'});
-  const data=await response.json();
-  if(!response.ok||!data.ok||data.performance?.unit!=='bike')throw Error(data.error||'Aula indisponível');
-  record={sessionId:id,performance:data.performance,memberName:data.performance.member_name||data.performance.student_name||data.performance.full_name||'',savedAt:Date.now()};
-  sessionStorage.setItem('bike_pop_performance_v32',JSON.stringify(record));
- }catch(e){fail('Não foi possível carregar os dados reais desta aula: '+e.message);return;}
+// Atualiza os indicadores da aula a cada abertura: evita posição antiga no sessionStorage.
+try{
+ const token=sessionStorage.getItem('clubpop_token');
+ if(!token)throw Error('Sessão expirada');
+ const response=await fetch('/api/auth?route=pop-fit&action=performance&id='+encodeURIComponent(id),{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+ const data=await response.json();
+ if(!response.ok||!data.ok||data.performance?.unit!=='bike')throw Error(data.error||'Aula indisponível');
+ record={sessionId:id,performance:data.performance,memberName:record?.memberName||data.performance.member_name||data.performance.student_name||data.performance.full_name||'',savedAt:Date.now()};
+ sessionStorage.setItem('bike_pop_performance_v32',JSON.stringify(record));
+}catch(e){
+ if(!record||String(record.sessionId)!==String(id)||record.performance?.unit!=='bike'){
+  fail('Não foi possível carregar os dados reais desta aula: '+e.message);return;
+ }
+ console.warn('Falha ao atualizar dados da aula; exibindo última versão carregada',e);
 }
 const p=record.performance;
 async function setProfilePhoto(){
