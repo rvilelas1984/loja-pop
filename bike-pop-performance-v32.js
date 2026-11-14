@@ -232,24 +232,31 @@ function loadLibrary(globalName,url){return new Promise((resolve,reject)=>{if(wi
 function describeError(e){return e instanceof Error?e.message:String(e||'Falha desconhecida na exportação')}
 async function png(){
  await document.fonts.ready;
- const width=sheet.offsetWidth,height=sheet.offsetHeight;
- if(!width||!height)throw new Error('O cartão não está visível');
- const ratio=Math.min(3,Math.max(2,1440/width));
- const imageOptions={pixelRatio:ratio,cacheBust:false,backgroundColor:'#180d26',skipFonts:false};
- const errors=[];
+ const exportWidth=864,exportHeight=1536;
+ const wrapper=document.createElement('div');
+ wrapper.style.cssText='position:fixed;left:-10000px;top:0;width:864px;height:1536px;overflow:visible;pointer-events:none;z-index:-1';
+ const clone=sheet.cloneNode(true);
+ for(const [prop,val] of [['width','864px'],['height','1536px'],['min-width','864px'],['max-width','864px'],['margin','0'],['transform','none'],['aspect-ratio','864 / 1536']])clone.style.setProperty(prop,val,'important');
+ wrapper.appendChild(clone);document.body.appendChild(wrapper);
  try{
-  const lib=await loadLibrary('htmlToImage','https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js');
-  const blob=await lib.toBlob(sheet,imageOptions);
-  if(blob&&blob.size>10000)return blob;
-  throw new Error('PNG gerado vazio');
- }catch(e){errors.push('Método 1: '+describeError(e));console.warn('Bike Pop exportação método 1',e)}
- try{
-  const lib=await loadLibrary('domtoimage','https://cdnjs.cloudflare.com/ajax/libs/dom-to-image-more/3.3.0/dom-to-image-more.min.js');
-  const blob=await lib.toBlob(sheet,{bgcolor:'#180d26',cacheBust:false,scale:ratio});
-  if(blob&&blob.size>10000)return blob;
-  throw new Error('PNG gerado vazio');
- }catch(e){errors.push('Método 2: '+describeError(e));console.warn('Bike Pop exportação método 2',e)}
- throw new Error('Não foi possível gerar a imagem. '+errors.join(' | '));
+  await Promise.all(Array.from(clone.querySelectorAll('img')).map(img=>img.decode?.().catch(()=>{})||Promise.resolve()));
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const options={width:exportWidth,height:exportHeight,pixelRatio:2,cacheBust:false,backgroundColor:'#180d26',skipFonts:false};
+  const errors=[];
+  try{
+   const lib=await loadLibrary('htmlToImage','https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js');
+   const blob=await lib.toBlob(clone,options);
+   if(blob&&blob.size>10000)return blob;
+   throw new Error('PNG gerado vazio');
+  }catch(e){errors.push('Método 1: '+describeError(e));console.warn('Bike Pop exportação método 1',e)}
+  try{
+   const lib=await loadLibrary('domtoimage','https://cdnjs.cloudflare.com/ajax/libs/dom-to-image-more/3.3.0/dom-to-image-more.min.js');
+   const blob=await lib.toBlob(clone,{width:exportWidth,height:exportHeight,bgcolor:'#180d26',cacheBust:false,scale:2});
+   if(blob&&blob.size>10000)return blob;
+   throw new Error('PNG gerado vazio');
+  }catch(e){errors.push('Método 2: '+describeError(e));console.warn('Bike Pop exportação método 2',e)}
+  throw new Error('Não foi possível gerar a imagem. '+errors.join(' | '));
+ }finally{wrapper.remove()}
 }
 const filename='bike-pop-desempenho-'+id+'.png';
 async function save(){try{const blob=await png();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000)}catch(e){alert(describeError(e))}}
