@@ -26,6 +26,22 @@ if(!record||String(record.sessionId)!==String(id)||Date.now()-Number(record.save
  }catch(e){fail('Não foi possível carregar os dados reais desta aula: '+e.message);return;}
 }
 const p=record.performance;
+async function setProfilePhoto(){
+ try{
+  const token=sessionStorage.getItem('clubpop_token');
+  if(!token)return;
+  const response=await fetch('/api/auth?route=profile-photo',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+  const data=await response.json();
+  if(!response.ok||!data.photoUrl)return;
+  const image=sheet.querySelector('.portrait img, .profile img, .avatar img, .photo img')||Array.from(sheet.querySelectorAll('img')).at(-1);
+  if(!image)return;
+  const candidate=new Image();candidate.crossOrigin='anonymous';candidate.src=data.photoUrl;
+  await candidate.decode();
+  image.src=data.photoUrl;image.crossOrigin='anonymous';
+ }catch(e){console.warn('Foto do perfil indisponível',e)}
+}
+await setProfilePhoto();
+
 if(!sheet)return;
 const number=(v,d=0)=>v==null||v===''||!Number.isFinite(Number(v))?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
 const put=(selector,value)=>{const el=sheet.querySelector(selector);if(el)el.textContent=value};
@@ -63,8 +79,8 @@ actions.innerHTML='<button type="button" id="bike-save-png">Salvar PNG</button><
 actions.querySelectorAll('button').forEach(b=>b.style.cssText='flex:1;min-width:135px;padding:14px;border:0;border-radius:12px;background:#ef4ba5;color:white;font-weight:800;font-size:15px');
 sheet.after(actions);
 const existing=sheet.querySelector('footer button.share');if(existing)existing.onclick=e=>{e.preventDefault();share()};
-function loadCapture(){return new Promise((resolve,reject)=>{if(window.html2canvas)return resolve();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';sc.onload=resolve;sc.onerror=()=>reject(Error('Não foi possível carregar o gerador PNG'));document.head.appendChild(sc)})}
-async function png(){await loadCapture();await document.fonts.ready;const canvas=await html2canvas(sheet,{backgroundColor:null,scale:Math.max(2,2160/sheet.offsetWidth),useCORS:true,allowTaint:false,logging:false});return new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Falha ao gerar PNG')),'image/png'))}
+function loadCapture(){return new Promise((resolve,reject)=>{if(window.htmlToImage)return resolve();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js';sc.onload=resolve;sc.onerror=()=>reject(Error('Não foi possível carregar o gerador PNG'));document.head.appendChild(sc)})}
+async function png(){await loadCapture();await document.fonts.ready;const width=sheet.offsetWidth,height=sheet.offsetHeight;const dataUrl=await htmlToImage.toPng(sheet,{pixelRatio:Math.max(2,2160/width),cacheBust:true,backgroundColor:'#180d26',canvasWidth:Math.round(width*Math.max(2,2160/width)),canvasHeight:Math.round(height*Math.max(2,2160/width))});const response=await fetch(dataUrl);return response.blob()}
 const filename='bike-pop-desempenho-'+id+'.png';
 async function save(){try{const blob=await png();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000)}catch(e){alert(e.message)}}
 async function share(){try{const blob=await png();const file=new File([blob],filename,{type:'image/png'});if(navigator.canShare?.({files:[file]})&&navigator.share){await navigator.share({files:[file],title:'Meu desempenho Bike Pop'})}else{await save();alert('Imagem salva. Compartilhe pela galeria do celular.')}}catch(e){if(e.name!=='AbortError')alert(e.message)}}
