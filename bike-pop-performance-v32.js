@@ -58,12 +58,22 @@ if(second[1]){
  const seatLabel=second[1].closest('.metric')?.querySelector('.title');
  if(seatLabel)seatLabel.innerHTML='Posição<br>na Sala';
  const seatIcon=second[1].closest('.metric')?.querySelector('.emoji');
- if(seatIcon)seatIcon.innerHTML="<svg aria-hidden=\"true\" viewBox=\"0 0 64 64\" width=\"40\" height=\"40\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" style=\"color:#ff4cbe;filter:drop-shadow(0 0 4px #ff4cbe)\"><g stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 54h50M12 56h7m29 0h7\" stroke-width=\"4.5\"/><circle cx=\"44\" cy=\"41\" r=\"13\" stroke-width=\"4.5\"/><circle cx=\"44\" cy=\"41\" r=\"5\" stroke-width=\"2.5\"/><path d=\"M20 38 13 21m7 17 24-24m0 0 6 29M20 38l24 3M13 21h-6m6 0 9 1M40 14h13l5-9m-8 9 4-8\" stroke-width=\"4\" /><path d=\"M10 17h16m-9 21-6 15m7-15 4 10m-6 0h10\" stroke-width=\"3.5\"/></g></svg>";
+ if(seatIcon)seatIcon.innerHTML='<img src="/bike-pop-spinning-approved.svg" alt="" style="display:block;width:7.1cqw;height:7.1cqw;max-width:100%;object-fit:contain;filter:drop-shadow(0 0 3px #ff38bb)">';
  const quality=(()=>{try{return typeof p.metric_quality_json==='string'?JSON.parse(p.metric_quality_json||'{}'):(p.metric_quality_json||{})}catch{return {}}})();
  const seat=[p.bike_position,p.bike_number,p.bike_slot,p.seat_number,p.device_number,p.sensor_position,quality.bike_position,quality.bike_number].find(v=>v!==null&&v!==undefined&&/^(?:[1-9]|[12][0-9]|3[0-4])$/.test(String(v).trim()));
  second[1].textContent=seat==null?'—':'Bike '+String(Number(seat));
 }
 if(second[2])second[2].textContent=number(p.monitored_members);
+// Ajuste exclusivo dos três cartões da segunda linha, preservando a posição da seção seguinte.
+const row=sheet.querySelector('.second');
+if(row){
+ row.style.gridTemplateColumns='1.05fr 1.32fr 1fr';
+ row.style.gap='1.3cqw';
+ row.style.height='7.8%';
+ row.querySelectorAll('.metric').forEach(card=>{card.style.minWidth='0';card.style.boxSizing='border-box';card.style.padding='1.2cqw .8cqw';card.style.overflow='hidden'});
+ const bikeCard=row.querySelectorAll('.metric')[1];
+ if(bikeCard){bikeCard.style.gap='.6cqw';const val=bikeCard.querySelector('.val');if(val)val.style.fontSize='4cqw';}
+}
 const distance=number(p.distance_km,2);
 const hero=sheet.querySelector('.hero-metric .big');
 if(hero)hero.innerHTML=distance+' <small style="font-size:4.5cqw">km</small>';
