@@ -1221,7 +1221,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           const call=(path,method,payload)=>chatproRequest(cfg.base_url,apiKey,path,method,payload);
           const sub=await resolveChatproSubscriber(call,phone,{allowCreate:false});
           const message="🔐 Club Pop | Recuperação de acesso\\nSeu novo PIN: "+pin+"\\nSe você não solicitou esta alteração, fale com a recepção.";
-          await call("/subscriber/"+encodeURIComponent(sub.id)+"/send_message/","POST",{message});
+          await call("/subscriber/"+encodeURIComponent(sub.id)+"/send_message/","POST",{type:"text",value:message});
           await audit(env,"ADMIN",String(admin.id||admin.name||"staff"),"STUDENT_PIN_WHATSAPP:"+String(member.id));
           return json({ok:true,message:"Mensagem aceita pelo serviço de WhatsApp."});
         }catch(e){return json({ok:false,error:"ENVIO_CHATPRO_FALHOU",detail:String(e.message||"").slice(0,100)},502)}
