@@ -4097,6 +4097,21 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       // USUÁRIO LOGADO
       // =====================================================
 
+      if(request.method==="POST" && url.pathname==="/auth/change-pin"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const b=await readJson(request),current=String(b.currentPin||""),next=String(b.newPin||""),confirm=String(b.confirmPin||"");
+        if(!/^\d{6}$/.test(current)||!/^\d{6}$/.test(next)||next!==confirm)return json({ok:false,error:"PIN_INVALIDO_OU_CONFIRMACAO_DIFERENTE"},400);
+        if(current===next)return json({ok:false,error:"NOVO_PIN_DEVE_SER_DIFERENTE"},400);
+        const verified=await hashPin(current,member.pin_salt||"");
+        if(!member.pin_hash||!member.pin_salt||!safeEqual(verified,member.pin_hash))return json({ok:false,error:"PIN_ATUAL_INCORRETO"},401);
+        const salt=randomToken(16),hash=await hashPin(next,salt);
+        const result=await env.DB.prepare("UPDATE members SET pin_hash=?,pin_salt=?,pin_created_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND pin_hash=?").bind(hash,salt,member.id,member.pin_hash).run();
+        if(!result.meta?.changes)return json({ok:false,error:"PIN_ALTERADO_EM_OUTRA_SESSAO"},409);
+        await env.DB.prepare("UPDATE auth_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE member_id=? AND revoked_at IS NULL").bind(member.id).run();
+        await audit(env,"MEMBER",String(member.id),"SELF_PIN_CHANGE");
+        return json({ok:true,message:"PIN alterado. Entre novamente com o novo PIN."});
+      }
       if (
         request.method === "GET" &&
         url.pathname === "/auth/me"
