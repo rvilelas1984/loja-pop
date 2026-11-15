@@ -5237,7 +5237,7 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
   // Só permite uma nova chave após o provedor confirmar que a tentativa anterior falhou.
   // Nunca rotacionar a chave quando o estado é desconhecido ou em processamento.
   const previousRefunds=Array.isArray(state.transactions?.refunds)?state.transactions.refunds:[];
-  const failedRefunds=previousRefunds.filter(x=>String(x.status).toLowerCase()==="failed"&&x.id);
+  const failedRefunds=previousRefunds.filter(x=>["failed","rejected","cancelled"].includes(String(x.status).toLowerCase()));
   const unsafeRefund=previousRefunds.some(x=>!["failed","rejected","cancelled"].includes(String(x.status).toLowerCase()));
   if(unsafeRefund)return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",message:"Há estorno sem falha definitiva; consulte o Mercado Pago antes de repetir."},409);
   const lastFailed=failedRefunds[failedRefunds.length-1];
