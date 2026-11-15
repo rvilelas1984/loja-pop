@@ -25,7 +25,7 @@ function openDetails(type,id){
   el("cpDiscount").textContent="—";el("cpTotal").textContent="—";
   if(stock===0||loading||(coinMode&&!o)||(coinMode&&n===0&&!['pix','both','mixed'].includes(String(item.paymentMethod||''))))return;
   const pixZero=n===0&&coinMode;const body={quantity:pixZero?0:n,currencyId:pixZero?null:coinMode?o.currency_id:null,mode:pixZero?"pix":selected,previousChoice};
-  timer=setTimeout(async()=>{try{const q=await callQuote(body);if(version!==requestVersion)return;quote={...q,body};paint(q);el("cpSave").disabled=saving;el("cpPay").disabled=false;el("cpSaved").textContent="Prévia atualizada · confirme para gerar o Pix";}catch(e){if(version===requestVersion){el("cpSaved").textContent=paymentError(e);notify(paymentError(e));}}},180);
+  timer=setTimeout(async()=>{try{const q=await callQuote(body);if(version!==requestVersion)return;quote={...q,body};paint(q);el("cpSave").disabled=saving;el("cpPay").disabled=true;el("cpPay").classList.remove("cp-ready");el("cpSaved").textContent="Prévia atualizada · salve sua escolha para liberar o pagamento";}catch(e){if(version===requestVersion){el("cpSaved").textContent=paymentError(e);notify(paymentError(e));}}},180);
  };
  const choose=()=>{el("cpCurrency").innerHTML=offers.map(o=>'<option value="'+esc(o.currency_id)+'">'+esc(o.currency_name)+' · '+(o.balance===null?'saldo não informado':o.balance+' disponíveis')+'</option>').join("");el("cpQty").value=Math.min(100,maxCoins(offer()));refresh()};
  sheet.querySelectorAll("[data-method]").forEach(b=>b.onclick=()=>{selected=b.dataset.method;sheet.querySelectorAll("[data-method]").forEach(x=>x.classList.toggle("active",x===b));el("cpQty").value=selected==="pix"?0:Math.min(100,maxCoins(offer()));refresh()});
@@ -42,19 +42,7 @@ function openDetails(type,id){
   finally{saving=false;el("cpSave").disabled=!quote;}
  };
  el("cpPay").onclick=async()=>{
- if(!saved){
-  if(!quote||saving){notify("Aguarde a validação dos valores.");return}
-  const version=requestVersion,body={...quote.body,save:true,key:choiceKey,previousChoice};
-  saving=true;el("cpPay").disabled=true;el("cpPay").textContent="SALVANDO ESCOLHA...";
-  try{
-   const data=await callQuote(body);
-   if(version!==requestVersion){notify("Os valores mudaram. Confira novamente.");return}
-   previousChoice=data.orderId;saved=data;paint(data);
-   el("cpSaved").textContent="✓ Escolha salva. Confirme em até 10 minutos.";
-  }catch(e){notify(paymentError(e));return}
-  finally{saving=false;el("cpPay").disabled=false}
- }
- if(!saved?.canPay){notify("Pagamento indisponível. Confira sua escolha.");return}
+ if(!saved?.canPay){notify("Salve sua escolha antes de continuar.");return}
  if(saved.pixCents>0){startPix(el("cpPay"),type,id,saved);return}
  if(saved.mode!=="coins"||saved.quantity<1){notify("Forma de pagamento inválida.");return}
  if(busy)return;busy=true;
