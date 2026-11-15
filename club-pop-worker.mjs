@@ -3918,6 +3918,55 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       // LOGIN CPF + PIN
       // =====================================================
 
+      // Recuperação pública: verifica cadastro, limita tentativas e só troca PIN após aceite do WhatsApp.
+      if(request.method==="POST" && url.pathname==="/auth/recover-pin"){
+        const generic=()=>json({ok:true,message:"Se os dados estiverem corretos e o WhatsApp disponível, você receberá um novo PIN."});
+        const b=await readJson(request),cpf=normalizeCpf(b.cpf),email=normalizeEmail(b.email),birth=normalizeDate(b.birthDate);
+        if(!validCpfShape(cpf)||!email||!birth)return json({ok:false,error:"DADOS_INCOMPLETOS"},400);
+        const cpfHash=await sha256(cpf);
+        const ip=String(request.headers.get("CF-Connecting-IP")||"unknown");
+        const ipHash=await sha256(ip);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS club_pin_recovery_attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, cpf_hash TEXT NOT NULL, ip_hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+        const recent=await env.DB.prepare("SELECT COUNT(*) AS n FROM club_pin_recovery_attempts WHERE (cpf_hash=? OR ip_hash=?) AND created_at>datetime('now','-1 hour')").bind(cpfHash,ipHash).first();
+        if(Number(recent?.n||0)>=5)return generic();
+        await env.DB.prepare("INSERT INTO club_pin_recovery_attempts(cpf_hash,ip_hash) VALUES(?,?)").bind(cpfHash,ipHash).run();
+        const member=await env.DB.prepare("SELECT id,pin_hash,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? AND status='ACTIVE' LIMIT 1").bind(cpfHash).first();
+        if(!member?.pin_hash)return generic();
+        const local=await clubFindLocal(env,cpf,email,birth);
+        if(!local.matched)return generic();
+        const profiles=local.profiles.filter(p=>p.unit==="bike"?String(member.evo_member_id||"")===String(p.id):String(member.gym_client_id||"")===String(p.id));
+        if(!profiles.length)return generic();
+        let selected=null;
+        for(const p of profiles){
+          const row=await env.DB.prepare("SELECT contacts_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(p.unit,String(p.id)).first();
+          let contacts=[];try{contacts=JSON.parse(row?.contacts_json||"[]")}catch{}
+          const phones=[...new Set(contacts.filter(x=>/cell|celular|mobile/i.test(String(x.contactType||""))).map(x=>String(x.description||"").replace(/\D/g,"")).filter(x=>/^\d{10,11}$/.test(x)))];
+          if(phones.length===1){selected={unit:p.unit,phone:"55"+phones[0]};break}
+        }
+        if(!selected)return generic();
+        try{
+          const cfg=await env.DB.prepare("SELECT * FROM club_chatpro_config WHERE id=1").first();
+          let units=[];try{units=JSON.parse(cfg?.enabled_units||"[]")}catch{}
+          if(!cfg?.enabled||!units.includes(selected.unit)||!chatproSafeApiUrl(cfg.base_url)||!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)return generic();
+          const decode=x=>Uint8Array.from(atob(x),c=>c.charCodeAt(0));
+          const key=await crypto.subtle.importKey("raw",decode(env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY),"AES-GCM",false,["decrypt"]);
+          const [iv,cipher]=cfg.api_key_cipher.split(".");
+          const apiKey=new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:decode(iv),additionalData:new TextEncoder().encode("chatpro:config")},key,decode(cipher)));
+          const call=(path,method,payload)=>chatproRequest(cfg.base_url,apiKey,path,method,payload);
+          const sub=await resolveChatproSubscriber(call,selected.phone,{allowCreate:false});
+          const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);
+          const pin=String(100000+(bytes[0]%900000));
+          const message=["🔐 *CLUB POP | Recuperação de acesso*","","Olá! Recebemos uma solicitação de alteração do seu PIN de acesso ao Club Pop.","","🔑 *Seu novo PIN:* "+pin,"","Utilize esse código para acessar sua conta no aplicativo Club Pop.","","🔒 *Sua segurança é importante:* não compartilhe seu PIN com outras pessoas.","","Caso não tenha solicitado essa alteração, entre em contato com nossa equipe.","","*Equipe Club Pop* 💜"].join("\\n");
+          const salt=randomToken(16),hash=await hashPin(pin,salt);
+          await call("/subscriber/"+encodeURIComponent(sub.id)+"/send_message/","POST",{type:"text",value:message});
+          await env.DB.batch([
+            env.DB.prepare("UPDATE members SET pin_hash=?,pin_salt=?,pin_created_at=CURRENT_TIMESTAMP,failed_login_attempts=0,locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(hash,salt,member.id),
+            env.DB.prepare("UPDATE auth_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE member_id=? AND revoked_at IS NULL").bind(member.id)
+          ]);
+          await audit(env,"MEMBER",String(member.id),"SELF_PIN_RECOVERY");
+        }catch(e){console.error("PIN_RECOVERY_DELIVERY_OR_SAVE",String(e.message||e).slice(0,100))}
+        return generic();
+      }
       if (
         request.method === "POST" &&
         url.pathname === "/auth/login"
