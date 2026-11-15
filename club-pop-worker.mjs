@@ -5236,7 +5236,20 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
   }
   let response;try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id)+"/refund",{method:"POST",headers:{...headers,"X-Idempotency-Key":id+"-refund-v2","Content-Type":"application/json"}})}catch{return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA"},502)}
   const result=await response.json().catch(()=>({}));
-  if(!response.ok)return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||result.cause?.[0]?.code||"").slice(0,80),providerMessage:String(result.message||result.cause?.[0]?.description||"").slice(0,160)},409);
+  if(!response.ok){
+   // O provedor pode concluir o estorno antes de responder com erro. Consultar
+   // novamente é somente leitura e evita nova cobrança/estorno duplicado.
+   let verified=null;
+   try{
+    const check=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id),{headers,signal:AbortSignal.timeout(12000)});
+    if(check.ok)verified=await check.json();
+   }catch{}
+   const sameOrder=verified&&String(verified.id)===String(order.provider_order_id)&&String(verified.external_reference)===id&&Math.round(Number(verified.total_amount)*100)===Number(order.amount_cents);
+   const refunds=sameOrder&&Array.isArray(verified.transactions?.refunds)?verified.transactions.refunds:[];
+   const verifiedRefund=sameOrder&&(verified.status==="refunded"||verified.status_detail==="refunded"||refunds.some(x=>x.status==="processed"));
+   if(verifiedRefund)refunded=true;
+   else return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||result.cause?.[0]?.code||"").slice(0,80),providerMessage:String(result.message||result.cause?.[0]?.description||"").slice(0,160),refundInProcess:refunds.some(x=>["pending","processing"].includes(x.status)),verifiedReadOnly:!!sameOrder},502);
+  }
   refunded=result.status==="refunded"||result.transactions?.refunds?.some(x=>x.status==="processed");
  }
  if(!refunded)return json({ok:true,status:"refund_pending",message:"Mercado Pago está processando o estorno; aguarde a confirmação."});
