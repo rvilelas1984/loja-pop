@@ -5241,7 +5241,7 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
   const unsafeRefund=previousRefunds.some(x=>!["failed","rejected","cancelled"].includes(String(x.status).toLowerCase()));
   if(unsafeRefund)return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",message:"Há estorno sem falha definitiva; consulte o Mercado Pago antes de repetir."},409);
   const lastFailed=failedRefunds[failedRefunds.length-1];
-  const refundKey=lastFailed?id+"-retry-"+String(lastFailed.id).slice(0,64):id+"-refund-v2";
+  // Cada tentativa comprovadamente falha no provedor recebe uma chave nova (UUID).\n  // Reutilizar a mesma chave de uma tentativa failed pode provocar HTTP 500\n  // idempotency_validation_failed no Mercado Pago. A consulta acima bloqueia\n  // tentativas enquanto houver refund pending/processing ou já processado.\n  const refundKey=lastFailed?crypto.randomUUID():id+"-refund-v2";
   let response;try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id)+"/refund",{method:"POST",headers:{...headers,"X-Idempotency-Key":refundKey,"Content-Type":"application/json"}})}catch{return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA"},502)}
   const result=await response.json().catch(()=>({}));
   if(!response.ok){
