@@ -5225,7 +5225,7 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
  if(!get.ok)return json({ok:false,error:"CONSULTA_PIX_FALHOU"},502);
  const state=await get.json().catch(()=>({}));
  if(String(state.external_reference)!==id||Math.round(Number(state.total_amount)*100)!==Number(order.amount_cents))return json({ok:false,error:"PIX_NAO_CORRESPONDE_AO_PEDIDO"},409);
- let refunded=state.status==="refunded"||state.transactions?.refunds?.some(x=>x.status==="processed");
+ let refunded=state.status==="refunded"||state.status_detail==="refunded"||state.transactions?.refunds?.some(x=>x.status==="processed");
  if(!refunded){
   if(state.transactions?.refunds?.some(x=>["pending","processing"].includes(x.status)))return json({ok:true,status:"refund_pending",message:"Estorno em processamento no Mercado Pago"});
   if(state.status!=="processed")return json({ok:false,error:"PIX_NAO_PROCESSADO",providerStatus:state.status},409);
@@ -5256,11 +5256,11 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
    const refunds=sameOrder&&Array.isArray(verified.transactions?.refunds)?verified.transactions.refunds:[];
    const verifiedRefund=sameOrder&&(verified.status==="refunded"||verified.status_detail==="refunded"||refunds.some(x=>x.status==="processed"));
    if(verifiedRefund)refunded=true;
-   else return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||result.cause?.[0]?.code||"").slice(0,80),providerMessage:String(result.message||result.cause?.[0]?.description||"").slice(0,160),providerDetails:String(result.status_detail||result.cause?.[0]?.code||"").slice(0,100),refundInProcess:refunds.some(x=>["pending","processing"].includes(x.status)),verifiedReadOnly:!!sameOrder},502);
+   else return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||result.cause?.[0]?.code||"").slice(0,80),providerMessage:String(result.message||result.cause?.[0]?.description||"").slice(0,160),providerDetails:String(result.status_detail||result.cause?.[0]?.code||"").slice(0,100),providerCause:Array.isArray(result.cause)?result.cause.slice(0,2).map(x=>({code:String(x.code||"").slice(0,80),description:String(x.description||"").slice(0,160)})):[],refundInProcess:refunds.some(x=>["pending","processing"].includes(x.status)),verifiedReadOnly:!!sameOrder},502);
   }
   // Preserve o resultado confirmado pela consulta de segurança: a resposta
   // inicial pode ser erro mesmo quando o provedor já concluiu o estorno.
-  refunded=refunded||result.status==="refunded"||result.transactions?.refunds?.some(x=>x.status==="processed");
+  refunded=refunded||result.status==="refunded"||result.status_detail==="refunded"||result.transactions?.refunds?.some(x=>x.status==="processed");
  }
  if(!refunded)return json({ok:true,status:"refund_pending",message:"Mercado Pago está processando o estorno; aguarde a confirmação."});
  await env.DB.batch([env.DB.prepare("UPDATE club_pix_orders SET status='refunded',reservation_state='released',updated_at=CURRENT_TIMESTAMP WHERE id=? AND external_state IN ('none','failed','refunded')").bind(id),env.DB.prepare("UPDATE club_pix_fulfillment SET delivery_state='blocked',updated_at=CURRENT_TIMESTAMP WHERE order_id=?").bind(id)]);
