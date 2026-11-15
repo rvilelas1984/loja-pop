@@ -5250,7 +5250,9 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
    if(verifiedRefund)refunded=true;
    else return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||result.cause?.[0]?.code||"").slice(0,80),providerMessage:String(result.message||result.cause?.[0]?.description||"").slice(0,160),refundInProcess:refunds.some(x=>["pending","processing"].includes(x.status)),verifiedReadOnly:!!sameOrder},502);
   }
-  refunded=result.status==="refunded"||result.transactions?.refunds?.some(x=>x.status==="processed");
+  // Preserve o resultado confirmado pela consulta de segurança: a resposta
+  // inicial pode ser erro mesmo quando o provedor já concluiu o estorno.
+  refunded=refunded||result.status==="refunded"||result.transactions?.refunds?.some(x=>x.status==="processed");
  }
  if(!refunded)return json({ok:true,status:"refund_pending",message:"Mercado Pago está processando o estorno; aguarde a confirmação."});
  await env.DB.batch([env.DB.prepare("UPDATE club_pix_orders SET status='refunded',reservation_state='released',updated_at=CURRENT_TIMESTAMP WHERE id=? AND external_state IN ('none','failed','refunded')").bind(id),env.DB.prepare("UPDATE club_pix_fulfillment SET delivery_state='blocked',updated_at=CURRENT_TIMESTAMP WHERE order_id=?").bind(id)]);
