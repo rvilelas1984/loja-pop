@@ -59,6 +59,10 @@
       "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/checkout/coins/:path*"
     },
     {
+      "source": "/checkout/store/eligibility",
+      "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/checkout/store/eligibility"
+    },
+    {
       "source": "/checkout/mixed/:path*",
       "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/checkout/mixed/:path*"
     },
