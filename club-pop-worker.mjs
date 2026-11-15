@@ -1200,14 +1200,14 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(admin.role!=="admin"&&!(admin.permissions||[]).some(p=>["*","/admin-alunos-evo.html"].includes(p)))return json({ok:false,error:"SEM_PERMISSAO_ALUNOS"},403);
         const b=await readJson(request),unit=String(b.unit||""),evoId=String(b.evoMemberId||"").trim(),pin=String(b.pin||"");
         if(!["bike","gym"].includes(unit)||!(admin.units||[]).includes(unit))return json({ok:false,error:"UNIDADE_NAO_PERMITIDA"},403);
-        if(!/^\\d{1,15}$/.test(evoId)||!/^\\d{6}$/.test(pin)||b.confirm!==true)return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        if(!/^\d{1,15}$/.test(evoId)||!/^\d{6}$/.test(pin)||b.confirm!==true)return json({ok:false,error:"DADOS_INVALIDOS"},400);
         const column=unit==="bike"?"evo_member_id":"gym_client_id";
         const member=await env.DB.prepare("SELECT id,pin_hash,pin_salt,pin_created_at FROM members WHERE "+column+"=? LIMIT 1").bind(evoId).first();
         if(!member?.pin_hash||!member.pin_salt||await hashPin(pin,member.pin_salt)!==member.pin_hash)return json({ok:false,error:"PIN_NAO_CORRESPONDE_AO_ATUAL"},409);
         if(!member.pin_created_at||Date.now()-Date.parse(member.pin_created_at.replace(" ","T")+"Z")>15*60*1000)return json({ok:false,error:"PIN_EXPIRADO_PARA_ENVIO"},409);
         const person=await env.DB.prepare("SELECT contacts_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,evoId).first();
         let contacts=[];try{contacts=JSON.parse(person?.contacts_json||"[]")}catch{}
-        const phones=contacts.filter(x=>/cell|celular|mobile/i.test(String(x.contactType||""))).map(x=>String(x.description||"").replace(/\\D/g,"")).filter(x=>/^\\d{10,11}$/.test(x));
+        const phones=contacts.filter(x=>/cell|celular|mobile/i.test(String(x.contactType||""))).map(x=>String(x.description||"").replace(/\D/g,"")).filter(x=>/^\d{10,11}$/.test(x));
         if(phones.length!==1)return json({ok:false,error:"WHATSAPP_CADASTRADO_AUSENTE_OU_AMBIGUO"},409);
         const phone="55"+phones[0];
         const cfg=await env.DB.prepare("SELECT * FROM club_chatpro_config WHERE id=1").first();
