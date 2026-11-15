@@ -3956,7 +3956,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           const sub=await resolveChatproSubscriber(call,selected.phone,{allowCreate:false});
           const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);
           const pin=String(100000+(bytes[0]%900000));
-          const message=["🔐 *CLUB POP | Recuperação de acesso*","","Olá! Recebemos uma solicitação de alteração do seu PIN de acesso ao Club Pop.","","🔑 *Seu novo PIN:* "+pin,"","Utilize esse código para acessar sua conta no aplicativo Club Pop.","","🔒 *Sua segurança é importante:* não compartilhe seu PIN com outras pessoas.","","Caso não tenha solicitado essa alteração, entre em contato com nossa equipe.","","*Equipe Club Pop* 💜"].join("\\n");
+          const message=["🔐 *CLUB POP | Recuperação de acesso*","","Olá! Recebemos uma solicitação de alteração do seu PIN de acesso ao Club Pop.","","🔑 *Seu novo PIN:* "+pin,"","Utilize esse código para acessar sua conta no aplicativo Club Pop.","","🔒 *Sua segurança é importante:* não compartilhe seu PIN com outras pessoas.","","Caso não tenha solicitado essa alteração, entre em contato com nossa equipe.","","*Equipe Club Pop* 💜"].join("\n");
           const salt=randomToken(16),hash=await hashPin(pin,salt);
           await call("/subscriber/"+encodeURIComponent(sub.id)+"/send_message/","POST",{type:"text",value:message});
           await env.DB.batch([
