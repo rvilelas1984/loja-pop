@@ -2413,7 +2413,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!/^[0-9a-f-]{36}$/.test(token))return json({ok:false,error:"APP_NAO_AUTORIZADO"},401);
         const access=await env.DB.prepare("SELECT active FROM pop_live_app_tokens WHERE token=?").bind(token).first();
         if(!access||!access.active)return json({ok:false,error:"APP_NAO_AUTORIZADO"},403);
-        const r=await env.DB.prepare("SELECT reference_number,device_type,manufacturer,model,display_name,ble_identifier,unit_bike,unit_gym,bike_number FROM pop_live_devices WHERE active=1 ORDER BY reference_number").all();
+        const r=await env.DB.prepare("SELECT reference_number,device_type,manufacturer,model,display_name,ble_identifier,unit_bike,unit_gym,bike_number,sensor_code FROM pop_live_devices WHERE active=1 ORDER BY reference_number").all();
         return json({ok:true,devices:r.results||[]});
       }
       if(url.pathname==="/pop-live/devices"&&request.method==="PUT"){
@@ -2422,14 +2422,15 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const access=await env.DB.prepare("SELECT active FROM pop_live_app_tokens WHERE token=?").bind(token).first();
         if(!access?.active)return json({ok:false,error:"APP_NAO_AUTORIZADO"},403);
         const body=await request.json().catch(()=>null);
-        const mac=String(body?.ble_identifier||"").trim().toUpperCase(),bike=Number(body?.bike_number);
-        if(!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)||!Number.isInteger(bike)||bike<1||bike>34)return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const mac=String(body?.ble_identifier||"").trim().toUpperCase(),hasBike=body?.bike_number!=null,bike=Number(body?.bike_number),hasCode=body?.sensor_code!=null,code=String(body?.sensor_code||"").trim().toUpperCase();
+        if(!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)||(!hasBike&&!hasCode)||(hasBike&&(!Number.isInteger(bike)||bike<1||bike>34))||(hasCode&&!/^S[1-9][0-9]{0,3}$/.test(code)))return json({ok:false,error:"DADOS_INVALIDOS"},400);
         const sensor=await env.DB.prepare("SELECT id FROM pop_live_devices WHERE device_type='cadence' AND active=1 AND upper(ble_identifier)=?").bind(mac).first();
         if(!sensor)return json({ok:false,error:"SENSOR_NAO_ENCONTRADO"},404);
-        const conflict=await env.DB.prepare("SELECT id FROM pop_live_devices WHERE device_type='cadence' AND active=1 AND bike_number=? AND id<>? LIMIT 1").bind(bike,sensor.id).first();
+        const conflict=hasBike?await env.DB.prepare("SELECT id FROM pop_live_devices WHERE device_type='cadence' AND active=1 AND bike_number=? AND id<>? LIMIT 1").bind(bike,sensor.id).first():null;
         if(conflict)return json({ok:false,error:"BIKE_OCUPADA"},409);
-        await env.DB.prepare("UPDATE pop_live_devices SET bike_number=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(bike,sensor.id).run();
-        return json({ok:true,id:sensor.id,bike_number:bike,ble_identifier:mac});
+        if(hasCode){const duplicate=await env.DB.prepare("SELECT id FROM pop_live_devices WHERE device_type='cadence' AND active=1 AND upper(sensor_code)=? AND id<>? LIMIT 1").bind(code,sensor.id).first();if(duplicate)return json({ok:false,error:"CODIGO_SENSOR_EM_USO"},409)}
+        await env.DB.prepare("UPDATE pop_live_devices SET bike_number=COALESCE(?,bike_number),sensor_code=COALESCE(?,sensor_code),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(hasBike?bike:null,hasCode?code:null,sensor.id).run();
+        return json({ok:true,id:sensor.id,bike_number:hasBike?bike:undefined,sensor_code:hasCode?code:undefined,ble_identifier:mac});
       }
       if(url.pathname==="/pop-live/devices"&&request.method==="POST"){
         const token=String(request.headers.get("authorization")||"").replace(/^Bearer /i,"").trim();
