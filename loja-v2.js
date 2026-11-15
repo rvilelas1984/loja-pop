@@ -114,7 +114,7 @@ async function startPix(btn,type,id,savedChoice){
  try{
   const token=sessionStorage.getItem("clubpop_token");if(!token)throw Error("Faça login novamente.");
   const headers={"Content-Type":"application/json",Authorization:"Bearer "+token};
-  const call=async(path,body)=>{const r=await fetch(WORKER_PIX+path,{method:"POST",headers,body:JSON.stringify(body)}),d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||"Falha no Pix");return d};
+  const call=async(path,body)=>{const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);try{const r=await fetch(WORKER_PIX+path,{method:"POST",headers,body:JSON.stringify(body),signal:controller.signal}),d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw Error(d.error||"Falha no Pix (HTTP "+r.status+")");return d}catch(e){if(e.name==="AbortError")throw Error("A criação do Pix demorou demais. Consulte Minhas Compras antes de tentar novamente, para evitar pagamentos duplicados.");throw e}finally{clearTimeout(timeout)}};
   const item=(type==="service"?D.services:D.products).find(x=>String(x.id)===String(id)&&sameUnit(x));
   const coins=Number(savedChoice?.quantity||0),scope=unit()==="gym"?"Gym Pop":"Bike Pop";
   const draft=savedChoice?{orderId:savedChoice.orderId,amountCents:savedChoice.pixCents}:await call("/checkout/pix/draft",{unit:unit(),itemType:type,itemId:id});
