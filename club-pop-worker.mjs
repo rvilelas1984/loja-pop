@@ -1190,6 +1190,42 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         await audit(env,"ADMIN",String(admin.id||admin.name||"staff"),"STUDENT_PIN_RESET:"+String(member.id));
         return json({ok:true,pin,memberId:member.id,message:"PIN atualizado. Copie agora; ele não será exibido novamente."});
       }
+      // Envio manual do PIN recém-gerado: reutiliza autenticação e ChatPro existentes.
+      if(url.pathname==="/admin/student-pin-whatsapp" && request.method==="POST"){
+        const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        let ar;try{ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"})}catch{return json({ok:false,error:"AUTENTICACAO_INDISPONIVEL"},502)}
+        const admin=await ar.json().catch(()=>({}));
+        if(!ar.ok||!["admin","reception"].includes(admin.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(admin.role!=="admin"&&!(admin.permissions||[]).some(p=>["*","/admin-alunos-evo.html"].includes(p)))return json({ok:false,error:"SEM_PERMISSAO_ALUNOS"},403);
+        const b=await readJson(request),unit=String(b.unit||""),evoId=String(b.evoMemberId||"").trim(),pin=String(b.pin||"");
+        if(!["bike","gym"].includes(unit)||!(admin.units||[]).includes(unit))return json({ok:false,error:"UNIDADE_NAO_PERMITIDA"},403);
+        if(!/^\\d{1,15}$/.test(evoId)||!/^\\d{6}$/.test(pin)||b.confirm!==true)return json({ok:false,error:"DADOS_INVALIDOS"},400);
+        const column=unit==="bike"?"evo_member_id":"gym_client_id";
+        const member=await env.DB.prepare("SELECT id,pin_hash,pin_salt,pin_created_at FROM members WHERE "+column+"=? LIMIT 1").bind(evoId).first();
+        if(!member?.pin_hash||!member.pin_salt||await hashPin(pin,member.pin_salt)!==member.pin_hash)return json({ok:false,error:"PIN_NAO_CORRESPONDE_AO_ATUAL"},409);
+        if(!member.pin_created_at||Date.now()-Date.parse(member.pin_created_at.replace(" ","T")+"Z")>15*60*1000)return json({ok:false,error:"PIN_EXPIRADO_PARA_ENVIO"},409);
+        const person=await env.DB.prepare("SELECT contacts_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,evoId).first();
+        let contacts=[];try{contacts=JSON.parse(person?.contacts_json||"[]")}catch{}
+        const phones=contacts.filter(x=>/cell|celular|mobile/i.test(String(x.contactType||""))).map(x=>String(x.description||"").replace(/\\D/g,"")).filter(x=>/^\\d{10,11}$/.test(x));
+        if(phones.length!==1)return json({ok:false,error:"WHATSAPP_CADASTRADO_AUSENTE_OU_AMBIGUO"},409);
+        const phone="55"+phones[0];
+        const cfg=await env.DB.prepare("SELECT * FROM club_chatpro_config WHERE id=1").first();
+        let enabled=[];try{enabled=JSON.parse(cfg?.enabled_units||"[]")}catch{}
+        if(!cfg?.enabled||!enabled.includes(unit)||!chatproSafeApiUrl(cfg.base_url)||!env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY)return json({ok:false,error:"CHATPRO_NAO_CONFIGURADO"},503);
+        try{
+          const decode=x=>Uint8Array.from(atob(x),c=>c.charCodeAt(0));
+          const key=await crypto.subtle.importKey("raw",decode(env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY),"AES-GCM",false,["decrypt"]);
+          const [iv,cipher]=cfg.api_key_cipher.split(".");
+          const apiKey=new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:decode(iv),additionalData:new TextEncoder().encode("chatpro:config")},key,decode(cipher)));
+          const call=(path,method,payload)=>chatproRequest(cfg.base_url,apiKey,path,method,payload);
+          const sub=await resolveChatproSubscriber(call,phone,{allowCreate:false});
+          const message="🔐 Club Pop | Recuperação de acesso\\nSeu novo PIN: "+pin+"\\nSe você não solicitou esta alteração, fale com a recepção.";
+          await call("/subscriber/"+encodeURIComponent(sub.id)+"/send_message/","POST",{message});
+          await audit(env,"ADMIN",String(admin.id||admin.name||"staff"),"STUDENT_PIN_WHATSAPP:"+String(member.id));
+          return json({ok:true,message:"Mensagem aceita pelo serviço de WhatsApp."});
+        }catch(e){return json({ok:false,error:"ENVIO_CHATPRO_FALHOU",detail:String(e.message||"").slice(0,100)},502)}
+      }
       if(url.pathname==="/admin/manual-student-activation" && ["GET","POST"].includes(request.method)){
         const cookie=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!cookie)return json({ok:false,error:"NAO_AUTORIZADO"},401);
