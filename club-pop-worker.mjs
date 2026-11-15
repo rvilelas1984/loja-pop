@@ -5234,7 +5234,15 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
    const claim=await env.DB.prepare("UPDATE club_pix_orders SET status='refund_pending' WHERE id=? AND status IN ('paid_pending_coins','pending','approved') AND external_state IN ('none','failed','refunded')").bind(id).run();
    if(!(claim.meta.changes>0))return json({ok:false,error:"ESTORNO_EM_PROCESSAMENTO"},409);
   }
-  let response;try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id)+"/refund",{method:"POST",headers:{...headers,"X-Idempotency-Key":id+"-refund-v2","Content-Type":"application/json"}})}catch{return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA"},502)}
+  // Só permite uma nova chave após o provedor confirmar que a tentativa anterior falhou.
+  // Nunca rotacionar a chave quando o estado é desconhecido ou em processamento.
+  const previousRefunds=Array.isArray(state.transactions?.refunds)?state.transactions.refunds:[];
+  const failedRefunds=previousRefunds.filter(x=>String(x.status).toLowerCase()==="failed"&&x.id);
+  const unsafeRefund=previousRefunds.some(x=>!["failed","rejected","cancelled"].includes(String(x.status).toLowerCase()));
+  if(unsafeRefund)return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",message:"Há estorno sem falha definitiva; consulte o Mercado Pago antes de repetir."},409);
+  const lastFailed=failedRefunds[failedRefunds.length-1];
+  const refundKey=lastFailed?id+"-retry-"+String(lastFailed.id).slice(0,64):id+"-refund-v2";
+  let response;try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id)+"/refund",{method:"POST",headers:{...headers,"X-Idempotency-Key":refundKey,"Content-Type":"application/json"}})}catch{return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA"},502)}
   const result=await response.json().catch(()=>({}));
   if(!response.ok){
    // O provedor pode concluir o estorno antes de responder com erro. Consultar
