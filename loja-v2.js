@@ -122,7 +122,19 @@ async function startPix(btn,type,id,savedChoice){
   const sheet=document.getElementById("storeSheet");if(!sheet)throw Error("Tela indisponível");
   let pixTimer=null,checking=false;
   const stop=()=>{if(pixTimer){clearInterval(pixTimer);pixTimer=null}};
-  const finish=()=>{stop();sheet.innerHTML=checkoutView(item,type,scope,coins,draft.amountCents,"Compra confirmada!","Parabéns! Seu pagamento foi concluído com sucesso.",'<div class="cx-success">✓</div><div class="cx-state">✓ '+(type==="product"?"Seu produto está disponível para retirada na recepção do "+scope+".":"Seu serviço foi comprado. Acompanhe seu voucher no aplicativo.")+'</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails;render()};
+  const finish=async()=>{stop();sheet.innerHTML=checkoutView(item,type,scope,coins,draft.amountCents,"Compra confirmada!","Parabéns! Seu pagamento foi concluído com sucesso.",'<div class="cx-success">✓</div><div class="cx-state" id="cxVoucherStatus">'+(type==="product"?"Seu produto está disponível para retirada na recepção do "+scope+".":"Emitindo seu voucher...")+'</div><a href="/minhas-compras.html" class="cx-btn" style="display:block;text-align:center;text-decoration:none">VER MINHAS COMPRAS</a><button id="cxClose" class="cx-btn cx-alt">VOLTAR À LOJA</button>');sheet.querySelector("#cxClose").onclick=closeDetails;render();
+ if(type!=="service")return;
+ const status=sheet.querySelector("#cxVoucherStatus");
+ try{
+  const response=await fetch(WORKER_PIX+"/checkout/service-voucher",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({orderId:draft.orderId})});
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok||!result.ok)throw Error(result.error||"VOUCHER_INDISPONIVEL");
+  if(result.status==="issued"&&result.code){
+   status.innerHTML='<strong>Seu voucher:</strong><div class="cx-code cx-voucher-code">'+esc(result.code)+'</div><button class="cx-btn" id="cxCopyVoucher">COPIAR CÓDIGO</button><p class="cx-note">Código também disponível em Meus Vouchers.</p>';
+   status.querySelector("#cxCopyVoucher").onclick=async()=>{try{await navigator.clipboard.writeText(result.code);notify("Código copiado!")}catch{notify("Selecione o código para copiar.")}};
+  }else status.textContent="Pagamento confirmado. Voucher aguardando emissão ("+String(result.status||"pendente")+"). Acompanhe em Meus Vouchers.";
+ }catch(e){status.textContent="Pagamento confirmado. Não foi possível emitir o voucher agora. Consulte Meus Vouchers ou a recepção.";console.warn("Voucher pós-Pix",e)}
+};
   if(payment.status==="approved"){finish();return}
   const response=await fetch(WORKER_PIX+"/checkout/pix/details?orderId="+encodeURIComponent(draft.orderId),{headers:{Authorization:"Bearer "+token},cache:"no-store"}),details=await response.json().catch(()=>({}));
   const code=payment.qrCode||details.qrCode||"",qr=payment.qrCodeBase64||details.qrCodeBase64||"";if(!code&&!qr)throw Error("Não foi possível apresentar o QR Code Pix. Consulte Minhas Compras antes de tentar novamente.");
