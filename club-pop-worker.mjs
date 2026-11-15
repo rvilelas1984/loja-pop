@@ -33,7 +33,7 @@ import { ensureTeacherLinks, validateTeacherLinks, teacherView } from "./lib/tea
 function favoriteEquipmentFromRows(rows,unit,activity){const type=unit==="bike"?"B":/step/i.test(activity||"")?"S":/jump/i.test(activity||"")?"J":null;if(!type)return "Livre";const selected=rows.filter(r=>unit==="bike"||(type==="S"?/step/i.test(r.activity||""):/jump/i.test(r.activity||"")));const nums=selected.map(r=>Number(r.slotNumber)).filter(n=>Number.isInteger(n)&&n>0);if(!nums.length)return "—";const counts={};for(const n of nums)counts[n]=(counts[n]||0)+1;const [num,count]=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];return count/nums.length>=0.55?type+num:"—"}
 import {benefitVouchers} from './lib/benefit-vouchers.mjs';
 import {settleFitcoins,receptionRecord,receptionAction} from './lib/checkout-fitcoins.mjs';
-import { options as checkoutOptions, quote as checkoutQuote, validateChoice, checkoutError, customerOrderStatus } from './lib/checkout.mjs';
+import { options as checkoutOptions, quote as checkoutQuote, validateChoice, checkoutError, customerOrderStatus, storeEligibility } from './lib/checkout.mjs';
 import { currencyAdmin, currencyStudent, currencyRewardTick, currencyMissionProgress, activeCurrency, ledgerStatements, localToday } from './lib/currency-ledger.mjs';
 
 // Same unit credentials, endpoint and request accounting as the existing Fitcoins transport.
@@ -4243,6 +4243,12 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         catch(e){return json({ok:false,error:e.message||"VOUCHER_INDISPONIVEL"},409)}
       }
 
+      if(url.pathname==="/checkout/store/eligibility"&&request.method==="GET"){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        try{return json(await storeEligibility(env.DB,member,String(url.searchParams.get("unit")||"")))}
+        catch(e){return json({ok:false,error:e.message||"ELEGIBILIDADE_INDISPONIVEL"},e.status||409)}
+      }
       // Shared checkout: D1 balances, authoritative amounts and durable choices.
       if((url.pathname==="/checkout/mixed/options"&&request.method==="GET")||(["/checkout/mixed/quote","/checkout/pix/draft"].includes(url.pathname)&&request.method==="POST")){
         const member=await authenticatedMember(request,env);
