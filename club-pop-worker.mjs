@@ -5256,7 +5256,12 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
    const refunds=sameOrder&&Array.isArray(verified.transactions?.refunds)?verified.transactions.refunds:[];
    const verifiedRefund=sameOrder&&(verified.status==="refunded"||verified.status_detail==="refunded"||refunds.some(x=>x.status==="processed"));
    if(verifiedRefund)refunded=true;
-   else return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||result.cause?.[0]?.code||"").slice(0,80),providerMessage:String(result.message||result.cause?.[0]?.description||"").slice(0,160),providerDetails:String(result.status_detail||result.cause?.[0]?.code||"").slice(0,100),providerCause:Array.isArray(result.cause)?result.cause.slice(0,2).map(x=>({code:String(x.code||"").slice(0,80),description:String(x.description||"").slice(0,160)})):[],refundInProcess:refunds.some(x=>["pending","processing"].includes(x.status)),verifiedReadOnly:!!sameOrder},response.status>=400&&response.status<500?409:502);
+   else {
+    // Diagnóstico sanitizado: não persistir tokens, headers ou payload completo do provedor.
+    const diagnostic={httpStatus:response.status,code:String(result.error||result.code||result.cause?.[0]?.code||"").slice(0,80),message:String(result.message||result.cause?.[0]?.description||"").slice(0,160),statusDetail:String(result.status_detail||"").slice(0,100),cause:Array.isArray(result.cause)?result.cause.slice(0,2).map(x=>({code:String(x.code||"").slice(0,80),description:String(x.description||"").slice(0,160)})):[],refundInProcess:refunds.some(x=>["pending","processing"].includes(x.status)),verifiedReadOnly:!!sameOrder,providerRequestId:String(response.headers.get("x-request-id")||response.headers.get("x-correlation-id")||"").slice(0,100)};
+    try{await env.DB.prepare("INSERT INTO audit_log(actor_type,actor_id,action,entity_type,entity_id,metadata_json) VALUES('SYSTEM','mercadopago','PIX_REFUND_PROVIDER_REJECTED','club_pix_orders',?,?)").bind(id,JSON.stringify(diagnostic)).run()}catch(e){console.error("pix_refund_diagnostic_audit_failed",String(e?.message||e).slice(0,120))}
+    return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:diagnostic.httpStatus,providerCode:diagnostic.code,providerMessage:diagnostic.message,providerDetails:diagnostic.statusDetail,providerCause:diagnostic.cause,providerRequestId:diagnostic.providerRequestId,refundInProcess:diagnostic.refundInProcess,verifiedReadOnly:diagnostic.verifiedReadOnly},response.status>=400&&response.status<500?409:502);
+   }
   }
   // Preserve o resultado confirmado pela consulta de segurança: a resposta
   // inicial pode ser erro mesmo quando o provedor já concluiu o estorno.
