@@ -1220,7 +1220,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           const apiKey=new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:decode(iv),additionalData:new TextEncoder().encode("chatpro:config")},key,decode(cipher)));
           const call=(path,method,payload)=>chatproRequest(cfg.base_url,apiKey,path,method,payload);
           const sub=await resolveChatproSubscriber(call,phone,{allowCreate:false});
-          const message="🔐 Club Pop | Recuperação de acesso\\nSeu novo PIN: "+pin+"\\nSe você não solicitou esta alteração, fale com a recepção.";
+          const message=["🔐 *CLUB POP | Recuperação de acesso*","","Olá! Recebemos uma solicitação de alteração do seu PIN de acesso ao Club Pop.","","🔑 *Seu novo PIN:* "+pin,"","Utilize esse código para acessar sua conta no aplicativo Club Pop.","","🔒 *Sua segurança é importante:* não compartilhe seu PIN com outras pessoas.","","Caso não tenha solicitado essa alteração, entre em contato com nossa equipe.","","*Equipe Club Pop* 💜"].join("\n");
           await call("/subscriber/"+encodeURIComponent(sub.id)+"/send_message/","POST",{type:"text",value:message});
           await audit(env,"ADMIN",String(admin.id||admin.name||"staff"),"STUDENT_PIN_WHATSAPP:"+String(member.id));
           return json({ok:true,message:"Mensagem aceita pelo serviço de WhatsApp."});
