@@ -62,7 +62,7 @@ el("pinResetWhatsapp").addEventListener("click",async()=>{
  send.disabled=true;status.textContent="Enviando pelo WhatsApp...";
  try{const unit=new URLSearchParams(location.search).get("scope")==="gym"?"gym":"bike";
  const r=await fetch("/api/evo-config?route=student-pin-whatsapp",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({unit,evoMemberId:id,pin,confirm:true}),cache:"no-store"});
- const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||"Falha no envio");
+ const d=await r.json();if(!r.ok||!d.ok)throw Error([d.error,d.detail].filter(Boolean).join(" — ")||"Falha no envio");
  status.textContent="Mensagem aceita pelo serviço de WhatsApp.";send.disabled=true;
  }catch(e){status.textContent="WhatsApp: "+e.message;send.disabled=false}
 });
