@@ -5197,7 +5197,7 @@ if(url.pathname==="/admin/pix-refund-check"&&request.method==="GET"){
  try{response=await fetch("https://api.mercadopago.com/v1/orders/"+encodeURIComponent(order.provider_order_id),{headers:{Authorization:"Bearer "+creds.token,Accept:"application/json"},signal:AbortSignal.timeout(12000)})}
  catch{return json({ok:false,error:"CONSULTA_MERCADOPAGO_INDISPONIVEL"},502)}
  const state=await response.json().catch(()=>({}));
- if(!response.ok)return json({ok:false,error:"CONSULTA_MERCADOPAGO_FALHOU",providerStatus:response.status,providerCode:String(state.error||state.code||"").slice(0,80)},502);
+ if(!response.ok)return json({ok:false,error:"CONSULTA_MERCADOPAGO_FALHOU",providerStatus:response.status,providerRequestId:String(response.headers.get("x-request-id")||"").slice(0,100),providerCode:String(state.error||state.code||"").slice(0,80)},502);
  if(String(state.id)!==String(order.provider_order_id)||String(state.external_reference)!==id||Math.round(Number(state.total_amount)*100)!==Number(order.amount_cents))return json({ok:false,error:"PIX_NAO_CORRESPONDE_AO_PEDIDO"},409);
  const refunds=Array.isArray(state.transactions?.refunds)?state.transactions.refunds:[];
  const confirmed=state.status==="refunded"||state.status_detail==="refunded";
@@ -5256,7 +5256,7 @@ if(url.pathname==="/admin/pix-refund"&&request.method==="POST"){
    const refunds=sameOrder&&Array.isArray(verified.transactions?.refunds)?verified.transactions.refunds:[];
    const verifiedRefund=sameOrder&&(verified.status==="refunded"||verified.status_detail==="refunded"||refunds.some(x=>x.status==="processed"));
    if(verifiedRefund)refunded=true;
-   else return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||result.cause?.[0]?.code||"").slice(0,80),providerMessage:String(result.message||result.cause?.[0]?.description||"").slice(0,160),providerDetails:String(result.status_detail||result.cause?.[0]?.code||"").slice(0,100),providerCause:Array.isArray(result.cause)?result.cause.slice(0,2).map(x=>({code:String(x.code||"").slice(0,80),description:String(x.description||"").slice(0,160)})):[],refundInProcess:refunds.some(x=>["pending","processing"].includes(x.status)),verifiedReadOnly:!!sameOrder},502);
+   else return json({ok:false,error:"ESTORNO_REQUER_CONFERENCIA",providerStatus:response.status,providerCode:String(result.error||result.code||result.cause?.[0]?.code||"").slice(0,80),providerMessage:String(result.message||result.cause?.[0]?.description||"").slice(0,160),providerDetails:String(result.status_detail||result.cause?.[0]?.code||"").slice(0,100),providerCause:Array.isArray(result.cause)?result.cause.slice(0,2).map(x=>({code:String(x.code||"").slice(0,80),description:String(x.description||"").slice(0,160)})):[],refundInProcess:refunds.some(x=>["pending","processing"].includes(x.status)),verifiedReadOnly:!!sameOrder},response.status>=400&&response.status<500?409:502);
   }
   // Preserve o resultado confirmado pela consulta de segurança: a resposta
   // inicial pode ser erro mesmo quando o provedor já concluiu o estorno.
