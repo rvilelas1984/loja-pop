@@ -323,7 +323,7 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
  if(req.query.route==="student-center"){
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const id=String(req.query.id||"").trim();
-  if(!/^\\d{1,12}$/.test(id))return res.status(400).json({ok:false,error:"ID_INVALIDO"});
+  if(!/^\d{1,12}$/.test(id))return res.status(400).json({ok:false,error:"ID_INVALIDO"});
   try{const r=await fetch(WORKER+"/admin/student-center?id="+encodeURIComponent(id),{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}
   catch{return res.status(502).json({ok:false,error:"CENTRAL_ALUNO_INDISPONIVEL"})}
  }
