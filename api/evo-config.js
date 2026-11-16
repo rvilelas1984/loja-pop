@@ -337,6 +337,12 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
     return res.json({ok:true,unit,id,requests:1});
   }catch(e){return res.status(502).json({ok:false,error:String(e.message||"EVO_INDISPONIVEL").slice(0,120)})}
  }
+ if(req.query.route==="student-center-contact"){
+  const unit=req.method==="GET"?req.query.unit:req.body?.unit,id=String(req.method==="GET"?req.query.id:req.body?.id||"").trim();
+  if(!["bike","gym"].includes(unit)||!/^\d{1,12}$/.test(id)||!["GET","POST"].includes(req.method))return res.status(400).json({ok:false,error:"PARAMETROS_INVALIDOS"});
+  const query="?unit="+unit+"&id="+encodeURIComponent(id);
+  try{const r=await fetch(WORKER+"/admin/student-center-contact"+query,{method:req.method,headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||""),"Content-Type":"application/json"},body:req.method==="POST"?JSON.stringify(req.body||{}):undefined,cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}catch{return res.status(502).json({ok:false,error:"CHATPRO_INDISPONIVEL"})}
+ }
  if(req.query.route==="student-center-search"){
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const q=String(req.query.q||"").trim().slice(0,80),unit=req.query.unit==="gym"?"gym":"bike";
