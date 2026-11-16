@@ -3612,7 +3612,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!auth.ok||!["admin","reception"].includes(admin.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
         if(admin.role!=="admin"&&!((admin.permissions||[]).includes("*")||(admin.permissions||[]).includes("/admin-alunos-evo.html")||(admin.permissions||[]).includes("/admin-central-aluno.html")))return json({ok:false,error:"SEM_PERMISSAO"},403);
         const evoId=String(url.searchParams.get("id")||"").trim();
-        if(!/^\\d{1,12}$/.test(evoId))return json({ok:false,error:"ID_INVALIDO"},400);
+        if(!/^\d{1,12}$/.test(evoId))return json({ok:false,error:"ID_INVALIDO"},400);
         const member=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,first_name,last_name,status FROM members WHERE CAST(evo_member_id AS TEXT)=? OR CAST(gym_client_id AS TEXT)=? LIMIT 1").bind(evoId,evoId).first();
         if(!member)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
         const units=(admin.units||[]).filter(u=>u==="bike"||u==="gym");
