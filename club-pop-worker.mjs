@@ -3634,6 +3634,15 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const units=(admin.units||[]).filter(u=>u==="bike"||u==="gym");
         const ids=[{unit:"bike",id:String(member.evo_member_id||"")},{unit:"gym",id:String(member.gym_client_id||"")}].filter(x=>x.id&&units.includes(x.unit));
         if(!ids.length)return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        const profiles=[];
+        for(const x of ids){
+          const m=await env.DB.prepare("SELECT personal_json,contacts_json,address_json,synced_at FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(x.unit,x.id).first();
+          if(m){let personal={},contacts=[],address={};try{personal=JSON.parse(m.personal_json||"{}")}catch{}try{contacts=JSON.parse(m.contacts_json||"[]")}catch{}try{address=JSON.parse(m.address_json||"{}")}catch{}
+            const email=Array.isArray(contacts)?contacts.find(c=>/mail/i.test(c.contactType||""))?.description:null;
+            const phone=Array.isArray(contacts)?contacts.find(c=>/cell|phone|mobile/i.test(c.contactType||""))?.description:null;
+            profiles.push({unit:x.unit,registeredAt:personal.registerDate||null,birthDate:personal.birthDate||null,gender:personal.gender||null,documentMasked:personal.document?String(personal.document).replace(/\\D/g,"").replace(/^(\\d{3})\\d+(\\d{2})$/,"$1******$2"):null,email:email||null,phone:phone||null,address:address&&typeof address==="object"?{city:address.city||address.cityName||null,state:address.state||address.stateName||null}:null,syncedAt:m.synced_at});
+          }
+        }
         const contracts=[],attendance=[];
         for(const x of ids){
           const cr=await env.DB.prepare("SELECT unit,membership_name,membership_status,start_date,end_date FROM evo_member_contracts WHERE unit=? AND CAST(evo_member_id AS TEXT)=? ORDER BY start_date DESC LIMIT 30").bind(x.unit,x.id).all();
@@ -3647,7 +3656,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const missions=(await env.DB.prepare("SELECT mission_key,progress,goal,status FROM mission_progress WHERE member_id=? LIMIT 30").bind(member.id).all()).results||[];
         const seen=new Set();
         const uniqueAttendance=attendance.filter(a=>{const k=[a.unit,a.attendance_key||a.attendance_date+"|"+(a.activity_name||"")].join("|");if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>String(b.attendance_date).localeCompare(String(a.attendance_date)));
-        return json({ok:true,member:{id:member.id,name:[member.first_name,member.last_name].filter(Boolean).join(" "),bikeId:member.evo_member_id,gymId:member.gym_client_id,status:member.status},contracts,attendance:uniqueAttendance,performance,orders,wallets,missions,source:"d1"});
+        return json({ok:true,profiles,member:{id:member.id,name:[member.first_name,member.last_name].filter(Boolean).join(" "),bikeId:member.evo_member_id,gymId:member.gym_client_id,status:member.status},contracts,attendance:uniqueAttendance,performance,orders,wallets,missions,source:"d1"});
       }
       // Espelho administrativo de alunos EVO: leitura exclusiva do D1, sem chamada à EVO.
       if (url.pathname === "/admin/evo-students" && request.method === "GET") {
