@@ -3603,6 +3603,36 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         });
         return json({ok:true,unit,windowDays,total:rows.length,rows,source:"d1",notes:"Hábitos calculados na janela selecionada; histórico de modalidades limitado aos últimos 180 dias. Contatos exigem confirmação antes de enviar."});
       }
+      // Central do Aluno: consulta pontual e limitada ao D1, sem chamadas à EVO.
+      if(url.pathname==="/admin/student-center"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const admin=await auth.json().catch(()=>({}));
+        if(!auth.ok||!["admin","reception"].includes(admin.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(admin.role!=="admin"&&!((admin.permissions||[]).includes("*")||(admin.permissions||[]).includes("/admin-alunos-evo.html")||(admin.permissions||[]).includes("/admin-central-aluno.html")))return json({ok:false,error:"SEM_PERMISSAO"},403);
+        const evoId=String(url.searchParams.get("id")||"").trim();
+        if(!/^\\d{1,12}$/.test(evoId))return json({ok:false,error:"ID_INVALIDO"},400);
+        const member=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,first_name,last_name,status FROM members WHERE CAST(evo_member_id AS TEXT)=? OR CAST(gym_client_id AS TEXT)=? LIMIT 1").bind(evoId,evoId).first();
+        if(!member)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
+        const units=(admin.units||[]).filter(u=>u==="bike"||u==="gym");
+        const ids=[{unit:"bike",id:String(member.evo_member_id||"")},{unit:"gym",id:String(member.gym_client_id||"")}].filter(x=>x.id&&units.includes(x.unit));
+        if(!ids.length)return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        const contracts=[],attendance=[];
+        for(const x of ids){
+          const cr=await env.DB.prepare("SELECT unit,membership_name,membership_status,start_date,end_date FROM evo_member_contracts WHERE unit=? AND CAST(evo_member_id AS TEXT)=? ORDER BY start_date DESC LIMIT 30").bind(x.unit,x.id).all();
+          contracts.push(...(cr.results||[]));
+          const ar=await env.DB.prepare("SELECT unit,attendance_date,activity_name,attendance_key FROM attendance_history WHERE unit=? AND CAST(evo_member_id AS TEXT)=? ORDER BY attendance_date DESC LIMIT 40").bind(x.unit,x.id).all();
+          attendance.push(...(ar.results||[]));
+        }
+        const performance=(await env.DB.prepare("SELECT unit,created_at,duration_seconds,calories_estimated,hr_avg,hr_max,rpm_avg,rpm_max,distance_km FROM pop_live_member_performance WHERE member_id=? ORDER BY created_at DESC LIMIT 30").bind(member.id).all()).results||[];
+        const orders=(await env.DB.prepare("SELECT unit,created_at,item_name,amount_cents,status FROM club_pix_orders WHERE member_id=? ORDER BY created_at DESC LIMIT 25").bind(member.id).all()).results||[];
+        const wallets=(await env.DB.prepare("SELECT unit,balance FROM club_currency_wallets WHERE member_id=? LIMIT 5").bind(member.id).all()).results||[];
+        const missions=(await env.DB.prepare("SELECT mission_key,progress,goal,status FROM mission_progress WHERE member_id=? LIMIT 30").bind(member.id).all()).results||[];
+        const seen=new Set();
+        const uniqueAttendance=attendance.filter(a=>{const k=[a.unit,a.attendance_key||a.attendance_date+"|"+(a.activity_name||"")].join("|");if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>String(b.attendance_date).localeCompare(String(a.attendance_date)));
+        return json({ok:true,member:{id:member.id,name:[member.first_name,member.last_name].filter(Boolean).join(" "),bikeId:member.evo_member_id,gymId:member.gym_client_id,status:member.status},contracts,attendance:uniqueAttendance,performance,orders,wallets,missions,source:"d1"});
+      }
       // Espelho administrativo de alunos EVO: leitura exclusiva do D1, sem chamada à EVO.
       if (url.pathname === "/admin/evo-students" && request.method === "GET") {
         const ck=request.headers.get("x-clubpop-admin-cookie")||""; if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
