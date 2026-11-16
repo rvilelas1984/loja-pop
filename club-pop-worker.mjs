@@ -3656,7 +3656,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const missions=view==="club"?(await env.DB.prepare("SELECT mission_key,progress,goal,status FROM mission_progress WHERE member_id=? LIMIT 30").bind(member.id).all()).results||[]:[];
         const seen=new Set();
         const uniqueAttendance=attendance.filter(a=>{const k=[a.unit,a.attendance_key||a.attendance_date+"|"+(a.activity_name||"")].join("|");if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>String(b.attendance_date).localeCompare(String(a.attendance_date)));
-        return json({ok:true,view,profiles,member:{id:member.id,name:[member.first_name,member.last_name].filter(Boolean).join(" "),bikeId:view==="gym"?null:member.evo_member_id,gymId:view==="bike"?null:member.gym_client_id,status:member.status},contracts,attendance:uniqueAttendance,performance:performance.filter(x=>view==="club"||x.unit===view),orders:orders.filter(x=>view==="club"||x.unit===view),wallets:wallets.filter(x=>view==="club"||x.unit===view),missions,source:"d1"});
+        return json({ok:true,view,profiles,member:{id:member.id,name:[member.first_name,member.last_name].filter(Boolean).join(" "),bikeId:member.evo_member_id,gymId:member.gym_client_id,status:member.status},contracts,attendance:uniqueAttendance,performance:performance.filter(x=>view==="club"||x.unit===view),orders:orders.filter(x=>view==="club"||x.unit===view),wallets:wallets.filter(x=>view==="club"||x.unit===view),missions,source:"d1"});
       }
       // Espelho administrativo de alunos EVO: leitura exclusiva do D1, sem chamada à EVO.
       if (url.pathname === "/admin/evo-students" && request.method === "GET") {
