@@ -3603,6 +3603,22 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         });
         return json({ok:true,unit,windowDays,total:rows.length,rows,source:"d1",notes:"Hábitos calculados na janela selecionada; histórico de modalidades limitado aos últimos 180 dias. Contatos exigem confirmação antes de enviar."});
       }
+      // Busca administrativa por nome ou ID com prévia, sem varredura integral do D1.
+      if(url.pathname==="/admin/student-center-search"&&request.method==="GET"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const ar=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const a=await ar.json().catch(()=>({}));
+        if(!ar.ok||!["admin","reception"].includes(a.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(a.role!=="admin"&&!((a.permissions||[]).includes("*")||(a.permissions||[]).includes("/admin-alunos-evo.html")||(a.permissions||[]).includes("/admin-central-aluno.html")))return json({ok:false,error:"SEM_PERMISSAO"},403);
+        const q=String(url.searchParams.get("q")||"").trim().slice(0,80);
+        const unit=url.searchParams.get("unit")==="gym"?"gym":"bike";
+        if(a.units?.length&&!a.units.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
+        if(q.length<2)return json({ok:true,students:[]});
+        const like="%"+q.replace(/[\\%_]/g,"")+"%";
+        const rows=(await env.DB.prepare("SELECT id,first_name,last_name,evo_member_id,gym_client_id FROM members WHERE CAST(evo_member_id AS TEXT)=? OR CAST(gym_client_id AS TEXT)=? OR (first_name || ' ' || last_name) LIKE ? COLLATE NOCASE ORDER BY CASE WHEN CAST(evo_member_id AS TEXT)=? OR CAST(gym_client_id AS TEXT)=? THEN 0 ELSE 1 END,first_name LIMIT 15").bind(q,q,like,q,q).all()).results||[];
+        return json({ok:true,students:rows.filter(x=>unit==="gym"?x.gym_client_id:x.evo_member_id).map(x=>({name:[x.first_name,x.last_name].filter(Boolean).join(" "),evoMemberId:String(unit==="gym"?x.gym_client_id:x.evo_member_id),bikeId:x.evo_member_id,gymId:x.gym_client_id}))});
+      }
       // Central do Aluno: consulta pontual e limitada ao D1, sem chamadas à EVO.
       if(url.pathname==="/admin/student-center"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
