@@ -320,6 +320,12 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
    const body=await r.text();res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.status(r.status).send(body);
   }catch{return res.status(502).json({ok:false,error:"GESTAO_ALUNOS_INDISPONIVEL"})}
  }
+ if(req.query.route==="student-center-search"){
+  if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const q=String(req.query.q||"").trim().slice(0,80),unit=req.query.unit==="gym"?"gym":"bike";
+  try{const r=await fetch(WORKER+"/admin/student-center-search?unit="+unit+"&q="+encodeURIComponent(q),{headers:{"x-clubpop-admin-cookie":String(req.headers.cookie||"")},cache:"no-store"});res.setHeader("Cache-Control","no-store");return res.status(r.status).send(await r.text())}
+  catch{return res.status(502).json({ok:false,error:"BUSCA_ALUNOS_INDISPONIVEL"})}
+ }
  if(req.query.route==="student-center"){
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const id=String(req.query.id||"").trim();
