@@ -3632,7 +3632,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const member=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,first_name,last_name,status FROM members WHERE CAST(evo_member_id AS TEXT)=? OR CAST(gym_client_id AS TEXT)=? LIMIT 1").bind(evoId,evoId).first();
         if(!member)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
         const units=(admin.units||[]).filter(u=>u==="bike"||u==="gym");
-        const ids=[{unit:"bike",id:String(member.evo_member_id||"")},{unit:"gym",id:String(member.gym_client_id||"")}].filter(x=>x.id&&units.includes(x.unit));
+        const view=String(url.searchParams.get("unit")||"bike");if(!["bike","gym","club"].includes(view))return json({ok:false,error:"UNIDADE_INVALIDA"},400);if(view==="club"&&!(units.includes("bike")&&units.includes("gym")))return json({ok:false,error:"CLUB_REQUER_DUAS_UNIDADES"},403);const ids=[{unit:"bike",id:String(member.evo_member_id||"")},{unit:"gym",id:String(member.gym_client_id||"")}].filter(x=>x.id&&units.includes(x.unit)&&(view==="club"||x.unit===view));
         if(!ids.length)return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA"},403);
         const profiles=[];
         for(const x of ids){
@@ -3653,10 +3653,10 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const performance=(await env.DB.prepare("SELECT unit,created_at,duration_seconds,calories_estimated,hr_avg,hr_max,rpm_avg,rpm_max,distance_km FROM pop_live_member_performance WHERE member_id=? ORDER BY created_at DESC LIMIT 30").bind(member.id).all()).results||[];
         const orders=(await env.DB.prepare("SELECT unit,created_at,item_name,amount_cents,status FROM club_pix_orders WHERE member_id=? ORDER BY created_at DESC LIMIT 25").bind(member.id).all()).results||[];
         const wallets=(await env.DB.prepare("SELECT unit,balance FROM club_currency_wallets WHERE member_id=? LIMIT 5").bind(member.id).all()).results||[];
-        const missions=(await env.DB.prepare("SELECT mission_key,progress,goal,status FROM mission_progress WHERE member_id=? LIMIT 30").bind(member.id).all()).results||[];
+        const missions=view==="club"?(await env.DB.prepare("SELECT mission_key,progress,goal,status FROM mission_progress WHERE member_id=? LIMIT 30").bind(member.id).all()).results||[]:[];
         const seen=new Set();
         const uniqueAttendance=attendance.filter(a=>{const k=[a.unit,a.attendance_key||a.attendance_date+"|"+(a.activity_name||"")].join("|");if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>String(b.attendance_date).localeCompare(String(a.attendance_date)));
-        return json({ok:true,profiles,member:{id:member.id,name:[member.first_name,member.last_name].filter(Boolean).join(" "),bikeId:member.evo_member_id,gymId:member.gym_client_id,status:member.status},contracts,attendance:uniqueAttendance,performance,orders,wallets,missions,source:"d1"});
+        return json({ok:true,view,profiles,member:{id:member.id,name:[member.first_name,member.last_name].filter(Boolean).join(" "),bikeId:view==="gym"?null:member.evo_member_id,gymId:view==="bike"?null:member.gym_client_id,status:member.status},contracts,attendance:uniqueAttendance,performance:performance.filter(x=>view==="club"||x.unit===view),orders:orders.filter(x=>view==="club"||x.unit===view),wallets:wallets.filter(x=>view==="club"||x.unit===view),missions,source:"d1"});
       }
       // Espelho administrativo de alunos EVO: leitura exclusiva do D1, sem chamada à EVO.
       if (url.pathname === "/admin/evo-students" && request.method === "GET") {
