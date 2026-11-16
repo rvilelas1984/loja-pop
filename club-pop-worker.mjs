@@ -3603,6 +3603,29 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         });
         return json({ok:true,unit,windowDays,total:rows.length,rows,source:"d1",notes:"Hábitos calculados na janela selecionada; histórico de modalidades limitado aos últimos 180 dias. Contatos exigem confirmação antes de enviar."});
       }
+      // Contato individual: valida vínculo e telefone no D1; reaproveita a integração ChatPro.
+      if(url.pathname==="/admin/student-center-contact"&&["GET","POST"].includes(request.method)){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const adm=await auth.json().catch(()=>({}));
+        if(!auth.ok||adm.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        const b=request.method==="POST"?await request.json().catch(()=>({})):{};
+        const unit=String(b.unit||url.searchParams.get("unit")||"bike"),id=String(b.id||url.searchParams.get("id")||"");
+        if(!["bike","gym"].includes(unit)||!adm.units?.includes(unit)||!/^\d{1,12}$/.test(id))return json({ok:false,error:"ALUNO_OU_UNIDADE_INVALIDA"},400);
+        const m=await env.DB.prepare("SELECT m.id,m.first_name,m.last_name,mm.contacts_json FROM evo_member_master mm JOIN members m ON CAST(CASE WHEN mm.unit='gym' THEN m.gym_client_id ELSE m.evo_member_id END AS TEXT)=CAST(mm.evo_member_id AS TEXT) WHERE mm.unit=? AND mm.evo_member_id=? LIMIT 1").bind(unit,id).first();
+        if(!m)return json({ok:false,error:"ALUNO_NAO_ENCONTRADO"},404);
+        let contacts=[];try{contacts=JSON.parse(m.contacts_json||"[]")}catch{}
+        const phones=(Array.isArray(contacts)?contacts:[]).filter(c=>/cell|phone|mobile|whats|celular|telefone/i.test(String(c.contactType||c.type||""))).map(c=>String(c.description||c.value||"").replace(/\D/g,"")).filter(x=>x.length>=10&&x.length<=15);
+        const phone=phones[0]||null;
+        const masked=phone?phone.slice(0,2)+"*****"+phone.slice(-4):null;
+        if(request.method==="GET")return json({ok:true,name:[m.first_name,m.last_name].filter(Boolean).join(" "),phoneMasked:masked,hasPhone:!!phone});
+        if(b.action!=="flows"&&b.action!=="send-flow")return json({ok:false,error:"ACAO_INVALIDA"},400);
+        if(b.action==="send-flow"&&(!phone||b.confirm!==true||b.hasOptIn!==true))return json({ok:false,error:!phone?"TELEFONE_NAO_CADASTRADO":"CONFIRMACAO_E_AUTORIZACAO_OBRIGATORIAS"},400);
+        const action=b.action==="flows"?"flows":"send";
+        const wrapped=new Request("https://internal.local/admin/chatpro-config?action="+action,{method:"POST",headers:{"content-type":"application/json","x-clubpop-admin-cookie":ck},body:JSON.stringify(action==="flows"?{}:{unit,phone,flow:b.flow,confirm:true,hasOptIn:true})});
+        return await chatproAdminConfig(wrapped,env,new URL(wrapped.url),json);
+      }
       // Busca administrativa por nome ou ID com prévia, sem varredura integral do D1.
       if(url.pathname==="/admin/student-center-search"&&request.method==="GET"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
