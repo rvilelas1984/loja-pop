@@ -3619,7 +3619,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const phones=(Array.isArray(contacts)?contacts:[]).filter(c=>/cell|phone|mobile|whats|celular|telefone/i.test(String(c.contactType||c.type||""))).map(c=>String(c.description||c.value||"").replace(/\D/g,"")).filter(x=>x.length>=10&&x.length<=15);
         const phone=phones[0]||null;
         const masked=phone?phone.slice(0,2)+"*****"+phone.slice(-4):null;
-        if(request.method==="GET")return json({ok:true,name:[m.first_name,m.last_name].filter(Boolean).join(" "),phoneMasked:masked,hasPhone:!!phone});
+        if(request.method==="GET")return json({ok:true,name:[m.first_name,m.last_name].filter(Boolean).join(" "),phoneMasked:masked,phone:phone,hasPhone:!!phone});
         if(b.action!=="flows"&&b.action!=="send-flow")return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(b.action==="send-flow"&&(!phone||b.confirm!==true||b.hasOptIn!==true))return json({ok:false,error:!phone?"TELEFONE_NAO_CADASTRADO":"CONFIRMACAO_E_AUTORIZACAO_OBRIGATORIAS"},400);
         const action=b.action==="flows"?"flows":"send";
