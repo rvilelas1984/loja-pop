@@ -320,6 +320,23 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
    const body=await r.text();res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");return res.status(r.status).send(body);
   }catch{return res.status(502).json({ok:false,error:"GESTAO_ALUNOS_INDISPONIVEL"})}
  }
+ if(req.query.route==="student-center-refresh-evo"){
+  res.setHeader("Cache-Control","no-store");if(req.method!=="POST")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
+  const unit=req.body?.unit==="gym"?"gym":"bike",id=String(req.body?.id||"").trim();
+  if(!/^\d{1,12}$/.test(id))return res.status(400).json({ok:false,error:"ID_INVALIDO"});
+  const cookie=String(req.headers.cookie||"");
+  try{
+    const auth=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:cookie},cache:"no-store"}),session=await auth.json().catch(()=>({}));
+    if(!auth.ok||session.role!=="admin"||!(session.units||[]).includes(unit))return res.status(403).json({ok:false,error:"NAO_AUTORIZADO"});
+    const evo=getEvoTransport(unit),rr=await evo.fetch("https://evo-integracao.w12app.com.br/api/v2/members/"+encodeURIComponent(id));
+    if(!rr.ok)return res.status(502).json({ok:false,error:"EVO_HTTP_"+rr.status});
+    const raw=await rr.json(),member=Array.isArray(raw)?raw[0]:(raw?.data||raw?.member||raw);
+    if(!member||String(member.idMember||member.id||"")!==id)return res.status(404).json({ok:false,error:"ALUNO_NAO_ENCONTRADO_EVO"});
+    const wr=await fetch(WORKER+"/admin/evo-student-sync-one",{method:"POST",headers:{"Content-Type":"application/json","x-clubpop-admin-cookie":cookie},body:JSON.stringify({unit,idMember:Number(id),member}),cache:"no-store"});
+    const d=await wr.json().catch(()=>({}));if(!wr.ok||!d.ok)return res.status(wr.status).json({ok:false,error:d.error||"FALHA_SINCRONIZACAO"});
+    return res.json({ok:true,unit,id,requests:1});
+  }catch(e){return res.status(502).json({ok:false,error:String(e.message||"EVO_INDISPONIVEL").slice(0,120)})}
+ }
  if(req.query.route==="student-center-search"){
   if(req.method!=="GET")return res.status(405).json({ok:false,error:"METODO_INVALIDO"});
   const q=String(req.query.q||"").trim().slice(0,80),unit=req.query.unit==="gym"?"gym":"bike";
