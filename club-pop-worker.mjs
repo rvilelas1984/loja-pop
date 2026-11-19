@@ -585,7 +585,7 @@ async function runScheduledStudentSync(env,forceUnit=null,forceKey=null) {
     try{
       let runId="",requests=0,finished=false,last=null;
       for(let page=0;page<260;page++){
-        const response=await fetch("https://loja-pop-green.vercel.app/api/evo-config?route=auto-sync-students-batch&unit="+unit,{method:"POST",headers:{"x-auto-sync-secret":String(env.AUTO_SYNC_SECRET||""),"Content-Type":"application/json"},body:JSON.stringify({unit,runId}),signal:AbortSignal.timeout(45000)});
+        const response=await fetch("https://loja-pop-green.vercel.app/api/evo-config?route=auto-sync-students-batch&unit="+unit,{method:"POST",headers:{"x-auto-sync-secret":String(env.AUTO_SYNC_SECRET||""),"Content-Type":"application/json"},body:JSON.stringify({unit,runId}),signal:AbortSignal.timeout(150000)});
         const data=await response.json().catch(()=>({}));
         if(!response.ok||!data.ok)throw Error("ALUNOS_LOTE_HTTP_"+response.status+"_"+String(data.error||"FALHA").slice(0,120));
         requests+=Number(data.requests||0);runId=String(data.runId||runId);last=data;
