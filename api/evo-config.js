@@ -681,7 +681,9 @@ if(String(req.query.route||"")==="tasks"){const unit=String(req.query.unit||"bik
   let runId=String(body.runId||""),requests=0;
   try{
    const state=await job({action:runId?'check':'begin',runId});runId=state.runId;
-   const skip=Number(state.nextSkip),pageSize=Number(state.pageSize||25),evo=getEvoTransport(unit);let reportIds;
+   const skip=Number(state.nextSkip),evo=getEvoTransport(unit);let reportIds;
+   // Large member pages with memberships can exceed the EVO transport timeout at Bike Pop.
+   const pageSize=unit==="bike"?500:Number(state.pageSize||25);
    if(skip===0){requests++;const rr=await evo.fetch('https://evo-integracao-api.w12app.com.br/api/v2/management/activeclients');if(!rr.ok)throw new Error('EVO_MEMBERS_HTTP_'+rr.status);reportIds=parseActiveReport(Buffer.from(await rr.arrayBuffer())).ids;}
    requests++;
    const rr=await evo.fetch('https://evo-integracao-api.w12app.com.br/api/v2/members?status=1&showMemberships=true&take='+pageSize+'&skip='+skip);
