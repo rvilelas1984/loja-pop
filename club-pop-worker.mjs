@@ -3983,7 +3983,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
         const registered=await env.DB.prepare("SELECT evo_member_id,gym_client_id FROM members WHERE id=?").bind(session.member_id).first();
         const activeUnits=await clubActiveUnits(env,registered?.evo_member_id,registered?.gym_client_id);
-        const auth = activeUnits.length?await createSession(env, session.member_id):null;
+        const auth = activeUnits.length?await createSession(env, session.member_id, body.rememberDevice === true):null;
 
         await audit(
           env,
@@ -4160,7 +4160,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
         const activeUnits=await clubActiveUnits(env,member.evo_member_id,member.gym_client_id);
         if(!activeUnits.length)return json({ok:false,error:"CONTRATO_INATIVO",whatsappUrl:CLUB_RECEPTION_URL},403);
-        const auth = await createSession(env, member.id);
+        const auth = await createSession(env, member.id, body.rememberDevice === true);
 
         await audit(
           env,
@@ -5945,12 +5945,12 @@ async function authenticatedMember(request, env) {
   return normalizeMemberIds(member);
 }
 
-async function createSession(env, memberId) {
+async function createSession(env, memberId, rememberDevice = false) {
   const token = randomToken(32);
   const tokenHash = await sha256(token);
 
   const expiresAt =
-    new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    new Date(Date.now() + (rememberDevice ? 30 : 7) * 24 * 60 * 60 * 1000).toISOString();
 
   await env.DB.prepare(`
     INSERT INTO auth_sessions (
