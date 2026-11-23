@@ -1,0 +1,484 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Club Pop — Central Financeira</title><link rel="stylesheet" href="/admin-common.css"><style>
+:root{--bg:#f3f5f6;--surface:#fff;--ink:#12201f;--muted:#5d6e6c;--line:#dde4e3;--accent:#0f766e;--accent-ink:#fff;--accent-soft:#e0f2ef;--good:#1a7f4b;--good-soft:#e3f4ea;--warn:#a96a00;--warn-soft:#fdf1d8;--bad:#c2363f;--bad-soft:#fbe6e7;--grid:#e6ebea;--base:#8a9997;--font:'Inter',system-ui,sans-serif;--display:'Space Grotesk','Inter',system-ui,sans-serif}
+.fp, .fp *{box-sizing:border-box}
+
+.fp .fp-head{padding-block:0}
+.fp .top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between}
+.fp h1{font-family:var(--display);font-size:26px;margin:0;letter-spacing:-.01em}
+.fp .sub{color:var(--muted);margin:2px 0 0;font-size:13px}
+.fp label.f{display:grid;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
+.fp input,.fp select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-height:38px;width:100%;min-width:0}
+.fp button{font:inherit;cursor:pointer}
+.fp :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fp .tabs{display:flex;gap:4px;margin-top:18px;border-bottom:1px solid var(--line);overflow-x:auto}
+.fp .tab{background:none;border:0;padding:11px 14px;color:var(--muted);font-weight:600;border-bottom:2px solid transparent;white-space:nowrap;display:flex;gap:8px;align-items:center}
+.fp .tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+.fp .badge{background:var(--warn-soft);color:var(--warn);font-size:11px;font-weight:700;border-radius:20px;padding:1px 8px}
+.fp .fp-main{padding-top:22px}
+.fp .view[hidden]{display:none}
+.fp .grid{display:grid;gap:16px}
+.fp .g-kpi{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.fp .g-2{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
+.fp .g-eq{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
+@media(max-width:860px){.fp .g-2{grid-template-columns:minmax(0,1fr)}}
+.fp .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;min-width:0}
+.fp .card h2{font-family:var(--display);font-size:16px;margin:0 0 2px}
+.fp .hint{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+.fp .kpi small{color:var(--muted);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.fp .kpi b{display:block;font-family:var(--display);font-size:25px;margin-top:4px;font-variant-numeric:tabular-nums}
+.fp .kpi span{font-size:12.5px;color:var(--muted)}
+.fp .pos{color:var(--good)}
+.fp .neg{color:var(--bad)}
+.fp .alert{border-radius:12px;padding:14px 16px;background:var(--warn-soft);border:1px solid var(--warn);margin-bottom:16px}
+.fp .alert.bad{background:var(--bad-soft);border-color:var(--bad)}
+.fp .alert.ok{background:var(--good-soft);border-color:var(--good)}
+.fp .alert strong{display:block}
+.fp .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.fp .seg button{background:var(--surface);border:0;padding:6px 12px;color:var(--muted);font-weight:600}
+.fp .seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
+.fp .chart-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.fp svg text{font-family:var(--font);font-size:11px;fill:var(--muted)}
+.fp .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
+.fp .legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.fp .list{list-style:none;margin:0;padding:0}
+.fp .list li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--line);align-items:center}
+.fp .list li:first-child{border-top:0}
+.fp .list .l{min-width:0}
+.fp .list .l b{display:block;font-weight:600;overflow-wrap:anywhere}
+.fp .list .l small{color:var(--muted)}
+.fp .num{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.fp .bar{height:8px;border-radius:4px;background:var(--grid);overflow:hidden;margin-top:5px}
+.fp .bar i{display:block;height:100%;background:var(--accent)}
+.fp .tag{display:inline-block;font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 8px}
+.fp .tag.good{background:var(--good-soft);color:var(--good)}
+.fp .tag.warn{background:var(--warn-soft);color:var(--warn)}
+.fp .tag.bad{background:var(--bad-soft);color:var(--bad)}
+.fp .tag.info{background:var(--accent-soft);color:var(--accent)}
+.fp .tw{overflow-x:auto}
+.fp table{width:100%;border-collapse:collapse;min-width:560px}
+.fp th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line)}
+.fp td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.fp td.r,.fp th.r{text-align:right}
+.fp tfoot td{font-weight:700;border-bottom:0}
+.fp .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:7px 12px;font-weight:600;min-height:38px}
+.fp .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.fp .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
+.fp .res{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:16px}
+.fp .res div{border:1px solid var(--line);border-radius:10px;padding:12px}
+.fp .res small{display:block;color:var(--muted);font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.fp .res b{font-family:var(--display);font-size:19px;font-variant-numeric:tabular-nums}
+.fp .note{font-size:12px;color:var(--muted)}
+.fp .issue{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:12px 0;border-top:1px solid var(--line)}
+.fp .issue:first-child{border-top:0}
+.fp .issue p{margin:2px 0 0;color:var(--muted);font-size:13px}
+@media(prefers-reduced-motion:reduce){.fp, .fp *{transition:none!important}}
+body.cp-admin-ready>.cp-unit-context{display:none!important}
+@media(max-width:850px){body.cp-admin-ready{padding-top:68px!important}}
+*{box-sizing:border-box}
+body.cp-admin-ready .fp .wrap{max-width:1180px;padding:0 28px!important}
+@media(max-width:850px){body.cp-admin-ready .fp .wrap{padding:0 14px!important}}
+body.cp-admin-ready .fp main{padding:22px 0 0!important;margin:0!important}
+body.cp-admin-ready .fp h1{font-size:26px!important}
+body.cp-admin-ready .fp h2{font-size:16px!important}
+body.cp-admin-ready .fp input,body.cp-admin-ready .fp select{font-size:14px!important;min-height:38px!important;padding:7px 10px!important}
+body.cp-admin-ready .fp button{font-size:14px}
+body.cp-admin-ready .fp .seg button{font-size:13px}
+.fp .state{padding:40px 16px;text-align:center;color:var(--muted)}
+
+.fp{color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5}
+.fp .fp-ctl{width:min(220px,100%)}
+</style></head><body>
+
+
+<div class="fp"><div class="wrap">
+<div id="loading" class="state">Carregando dados financeiros…</div>
+<div id="app" hidden>
+<header class="fp-head">
+  <div class="top">
+    <div>
+      <h1>Financeiro Pop</h1>
+      <p class="sub">Caixa geral da empresa, fora das unidades. Dados do banco financeiro, somente leitura.</p>
+    </div>
+    <div class="fp-ctl"><label class="f" for="ref">Mês de referência<select id="ref"></select></label></div>
+    <div style="width:min(240px,100%)">
+      <label class="f" for="saldo">Saldo atual das contas (R$)
+        <input id="saldo" inputmode="decimal" placeholder="Informe para ver o caixa real"></label>
+    </div>
+  </div>
+  <div class="tabs" role="tablist" aria-label="Seções">
+    <button class="tab" role="tab" id="t-painel" aria-selected="true">Painel</button>
+    <button class="tab" role="tab" id="t-comp" aria-selected="false">Compromissos</button>
+    <button class="tab" role="tab" id="t-sim" aria-selected="false">Simulador</button>
+    <button class="tab" role="tab" id="t-dados" aria-selected="false">Qualidade dos dados <span class="badge" id="qBadge"></span></button>
+  </div>
+</header>
+
+<main class="fp-main">
+<section class="view" id="v-painel">
+  <div id="alertBox"></div>
+  <div class="grid g-kpi" style="margin-bottom:16px">
+    <div class="card kpi"><small>Entradas de <span class="rm"></span></small><b class="pos" id="kIn"></b><span>vendas, Wellhub e Totalpass</span></div>
+    <div class="card kpi"><small>Saídas de <span class="rm"></span></small><b id="kOut"></b><span id="kOutD"></span></div>
+    <div class="card kpi"><small>Resultado de <span class="rm"></span></small><b id="kRes"></b><span id="kResD"></span></div>
+    <div class="card kpi"><small>Comprometido por mês</small><b id="kComp"></b><span id="kCompD"></span></div>
+  </div>
+  <div class="grid g-2" style="margin-bottom:16px">
+    <div class="card">
+      <div class="chart-head">
+        <div><h2 id="chTitle">Saldo projetado</h2><p class="hint">Entradas e saídas previstas a partir de amanhã, com base em outubro e nos compromissos já cadastrados.</p></div>
+        <div class="seg" role="group" aria-label="Horizonte">
+          <button aria-pressed="false" data-h="30">30 dias</button>
+          <button aria-pressed="true" data-h="90">90 dias</button>
+          <button aria-pressed="false" data-h="180">6 meses</button>
+        </div>
+      </div>
+      <div id="chart"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="card">
+      <h2>Próximos 14 dias</h2>
+      <p class="hint">O que está previsto para entrar e sair.</p>
+      <ul class="list" id="upcoming"></ul>
+    </div>
+  </div>
+  <div class="grid g-eq">
+    <div class="card"><h2>Entradas de <span class="rm"></span></h2><p class="hint">De onde veio o dinheiro.</p><div id="inCats"></div></div>
+    <div class="card"><h2>Maiores saídas de <span class="rm"></span></h2><p class="hint">Sem transferências entre contas e aportes na Gym Pop.</p><div id="outCats"></div></div>
+  </div>
+</section>
+
+<section class="view" id="v-comp" hidden>
+  <div class="grid g-kpi" style="margin-bottom:16px">
+    <div class="card kpi"><small>Despesas fixas / mês</small><b id="cFix"></b><span>base do mês de referência</span></div>
+    <div class="card kpi"><small>Parcelas de cartão / mês</small><b id="cPar"></b><span id="cParD"></span></div>
+    <div class="card kpi"><small>Financiamentos e consórcio</small><b id="cLoan"></b><span>por mês, a confirmar</span></div>
+    <div class="card kpi"><small>Cobertura pela receita</small><b id="cCov"></b><span>receita do mês-base ÷ fixas e parcelas</span></div>
+  </div>
+  <div class="grid" style="gap:16px">
+    <div class="card">
+      <h2>Parcelamentos no cartão</h2>
+      <p class="hint">Cada linha mostra quanto falta pagar e quando termina.</p>
+      <div class="tw"><table><thead><tr><th>Compra</th><th>Parcela</th><th>Termina</th><th class="r">Parcela</th><th class="r">Falta pagar</th></tr></thead><tbody id="parc"></tbody><tfoot id="parcF"></tfoot></table></div>
+    </div>
+    <div class="card">
+      <h2>Empréstimos, financiamentos e consórcio</h2>
+      <p class="hint">Não existe tabela de empréstimos. Estes pagamentos foram identificados pelo nome do credor. Confirme o que é cada um.</p>
+      <div class="tw"><table><thead><tr><th>Credor</th><th>Categoria hoje</th><th>Dia</th><th class="r">Valor / mês</th><th>Situação</th></tr></thead><tbody id="loans"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Despesas fixas</h2>
+      <p class="hint">Média do mês de referência por categoria, ordenadas pelo peso no caixa.</p>
+      <div class="tw"><table><thead><tr><th>Categoria</th><th>Dia típico</th><th class="r">Valor / mês</th><th class="r">% da receita</th></tr></thead><tbody id="fixed"></tbody><tfoot id="fixedF"></tfoot></table></div>
+    </div>
+  </div>
+</section>
+
+<section class="view" id="v-sim" hidden>
+  <div class="card" style="margin-bottom:16px">
+    <h2>E se eu assumir um novo compromisso?</h2>
+    <p class="hint">O cenário entra na projeção do Painel e mostra o efeito antes de você fechar.</p>
+    <div class="form">
+      <label class="f" for="sKind">Tipo
+        <select id="sKind"><option value="emp">Empréstimo</option><option value="parc">Compra parcelada sem juros</option><option value="fixa">Nova despesa mensal</option></select></label>
+      <label class="f" for="sVal"><span id="sValL">Valor liberado (R$)</span><input id="sVal" inputmode="decimal" value="30000"></label>
+      <label class="f" for="sN" id="sNw">Parcelas<input id="sN" inputmode="numeric" value="12"></label>
+      <label class="f" for="sRate" id="sRw">Juros ao mês (%)<input id="sRate" inputmode="decimal" value="2,5"></label>
+      <label class="f" for="sStart">Começa em (dias)<input id="sStart" inputmode="numeric" value="7"></label>
+      <label class="f" for="sStress">Receita vs. outubro (%)<input id="sStress" inputmode="numeric" value="0"></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn primary" id="sRun">Simular</button>
+      <button class="btn" id="sClear">Limpar cenário</button>
+    </div>
+    <div class="res" id="simRes"></div>
+    <div id="simChart" style="margin-top:14px"></div>
+    <div class="legend" id="simLegend"></div>
+  </div>
+</section>
+
+<section class="view" id="v-dados" hidden>
+  <div class="card">
+    <h2>O que ajustar para o painel ficar confiável</h2>
+    <p class="hint">Encontrado ao ler o banco. Nada foi alterado.</p>
+    <div id="issues"></div>
+  </div>
+</section>
+</main>
+</div></div></div>
+
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const R=c=>(c<0?'−':'')+'R$ '+Math.abs(c/100).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0});
+const R2=c=>(c<0?'−':'')+'R$ '+Math.abs(c/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const num=s=>{const v=parseFloat(String(s).replace(/\./g,'').replace(',','.'));return isFinite(v)?v:NaN};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const TODAY=(()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth(),d.getDate())})();
+const addDays=(n)=>{const d=new Date(TODAY);d.setDate(d.getDate()+n);return d};
+const fmt=d=>d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+const fmtL=d=>d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.','');
+const mname=ym=>{const[y,m]=ym.split('-');return new Date(+y,+m-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})};
+const mshort=ym=>{const[y,m]=ym.split('-');return new Date(+y,+m-1,1).toLocaleDateString('pt-BR',{month:'short',year:'numeric'}).replace('.','')};
+const LABEL_MONTH=ym=>mname(ym).replace(/ de /,' de ');
+
+/* Categorias que só movem dinheiro entre contas da empresa e não entram em receita nem despesa. */
+const TRANSFER_CATS=new Set(['Cartões','Contas próprias','Aporte Gym Pop','Reembolso GymPop']);
+const LOAN_RE=/PORTOSEG|BRADESCO|BANCO BV|CEF MATRIZ|EMBRACON|FINANCIAM|EMPREST|CONSORCIO|CAPITAL DE GIRO|PRONAMPE/i;
+const VARIABLE_TYPES=new Set(['variable','custom_impostos_taxas','']);
+
+let DATA=null,REF='',INCOME=[],FIXED=[],VARIABLE=[],PARC=[],LOANS=[],ISSUES=[];
+let inc=0,fix=0,varr=0,out=0,res=0,parcMonth=0,loanMonth=0,parcRef=0,varScale=1;
+
+const cents=a=>Math.round(Number(a||0)*100);
+const ymOf=d=>String(d).slice(0,7);
+const dayOf=d=>parseInt(String(d).slice(8,10),10)||1;
+const prevYm=ym=>{const[y,m]=ym.split('-').map(Number);const d=new Date(y,m-2,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
+
+function pickRef(items){
+  const months=[...new Set(items.map(i=>ymOf(i.date)))].sort();
+  const last=months[months.length-1];if(!last)return{months,ref:''};
+  const maxDay=Math.max(...items.filter(i=>ymOf(i.date)===last).map(i=>dayOf(i.date)));
+  const ref=(maxDay>=25||months.length<2)?last:months[months.length-2];
+  return{months,ref};
+}
+function compute(){
+  const items=DATA.items.filter(i=>ymOf(i.date)===REF&&!TRANSFER_CATS.has(i.category));
+  const incMap=new Map(),fixMap=new Map(),varMap=new Map();
+  const add=(m,cat,v,day)=>{const o=m.get(cat)||{v:0,n:0,d:0};o.v+=v;o.n++;o.d+=day;m.set(cat,o)};
+  for(const i of items){
+    const v=cents(i.amount),day=dayOf(i.date);
+    if(i.type==='income')add(incMap,i.category,v,day);
+    else if(v<0){add(i.type==='fixed'?fixMap:varMap,i.category,-v,day)}
+    else if(i.type==='refund'){add(varMap,'Estornos recebidos',-v,day)}
+  }
+  const list=m=>[...m].map(([c,o])=>[c,o.v,Math.round(o.d/o.n),o.n]).sort((a,b)=>b[1]-a[1]);
+  INCOME=list(incMap).map(([c,v,d,n])=>[c,v,n<=3?d:0]);
+  FIXED=list(fixMap).map(([c,v,d])=>[c,v,d]);
+  VARIABLE=list(varMap).map(([c,v,d])=>[c,v,d]);
+  const ignored=new Set(DATA.ignoredInstallments||[]);
+  PARC=(DATA.installments||[]).filter(p=>p.active&&!ignored.has(p.sourceId)).map(p=>[String(p.description).replace(/\s*[-–]?\s*Parcela.*$/i,'').replace(/\s+\d+\/\d+$/,'').trim()||p.description,Math.abs(cents(p.amount)),p.currentPart,p.totalParts,p.firstMonth]).sort((a,b)=>b[1]-a[1]);
+  PARC=PARC.filter(p=>p[2]+Math.max(0,((TODAY.getFullYear()-+p[4].slice(0,4))*12+(TODAY.getMonth()+1-+p[4].slice(5,7))))<=p[3]);
+  inc=INCOME.reduce((s,x)=>s+x[1],0);fix=FIXED.reduce((s,x)=>s+x[1],0);varr=VARIABLE.reduce((s,x)=>s+x[1],0);
+  out=fix+varr;res=inc-out;
+  parcMonth=PARC.reduce((s,p)=>s+p[1],0);
+  parcRef=PARC.filter(p=>p[4]<=REF).reduce((s,p)=>s+p[1],0);
+  varScale=varr>0?Math.max(0,(varr-parcRef)/varr):1;
+  /* empréstimos e financiamentos: pelo nome do credor nos últimos lançamentos */
+  const seen=new Map();
+  for(const i of DATA.items){if(!LOAN_RE.test(i.description)||i.amount>=0||ymOf(i.date)>REF)continue;
+    const nm=String(i.description).replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g,'').replace(/^(BOLETO PAGO|PAGAMENTOS|PIX ENVIADO)\s+/i,'').replace(/\s+/g,' ').trim().slice(0,46);
+    const k=nm;const o=seen.get(k);if(!o||i.date>o.date)seen.set(k,{nm,cat:i.category,date:i.date,v:Math.abs(cents(i.amount))})}
+  LOANS=[...seen.values()].map(o=>[o.nm,o.cat,dayOf(o.date),o.v,o.cat==='Consórcio'?'Consórcio':'Confirmar']).sort((a,b)=>b[3]-a[3]);
+  loanMonth=LOANS.reduce((s,l)=>s+l[3],0);
+  buildIssues();
+}
+function buildIssues(){
+  ISSUES=[];const items=DATA.items,last=items.reduce((m,i)=>i.date>m?i.date:m,'');
+  const bal=DATA.accountBalances||[];
+  if(!bal.length)ISSUES.push(['bad','Saldo das contas não cadastrado','A tabela de saldos está vazia. Sem saldo inicial não dá para prever caixa negativo. Informe o saldo no topo ou cadastre uma data-base por conta.']);
+  const stale=Math.round((TODAY-new Date(last+'T00:00:00'))/864e5);
+  if(stale>7)ISSUES.push(['info','Lançamentos desatualizados','O último lançamento é de '+last.split('-').reverse().join('/')+' ('+stale+' dias atrás). A projeção usa '+mname(REF)+' como base. Importar os extratos mais recentes deixa a previsão mais precisa.']);
+  const pend=items.filter(i=>!i.classified).length;
+  const outros=items.filter(i=>ymOf(i.date)===REF&&i.amount>0&&i.type===''&&!TRANSFER_CATS.has(i.category));
+  const outrosV=outros.reduce((s,i)=>s+cents(i.amount),0);
+  if(pend||outros.length)ISSUES.push(['warn','Lançamentos sem classificação',(outros.length?outros.length+' entradas de '+mname(REF)+' ('+R2(outrosV)+') estão em "Outros" e ficaram fora das receitas. ':'')+(pend?pend+' lançamentos pendentes de classificação.':'')]);
+  const loanMixed=items.filter(i=>ymOf(i.date)===REF&&i.category==='Compras Externas'&&LOAN_RE.test(i.description));
+  if(loanMixed.length)ISSUES.push(['warn','Financiamentos misturados em "Compras Externas"',loanMixed.length+(loanMixed.length===1?' pagamento (':' pagamentos (')+R2(loanMixed.reduce((s,i)=>s-cents(i.amount),0))+' em '+mname(REF)+(loanMixed.length===1?') parece':') parecem')+' financiamento'+(loanMixed.length===1?'':'s')+'. Sem separar, não dá para saber quanto você deve nem quando termina.']);
+  const gym=ym=>items.filter(i=>ymOf(i.date)===ym&&i.category==='Aporte Gym Pop').reduce((s,i)=>s-cents(i.amount),0),back=ym=>items.filter(i=>ymOf(i.date)===ym&&i.category==='Reembolso GymPop').reduce((s,i)=>s+cents(i.amount),0);
+  const lastYm=ymOf(last);
+  if(gym(lastYm)>back(lastYm))ISSUES.push(['warn','Aporte na Gym Pop sem reembolso','Em '+mname(lastYm)+' saíram '+R2(gym(lastYm))+' para a Gym Pop e voltaram '+R2(back(lastYm))+'. Esses valores ficam fora do resultado, mas saíram do caixa.']);
+  const pro=items.filter(i=>i.category==='Pró-labore').map(i=>cents(i.amount));
+  const sus=items.filter(i=>i.category!=='Pró-labore'&&/RENATO DE JESUS VILELAS/i.test(i.description)&&pro.includes(cents(i.amount)));
+  if(sus.length)ISSUES.push(['warn','Possível lançamento fora da categoria',sus.map(i=>i.date.split('-').reverse().join('/')+' · '+R2(-cents(i.amount))+' em '+i.category).join('; ')+'. O valor é igual a um pró-labore. Se for pró-labore, a categoria está errada.']);
+  ISSUES.push(['info','Despesas fixas sem data de fim','As despesas fixas são repetidas todo mês na projeção. Compromissos com parcelas definidas, como a Poltrona de Massagem, precisam de número de parcelas para terminarem no gráfico.']);
+}
+
+function monthsAhead(h){const out=[];for(let n=1;n<=h;n++){const d=addDays(n);out.push({n,d})}return out}
+function dayClamp(y,m,day){return Math.min(day,new Date(y,m+1,0).getDate())}
+function build(h,opts={}){
+  const stress=1+(opts.stress||0)/100,ev=[];
+  const days=monthsAhead(h);
+  const put=(n,d,name,v,kind)=>ev.push({n,d,name,v,kind});
+  for(const {n,d} of days){
+    const y=d.getFullYear(),m=d.getMonth(),dd=d.getDate();
+    const hit=day=>dd===dayClamp(y,m,day);
+    for(const [nm,v,day] of INCOME){
+      if(day){if(hit(day))put(n,d,nm,Math.round(v*stress),'Entrada')}
+      else if([5,12,19,26].some(x=>hit(x)))put(n,d,nm+' (média)',Math.round(v*stress/4),'Entrada');
+    }
+    for(const [nm,v,day] of FIXED)if(hit(day))put(n,d,nm,-v,'Fixa');
+    for(const [nm,v,day] of VARIABLE){
+      const share=Math.round(v*varScale);
+      if(hit(day))put(n,d,nm,-share,'Variável');
+    }
+    if(hit(25)){
+      const ym=y+'-'+String(m+1).padStart(2,'0');
+      for(const [nm,v,a,t,pm] of PARC){
+        const [py,pmn]=pm.split('-').map(Number);const idx=(y-py)*12+(m+1-pmn);
+        const cur=a+idx;if(idx>=1&&cur<=t)put(n,d,`${nm} (${cur}/${t})`,-v,'Parcela');
+      }
+    }
+  }
+  return ev.sort((a,b)=>a.n-b.n);
+}
+function scenarioEvents(sc,h){
+  if(!sc)return[];const ev=[],st=sc.start;
+  const add=(n,name,v,kind)=>{if(n>=1&&n<=h)ev.push({n,d:addDays(n),name,v,kind})};
+  if(sc.kind==='emp'){
+    const i=sc.rate/100,pmt=i>0?sc.val*i/(1-Math.pow(1+i,-sc.n)):sc.val/sc.n;
+    add(st,'Empréstimo liberado',Math.round(sc.val*100),'Cenário');
+    for(let k=1;k<=sc.n;k++)add(st+30*k,`Parcela do empréstimo ${k}/${sc.n}`,-Math.round(pmt*100),'Cenário');
+  }else if(sc.kind==='parc'){
+    for(let k=1;k<=sc.n;k++)add(st+30*(k-1),`Compra parcelada ${k}/${sc.n}`,-Math.round(sc.val*100/sc.n),'Cenário');
+  }else{
+    for(let k=0;k<Math.ceil(h/30)+1;k++)add(st+30*k,'Nova despesa mensal',-Math.round(sc.val*100),'Cenário');
+  }
+  return ev;
+}
+function series(ev,h,start){
+  const pts=[{n:0,b:start}];let b=start,i=0;
+  for(let n=1;n<=h;n++){while(i<ev.length&&ev[i].n===n){b+=ev[i].v;i++}pts.push({n,b})}
+  return pts;
+}
+function getSaldo(){const v=num($('#saldo').value);return isFinite(v)?Math.round(v*100):null}
+let horizon=90,scenario=null;
+
+function chartSvg(target,h,lines,hasSaldo){
+  const W=Math.max(300,Math.round($(target).clientWidth)||720),H=W<500?230:270,m={l:W<500?48:64,r:14,t:14,b:26};
+  const all=lines.flatMap(l=>l.pts.map(p=>p.b));
+  const mx=Math.max(...all,0),mn=Math.min(...all,0);
+  const steps=[1000e2,2500e2,5000e2,10000e2,20000e2,25000e2,50000e2,100000e2];
+  const step=steps.find(s=>(mx-mn)/s<=6)||steps[steps.length-1];
+  const top=Math.ceil(mx/step)*step,bot=Math.floor(mn/step)*step;
+  const X=n=>m.l+(n/h)*(W-m.l-m.r),Y=v=>m.t+(1-(v-bot)/(top-bot||1))*(H-m.t-m.b);
+  let g='';
+  for(let v=bot;v<=top;v+=step)g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${m.l-8}" y="${Y(v)+4}" text-anchor="end">${v===0?'0':(v/100000).toLocaleString('pt-BR')+' mil'}</text>`;
+  const tk=h===30?[0,10,20,30]:h===90?[0,30,60,90]:[0,30,60,90,120,150,180];
+  for(const n of tk)g+=`<text x="${X(n)}" y="${H-6}" text-anchor="${n===0?'start':n===h?'end':'middle'}">${n===0?'hoje':fmt(addDays(n))}</text>`;
+  const path=pts=>pts.map((p,i)=>(i?'L':'M')+X(p.n).toFixed(1)+' '+Y(p.b).toFixed(1)).join('');
+  let body='';
+  lines.forEach(l=>{body+=`<path d="${path(l.pts)}" fill="none" stroke="${l.color}" stroke-width="${l.w||2}" ${l.dash?'stroke-dasharray="5 4"':''}/>`});
+  const main=lines[lines.length-1],low=main.pts.reduce((a,p)=>p.b<a.b?p:a,main.pts[0]);
+  const lx=Math.min(Math.max(X(low.n),m.l+80),W-m.r-80),neg=low.b<0;
+  body+=`<circle cx="${X(low.n)}" cy="${Y(low.b)}" r="4.5" fill="${neg?'var(--bad)':'var(--accent)'}" stroke="var(--surface)" stroke-width="2"/><text x="${lx}" y="${Y(low.b)+(Y(low.b)>H-60?-10:18)}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${R(low.b)} em ${fmt(addDays(low.n))}</text>`;
+  const zero=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
+  $(target).innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${hasSaldo?'Saldo projetado':'Variação acumulada'} para ${h} dias. Ponto mais baixo: ${R(low.b)}.">${g}${zero}${body}</svg>`;
+  return low;
+}
+
+function drawPainel(){
+  const saldo=getSaldo(),has=saldo!==null,start=has?saldo:0;
+  const base=build(horizon,{stress:scenario?scenario.stress:0}),bp=series(base,horizon,start);
+  const sev=scenarioEvents(scenario,horizon),withSc=[...base,...sev].sort((a,b)=>a.n-b.n),sp=series(withSc,horizon,start);
+  $('#chTitle').textContent=has?'Saldo projetado':'Variação acumulada do caixa';
+  const lines=scenario?[{pts:bp,color:'var(--base)',dash:1,w:1.6},{pts:sp,color:'var(--accent)',w:2.4}]:[{pts:bp,color:'var(--accent)',w:2.4}];
+  const low=chartSvg('#chart',horizon,lines,has);
+  $('#legend').innerHTML=scenario?'<span><i style="background:var(--base)"></i>Sem o cenário</span><span><i style="background:var(--accent)"></i>Com o cenário simulado</span>':'<span><i style="background:var(--accent)"></i>'+(has?'Saldo previsto':'Soma das entradas menos saídas a partir de hoje')+'</span>';
+  const end=sp[sp.length-1];
+  if(!has)$('#alertBox').innerHTML=`<div class="alert"><strong>Informe o saldo atual das contas</strong>O banco não tem saldo cadastrado. Com ele, o painel mostra o caixa real e avisa quando o saldo ficar negativo. Hoje o gráfico mostra só a variação.</div>`;
+  else if(low.b<0){const first=sp.find(p=>p.b<0);$('#alertBox').innerHTML=`<div class="alert bad" role="alert"><strong>O saldo fica negativo em ${fmtL(addDays(first.n))}</strong>Chega a ${R(low.b)} em ${fmtL(addDays(low.n))}. Antecipe recebimentos ou adie pagamentos antes dessa data.</div>`}
+  else $('#alertBox').innerHTML=`<div class="alert ok"><strong>Caixa positivo nos próximos ${horizon} dias</strong>Ponto mais baixo: ${R(low.b)} em ${fmtL(addDays(low.n))}. Saldo final previsto: ${R(end.b)}.</div>`;
+  const up=withSc.filter(e=>e.n<=14).slice(0,9);
+  $('#upcoming').innerHTML=up.length?up.map(e=>`<li><div class="l"><b>${e.name}</b><small>${fmtL(e.d)} · ${e.kind}</small></div><span class="num ${e.v>0?'pos':''}">${R(e.v)}</span></li>`).join(''):'<li class="note">Nada previsto.</li>';
+}
+function drawStatic(){
+  $$('.rm').forEach(e=>e.textContent=mname(REF).split(' de ')[0]);
+  $('#kIn').textContent=R(inc);$('#kOut').textContent=R(-out);
+  $('#kOutD').textContent=(out?Math.round(fix/out*100):0)+'% são despesas fixas';
+  $('#kRes').textContent=R(res);$('#kRes').className=res>=0?'pos':'neg';
+  $('#kResD').textContent='margem de '+(inc?Math.round(res/inc*100):0)+'% sobre a receita';
+  $('#kComp').textContent=R(fix+parcMonth);$('#kCompD').textContent=(inc?Math.round((fix+parcMonth)/inc*100):0)+'% da receita de '+mname(REF);
+  const mx=Math.max(1,...INCOME.map(x=>x[1]));
+  $('#inCats').innerHTML=INCOME.map(([n,v])=>`<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;gap:10px"><span>${esc(n)}</span><span class="num">${R(v)} <small style="color:var(--muted);font-weight:500">${Math.round(v/inc*100)}%</small></span></div><div class="bar"><i style="width:${v/mx*100}%"></i></div></div>`).join('');
+  const oc=[...FIXED,...VARIABLE].sort((a,b)=>b[1]-a[1]).slice(0,9),om=oc.length?oc[0][1]:1;
+  $('#outCats').innerHTML=oc.map(([n,v])=>`<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;gap:10px"><span>${esc(n)}</span><span class="num">${R(v)} <small style="color:var(--muted);font-weight:500">${Math.round(v/out*100)}%</small></span></div><div class="bar"><i style="width:${v/om*100}%"></i></div></div>`).join('');
+}
+function drawComp(){
+  $('#cFix').textContent=R(fix);$('#cPar').textContent=R(parcMonth);$('#cParD').textContent=PARC.length+' parcelamentos ativos';
+  $('#cLoan').textContent=R(loanMonth);$('#cCov').textContent=(fix+parcMonth>0?(inc/(fix+parcMonth)).toFixed(2).replace('.',','):'0')+'x';
+  let totFalta=0;
+  $('#parc').innerHTML=PARC.length?PARC.map(([n,v,a,t,pm])=>{const[py,pmn]=pm.split('-').map(Number),idx=Math.max(0,(TODAY.getFullYear()-py)*12+(TODAY.getMonth()+1-pmn)),cur=a+idx,falta=(t-cur)*v,endIdx=pmn-1+(t-a),ey=py+Math.floor(endIdx/12),em=endIdx%12+1,e=ey+'-'+String(em).padStart(2,'0');totFalta+=falta;
+    return`<tr><td>${esc(n)}</td><td class="num">${cur}/${t}</td><td>${mshort(e)}</td><td class="r num">${R2(-v)}</td><td class="r num">${falta?R2(-falta):'<span class="tag good">última</span>'}</td></tr>`}).join(''):'<tr><td colspan="5" class="note">Nenhum parcelamento ativo.</td></tr>';
+  $('#parcF').innerHTML=`<tr><td colspan="3">Total</td><td class="r num">${R2(-parcMonth)}</td><td class="r num">${R2(-totFalta)}</td></tr>`;
+  $('#loans').innerHTML=LOANS.length?LOANS.map(([n,c,d,v,s])=>`<tr><td>${esc(n)}</td><td>${esc(c)}</td><td class="num">${d}</td><td class="r num">${R2(-v)}</td><td><span class="tag ${s==='Confirmar'?'warn':'info'}">${s}</span></td></tr>`).join(''):'<tr><td colspan="5" class="note">Nenhum pagamento de financiamento encontrado.</td></tr>';
+  $('#fixed').innerHTML=FIXED.map(([n,v,d])=>`<tr><td>${esc(n)}</td><td class="num">${d}</td><td class="r num">${R2(-v)}</td><td class="r num">${(inc?v/inc*100:0).toFixed(1).replace('.',',')}%</td></tr>`).join('');
+  $('#fixedF').innerHTML=`<tr><td colspan="2">Total</td><td class="r num">${R2(-fix)}</td><td class="r num">${(inc?fix/inc*100:0).toFixed(1).replace('.',',')}%</td></tr>`;
+}
+function drawIssues(){
+  const nb=ISSUES.filter(i=>i[0]!=='info').length;$('#qBadge').textContent=nb;$('#qBadge').hidden=!nb;
+  $('#issues').innerHTML=ISSUES.map(([t,h,p])=>`<div class="issue"><div><b>${esc(h)}</b><p>${esc(p)}</p></div><span class="tag ${t}">${t==='bad'?'Importante':t==='warn'?'Revisar':'Informação'}</span></div>`).join('');
+}
+
+/* ===== simulador ===== */
+function readScenario(){
+  const kind=$('#sKind').value,val=num($('#sVal').value),n=Math.max(1,Math.round(num($('#sN').value)||1)),rate=num($('#sRate').value)||0,start=Math.max(1,Math.round(num($('#sStart').value)||1)),stress=num($('#sStress').value)||0;
+  if(!isFinite(val)||val<=0)return null;return{kind,val,n,rate,start,stress}
+}
+function kindUI(){
+  const k=$('#sKind').value;
+  $('#sValL').textContent=k==='emp'?'Valor liberado (R$)':k==='parc'?'Valor total da compra (R$)':'Valor por mês (R$)';
+  $('#sNw').style.display=k==='fixa'?'none':'';$('#sRw').style.display=k==='emp'?'':'none';
+}
+function runSim(){
+  const sc=readScenario();if(!sc){$('#simRes').innerHTML='<p class="note">Informe um valor maior que zero.</p>';return}
+  scenario=sc;const h=180,sd=getSaldo(),start=sd??0;
+  const base0=build(h),bp=series(base0,h,start);
+  const base=build(h,{stress:sc.stress}),sev=scenarioEvents(sc,h),all=[...base,...sev].sort((a,b)=>a.n-b.n),sp=series(all,h,start);
+  const lo=ps=>ps.reduce((a,p)=>p.b<a.b?p:a,ps[0]);
+  const l0=lo(bp),l1=lo(sp),delta=sp[h].b-bp[h].b;
+  const monthly=sc.kind==='emp'?(sc.rate>0?sc.val*(sc.rate/100)/(1-Math.pow(1+sc.rate/100,-sc.n)):sc.val/sc.n):sc.kind==='parc'?sc.val/sc.n:sc.val;
+  const total=sc.kind==='emp'?monthly*sc.n-sc.val:sc.kind==='parc'?0:monthly*12;
+  const pct=inc?Math.round(monthly*100/inc*1000)/10:0;
+  const neg=sp.find(p=>p.b<0);
+  const lab=sc.kind==='emp'?'Custo dos juros':sc.kind==='parc'?'Juros':'Custo em 12 meses';
+  $('#simRes').innerHTML=`
+   <div><small>Compromisso mensal novo</small><b>${R(-monthly*100)}</b></div>
+   <div><small>Peso na receita</small><b>${pct.toString().replace('.',',')}%</b></div>
+   <div><small>${lab}</small><b>${R(-total*100)}</b></div>
+   <div><small>Ponto mais baixo</small><b class="${l1.b<0?'neg':''}">${R(l1.b)}</b><span class="note"> em ${fmt(addDays(l1.n))} (antes ${R(l0.b)})</span></div>
+   <div><small>Saldo em 6 meses</small><b class="${sp[h].b<0?'neg':''}">${R(sp[h].b)}</b><span class="note"> ${delta>=0?'+':''}${R(delta)} vs. sem cenário</span></div>
+   <div><small>${sd===null?'Observação':'Caixa negativo?'}</small><b>${sd===null?'Informe o saldo':neg?'Sim, em '+fmt(addDays(neg.n)):'Não'}</b></div>`;
+  chartSvg('#simChart',h,[{pts:bp,color:'var(--base)',dash:1,w:1.6},{pts:sp,color:'var(--accent)',w:2.4}],sd!==null);
+  $('#simLegend').innerHTML='<span><i style="background:var(--base)"></i>Sem o cenário</span><span><i style="background:var(--accent)"></i>Com o cenário</span>';
+  drawPainel();
+}
+function clearSim(){scenario=null;$('#simRes').innerHTML='';$('#simChart').innerHTML='';$('#simLegend').innerHTML='';drawPainel()}
+
+/* ===== eventos ===== */
+const tabs=$$('.tab'),ids={'t-painel':'v-painel','t-comp':'v-comp','t-sim':'v-sim','t-dados':'v-dados'};
+function go(id){tabs.forEach(t=>t.setAttribute('aria-selected',t.id===id));Object.entries(ids).forEach(([t,v])=>$('#'+v).hidden=t!==id)}
+tabs.forEach((t,i)=>{t.addEventListener('click',()=>go(t.id));t.addEventListener('keydown',e=>{const k=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0;if(k){const n=tabs[(i+k+tabs.length)%tabs.length];n.focus();go(n.id)}})});
+$$('.seg button').forEach(b=>b.addEventListener('click',()=>{$$('.seg button').forEach(x=>x.setAttribute('aria-pressed',x===b));horizon=+b.dataset.h;drawPainel()}));
+$('#saldo').addEventListener('input',()=>{try{localStorage.setItem('fp-saldo',$('#saldo').value)}catch{}drawPainel();if(scenario)runSim()});
+$('#sKind').addEventListener('change',kindUI);
+$('#sRun').addEventListener('click',runSim);$('#sClear').addEventListener('click',clearSim);
+function autoSaldo(){
+  const bal=DATA.accountBalances||[];if(!bal.length)return null;
+  let tot=0;for(const b of bal){const acc=(DATA.accounts||[]).find(x=>x.id===b.accountId);if(!acc)continue;
+    tot+=cents(b.openingBalance)+DATA.items.filter(i=>i.account===acc.name&&i.date>=b.baseDate).reduce((s,i)=>s+cents(i.amount),0)}
+  return tot;
+}
+function fillRefs(months){
+  const sel=$('#ref');sel.innerHTML=months.slice().reverse().map(m=>`<option value="${m}"${m===REF?' selected':''}>${mname(m)}</option>`).join('');
+  sel.onchange=()=>{REF=sel.value;compute();drawAll()};
+}
+function drawAll(){drawStatic();drawComp();drawIssues();drawPainel();if(scenario)runSim()}
+async function init(){
+  try{
+    const r=await fetch('/api/admin-auth?route=finance&action=list&month=all',{cache:'no-store'});
+    const d=await r.json();if(!r.ok)throw Error(d.error||'Falha ao carregar');
+    DATA=d;DATA.items=(d.items||[]).map(i=>({...i,classified:!!i.classified}));
+    const p=pickRef(DATA.items);if(!p.ref)throw Error('Nenhum lançamento encontrado');
+    REF=p.ref;compute();fillRefs(p.months);
+    let saved='';try{saved=localStorage.getItem('fp-saldo')||''}catch{}
+    const auto=autoSaldo();
+    if(saved)$('#saldo').value=saved;else if(auto!==null)$('#saldo').value=String(auto/100).replace('.',',');
+    $('#loading').hidden=true;$('#app').hidden=false;kindUI();drawAll();
+  }catch(e){$('#loading').innerHTML='<p>Não foi possível carregar os dados financeiros.</p><p class="note">'+esc(e.message)+'</p><button class="btn" onclick="location.reload()">Tentar de novo</button>'}
+}
+init();
+})();
+</script>
+<script src="/admin-common.js"></script>
+</body></html>
