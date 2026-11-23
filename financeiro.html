@@ -225,6 +225,8 @@ const LABEL_MONTH=ym=>mname(ym).replace(/ de /,' de ');
 /* Categorias que só movem dinheiro entre contas da empresa e não entram em receita nem despesa. */
 const TRANSFER_CATS=new Set(['Cartões','Contas próprias','Aporte Gym Pop','Reembolso GymPop']);
 const LOAN_RE=/PORTOSEG|BRADESCO|BANCO BV|CEF MATRIZ|EMBRACON|FINANCIAM|EMPREST|CONSORCIO|CAPITAL DE GIRO|PRONAMPE/i;
+/* Despesas que parecem fixas mas têm número de parcelas definido: saem das fixas e viram parcelamento. */
+const FINITE_FIXED=[{cat:'Poltrona de Massagem',nome:'Poltrona de Massagem',dia:8,total:10,inicio:'2026-09'}];
 const VARIABLE_TYPES=new Set(['variable','custom_impostos_taxas','']);
 
 let DATA=null,REF='',INCOME=[],FIXED=[],VARIABLE=[],PARC=[],LOANS=[],ISSUES=[];
@@ -258,11 +260,13 @@ function compute(){
   VARIABLE=list(varMap).map(([c,v,d])=>[c,v,d]);
   const ignored=new Set(DATA.ignoredInstallments||[]);
   PARC=(DATA.installments||[]).filter(p=>p.active&&!ignored.has(p.sourceId)).map(p=>[String(p.description).replace(/\s*[-–]?\s*Parcela.*$/i,'').replace(/\s+\d+\/\d+$/,'').trim()||p.description,Math.abs(cents(p.amount)),p.currentPart,p.totalParts,p.firstMonth]).sort((a,b)=>b[1]-a[1]);
+  for(const f of FINITE_FIXED){const k=FIXED.findIndex(x=>x[0]===f.cat);if(k<0)continue;const v=FIXED[k][1];FIXED.splice(k,1);PARC.push([f.nome,v,1,f.total,f.inicio,f.dia,true])}
+  PARC.sort((a,b)=>b[1]-a[1]);
   PARC=PARC.filter(p=>p[2]+Math.max(0,((TODAY.getFullYear()-+p[4].slice(0,4))*12+(TODAY.getMonth()+1-+p[4].slice(5,7))))<=p[3]);
   inc=INCOME.reduce((s,x)=>s+x[1],0);fix=FIXED.reduce((s,x)=>s+x[1],0);varr=VARIABLE.reduce((s,x)=>s+x[1],0);
   out=fix+varr;res=inc-out;
   parcMonth=PARC.reduce((s,p)=>s+p[1],0);
-  parcRef=PARC.filter(p=>p[4]<=REF).reduce((s,p)=>s+p[1],0);
+  parcRef=PARC.filter(p=>p[4]<=REF&&!p[6]).reduce((s,p)=>s+p[1],0);
   varScale=varr>0?Math.max(0,(varr-parcRef)/varr):1;
   /* empréstimos e financiamentos: pelo nome do credor nos últimos lançamentos */
   const seen=new Map();
@@ -291,7 +295,7 @@ function buildIssues(){
   const pro=items.filter(i=>i.category==='Pró-labore').map(i=>cents(i.amount));
   const sus=items.filter(i=>i.category!=='Pró-labore'&&/RENATO DE JESUS VILELAS/i.test(i.description)&&pro.includes(cents(i.amount)));
   if(sus.length)ISSUES.push(['warn','Possível lançamento fora da categoria',sus.map(i=>i.date.split('-').reverse().join('/')+' · '+R2(-cents(i.amount))+' em '+i.category).join('; ')+'. O valor é igual a um pró-labore. Se for pró-labore, a categoria está errada.']);
-  ISSUES.push(['info','Despesas fixas sem data de fim','As despesas fixas são repetidas todo mês na projeção. Compromissos com parcelas definidas, como a Poltrona de Massagem, precisam de número de parcelas para terminarem no gráfico.']);
+  ISSUES.push(['info','Despesas fixas sem data de fim','As despesas fixas são repetidas todo mês na projeção. Se alguma tem número de parcelas definido, como a Poltrona de Massagem, cadastre o fim para ela sair do gráfico.']);
 }
 
 function monthsAhead(h){const out=[];for(let n=1;n<=h;n++){const d=addDays(n);out.push({n,d})}return out}
@@ -312,12 +316,10 @@ function build(h,opts={}){
       const share=Math.round(v*varScale);
       if(hit(day))put(n,d,nm,-share,'Variável');
     }
-    if(hit(25)){
-      const ym=y+'-'+String(m+1).padStart(2,'0');
-      for(const [nm,v,a,t,pm] of PARC){
-        const [py,pmn]=pm.split('-').map(Number);const idx=(y-py)*12+(m+1-pmn);
-        const cur=a+idx;if(idx>=1&&cur<=t)put(n,d,`${nm} (${cur}/${t})`,-v,'Parcela');
-      }
+    for(const [nm,v,a,t,pm,pd] of PARC){
+      if(!hit(pd||25))continue;
+      const [py,pmn]=pm.split('-').map(Number);const idx=(y-py)*12+(m+1-pmn);
+      const cur=a+idx;if(idx>=1&&cur<=t)put(n,d,`${nm} (${cur}/${t})`,-v,'Parcela');
     }
   }
   return ev.sort((a,b)=>a.n-b.n);
