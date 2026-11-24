@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {usefulLinks} from '../lib/useful-links-routes.mjs';
-import {recordEvent,computeStats,cleanExtras,readExtras,DEFAULT_WHATSAPP} from '../lib/aula-experimental.mjs';
+import {recordEvent,computeStats,cleanExtras,readExtras,ensureSessionTable,DEFAULT_WHATSAPP} from '../lib/aula-experimental.mjs';
 
 function setup(){
  const sql=new DatabaseSync(':memory:');
@@ -82,7 +82,7 @@ test('settings: WhatsApp and final-screen note are validated, normalized, kept w
  r=await call(db,adminReq('PUT','/links-uteis/config',{...urls,whatsapp:''}));assert.equal(r.status,200);
  assert.equal((await call(db,new Request('https://w/links-uteis/public-config'))).body.whatsapp,DEFAULT_WHATSAPP,'empty goes back to the official number');
  assert.equal(cleanExtras({whatsapp:'+55 (11) 93052-1378'}).whatsapp,'5511930521378');
- assert.deepEqual(readExtras({whatsapp:'abc',done_note:7}),{whatsapp:DEFAULT_WHATSAPP,done_note:''});
+ assert.deepEqual(readExtras({whatsapp:'abc',done_note:7}),{whatsapp:DEFAULT_WHATSAPP,done_note:'',new_percent:50});
 });
 
 test('routes: event is public, stats is admin only and returns the new funnel',async()=>{
@@ -110,4 +110,61 @@ test('page: scripts parse, the rules confirmation is required, help goes to the 
  const old=read('aula-experimental/antiga.html');assert.match(old,/Li e estou ciente das regras/,'previous page is kept for rollback');
  for(const code of scripts(old))assert.doesNotThrow(()=>new Function(code));
  const adm=read('admin-links-uteis.html');for(const code of scripts(adm))assert.doesNotThrow(()=>new Function(code),'admin script parses');
+});
+
+test('A/B split: share of visitors on the new page is configurable (0-100), default 50, kept when omitted',async()=>{
+ const {db}=setup();
+ let r=await call(db,new Request('https://w/links-uteis/public-config'));assert.equal(r.body.new_percent,50,'half and half by default');
+ assert.equal((await call(db,adminReq('PUT','/links-uteis/config',{...urls,new_percent:30}))).status,200);
+ assert.equal((await call(db,new Request('https://w/links-uteis/public-config'))).body.new_percent,30);
+ assert.equal((await call(db,adminReq('PUT','/links-uteis/config',urls))).status,200);
+ assert.equal((await call(db,new Request('https://w/links-uteis/public-config'))).body.new_percent,30,'an admin page that omits the field keeps it');
+ for(const bad of [101,-1,12.5,'abc'])assert.equal((await call(db,adminReq('PUT','/links-uteis/config',{...urls,new_percent:bad}))).status,400,'rejects '+bad);
+ for(const ok of [0,100,'75'])assert.equal((await call(db,adminReq('PUT','/links-uteis/config',{...urls,new_percent:ok}))).status,200);
+ assert.equal((await call(db,new Request('https://w/links-uteis/public-config'))).body.new_percent,75);
+});
+
+test('A/B split: only sessions that came through the split are compared, by the page they saw',async()=>{
+ const {sql,db}=setup();
+ const send=(session,event,x={})=>recordEvent(db,{link:'aula-experimental',session,event,...x});
+ // arm A: previous page (v1), arm B: new page (v2). Two outside the test (no arm).
+ for(const [id,variant,steps] of [['a1','v1',['cad','agenda','finished']],['a2','v1',['cad']],['a3','v1',[]],['b1','v2',['cad','agenda','finished','confirmed']],['b2','v2',['cad','agenda','help']],['b3','v2',['cad']],['b4','v2',[]]]){
+  await send(id,'page_view',{variant,arm:'ab',browser:'chrome_android'});
+  if(steps.includes('cad'))await send(id,'step_view',{step:'Cadastro',period:'morning',variant,arm:'ab'});
+  if(steps.includes('agenda'))await send(id,'step_view',{step:'Agendamento gratuito',period:'morning',variant,arm:'ab'});
+  if(steps.includes('finished'))await send(id,'self_reported_step',{step:'Agendamento gratuito',period:'morning',variant,arm:'ab'});
+  if(steps.includes('confirmed'))await send(id,'self_reported_completion',{period:'morning',variant,arm:'ab'});
+  if(steps.includes('help'))await send(id,'help_click',{step:'Horário',period:'morning',variant,arm:'ab'});
+ }
+ await send('x1','page_view',{variant:'v2'});await send('x1','self_reported_completion',{variant:'v2'});
+ const d=await computeStats(db,'aula-experimental','30');
+ const m=Object.fromEntries(d.ab.map(x=>[x.k,x]));
+ assert.deepEqual({...m.v1},{k:'v1',sessions:3,cad:2,agenda:1,finished:1,confirmed:0,help:0});
+ assert.deepEqual({...m.v2},{k:'v2',sessions:4,cad:3,agenda:2,finished:1,confirmed:1,help:1});
+ assert.equal(d.versions.find(x=>x.k==='v2').sessions,5,'the general view still counts everyone');
+});
+
+test('A/B split: an existing sessions table without the arm column is upgraded in place',async()=>{
+ const {sql,db}=setup();
+ sql.exec("CREATE TABLE useful_link_sessions(link_slug TEXT NOT NULL,session_id TEXT NOT NULL,browser TEXT NOT NULL DEFAULT 'other',variant TEXT NOT NULL DEFAULT 'v1',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(link_slug,session_id));INSERT INTO useful_link_sessions(link_slug,session_id,browser,variant) VALUES('aula-experimental','old','safari_ios','v2')");
+ await ensureSessionTable(db);await ensureSessionTable(db);
+ assert.ok(sql.prepare('PRAGMA table_info(useful_link_sessions)').all().some(c=>c.name==='arm'));
+ assert.equal(sql.prepare("SELECT arm FROM useful_link_sessions WHERE session_id='old'").get().arm,'','old rows are outside the test');
+ assert.equal(await recordEvent(db,{link:'aula-experimental',session:'n1',event:'page_view',variant:'v2',arm:'ab'}),true);
+ assert.equal(sql.prepare("SELECT arm FROM useful_link_sessions WHERE session_id='n1'").get().arm,'ab');
+});
+
+test('A/B page split: fixed bucket per device, share from settings, no event before the decision, same measures on both pages',()=>{
+ const h=read('aula-experimental/index.html'),old=read('aula-experimental/antiga.html'),adm=read('admin-links-uteis.html');
+ for(const code of scripts(h))assert.doesNotThrow(()=>new Function(code));
+ for(const code of scripts(old))assert.doesNotThrow(()=>new Function(code));
+ assert.match(h,/ae-bucket/);assert.match(h,/bucket>=pct\)\{location\.replace\('\/aula-experimental\/antiga\.html'/,'higher buckets go to the previous page');
+ assert.match(h,/Math\.floor\(Math\.random\(\)\*100\)/,'bucket 0-99');
+ assert.match(h,/new_percent/);assert.match(h,/var pct=50/,'default is half and half');
+ assert.match(h,/Promise\.resolve\(window\.__aeStay\)\.then\(stay=>\{if\(stay===false\)return;track\('page_view'\)/,'nothing is tracked before the decision');
+ assert.match(h,/arm:AB\?'ab':''/);
+ assert.match(old,/variant:'v1',arm:ARM,browser:BR/,'previous page tags its events');
+ assert.match(old,/ae2-session/,'previous page keeps one id per device like the new one');
+ assert.match(old,/get\('ab'\)==='1'/,'only visitors sent by the split count as test arm');
+ assert.match(adm,/id="new_percent"/);assert.match(adm,/id="abtest"/);
 });
