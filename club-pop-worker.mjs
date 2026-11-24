@@ -18,7 +18,7 @@ import {flashClasses} from './lib/flash-mission-classes.mjs';
 import {journeyAutomationAdmin} from './lib/journey-automations.mjs';
 import {journeyAutomationTick} from './lib/journey-engine.mjs';
 import {equipmentMaintenance} from './lib/equipment-maintenance.mjs';
-import { ensureReservationSchema, startReservationSync, processReservationSync, saveReservationSnapshot, saveProspectReservationSnapshot, reservationTime } from './lib/reservation-sync.mjs';
+import { ensureReservationSchema, startReservationSync, processReservationSync, saveReservationSnapshot, saveProspectReservationSnapshot, reservationTime, reservationParticipants } from './lib/reservation-sync.mjs';
 import { attachContractSessions } from './lib/session-contracts.mjs';
 import {usefulLinks} from './lib/useful-links-routes.mjs';
 import {adminBikeRanking} from './lib/admin-bike-ranking.mjs';
@@ -2442,7 +2442,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!ins.meta?.changes)return json({ok:false,error:"ALUNO_OU_DISPOSITIVO_JA_ASSOCIADO"},409);
         return json({ok:true,session_id:session.id,member_id:memberId,device_number:number});
       }
-      if(url.pathname.startsWith('/pop-live/')&&url.pathname!=='/pop-live/devices')return await popLiveOperation(request,env,url,json);
+      if(url.pathname.startsWith('/pop-live/')&&url.pathname!=='/pop-live/devices')return await popLiveOperation(request,env,url,json,{refreshReservations:s=>popLiveRefreshReservations(env,s)});
       if(url.pathname==="/pop-live/devices"&&request.method==="GET"){
         const token=String(request.headers.get("authorization")||"").replace(/^Bearer /i,"").trim();
         if(!/^[0-9a-f-]{36}$/.test(token))return json({ok:false,error:"APP_NAO_AUTORIZADO"},401);
@@ -6177,6 +6177,22 @@ class EvoConfigError extends Error {
 }
 function validEvoExpiry(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value || "") && Number.isFinite(Date.parse(value+"T00:00:00Z")) && new Date(value+"T00:00:00Z").toISOString().slice(0,10)===value;
+}
+// Pop Live "atualizar sugeridos": the same EVO class-detail request the Aulas e Check-in screen makes,
+// saved through the same snapshot path, so the suggested list matches what the admin would show.
+async function popLiveRefreshReservations(env,s){
+  const cfg=await getEvoConfig(env,s.unit),path='/api/v1/activities/schedule/detail?idActivitySession='+encodeURIComponent(String(s.source_class_id));
+  let response;
+  try{response=await fetch('https://evo-integracao-api.w12app.com.br'+path,{headers:{Authorization:'Basic '+btoa(cfg.dns+':'+cfg.token),Accept:'application/json'},signal:AbortSignal.timeout(12000)});}
+  finally{try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,'pop_live_suggested','GET',?,?,?)").bind(s.unit,'/api/v1/activities/schedule/detail',response?.status||0,response?.ok?1:0).run()}catch{}}
+  if(!response.ok)throw Object.assign(new Error('EVO_INDISPONIVEL'),{status:502});
+  const data=await response.json().catch(()=>null),detail=Array.isArray(data)?data[0]:data;
+  let rows;try{rows=reservationParticipants(detail)}catch{throw Object.assign(new Error('LISTA_RESERVAS_AUSENTE'),{status:502})}
+  await ensureReservationSchema(env.DB);
+  const date=String(s.starts_at||'').slice(0,10),time=String(s.starts_at||'').slice(11,16),observedAt=Date.now(),args={unit:s.unit,sessionId:String(s.source_class_id),date,time,name:s.class_name,rows,observedAt};
+  const snapshot=await saveReservationSnapshot(env.DB,args);
+  if(!snapshot.superseded)await saveProspectReservationSnapshot(env.DB,args);
+  return snapshot;
 }
 async function getEvoConfig(env, unit="bike") {
   unit=String(unit||"bike").toLowerCase();
