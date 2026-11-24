@@ -303,6 +303,10 @@
         }
       ],
       "destination": "/admin-testes-gerais.html"
+    },
+    {
+      "source": "/:slug([a-z0-9][a-z0-9-]{1,59})",
+      "destination": "/api/evo-config?route=links-uteis&action=redirect&slug=:slug"
     }
   ],
   "redirects": [
