@@ -18,6 +18,7 @@ import {flashClasses} from './lib/flash-mission-classes.mjs';
 import {journeyAutomationAdmin} from './lib/journey-automations.mjs';
 import {journeyAutomationTick} from './lib/journey-engine.mjs';
 import {equipmentMaintenance} from './lib/equipment-maintenance.mjs';
+import { ensureLayoutSchema, findLayout, layoutShape, rememberSessionActivity, activityIdOf } from './lib/checkin-layout.mjs';
 import { ensureReservationSchema, startReservationSync, processReservationSync, saveReservationSnapshot, saveProspectReservationSnapshot, reservationTime, reservationParticipants } from './lib/reservation-sync.mjs';
 import { attachContractSessions } from './lib/session-contracts.mjs';
 import {usefulLinks} from './lib/useful-links-routes.mjs';
@@ -2888,17 +2889,16 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"}}),vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,40);
-        if(request.method==="GET"){const r=await env.DB.prepare("SELECT unit,activity_id AS activityId,activity_name AS activityName,capacity,rows_json AS rowsJson,updated_at AS updatedAt FROM checkin_layouts WHERE unit=? ORDER BY activity_name").bind(unit).all();return json({ok:true,unit,items:(r.results||[]).map(x=>({...x,rows:JSON.parse(x.rowsJson||"[]")}))});}
-        const b=await readJson(request),activityId=String(b.activityId||"").trim().slice(0,120),activityName=String(b.activityName||"").trim().slice(0,160),capacity=Number(b.capacity),rows=Array.isArray(b.rows)?b.rows.map(Number):[];
+        await ensureLayoutSchema(env.DB);
+        if(request.method==="GET"){const r=await env.DB.prepare("SELECT unit,activity_id AS activityId,activity_name AS activityName,capacity,rows_json AS rowsJson,shape,updated_at AS updatedAt FROM checkin_layouts WHERE unit=? ORDER BY activity_name").bind(unit).all();return json({ok:true,unit,items:(r.results||[]).map(x=>({...x,shape:layoutShape(x.shape),rows:JSON.parse(x.rowsJson||"[]")}))});}
+        const b=await readJson(request),activityId=String(b.activityId||"").trim().slice(0,120),activityName=String(b.activityName||"").trim().slice(0,160),capacity=Number(b.capacity),rows=Array.isArray(b.rows)?b.rows.map(Number):[],shape=layoutShape(b.shape);
         if(!activityId||!activityName||!Number.isInteger(capacity)||capacity<1||capacity>200||!rows.length||rows.some(x=>!Number.isInteger(x)||x<1||x>50)||rows.reduce((a,b)=>a+b,0)!==capacity)return json({ok:false,error:"LAYOUT_INVALIDO"},400);
-        await env.DB.prepare("INSERT INTO checkin_layouts(unit,activity_id,activity_name,capacity,rows_json,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,activity_id) DO UPDATE SET activity_name=excluded.activity_name,capacity=excluded.capacity,rows_json=excluded.rows_json,updated_at=CURRENT_TIMESTAMP").bind(unit,activityId,activityName,capacity,JSON.stringify(rows)).run();
-        return json({ok:true,unit,activityId,activityName,capacity,rows});
+        await env.DB.prepare("INSERT INTO checkin_layouts(unit,activity_id,activity_name,capacity,rows_json,shape,updated_at) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,activity_id) DO UPDATE SET activity_name=excluded.activity_name,capacity=excluded.capacity,rows_json=excluded.rows_json,shape=excluded.shape,updated_at=CURRENT_TIMESTAMP").bind(unit,activityId,activityName,capacity,JSON.stringify(rows),shape).run();
+        return json({ok:true,unit,activityId,activityName,capacity,rows,shape});
       }
       if (url.pathname === "/checkin-layout" && request.method === "GET") {
         const unit=String(url.searchParams.get("unit")||"bike").toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,40),activityId=String(url.searchParams.get("activityId")||""),activityName=String(url.searchParams.get("activityName")||"");
-        let x=null;if(activityId)x=await env.DB.prepare("SELECT activity_id AS activityId,activity_name AS activityName,capacity,rows_json AS rowsJson FROM checkin_layouts WHERE unit=? AND activity_id=? LIMIT 1").bind(unit,activityId).first();
-        if(!x&&activityName)x=await env.DB.prepare("SELECT activity_id AS activityId,activity_name AS activityName,capacity,rows_json AS rowsJson FROM checkin_layouts WHERE unit=? AND lower(activity_name)=lower(?) LIMIT 1").bind(unit,activityName).first();
-        return json({ok:true,unit,layout:x?{activityId:x.activityId,activityName:x.activityName,capacity:Number(x.capacity),rows:JSON.parse(x.rowsJson||"[]")}:null});
+        return json({ok:true,unit,layout:await findLayout(env.DB,unit,{activityId,activityName})});
       }
 
       
@@ -4840,7 +4840,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           await ensureReservationSchema(env.DB);
           await assertCheckinSessionDate(env.DB,unit,sid,date);
           time=reservationTime(session?.startTime);
-          const observedAt=body.observedAt||Date.now();snapshot=await saveReservationSnapshot(env.DB,{unit,sessionId:sid,date,time,name:session?.name,rows,observedAt});if(!snapshot.superseded)await saveProspectReservationSnapshot(env.DB,{unit,sessionId:sid,date,time,name:session?.name,rows,observedAt});
+          const observedAt=body.observedAt||Date.now();snapshot=await saveReservationSnapshot(env.DB,{unit,sessionId:sid,date,time,name:session?.name,rows,observedAt});try{await rememberSessionActivity(env.DB,unit,sid,activityIdOf(session))}catch(e){console.warn('checkin_session_activity',String(e))}if(!snapshot.superseded)await saveProspectReservationSnapshot(env.DB,{unit,sessionId:sid,date,time,name:session?.name,rows,observedAt});
         }catch(error){return json({ok:false,error:String(error.message||error)},422)}
         // O Check-in já consultou a EVO: reaproveitar o professor confirmado,
         // sem nova requisição e sem alterar aulas concluídas.
@@ -6192,6 +6192,7 @@ async function popLiveRefreshReservations(env,s){
   const date=String(s.starts_at||'').slice(0,10),time=String(s.starts_at||'').slice(11,16),observedAt=Date.now(),args={unit:s.unit,sessionId:String(s.source_class_id),date,time,name:s.class_name,rows,observedAt};
   const snapshot=await saveReservationSnapshot(env.DB,args);
   if(!snapshot.superseded)await saveProspectReservationSnapshot(env.DB,args);
+  try{await rememberSessionActivity(env.DB,s.unit,s.source_class_id,activityIdOf(detail))}catch(e){console.warn('checkin_session_activity',String(e))}
   return snapshot;
 }
 async function getEvoConfig(env, unit="bike") {

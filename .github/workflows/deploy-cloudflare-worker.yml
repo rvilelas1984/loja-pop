@@ -25,6 +25,8 @@ on:
       - "lib/lucky-draw-data.mjs"
       - "lib/session-contracts.mjs"
       - "lib/reservation-sync.mjs"
+      - "lib/checkin-layout.mjs"
+      - "lib/checkin-mirror.mjs"
       - "lib/useful-links-routes.mjs"
       - "lib/hall-conquests.mjs"
       - "lib/teacher-view.mjs"
