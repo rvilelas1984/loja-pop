@@ -1,4 +1,26 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Bike Pop | Aula experimental</title><style>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Bike Pop | Aula experimental</title><style>html.ab-wait{background:#191027}html.ab-wait body{visibility:hidden}</style><script>
+/* A/B split. Each device gets a fixed number 0-99 the first time it opens the page; it sees the new page when the
+   number is below the configured share (Links Úteis > Configurações, default 50) and the previous page otherwise.
+   Changing the share moves people consistently (raising it adds people to the new page, never swaps them).
+   No decision is taken without storage (then the new page is shown and the visit stays out of the comparison). */
+(function(){
+ var d=document.documentElement,done=function(){d.className=d.className.replace(' ab-wait','')};d.className+=' ab-wait';
+ var get=function(k){try{return localStorage.getItem(k)}catch(e){return null}},set=function(k,v){try{localStorage.setItem(k,String(v));return localStorage.getItem(k)===String(v)}catch(e){return false}};
+ var ok=set('ae-probe',1);try{localStorage.removeItem('ae-probe')}catch(e){}
+ var bucket=null;
+ if(ok){var b=parseInt(get('ae-bucket'),10);if(!(b>=0&&b<100)){b=Math.floor(Math.random()*100);set('ae-bucket',b)}bucket=b}
+ window.__aeBucket=bucket;
+ window.__aeCfg=new Promise(function(res){var fin=false,end=function(v){if(!fin){fin=true;res(v)}};setTimeout(function(){end(null)},1000);
+  try{fetch('/api/links-uteis/public-config',{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(end).catch(function(){end(null)})}catch(e){end(null)}});
+ window.__aeStay=window.__aeCfg.then(function(v){
+  var pct=50;
+  if(v&&typeof v.new_percent==='number'&&v.new_percent>=0&&v.new_percent<=100&&v.new_percent%1===0){pct=v.new_percent;if(ok)set('ae-pct',pct)}
+  else if(ok){var c=parseInt(get('ae-pct'),10);if(c>=0&&c<=100)pct=c}
+  if(bucket!==null&&bucket>=pct){location.replace('/aula-experimental/antiga.html'+(location.search?location.search+'&ab=1':'?ab=1')+location.hash);return false}
+  done();return true});
+ setTimeout(done,2500);
+})();
+</script><style>
 /* Aula experimental V2: one start screen with the price on each option, a required rules confirmation,
    named steps with progress saved on the device, always-visible WhatsApp help, a final check before
    "done", and in-app browser tips. The EVO pages load inside the frame as before. */
@@ -122,7 +144,7 @@ const LS={get(k){try{return localStorage.getItem(k)}catch{return null}},set(k,v)
 const urls={login:'https://www.studiobikepop.com.br/evo/8347/page/landing-page/login',payment:'https://www.studiobikepop.com.br/evo/8347/site/2r0uxi45YEMv9SU3tm%5BBAR%5Ddew%5BEQUAL%5D%5BEQUAL%5D',agenda:'https://www.studiobikepop.com.br/evo/8347/page/landing-page/agenda',morning:'https://www.studiobikepop.com.br/evo/8347/page/landing-page/agenda/1/false'};
 const cfg={whatsapp:'551130521378',done_note:''};
 const SITE='https://www.studiobikepop.com.br',DAY=864e5;
-fetch('/api/links-uteis/public-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(v=>{if(!v)return;
+Promise.resolve(window.__aeCfg).then(v=>v||fetch('/api/links-uteis/public-config',{cache:'no-store'}).then(r=>r.ok?r.json():null)).then(v=>{if(!v)return;
  for(const k of Object.keys(urls)){try{const u=new URL(v[k]);if(u.protocol==='https:'&&!u.username&&!u.password)urls[k]=u.href}catch{}}
  if(/^\d{12,15}$/.test(String(v.whatsapp||'')))cfg.whatsapp=String(v.whatsapp);
  if(typeof v.done_note==='string')cfg.done_note=v.done_note.slice(0,500);
@@ -141,10 +163,10 @@ function browserClass(){const ua=navigator.userAgent||'';
  if(/Android/i.test(ua))return/;\s*wv\)/.test(ua)?'inapp_android':(/Chrome\//.test(ua)&&!/EdgA|OPR|SamsungBrowser|Firefox/.test(ua)?'chrome_android':'android_other');
  if(/Windows|Macintosh|Linux|CrOS/i.test(ua))return'desktop';
  return'other'}
-const BR=browserClass(),IN_APP=['instagram','facebook','tiktok','inapp_ios','inapp_android'].includes(BR);
+const AB=window.__aeBucket!=null,BR=browserClass(),IN_APP=['instagram','facebook','tiktok','inapp_ios','inapp_android'].includes(BR);
 
 let phase='start',period='',step=0,stages=[],tipSent=false,loaded=false,slowT=0,toastT=0;
-function track(event,detail={}){try{fetch('/api/links-uteis/event',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({event,link:'aula-experimental',session:sid,at:new Date().toISOString(),period,variant:'v2',browser:BR,...detail}),keepalive:true}).catch(()=>{})}catch{}}
+function track(event,detail={}){try{fetch('/api/links-uteis/event',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({event,link:'aula-experimental',session:sid,at:new Date().toISOString(),period,variant:'v2',arm:AB?'ab':'',browser:BR,...detail}),keepalive:true}).catch(()=>{})}catch{}}
 
 function buildStages(p){
  const cad={name:'Cadastro',label:'Cadastro',title:'Cadastro ou login',hint:'Primeira vez? Toque em <em>NÃO SOU CLIENTE</em> na tela abaixo. Já tem conta? Entre com seu e-mail e senha.',action:'Já fiz meu cadastro →',url:()=>urls.login};
@@ -223,7 +245,6 @@ for(const id of['rulesSheet','helpSheet'])$(id).addEventListener('click',e=>{if(
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('helpSheet').hidden)$('helpSheet').hidden=true;else if(!$('rulesSheet').hidden){$('rulesSheet').hidden=true;period=''}}});
 
 if(window.visualViewport){const check=()=>document.body.classList.toggle('keyboard-open',window.visualViewport.height<window.innerHeight*.73);window.visualViewport.addEventListener('resize',check);check()}
-track('page_view');if(offered)track('resume_offered');
-render();
+Promise.resolve(window.__aeStay).then(stay=>{if(stay===false)return;track('page_view');if(offered)track('resume_offered');render()});
 })();
 </script></body></html>
