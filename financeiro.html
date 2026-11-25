@@ -430,7 +430,7 @@ const INV_LABEL={paid:['g','Paga'],partial:['w','Paga em parte'],late:['b','Venc
 const invName=i=>i.name+' · vence '+fmtD(i.due)+(i.due.slice(0,4)!==TD.slice(0,4)?'/'+i.due.slice(2,4):'');
 const daysBetween=(a,b)=>Math.round((new Date(a)-new Date(b))/864e5);
 function payCandidates(e){
-  const val=-e.v;return invoices().filter(i=>i.k!=='paid'&&i.k!=='over').map(i=>{const exact=Math.abs(i.falta-val)<=1?0:Math.abs(i.total-val)<=1?1:2;return{i,exact,score:exact*1e6+Math.abs(i.falta-val)/100+Math.abs(daysBetween(e.date,i.due))}}).sort((a,b)=>a.score-b.score);
+  const val=-e.v;return invoices().filter(i=>i.k!=='paid'&&i.k!=='over').map(i=>{const exact=Math.abs(i.falta-val)<=100?0:Math.abs(i.total-val)<=100?1:2;return{i,exact,score:exact*1e6+Math.abs(i.falta-val)/100+Math.abs(daysBetween(e.date,i.due))}}).sort((a,b)=>a.score-b.score);
 }
 function suggestion(e){
   const c=payCandidates(e).filter(x=>x.exact<2&&daysBetween(e.date,x.i.due)>=-25&&daysBetween(e.date,x.i.due)<=10);return c.length===1?c[0].i:null;
@@ -450,6 +450,7 @@ function renderTx(){
     const linked=linkOf.get(e.id)==='invoice',inv=invOf.get(e.id);const sug=!linked&&canPay(e)&&PICK!==e.id?suggestion(e):null;
     let h=`<tr class="${e.out?'off':''}"><td data-l="Data" class="num">${fmtD(e.date)}</td><td data-l="Descrição">${esc(e.description)}${e.classified?'':' <span class="tag w">sem classificação</span>'}<small>${esc(src(e))}${e.out?' · fora da conta ('+esc(e.out)+')':''}</small>`
       +(linked?`<span class="paid">Pagou a fatura ${esc(inv?invName(inv):'')} · <button class="btn link" data-unlink="${esc(e.id)}" style="padding:0">Desfazer</button></span>`:'')
+      +(!linked&&canPay(e)&&!sug&&PICK!==e.id&&e.out==='pagamento de fatura'?`<button class="btn sm" style="margin-top:4px" data-pickopen="${esc(e.id)}">Ligar à fatura</button>`:'')
       +(sug?`<button class="btn sm" style="margin-top:4px" data-sug="${esc(e.id)}" data-doc="${esc(sug.id)}">Pagar fatura ${esc(invName(sug))}?</button>`:'')
       +`</td><td data-l="Categoria"><select data-cat="${esc(e.id)}" aria-label="Categoria"${linked?' disabled':''}>${opts(e)}</select></td><td data-l="Valor" class="r num ${e.v>0?'pos':''}">${esc(R(e.v))}</td><td data-l="" class="r"><button class="btn link" data-ign="${esc(e.id)}" style="color:var(--bad)" title="Só para lançamento duplicado ou errado: o saldo da conta muda">Remover</button></td></tr>`;
     if(PICK===e.id){const c=payCandidates(e);h+=`<tr class="pick"><td colspan="5"><div class="pickbox"><label class="f">Qual fatura este pagamento quitou?<select id="pickSel">${c.map(x=>`<option value="${esc(x.i.id)}">${esc(invName(x.i))} · total ${esc(R(x.i.total))}${x.i.pg?' · falta '+esc(R(x.i.falta)):''}${x.exact<2?' · valor confere':''}</option>`).join('')}<option value="">Fatura ainda não importada</option></select></label><button class="btn sm pri" data-pick-save="${esc(e.id)}">Salvar</button><button class="btn sm" data-pick-cancel="1">Cancelar</button></div></td></tr>`}
@@ -496,6 +497,7 @@ $('#txTable').addEventListener('change',e=>{const s=e.target.closest('[data-cat]
 $('#txTable').addEventListener('click',e=>{
   const ps=e.target.closest('[data-pick-save]');if(ps){const it=ITEMS.find(x=>x.id===ps.dataset.pickSave);const doc=$('#pickSel').value;PICK='';act($('#txMsg'),()=>linkPayment(it,doc),doc?'Pagamento ligado à fatura.':'Marcado como pagamento de fatura. Ligue à fatura quando ela for importada.');return}
   if(e.target.closest('[data-pick-cancel]')){PICK='';renderTx();return}
+  const po=e.target.closest('[data-pickopen]');if(po){PICK=po.dataset.pickopen;renderTx();return}
   const sg=e.target.closest('[data-sug]');if(sg){const it=ITEMS.find(x=>x.id===sg.dataset.sug);act($('#txMsg'),()=>linkPayment(it,sg.dataset.doc),'Pagamento ligado à fatura.');return}
   const ul=e.target.closest('[data-unlink]');if(ul){arm(ul,()=>act($('#txMsg'),()=>call('removeTransactionLink',{itemId:ul.dataset.unlink}),'Pagamento desligado da fatura. Escolha a fatura certa em “Pagamento de fatura…”.'),'Desligar?');return}
   const b=e.target.closest('[data-ign]');if(!b)return;arm(b,()=>act($('#txMsg'),()=>call('ignoreTransaction',{id:b.dataset.ign}),'Lançamento removido da conta.'),'Remover? Só se for duplicado ou erro');});
@@ -584,7 +586,7 @@ async function readImport(files){
       if(files.length>1)throw Error('Envie um arquivo por vez (ou várias imagens da mesma fatura).');
       const f=files[0];
       if(/\.pdf$/i.test(f.name)||f.type==='application/pdf'){
-        if(kind==='bank'){rows=await FI().parseBankPdf(f,CUR);format='PDF do extrato'}
+        if(kind==='bank'){rows=await FI().parseBankPdf(f,CUR);format='PDF do extrato';if(rows.balance)bal=rows.balance}
         else{const d=/mercado\s*pago/i.test(srcName)?await FI().parseMercadoPagoPdf(f,{paymentMonth:pm}):await FI().parsePdf(f,{paymentMonth:pm});rows=d.rows;expectedTotal=d.expectedTotal;format=d.format||'PDF da fatura'}
       }else{
         const raw=await f.text();const ofx=/\.(ofx|qfx)$/i.test(f.name)||/<STMTTRN>/i.test(raw);
@@ -594,7 +596,10 @@ async function readImport(files){
     }
   }catch(e){iMsg('Não consegui ler: '+(e.message||e),true);return}
   const valid=[];for(const x of rows){if(!x.date||!x.description||!Number.isFinite(x.amount)||!x.amount)continue;if(kind==='bank'&&FI().bankBalance(x)){skipped++;continue}valid.push(x)}
-  if(kind==='card'&&!ocr&&/^(OFX|CSV)$/.test(format)){const pos=valid.reduce((a,x)=>a+(x.amount>0?x.amount:0),0),neg=valid.reduce((a,x)=>a+(x.amount<0?-x.amount:0),0);if(pos>neg)for(const x of valid)x.amount=-x.amount}
+  // Fatura: o pagamento da fatura anterior aparece no arquivo e não é compra; sai da importação.
+  if(kind==='card'){const PAY=/^(pagamento (recebido|efetuado|de fatura|da fatura)|saldo anterior|total da fatura)/i;for(let i=valid.length-1;i>=0;i--)if(PAY.test(valid[i].description.trim())){valid.splice(i,1);skipped++}}
+  // Fatura em CSV/OFX: o lado com mais lançamentos são as compras (o Nubank exporta compras positivas). Antes contava a soma, e um pagamento grande invertia tudo.
+  if(kind==='card'&&!ocr&&/^(OFX|CSV)$/.test(format)){const npos=valid.filter(x=>x.amount>0).length,nneg=valid.filter(x=>x.amount<0).length;if(npos>nneg)for(const x of valid)x.amount=-x.amount}
   if(!valid.length){iMsg('Não encontrei lançamentos neste arquivo. Confira se escolheu a conta ou o cartão certo.',true);return}
   const known=new Set(ITEMS.map(e=>e.id));
   const docKeys=new Set((D.documents||[]).filter(d=>d.kind==='card'&&d.paymentMonth===pm&&(((D.links||[]).some(l=>l.documentKey===d.id&&l.cardId===s.card?.id))||String(d.account).toUpperCase()===account.toUpperCase())).map(d=>d.id));
@@ -626,7 +631,7 @@ function renderImp(){
   const I=IMP;const tg={new:'',dup:'m',parc:'g',pay:'w',old:'b'};
   $('#iRows').innerHTML=I.rows.map((x,i)=>`<tr data-i="${i}" class="${x.on?'':'off'}"><td><input type="checkbox" data-ion="${i}"${x.on?' checked':''} aria-label="${x.st==='old'?'Remover':'Incluir'}"></td>`+(I.ocr?`<td><input type="date" value="${esc(x.date)}" aria-label="Data"></td><td><input value="${esc(x.description)}" aria-label="Descrição"></td><td class="r"><input inputmode="decimal" style="max-width:8em;text-align:right" value="${esc((Math.abs(x.amount)).toLocaleString('pt-BR',{minimumFractionDigits:2}))}" aria-label="Valor"></td>`:`<td class="num">${fmtD(x.date)}</td><td>${esc(x.description)}</td><td class="r num ${x.amount>0?'pos':''}">${esc(R(Math.round(x.amount*100)))}</td>`)+`<td><span class="tag ${tg[x.st]}">${esc(x.label)}</span></td></tr>`).join('');
   const c=I.rows.reduce((a,x)=>(a[x.st]=(a[x.st]||0)+1,a),{});
-  $('#iInfo').textContent=I.format+' · '+I.rows.length+' lançamentos'+(c.dup?' · '+c.dup+' já importados (desmarcados)':'')+(c.old?' · '+c.old+' da versão parcial que não estão na fatura fechada (marcados para sair)':'')+(c.parc?' · '+c.parc+' parcelas':'')+(c.pay?' · '+c.pay+' possível pagamento de fatura, que fica fora da conta':'')+(I.skipped?' · '+I.skipped+' linhas de saldo ignoradas':'')+(I.kind==='card'?' · gastos entram em '+mLong(I.pm):'');
+  $('#iInfo').textContent=I.format+' · '+I.rows.length+' lançamentos'+(c.dup?' · '+c.dup+' já importados (desmarcados)':'')+(c.old?' · '+c.old+' da versão parcial que não estão na fatura fechada (marcados para sair)':'')+(c.parc?' · '+c.parc+' parcelas':'')+(c.pay?' · '+c.pay+' possível pagamento de fatura, que fica fora da conta':'')+(I.skipped?' · '+I.skipped+(I.kind==='card'?' linha(s) de pagamento da fatura anterior ignorada(s)':' linhas de saldo ignoradas'):'')+(I.kind==='card'?' · gastos entram em '+mLong(I.pm):'');
   $('#iOcr').hidden=!I.ocr;$('#iReview').hidden=false;impSum();
 }
 function impCalc(){
@@ -666,7 +671,7 @@ async function saveImport(sel,rem=[]){
     for(let i=0;i<rows.length;i+=200)await call('import',{account:I.account,unit:I.unit,kind:I.kind,status:I.kind==='card'?I.status:'',paymentMonth:I.kind==='card'?I.pm:'',rows:rows.slice(i,i+200)});
     if(I.kind==='card'&&I.cardId)await call('linkInvoice',{documentKey:['card',I.account.toUpperCase(),I.pm,I.unit||'indefinida'].join('|'),cardId:I.cardId});
     let balMsg='';
-    if(I.bal&&I.accId&&Number.isFinite(I.bal.value)&&I.bal.date){const cur=(D.accountBalances||[]).find(b=>b.accountId===I.accId);if(!cur||I.bal.date>=cur.baseDate){await call('setAccountBalance',{accountId:I.accId,baseDate:I.bal.date,openingBalance:I.bal.value});balMsg=' Saldo da conta atualizado pelo OFX.'}}
+    if(I.bal&&I.accId&&Number.isFinite(I.bal.value)&&I.bal.date){const cur=(D.accountBalances||[]).find(b=>b.accountId===I.accId);if(!cur||I.bal.date>=cur.baseDate){await call('setAccountBalance',{accountId:I.accId,baseDate:I.bal.date,openingBalance:I.bal.value});balMsg=' Saldo da conta atualizado pelo extrato: '+R(Math.round(I.bal.value*100))+' em '+fmtD(I.bal.date)+'.'}}
     let nr=0;for(const x of rem){try{await call('ignoreTransaction',{id:x.id});nr++}catch(e){}}
     prepare(await call('list'));
     let np=0;

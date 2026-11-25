@@ -6,7 +6,7 @@ const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUp
 function parseDate(s){s=String(s||'').trim();if(/^\d{8}/.test(s))return s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8);if(/^\d{4}-\d\d-\d\d/.test(s))return s.slice(0,10);const m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):''}
 function num(s){s=String(s||'').trim().replace(/R\$/g,'').replace(/\s/g,'');if(s.includes(',')&&s.includes('.'))s=s.lastIndexOf(',')>s.lastIndexOf('.')?s.replace(/\./g,'').replace(',','.'):s.replace(/,/g,'');else if(s.includes(','))s=s.replace(',','.');return Number(s)}
 function csvFields(line,sep){let out=[],v='',quoted=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(quoted&&line[i+1]==='"'){v+='"';i++}else quoted=!quoted}else if(c===sep&&!quoted){out.push(v);v=''}else v+=c}out.push(v);return out}
-function parseCSV(raw){const lines=raw.replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim());if(!lines.length)return[];const sep=[';',',','\t'].sort((a,b)=>lines[0].split(b).length-lines[0].split(a).length)[0],heads=csvFields(lines.shift(),sep).map(norm);const col=(names)=>heads.findIndex(h=>names.some(n=>h===n||h.includes(n)));const di=col(['DATA','DATE']),mi=col(['DESCRICAO','HISTORICO','MEMO','DESCRIPTION','FAVORECIDO']),vi=col(['VALOR','AMOUNT','VALUE']);if(di<0||mi<0||vi<0)throw Error('CSV precisa das colunas Data, Descrição e Valor.');return lines.map(line=>{const a=csvFields(line,sep);return{date:parseDate(a[di]),description:a[mi],amount:num(a[vi])}})}
+function parseCSV(raw){const lines=raw.replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim());if(!lines.length)return[];const sep=[';',',','\t'].sort((a,b)=>lines[0].split(b).length-lines[0].split(a).length)[0],heads=csvFields(lines.shift(),sep).map(norm);const col=(names)=>heads.findIndex(h=>names.some(n=>h===n||h.includes(n)));const di=col(['DATA','DATE']),mi=col(['DESCRICAO','HISTORICO','MEMO','DESCRIPTION','FAVORECIDO','TITLE','ESTABELECIMENTO','LANCAMENTO']),vi=col(['VALOR','AMOUNT','VALUE']);if(di<0||mi<0||vi<0)throw Error('CSV precisa das colunas Data, Descrição e Valor.');return lines.map(line=>{const a=csvFields(line,sep);return{date:parseDate(a[di]),description:a[mi],amount:num(a[vi])}})}
 function bankBalance(x){return /^(SALDO|LIMITE DISPONIVEL|POSICAO DO DIA)\b/.test(String(x.description||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim())}
 function bankCardPayment(x){const d=String(x.description||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();return /(?:PAGAMENTO|PGTO|DEBITO).{0,40}(?:FATURA|CARTAO|CREDITO)|(?:FATURA|CARTAO).{0,40}(?:PAGAMENTO|PGTO|DEBITO)/.test(d)}
 function parseOFX(raw){const blocks=raw.match(/<STMTTRN>[\s\S]*?(?:<\/STMTTRN>|(?=<STMTTRN>)|$)/gi)||[];const tag=(s,n)=>{const m=s.match(new RegExp('<'+n+'>([^<\\r\\n]+)','i'));return m?m[1].trim():''};return blocks.map(b=>({date:parseDate(tag(b,'DTPOSTED')),description:tag(b,'MEMO')||tag(b,'NAME')||'Movimentação',amount:num(tag(b,'TRNAMT')),fid:tag(b,'FITID')}))}
@@ -38,23 +38,31 @@ function parseBankStatementText(text,referenceMonth){
  }
  return rows;
 }
-/* Nubank PJ: data em cabeçalho diário, movimentação em linha separada e totais/saldos não são lançamentos. */
+/* Nubank PJ: cada dia tem um cabeçalho ("03 NOV 2026") e blocos "Total de entradas" / "Total de saídas"; cada movimentação
+   é uma linha com o valor no fim, e o sinal vem do bloco em que ela está. Saldos e totais não são lançamentos.
+   O texto do PDF pode vir com acento separado da letra, por isso tudo é normalizado antes. */
 function parseNubankPJText(text,referenceMonth){
- const lines=String(text||'').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
- if(!lines.some(x=>/NUBANK|NU PAGAMENTOS|NU FINANCEIRA/i.test(x))||!lines.some(x=>/TRANSFERÊNCIA (RECEBIDA|ENVIADA) PELO PIX/i.test(x)))return null;
+ const lines=String(text||'').normalize('NFC').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+ if(!lines.some(x=>/NUBANK|NU PAGAMENTOS|NU FINANCEIRA/i.test(x))||!lines.some(x=>/^Saldo do dia\b/i.test(x)||/^Movimenta[c\u00e7][o\u00f5]es$/i.test(x)))return null;
  const months={JAN:1,FEV:2,MAR:3,ABR:4,MAI:5,JUN:6,JUL:7,AGO:8,SET:9,OUT:10,NOV:11,DEZ:12};
- const rows=[];let date='',seenMovements=false;
+ const longMonths={JANEIRO:1,FEVEREIRO:2,'MAR\u00c7O':3,MARCO:3,ABRIL:4,MAIO:5,JUNHO:6,JULHO:7,AGOSTO:8,SETEMBRO:9,OUTUBRO:10,NOVEMBRO:11,DEZEMBRO:12};
+ const rows=[];let date='',sign=0,seen=false;
  for(const line of lines){
-  const header=line.match(/^(\d{2})\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\s+(20\d{2})\b/i);
-  if(header){date=header[3]+'-'+String(months[header[2].toUpperCase()]).padStart(2,'0')+'-'+header[1];seenMovements=true;continue}
-  if(!seenMovements||!date)continue;
-  const tx=line.match(/^(Transferência (recebida|enviada) pelo Pix|Pagamento de boleto|Pagamento efetuado|Compra no débito|Depósito recebido|Resgate|Aplicação|Rendimento)(?:\s+(.+?))?\s+([+-]?\s*\d[\d.]*,\d{2})$/i);
-  if(!tx)continue;
-  const amount=Math.abs(num(tx[4].replace(/\s/g,'')))*( /enviada|pagamento|compra|aplicação/i.test(tx[1])?-1:1);
-  if(!Number.isFinite(amount)||!amount)continue;
-  const description=[tx[1],tx[3]||''].join(' ').trim();
-  rows.push({date,description,amount});
+  const header=line.match(/^(\d{2})\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\s+(20\d{2})\b(.*)$/i);
+  let rest=line;
+  if(header){date=header[3]+'-'+String(months[header[2].toUpperCase()]).padStart(2,'0')+'-'+header[1];seen=true;sign=0;rest=header[4].trim();if(!rest)continue}
+  if(!seen||!date)continue;
+  if(/^Total de entradas\b/i.test(rest)){sign=1;continue}
+  if(/^Total de sa[i\u00ed]das\b/i.test(rest)){sign=-1;continue}
+  if(/^(Saldo do dia|Saldo inicial|Saldo final|Rendimento l[i\u00ed]quido)\b/i.test(rest)){sign=0;continue}
+  if(!sign)continue;
+  const m=rest.match(/^(.*?\S)\s+([+-]?\s*\d{1,3}(?:\.\d{3})*,\d{2})$/);if(!m)continue;
+  const amount=Math.abs(num(m[2].replace(/\s/g,'')))*sign;if(!Number.isFinite(amount)||!amount)continue;
+  rows.push({date,description:m[1].trim(),amount});
  }
+ const end=lines.map(x=>x.match(/\ba\s+(\d{1,2})\s+DE\s+([A-Z\u00c7]+)\s+DE\s+(20\d{2})\b/i)).find(Boolean);
+ const fin=lines.map(x=>x.match(/^Saldo final do per[i\u00ed]odo\s+(-?[\d.]+,\d{2})$/i)).find(Boolean);
+ if(end&&fin&&longMonths[end[2].toUpperCase()])rows.balance={value:num(fin[1]),date:end[3]+'-'+String(longMonths[end[2].toUpperCase()]).padStart(2,'0')+'-'+end[1].padStart(2,'0')};
  return rows;
 }
 async function parseBankPdf(file,month){
