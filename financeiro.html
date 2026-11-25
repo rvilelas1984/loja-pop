@@ -94,6 +94,10 @@
 .cf .balform{display:grid;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .cf .balrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,9em) minmax(0,9.5em);gap:8px;align-items:end}
 .cf .txp{margin-top:16px}
+.cf tr.pick td{background:var(--accent-soft)}
+.cf .pickbox{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.cf .pickbox label{flex:1 1 260px}
+.cf .paid{display:block;color:var(--accent);font-size:12px}
 .cf .imp{margin-top:16px;border-color:var(--accent)}
 .cf .irow{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px;margin-bottom:12px}
 .cf .drop{position:relative;display:grid;place-items:center;text-align:center;gap:6px;border:2px dashed color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:12px;padding:22px 16px;background:var(--accent-soft);cursor:pointer}
@@ -180,6 +184,7 @@
       </form>
     </section>
     <div class="stackcol">
+      <section class="panel"><div class="ph"><h3>Faturas dos cartões</h3><span class="hint" id="invSub"></span></div><div class="scroll"><table class="stack" id="invTable"><thead><tr><th>Fatura</th><th>Vence</th><th class="r">Total</th><th class="r">Pago</th><th>Situação</th></tr></thead><tbody></tbody></table></div><p class="hint" style="margin-top:8px">Para pagar, escolha “Pagamento de fatura…” na categoria do lançamento do extrato.</p></section>
       <section class="panel"><div class="ph"><h3>Para onde foi o dinheiro</h3><span class="hint" id="catSub"></span></div><div class="cats" id="cats"></div></section>
       <section class="panel"><div class="ph"><h3>Parcelas em aberto</h3><span class="hint" id="parcSub"></span></div><div class="scroll"><table class="stack" id="parcTable"><thead><tr><th>Compra</th><th>Parcela</th><th class="r">Por mês</th><th class="r">Falta</th></tr></thead><tbody></tbody></table></div></section>
     </div>
@@ -321,7 +326,7 @@ function render(){
   const nx=addM(CUR,1),cn=commitFor(nx);
   $('#kNxL').textContent='Já comprometido em '+ML[+nx.slice(5)-1];$('#kNx').textContent=R(cn.committed);
   $('#kNxD').textContent='fixas '+R0(cn.fix)+' · parcelas '+R0(cn.pc)+(cn.uni?' · outros '+R0(cn.uni):'');
-  alerts();headline();drawChart();renderCmp();renderTx();renderCats();renderParc();
+  alerts();headline();drawChart();renderCmp();renderTx();renderCats();renderParc();renderInv();
 }
 function alerts(){
   const A=[];const bal=M.bal;
@@ -331,6 +336,9 @@ function alerts(){
   if(stale!=null&&stale>7)A.push(['warn','Extrato desatualizado','O último lançamento de extrato é de '+fmtD(lastBank)+' ('+stale+' dias). Importe o extrato mais recente para a previsão ficar certa.']);
   const pend=items().filter(e=>!e.classified&&!e.out).length;
   if(pend)A.push(['warn',pend+' lançamento'+(pend>1?'s':'')+' sem classificação','Entradas sem classificação ficam fora das receitas. Use o filtro “Sem classificação” abaixo.']);
+  const INV=invoices();const late=INV.filter(i=>i.k==='late');const over=INV.filter(i=>i.k==='over'||i.k==='manual');
+  if(late.length)A.push(['bad',late.length+(late.length>1?' faturas vencidas':' fatura vencida')+' sem pagamento ligado',late.map(invName).join(', ')+'. Se já pagou, ligue o pagamento no lançamento do extrato.']);
+  if(over.length)A.push(['warn','Pagamentos de fatura para conferir',over.map(i=>invName(i)+(i.k==='over'?' recebeu mais que o total':' está marcada como paga sem pagamento ligado')).join('; ')+'.']);
   const gym=s=>items().filter(e=>e.comp===s&&e.category==='Aporte Gym Pop').reduce((a,e)=>a-e.v,0),back=s=>items().filter(e=>e.comp===s&&e.category==='Reembolso GymPop').reduce((a,e)=>a+e.v,0);
   if(gym(VIEW)>back(VIEW))A.push(['warn','Aporte na Gym Pop sem reembolso','Em '+mLong(VIEW)+' saíram '+R(gym(VIEW))+' para a Gym Pop e voltaram '+R(back(VIEW))+'. Fica fora do resultado, mas saiu do caixa.']);
   $('#alerts').innerHTML=A.map(([k,t,d])=>`<div class="alert ${k}"><b>${esc(t)}</b><span>${esc(d)}</span></div>`).join('');
@@ -378,16 +386,60 @@ function renderCmp(){
   $('#cmpTot').textContent=fix?R0(fix)+' fixos por mês':'';
   $('#cmpList').innerHTML=L.length?L.map(c=>`<div class="cmp"><div><b>${esc(c.nome)}</b><small>${esc(c.desc)}${c.cat?' · '+esc(c.cat):''}</small></div><span class="num">${esc(R(c.v))}</span>${c.src==='m'?`<button class="btn sm" data-delc="${esc(c.id)}">Excluir</button>`:`<button class="btn sm" data-pause="${esc(c.id)}">Pausar</button>`}</div>`).join(''):'<p class="empty">Nenhum compromisso ainda.</p>';
 }
+let PICK='';
+function invoices(){
+  const cardsById=new Map((D.cards||[]).map(c=>[c.id,c])),linkCard=new Map((D.links||[]).map(l=>[l.documentKey,l.cardId])),st=new Map((D.invoiceStatuses||[]).map(x=>[x.documentKey,x])),byId=new Map(ITEMS.map(e=>[e.id,e]));
+  const tot={},paid={},pays={};
+  for(const di of D.docItems||[]){const e=byId.get(di.itemId);if(e)tot[di.documentKey]=(tot[di.documentKey]||0)-e.v}
+  for(const l of D.transactionLinks||[]){if(l.kind!=='invoice')continue;const e=byId.get(l.itemId);if(!e)continue;paid[l.documentKey]=(paid[l.documentKey]||0)-e.v;(pays[l.documentKey]=pays[l.documentKey]||[]).push(e)}
+  return(D.documents||[]).filter(d=>d.kind==='card'&&/^\d{4}-\d{2}$/.test(d.paymentMonth)&&inUnit(d)).map(d=>{
+    const card=cardsById.get(linkCard.get(d.id)),x=st.get(d.id);const[y,m]=d.paymentMonth.split('-').map(Number);const dim=new Date(y,m,0).getDate();
+    const due=x?.dueDate||d.paymentMonth+'-'+pad(Math.min(+card?.dueDay||10,dim));const total=tot[d.id]||0,pg=paid[d.id]||0;
+    const k=pg&&pg>total+100?'over':pg&&pg>=total-1?'paid':pg>0?'partial':x?.paid?'manual':due<TD?'late':'open';
+    return{d,id:d.id,name:card?.name||String(d.account).replace(/^Fatura\s*/i,''),pm:d.paymentMonth,due,total,pg,falta:total-pg,k,pays:pays[d.id]||[],open:d.status==='open'}
+  }).sort((a,b)=>b.due.localeCompare(a.due));
+}
+const INV_LABEL={paid:['g','Paga'],partial:['w','Paga em parte'],late:['b','Vencida'],open:['','A pagar'],manual:['m','Marcada como paga, sem pagamento ligado'],over:['w','Pago a mais']};
+const invName=i=>i.name+' · vence '+fmtD(i.due)+(i.due.slice(0,4)!==TD.slice(0,4)?'/'+i.due.slice(2,4):'');
+const daysBetween=(a,b)=>Math.round((new Date(a)-new Date(b))/864e5);
+function payCandidates(e){
+  const val=-e.v;return invoices().filter(i=>i.k!=='paid'&&i.k!=='over').map(i=>{const exact=Math.abs(i.falta-val)<=1?0:Math.abs(i.total-val)<=1?1:2;return{i,exact,score:exact*1e6+Math.abs(i.falta-val)/100+Math.abs(daysBetween(e.date,i.due))}}).sort((a,b)=>a.score-b.score);
+}
+function suggestion(e){
+  const c=payCandidates(e).filter(x=>x.exact<2&&daysBetween(e.date,x.i.due)>=-25&&daysBetween(e.date,x.i.due)<=10);return c.length===1?c[0].i:null;
+}
+const canPay=e=>e.v<0&&e.doc?.kind==='bank'&&linkOf.get(e.id)!=='invoice';
 function renderTx(){
   $('#txTitle').textContent='Lançamentos de '+mLong(VIEW);
   let L=items().filter(e=>e.comp===VIEW);
   if(FILTER==='in')L=L.filter(e=>e.v>0);if(FILTER==='out')L=L.filter(e=>e.v<0);if(FILTER==='pend')L=L.filter(e=>!e.classified);
   L.sort((a,b)=>b.date.localeCompare(a.date)||a.v-b.v);
   const kinds=new Map((D.categoryKinds||[]).map(k=>[k.name,k.nature]));
-  const cats=D.categories||[];
-  const opts=e=>{const want=e.v>0?'income':'expense';let list=cats.filter(c=>!kinds.has(c)||kinds.get(c)===want);if(!list.includes(e.category))list=[e.category,...list];return list.map(c=>`<option${c===e.category?' selected':''}>${esc(c)}</option>`).join('')};
+  const cats=D.categories||[];const INV=invoices();const invOf=new Map((D.transactionLinks||[]).filter(l=>l.kind==='invoice').map(l=>[l.itemId,INV.find(i=>i.id===l.documentKey)]));
+  const opts=e=>{const want=e.v>0?'income':'expense';let list=cats.filter(c=>!kinds.has(c)||kinds.get(c)===want);if(!list.includes(e.category))list=[e.category,...list];return(canPay(e)?'<option value="__inv">Pagamento de fatura…</option>':'')+list.map(c=>`<option${c===e.category?' selected':''}>${esc(c)}</option>`).join('')};
   const src=e=>e.card?'Fatura '+(e.doc?.account||'').replace(/^Fatura\s*/i,'')+' · vence '+mShort(e.comp):e.account;
-  $('#txTable tbody').innerHTML=L.length?L.slice(0,400).map(e=>`<tr class="${e.out?'off':''}"><td data-l="Data" class="num">${fmtD(e.date)}</td><td data-l="Descrição">${esc(e.description)}${e.classified?'':' <span class="tag w">sem classificação</span>'}<small>${esc(src(e))}${e.out?' · fora da conta ('+esc(e.out)+')':''}</small></td><td data-l="Categoria"><select data-cat="${esc(e.id)}" aria-label="Categoria"${e.out?' disabled':''}>${opts(e)}</select></td><td data-l="Valor" class="r num ${e.v>0?'pos':''}">${esc(R(e.v))}</td><td data-l="" class="r"><button class="btn link" data-ign="${esc(e.id)}" style="color:var(--bad)">Remover</button></td></tr>`).join(''):`<tr><td colspan="5" class="empty">Nenhum lançamento em ${esc(mLong(VIEW))}.</td></tr>`;
+  const row=e=>{
+    const linked=linkOf.get(e.id)==='invoice',inv=invOf.get(e.id);const sug=!linked&&canPay(e)&&PICK!==e.id?suggestion(e):null;
+    let h=`<tr class="${e.out?'off':''}"><td data-l="Data" class="num">${fmtD(e.date)}</td><td data-l="Descrição">${esc(e.description)}${e.classified?'':' <span class="tag w">sem classificação</span>'}<small>${esc(src(e))}${e.out?' · fora da conta ('+esc(e.out)+')':''}</small>`
+      +(linked?`<span class="paid">Pagou a fatura ${esc(inv?invName(inv):'')} · <button class="btn link" data-unlink="${esc(e.id)}" style="padding:0">Desfazer</button></span>`:'')
+      +(sug?`<button class="btn sm" style="margin-top:4px" data-sug="${esc(e.id)}" data-doc="${esc(sug.id)}">Pagar fatura ${esc(invName(sug))}?</button>`:'')
+      +`</td><td data-l="Categoria"><select data-cat="${esc(e.id)}" aria-label="Categoria"${linked?' disabled':''}>${opts(e)}</select></td><td data-l="Valor" class="r num ${e.v>0?'pos':''}">${esc(R(e.v))}</td><td data-l="" class="r"><button class="btn link" data-ign="${esc(e.id)}" style="color:var(--bad)" title="Só para lançamento duplicado ou errado: o saldo da conta muda">Remover</button></td></tr>`;
+    if(PICK===e.id){const c=payCandidates(e);h+=`<tr class="pick"><td colspan="5"><div class="pickbox"><label class="f">Qual fatura este pagamento quitou?<select id="pickSel">${c.map(x=>`<option value="${esc(x.i.id)}">${esc(invName(x.i))} · total ${esc(R(x.i.total))}${x.i.pg?' · falta '+esc(R(x.i.falta)):''}${x.exact<2?' · valor confere':''}</option>`).join('')}<option value="">Fatura ainda não importada</option></select></label><button class="btn sm pri" data-pick-save="${esc(e.id)}">Salvar</button><button class="btn sm" data-pick-cancel="1">Cancelar</button></div></td></tr>`}
+    return h};
+  $('#txTable tbody').innerHTML=L.length?L.slice(0,400).map(row).join(''):`<tr><td colspan="5" class="empty">Nenhum lançamento em ${esc(mLong(VIEW))}.</td></tr>`;
+}
+function renderInv(){
+  const L=invoices().filter(i=>i.k!=='paid'||i.due>=addM(CUR,-2)+'-01').slice(0,8);
+  const open=invoices().filter(i=>['open','late','partial'].includes(i.k));
+  $('#invSub').textContent=open.length?R0(open.reduce((a,i)=>a+i.falta,0))+' a pagar':'';
+  $('#invTable tbody').innerHTML=L.length?L.map(i=>{const[t,l]=INV_LABEL[i.k];return`<tr><td data-l="Fatura">${esc(i.name)}<small>${i.open?'aberta (parcial)':'fechada'}${i.pays.length?' · pago em '+esc(i.pays.map(p=>fmtD(p.date)+' ('+p.account+')').join(', ')):''}</small></td><td data-l="Vence" class="num">${fmtD(i.due)}</td><td data-l="Total" class="r num">${esc(R0(i.total))}</td><td data-l="Pago" class="r num">${esc(R0(i.pg))}</td><td data-l="Situação"><span class="tag ${t}">${esc(l)}</span>${i.k==='partial'?'<small>falta '+esc(R(i.falta))+'</small>':i.k==='over'?'<small>'+esc(R(-i.falta))+' a mais: confira se o pagamento é desta fatura</small>':''}</td></tr>`}).join(''):'<tr><td colspan="5" class="empty">Nenhuma fatura importada.</td></tr>';
+}
+async function linkPayment(it,docKey){
+  if(docKey)await call('saveTransactionLink',{itemId:it.id,kind:'invoice',documentKey:docKey});
+  if(it.type!=='cardpayment')await call('classify',{id:it.id,unit:it.unit||(UNIT==='all'?'bike':UNIT),type:'cardpayment',category:'Cartões',recurring:false});
+  if(!docKey)return;
+  prepare(await call('list'));const inv=invoices().find(i=>i.id===docKey);
+  if(inv&&(inv.k==='paid'||inv.k==='over'))try{await call('invoiceStatus',{documentKey:docKey,status:inv.open?'open':'closed',paid:true,dueDate:inv.due,note:''})}catch(e){}
 }
 function renderCats(){
   const s=stats(VIEW);const e=Object.entries(s.cat).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]);const mx=e.length?e[0][1]:1;
@@ -404,13 +456,19 @@ function renderParc(){
 /* ---------- ações ---------- */
 async function reload(){try{prepare(await call('list'));render()}catch(e){fail(e)}}
 function fail(e){$('#loading').hidden=false;$('#app').hidden=true;$('#loading').textContent=e.status===403?'Acesso restrito. Entre no admin para ver a Central Financeira.':'Não consegui carregar os dados financeiros: '+e.message}
-function arm(b,fn){if(b.dataset.armed){fn();return}b.dataset.armed=1;const t=b.textContent;b.textContent='Confirmar?';setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent=t}},3500)}
+function arm(b,fn,ask){if(b.dataset.armed){fn();return}b.dataset.armed=1;const t=b.textContent;b.textContent=ask||'Confirmar?';setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent=t}},3500)}
 async function act(msgEl,fn,okText){msgEl.className='msg';msgEl.textContent='Salvando…';try{await fn();await reload();msgEl.textContent=okText||''}catch(e){msgEl.className='msg err';msgEl.textContent=e.message}}
 
 $('#txTable').addEventListener('change',e=>{const s=e.target.closest('[data-cat]');if(!s)return;const it=ITEMS.find(x=>x.id===s.dataset.cat);if(!it)return;
+  if(s.value==='__inv'){PICK=it.id;renderTx();return}
   const unit=it.unit||(UNIT==='all'?'bike':UNIT),type=it.type||(it.v>0?'income':'variable');
   act($('#txMsg'),()=>call('classify',{id:it.id,unit,type,category:s.value,recurring:!!it.recurring}),'Categoria salva. Lançamentos iguais também foram atualizados.')});
-$('#txTable').addEventListener('click',e=>{const b=e.target.closest('[data-ign]');if(!b)return;arm(b,()=>act($('#txMsg'),()=>call('ignoreTransaction',{id:b.dataset.ign}),'Lançamento removido da conta.'))});
+$('#txTable').addEventListener('click',e=>{
+  const ps=e.target.closest('[data-pick-save]');if(ps){const it=ITEMS.find(x=>x.id===ps.dataset.pickSave);const doc=$('#pickSel').value;PICK='';act($('#txMsg'),()=>linkPayment(it,doc),doc?'Pagamento ligado à fatura.':'Marcado como pagamento de fatura. Ligue à fatura quando ela for importada.');return}
+  if(e.target.closest('[data-pick-cancel]')){PICK='';renderTx();return}
+  const sg=e.target.closest('[data-sug]');if(sg){const it=ITEMS.find(x=>x.id===sg.dataset.sug);act($('#txMsg'),()=>linkPayment(it,sg.dataset.doc),'Pagamento ligado à fatura.');return}
+  const ul=e.target.closest('[data-unlink]');if(ul){arm(ul,()=>act($('#txMsg'),()=>call('removeTransactionLink',{itemId:ul.dataset.unlink}),'Pagamento desligado da fatura. Escolha a fatura certa em “Pagamento de fatura…”.'),'Desligar?');return}
+  const b=e.target.closest('[data-ign]');if(!b)return;arm(b,()=>act($('#txMsg'),()=>call('ignoreTransaction',{id:b.dataset.ign}),'Lançamento removido da conta.'),'Remover? Só se for duplicado ou erro');});
 $('#txFilter').onclick=e=>{const b=e.target.closest('[data-f]');if(!b)return;FILTER=b.dataset.f;[...$('#txFilter').children].forEach(x=>x.setAttribute('aria-pressed',x===b));renderTx()};
 $('#mPrev').onclick=()=>{VIEW=addM(VIEW,-1);render()};$('#mNext').onclick=()=>{VIEW=addM(VIEW,1);render()};
 $('#unit').onchange=e=>{UNIT=e.target.value;render()};
