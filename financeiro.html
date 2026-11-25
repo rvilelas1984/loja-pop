@@ -94,6 +94,20 @@
 .cf .balform{display:grid;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .cf .balrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,9em) minmax(0,9.5em);gap:8px;align-items:end}
 .cf .txp{margin-top:16px}
+.cf .imp{margin-top:16px;border-color:var(--accent)}
+.cf .irow{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px;margin-bottom:12px}
+.cf .drop{position:relative;display:grid;place-items:center;text-align:center;gap:6px;border:2px dashed color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:12px;padding:22px 16px;background:var(--accent-soft);cursor:pointer}
+.cf .drop.over{background:color-mix(in srgb,var(--accent) 22%,var(--surface))}
+.cf .drop strong{font:600 17px var(--display)}
+.cf .drop span{color:var(--muted);font-size:13px}
+.cf .drop input{position:absolute;width:1px;height:1px;opacity:0}
+.cf .rev{max-height:360px;border:1px solid var(--line);border-radius:8px;margin-top:10px}
+.cf .rev th{position:sticky;top:0;z-index:1}
+.cf .rev input[type=checkbox]{width:18px;min-height:18px}
+.cf .rev td input:not([type=checkbox]){min-height:32px;padding:4px 6px;font-size:14px}
+.cf .tag.g{background:var(--good-soft);color:var(--good)}
+.cf .tag.b{background:var(--bad-soft);color:var(--bad)}
+.cf .ok{color:var(--good);font-weight:600}.cf .bad{color:var(--bad);font-weight:600}
 @media(max-width:600px){.cf table{font-size:13px}.cf th,.cf td{padding:6px 4px}.cf .stack thead{display:none}.cf .stack tr{display:grid;padding-block:10px;border-bottom:1px solid var(--grid)}.cf .stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:3px 0}.cf .stack td::before{content:attr(data-l);color:var(--muted);font-size:12px}.cf .mnav b{min-width:7.5em}.cf form.cform{grid-template-columns:minmax(0,1fr)}.cf .balrow{grid-template-columns:minmax(0,1fr)}}
 </style></head><body>
 <div class="cf"><div class="wrap">
@@ -105,11 +119,27 @@
     <div class="actions">
       <select id="unit" aria-label="Unidade" style="width:auto" hidden><option value="bike">Bike Pop</option><option value="gym">Gym Pop</option><option value="all">Todas</option></select>
       <div class="mnav" aria-label="Mês"><button id="mPrev" aria-label="Mês anterior">‹</button><b id="mLabel"></b><button id="mNext" aria-label="Próximo mês">›</button></div>
-      <a class="btn pri" href="/controle-gastos.html#importar">Importar extrato ou fatura</a>
+      <button class="btn pri" id="btnImp">Importar extrato ou fatura</button>
     </div>
   </div>
   <div id="loading" class="state">Carregando dados financeiros…</div>
   <div id="app" hidden>
+  <section class="panel imp" id="impPanel" hidden>
+    <div class="ph"><h3>Importar extrato ou fatura</h3><button class="btn link" id="iClose">Fechar</button></div>
+    <div class="irow">
+      <label class="f">De onde é o arquivo<select id="iSrc"></select></label>
+      <label class="f" id="iMonL">Fatura que vence em<input type="month" id="iMon"></label>
+      <label class="f" id="iStL">Situação da fatura<select id="iSt"><option value="closed">Fechada</option><option value="open">Aberta (parcial)</option></select></label>
+    </div>
+    <label class="drop" id="iDrop"><input type="file" id="iFile" multiple accept=".ofx,.qfx,.csv,.txt,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp"><strong>Arraste o arquivo aqui ou toque para escolher</strong><span>OFX, CSV, PDF ou print da tela. Várias imagens da mesma fatura podem ir juntas.</span></label>
+    <p class="msg" id="iMsg" role="status"></p>
+    <div id="iReview" hidden>
+      <p class="hint" id="iInfo"></p>
+      <div class="irow" id="iOcr" hidden><label class="f">Total da fatura no app do banco (R$)<input id="iOfficial" inputmode="decimal" placeholder="0,00"></label></div>
+      <div class="scroll rev"><table><thead><tr><th></th><th>Data</th><th>Descrição</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody id="iRows"></tbody></table></div>
+      <div class="actions" style="margin-top:12px"><button class="btn pri" id="iGo">Importar</button><button class="btn" id="iCancel">Cancelar</button><span class="hint" id="iSum"></span></div>
+    </div>
+  </section>
   <div class="alerts" id="alerts"></div>
 
   <div class="kpis">
@@ -250,7 +280,7 @@ function commitFor(m){
   let fix=0,uni=0,pc=0;
   for(const r of recurrences())if((!r.startMonth||r.startMonth<=m)&&(!r.endMonth||r.endMonth>=m))fix+=Math.abs(cents(r.amount));
   for(const c of (D.commitments||[]).filter(inUnit)){const v=cents(c.amount);if(c.kind==='monthly'&&c.startMonth<=m)fix+=v;else if(c.kind==='once'&&c.startMonth===m)uni+=v}
-  for(const p of M.PARC){const k=partAt(p,m);if(k>=1&&k<=p.n&&(p.manual?diffM(p.m0,m)>=0:diffM(p.m0,m)>=(m<CUR?0:1)))pc+=p.valor}
+  for(const p of M.PARC){const k=partAt(p,m);if(k>=1&&k<=p.n&&(p.manual?diffM(p.m0,m)>=0:diffM(p.m0,m)>=(m===CUR?1:0)))pc+=p.valor}
   return{fix,uni,pc,committed:fix+uni+pc}
 }
 function model(){
@@ -282,7 +312,7 @@ function render(){
   const s=stats(VIEW),bal=M.bal;
   $('#kSaldo').textContent=bal.total!=null?R(bal.total):'Não informado';$('#kSaldo').className=bal.total<0?'neg':'';
   $('#btnSaldo').textContent=bal.total!=null?'Ajustar':'Informar';
-  $('#kSaldoD').textContent=bal.total!=null?(bal.missing.length?'sem saldo de '+bal.missing.join(', '):bal.list.length+' contas, com os extratos importados'):'informe para prever o caixa';
+  $('#kSaldoD').textContent=bal.total!=null?(bal.missing.length?'sem saldo de '+bal.missing.join(', '):bal.list.length+(bal.list.length>1?' contas':' conta')+', com os extratos importados'):'informe para prever o caixa';
   const lbl=VIEW===CUR?'neste mês':'em '+mShort(VIEW);
   $('#kEntL').textContent='Entradas '+lbl;$('#kEnt').textContent=R(s.ent);
   $('#kEntD').textContent=M.past.length?'média de '+M.past.map(mShort).reverse().join(', ')+': '+R0(M.ENT):'';
@@ -405,6 +435,149 @@ $('#cmpForm').onsubmit=e=>{e.preventDefault();const v=parseMoney($('#cValor').va
   const body={id:'cmt_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),unit:UNIT==='all'?'bike':UNIT,description:$('#cNome').value.trim(),category:$('#cCat').value,amount:v/100,kind:$('#cTipo').value,day:Math.min(31,Math.max(1,+$('#cDia').value||1)),startMonth:$('#cIni').value||CUR,totalParts:+$('#cN').value||0};
   $('#cBtn').disabled=true;act($('#cMsg'),()=>call('commitment',body),'Compromisso adicionado.').then(()=>{$('#cBtn').disabled=false;if(!$('#cMsg').classList.contains('err')){$('#cNome').value='';$('#cValor').value=''}})};
 
+/* ---------- importação (leitura compartilhada com o Controle de Gastos: /finance-import.js) ---------- */
+const FI=()=>window.FinanceImport;
+let IMP=null;
+const detectParts=t=>{const m=String(t||'').match(/(?:parcela\s*)?(\d{1,3})\s*(?:de|\/|of)\s*(\d{1,3})(?:\s*parcela[s]?)?/i);if(!m)return null;const c=+m[1],n=+m[2];return c>=1&&n>=2&&c<=n&&n<=120?{c,n}:null};
+const cleanKey=v=>String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/(?:PARCELA\s*)?\b\d{1,3}\s*(?:\/|DE)\s*\d{1,3}\b/g,'').replace(/[^A-Z0-9]/g,'');
+async function sha(s){const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return[...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('')}
+const txId=(account,x)=>sha([account,x.fid||'',x.date,FI().norm(x.description),Math.round(x.amount*100)].join('|'));
+function sources(){
+  const L=[];
+  for(const a of (D.accounts||[]).filter(a=>a.active!==0))L.push({v:'a:'+a.id,label:'Extrato · '+a.name,kind:'bank',acc:a});
+  for(const c of (D.cards||[]).filter(c=>c.active!==0))L.push({v:'c:'+c.id,label:'Fatura · '+c.name,kind:'card',card:c});
+  return L;
+}
+function cardAccountName(card){
+  const keys=new Set((D.links||[]).filter(l=>l.cardId===card.id).map(l=>l.documentKey));
+  const docs=(D.documents||[]).filter(d=>keys.has(d.id)).sort((a,b)=>String(b.paymentMonth).localeCompare(String(a.paymentMonth)));
+  return docs[0]?.account||card.name;
+}
+function syncSrc(){
+  const s=sources().find(x=>x.v===$('#iSrc').value);const card=s?.kind==='card';
+  $('#iMonL').hidden=!card;$('#iStL').hidden=!card;
+  if(card){const due=+s.card.dueDay||10;$('#iMon').value=+TD.slice(8)<=due?CUR:addM(CUR,1)}
+}
+function openImport(){
+  const S=sources();
+  if(!S.length){$('#iMsg').className='msg err';$('#iMsg').textContent='Nenhuma conta ou cartão cadastrado. Cadastre em Controle de Gastos › Cadastros financeiros.'}
+  const old=$('#iSrc').value;$('#iSrc').innerHTML=S.map(x=>`<option value="${esc(x.v)}">${esc(x.label)}</option>`).join('');
+  if(S.some(x=>x.v===old))$('#iSrc').value=old;syncSrc();
+  $('#impPanel').hidden=false;$('#impPanel').scrollIntoView({behavior:'smooth',block:'start'});
+}
+$('#btnImp').onclick=()=>{if(D)openImport()};
+$('#iClose').onclick=()=>{$('#impPanel').hidden=true};
+$('#iSrc').onchange=()=>{syncSrc();if(IMP)cancelImp()};
+const iDrop=$('#iDrop');
+['dragenter','dragover'].forEach(t=>iDrop.addEventListener(t,e=>{e.preventDefault();iDrop.classList.add('over')}));
+['dragleave','drop'].forEach(t=>iDrop.addEventListener(t,e=>{e.preventDefault();iDrop.classList.remove('over')}));
+iDrop.addEventListener('drop',e=>readImport([...e.dataTransfer.files]));
+$('#iFile').onchange=e=>{readImport([...e.target.files]);e.target.value=''};
+function iMsg(t,err){$('#iMsg').className='msg'+(err?' err':'');$('#iMsg').textContent=t}
+function cancelImp(){IMP=null;$('#iReview').hidden=true;$('#iRows').innerHTML=''}
+const isImg=f=>/^image\//.test(f.type)||/\.(png|jpe?g|webp)$/i.test(f.name);
+async function readImport(files){
+  if(!files.length)return;const s=sources().find(x=>x.v===$('#iSrc').value);if(!s){iMsg('Escolha de onde é o arquivo.',true);return}
+  if(!FI()){iMsg('O leitor de arquivos não carregou. Recarregue a página.',true);return}
+  cancelImp();iMsg('Lendo o arquivo…');
+  const kind=s.kind,pm=kind==='card'?$('#iMon').value:'';
+  if(kind==='card'&&!/^\d{4}-\d{2}$/.test(pm)){iMsg('Informe o mês de vencimento da fatura.',true);return}
+  const account=kind==='card'?cardAccountName(s.card):s.acc.name;const unit=(kind==='card'?s.card.unit:s.acc.unit)||(UNIT==='all'?'bike':UNIT);
+  const srcName=kind==='card'?s.card.name+' '+account:account;
+  let rows=[],format='',expectedTotal=null,ocr=false,bal=null,skipped=0;
+  try{
+    const imgs=files.filter(isImg);
+    if(imgs.length){
+      if(imgs.length!==files.length)throw Error('Envie só imagens juntas, ou um arquivo por vez.');
+      if(kind==='bank'){rows=await FI().parseBankImages(imgs,CUR);format='Imagem do extrato (OCR)'}
+      else{const d=await FI().parseImageInvoices(imgs,{paymentMonth:pm,source:srcName,onProgress:t=>iMsg(t)});rows=d.rows;format='Imagem da fatura (OCR)';ocr=true}
+    }else{
+      if(files.length>1)throw Error('Envie um arquivo por vez (ou várias imagens da mesma fatura).');
+      const f=files[0];
+      if(/\.pdf$/i.test(f.name)||f.type==='application/pdf'){
+        if(kind==='bank'){rows=await FI().parseBankPdf(f,CUR);format='PDF do extrato'}
+        else{const d=/mercado\s*pago/i.test(srcName)?await FI().parseMercadoPagoPdf(f,{paymentMonth:pm}):await FI().parsePdf(f,{paymentMonth:pm});rows=d.rows;expectedTotal=d.expectedTotal;format=d.format||'PDF da fatura'}
+      }else{
+        const raw=await f.text();const ofx=/\.(ofx|qfx)$/i.test(f.name)||/<STMTTRN>/i.test(raw);
+        rows=ofx?FI().parseOFX(raw):FI().parseCSV(raw);format=ofx?'OFX':'CSV';
+        if(ofx&&kind==='bank'){const b=raw.match(/<LEDGERBAL>[\s\S]*?<BALAMT>\s*([-\d.,]+)[\s\S]*?<DTASOF>\s*(\d{8})/i);if(b)bal={value:FI().num(b[1]),date:FI().parseDate(b[2])}}
+      }
+    }
+  }catch(e){iMsg('Não consegui ler: '+(e.message||e),true);return}
+  const valid=[];for(const x of rows){if(!x.date||!x.description||!Number.isFinite(x.amount)||!x.amount)continue;if(kind==='bank'&&FI().bankBalance(x)){skipped++;continue}valid.push(x)}
+  if(kind==='card'&&!ocr&&/^(OFX|CSV)$/.test(format)){const pos=valid.reduce((a,x)=>a+(x.amount>0?x.amount:0),0),neg=valid.reduce((a,x)=>a+(x.amount<0?-x.amount:0),0);if(pos>neg)for(const x of valid)x.amount=-x.amount}
+  if(!valid.length){iMsg('Não encontrei lançamentos neste arquivo. Confira se escolheu a conta ou o cartão certo.',true);return}
+  const known=new Set(ITEMS.map(e=>e.id));
+  const docKeys=new Set((D.documents||[]).filter(d=>d.kind==='card'&&d.paymentMonth===pm&&(((D.links||[]).some(l=>l.documentKey===d.id&&l.cardId===s.card?.id))||String(d.account).toUpperCase()===account.toUpperCase())).map(d=>d.id));
+  const existing=kind==='card'?ITEMS.filter(e=>e.doc&&docKeys.has(e.doc.id)):[];
+  const L=[];
+  for(const x of valid){
+    const id=await txId(account,x);const part=detectParts(x.description);const key=cleanKey(x.description),val=Math.abs(x.amount);
+    let st='new',label='Novo';
+    if(known.has(id)){st='dup';label='Já importado'}
+    else if(kind==='card'&&existing.some(e=>cleanKey(e.description)===key&&Math.abs(Math.abs(e.amount)-val)<.011&&JSON.stringify(detectParts(e.description))===JSON.stringify(part))){st='dup';label='Já está nesta fatura'}
+    else if(part&&kind==='card'){const tracked=trackedInstallment(key,val,part,pm);st='parc';label='Parcela '+part.c+' de '+part.n+(tracked?' · já prevista':'')}
+    else if(kind==='bank'&&FI().bankCardPayment(x)){st='pay';label='Pagamento de fatura?'}
+    L.push({...x,id,part,st,label,on:st!=='dup'});
+  }
+  IMP={kind,account,unit,cardId:s.card?.id||'',accId:s.acc?.id||'',pm,status:$('#iSt').value,format,expectedTotal,ocr,bal,skipped,rows:L};
+  iMsg('');renderImp();
+}
+function trackedInstallment(key,val,part,pm){
+  return(D.installments||[]).some(t=>t.active&&+t.totalParts===part.n&&Math.abs(Math.abs(t.amount)-val)<.011&&cleanKey(t.description)===key&&t.firstMonth&&+t.currentPart+diffM(t.firstMonth,pm)===part.c);
+}
+function impRows(){return IMP.rows.map((x,i)=>{if(!IMP.ocr)return x;const tr=document.querySelector(`#iRows tr[data-i="${i}"]`);if(!tr)return x;const [d,ds,v]=tr.querySelectorAll('input:not([type=checkbox])');const val=parseMoney(v.value);return{...x,date:d.value,description:ds.value.trim(),amount:isNaN(val)?NaN:-Math.abs(val)/100}})}
+function renderImp(){
+  const I=IMP;const tg={new:'',dup:'m',parc:'g',pay:'w'};
+  $('#iRows').innerHTML=I.rows.map((x,i)=>`<tr data-i="${i}" class="${x.on?'':'off'}"><td><input type="checkbox" data-ion="${i}"${x.on?' checked':''} aria-label="Incluir"></td>`+(I.ocr?`<td><input type="date" value="${esc(x.date)}" aria-label="Data"></td><td><input value="${esc(x.description)}" aria-label="Descrição"></td><td class="r"><input inputmode="decimal" style="max-width:8em;text-align:right" value="${esc((Math.abs(x.amount)).toLocaleString('pt-BR',{minimumFractionDigits:2}))}" aria-label="Valor"></td>`:`<td class="num">${fmtD(x.date)}</td><td>${esc(x.description)}</td><td class="r num ${x.amount>0?'pos':''}">${esc(R(Math.round(x.amount*100)))}</td>`)+`<td><span class="tag ${tg[x.st]}">${esc(x.label)}</span></td></tr>`).join('');
+  const c=I.rows.reduce((a,x)=>(a[x.st]=(a[x.st]||0)+1,a),{});
+  $('#iInfo').textContent=I.format+' · '+I.rows.length+' lançamentos'+(c.dup?' · '+c.dup+' já importados (desmarcados)':'')+(c.parc?' · '+c.parc+' parcelas':'')+(c.pay?' · '+c.pay+' possível pagamento de fatura, que fica fora da conta':'')+(I.skipped?' · '+I.skipped+' linhas de saldo ignoradas':'')+(I.kind==='card'?' · gastos entram em '+mLong(I.pm):'');
+  $('#iOcr').hidden=!I.ocr;$('#iReview').hidden=false;impSum();
+}
+function impSum(){
+  const I=IMP;const sel=impRows().filter((x,i)=>I.rows[i].on);
+  const out=sel.reduce((a,x)=>a+(x.amount<0?-x.amount:0),0),inn=sel.reduce((a,x)=>a+(x.amount>0?x.amount:0),0);
+  let t=(I.kind==='card'?'compras ':'saídas ')+R(Math.round(out*100))+(inn?' · entradas '+R(Math.round(inn*100)):'');
+  const ref=I.ocr?parseMoney($('#iOfficial').value)/100:I.expectedTotal;
+  if(ref!=null&&!isNaN(ref)&&ref>0){const ok=Math.abs(out-inn-ref)<.011||Math.abs(out-ref)<.011;t+=` · total da fatura ${R(Math.round(ref*100))} `+(ok?'✓ confere':'⚠ não confere')}
+  $('#iSum').innerHTML=esc(t).replace('✓ confere','<span class="ok">✓ confere</span>').replace('⚠ não confere','<span class="bad">⚠ não confere</span>');
+  $('#iGo').textContent='Importar '+sel.length+' lançamento'+(sel.length===1?'':'s');$('#iGo').disabled=!sel.length;
+}
+$('#iRows').addEventListener('change',e=>{const c=e.target.closest('[data-ion]');if(c){IMP.rows[+c.dataset.ion].on=c.checked;c.closest('tr').classList.toggle('off',!c.checked)}impSum()});
+$('#iRows').addEventListener('input',()=>impSum());
+$('#iOfficial').addEventListener('input',()=>impSum());
+$('#iCancel').onclick=()=>{cancelImp();iMsg('')};
+$('#iGo').onclick=e=>{const b=e.currentTarget;const I=IMP;if(!I)return;
+  const all=impRows();const sel=all.filter((x,i)=>I.rows[i].on);
+  if(sel.some(x=>!/^\d{4}-\d{2}-\d{2}$/.test(x.date)||!x.description||!Number.isFinite(x.amount)||!x.amount)){iMsg('Confira data, descrição e valor dos lançamentos marcados.',true);return}
+  const out=sel.reduce((a,x)=>a+(x.amount<0?-x.amount:0),0),inn=sel.reduce((a,x)=>a+(x.amount>0?x.amount:0),0);
+  const ref=I.ocr?parseMoney($('#iOfficial').value)/100:I.expectedTotal;const matches=ref!=null&&!isNaN(ref)&&(Math.abs(out-inn-ref)<.011||Math.abs(out-ref)<.011);
+  if(I.ocr&&!matches){iMsg('Na leitura de imagem, a soma precisa conferir com o total da fatura no app do banco. Corrija os valores ou marque o que faltou.',true);return}
+  if(/mercado pago/i.test(I.format)&&!matches){iMsg('A soma não confere com o total da fatura Mercado Pago. Nada foi importado.',true);return}
+  if(ref!=null&&!matches&&!b.dataset.armed){b.dataset.armed=1;b.textContent='A soma não confere. Importar mesmo assim?';setTimeout(()=>{delete b.dataset.armed;if(IMP)impSum()},5000);return}
+  delete b.dataset.armed;saveImport(sel);
+};
+async function saveImport(sel){
+  const I=IMP;$('#iGo').disabled=true;iMsg('Salvando…');
+  try{
+    const rows=[];for(const x of sel)rows.push({id:await txId(I.account,x),date:x.date,description:x.description,amount:x.amount,fid:x.fid||''});
+    for(let i=0;i<rows.length;i+=200)await call('import',{account:I.account,unit:I.unit,kind:I.kind,status:I.kind==='card'?I.status:'',paymentMonth:I.kind==='card'?I.pm:'',rows:rows.slice(i,i+200)});
+    if(I.kind==='card'&&I.cardId)await call('linkInvoice',{documentKey:['card',I.account.toUpperCase(),I.pm,I.unit||'indefinida'].join('|'),cardId:I.cardId});
+    let balMsg='';
+    if(I.bal&&I.accId&&Number.isFinite(I.bal.value)&&I.bal.date){const cur=(D.accountBalances||[]).find(b=>b.accountId===I.accId);if(!cur||I.bal.date>=cur.baseDate){await call('setAccountBalance',{accountId:I.accId,baseDate:I.bal.date,openingBalance:I.bal.value});balMsg=' Saldo da conta atualizado pelo OFX.'}}
+    prepare(await call('list'));
+    let np=0;
+    if(I.kind==='card'){for(const r of rows){const p=detectParts(r.description);if(!p)continue;const it=ITEMS.find(e=>e.id===r.id);if(!it||!it.classified||it.v>=0)continue;if((D.installments||[]).some(t=>t.sourceId===r.id)||trackedInstallment(cleanKey(r.description),Math.abs(r.amount),p,I.pm))continue;
+      try{await call('installment',{sourceId:r.id,currentPart:p.c,totalParts:p.n,firstMonth:I.pm,enabled:true});np++}catch(e){}}
+      if(np)prepare(await call('list'))}
+    const ids=new Set(rows.map(r=>r.id));const pend=ITEMS.filter(e=>ids.has(e.id)&&!e.classified&&!e.out).length;
+    VIEW=I.kind==='card'?I.pm:ymOf(rows.map(r=>r.date).sort().pop());
+    FILTER=pend?'pend':'all';[...$('#txFilter').children].forEach(x=>x.setAttribute('aria-pressed',x.dataset.f===FILTER));
+    cancelImp();render();
+    iMsg(rows.length+' lançamentos salvos.'+(np?' '+np+' parcela'+(np>1?'s entraram':' entrou')+' na previsão.':'')+(pend?' '+pend+(pend>1?' ficaram':' ficou')+' sem classificação: escolha a categoria na lista abaixo.':'')+balMsg);
+  }catch(e){iMsg('Não consegui salvar: '+e.message+'. Os lançamentos que já tinham entrado não duplicam se você tentar de novo.',true);$('#iGo').disabled=false}
+}
+
 /* início */
 (async()=>{try{const d=await call('list');prepare(d);
   const kinds=new Map((d.categoryKinds||[]).map(k=>[k.name,k.nature]));
@@ -412,5 +585,6 @@ $('#cmpForm').onsubmit=e=>{e.preventDefault();const v=parseMoney($('#cValor').va
   $('#loading').hidden=true;$('#app').hidden=false;render()}catch(e){fail(e)}})();
 })();
 </script>
+<script src="/finance-import.js"></script>
 <script src="/admin-common.js"></script>
 </body></html>
