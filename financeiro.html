@@ -182,6 +182,10 @@
         <section class="panel"><div class="ph"><h3 id="sFlowT">Como fecha o mês</h3></div><div class="flow" id="sFlow"></div><p class="hint" style="margin-top:8px" id="sFlowN"></p></section>
       </div>
     </div>
+    <section class="panel txp"><div class="ph"><h3>Despesas fixas: estimado × realizado</h3><div class="seg" id="fxMonths"></div></div>
+      <p class="hint" style="margin-bottom:10px">O estimado vem das despesas fixas cadastradas e, quando o valor varia (como os professores), da média dos últimos meses. O realizado é o que saiu nos extratos importados.</p>
+      <div class="scroll"><table class="stack" id="fxTable"><thead><tr><th>Despesa fixa</th><th class="r">Estimado</th><th class="r">Realizado</th><th class="r">Diferença</th><th>Situação</th></tr></thead><tbody></tbody></table></div>
+    </section>
     <section class="panel txp"><div class="ph"><h3>Empréstimo para quitar as parcelas</h3><label class="chk"><input type="checkbox" id="lOn">Usar no cenário</label></div>
       <div class="loanin">
         <label class="f">Valor (R$)<input id="lVal" inputmode="decimal"></label>
@@ -519,7 +523,25 @@ for(const [id,on] of [['healthBtn',true],['overviewBtn',false]])$('#'+id).onclic
   for(const [btn,active] of [['healthBtn',on],['overviewBtn',!on]]){$('#'+btn).setAttribute('aria-pressed',String(active));$('#'+btn).classList.toggle('pri',active)}
   if(on)renderHealth();else drawChart();
 };
-function renderHealth(){renderSaude();drawS()}
+function renderHealth(){renderSaude();renderFixed();drawS()}
+/* Despesas fixas: estimado (recorrências, compromissos mensais e média da categoria) x realizado (extratos do mês) */
+let FXM=CUR;
+function fixedEstimate(m){
+  const est={},finite=new Set(FINITE_FIXED.map(f=>f.cat));
+  for(const r of recurrences()){const n=fixedDates(r,'r',m).length;if(n)est[r.category||r.description]=(est[r.category||r.description]||0)+n*Math.abs(cents(r.amount))}
+  for(const c of (D.commitments||[]).filter(c=>c.kind==='monthly'&&inUnit(c))){const n=fixedDates(c,'m',m).length;if(n)est[c.category||c.description]=(est[c.category||c.description]||0)+n*cents(c.amount)}
+  for(const a of (M.AVGFIX||[]))est[a.cat]=(est[a.cat]||0)+a.valor;
+  const real={};for(const e of items()){if(e.comp!==m||e.v>=0||e.out||finite.has(e.category))continue;if(est[e.category]!=null||e.type==='fixed')real[e.category]=(real[e.category]||0)-e.v}
+  return Object.keys({...est,...real}).map(cat=>({cat,est:est[cat]||0,real:real[cat]||0})).sort((a,b)=>b.est-a.est||b.real-a.real);
+}
+function renderFixed(){
+  $('#fxMonths').innerHTML=[addM(CUR,-1),CUR].map(m=>`<button data-fxm="${m}" aria-pressed="${m===FXM}">${esc(mShort(m))}</button>`).join('');
+  const L=fixedEstimate(FXM),open=FXM===CUR;let te=0,tr=0;
+  const st=x=>{const d=x.real-x.est;if(!x.est)return['w','Sem estimativa: cadastre ou classifique como fixa'];if(Math.abs(d)<=Math.max(1000,x.est*.05))return['g','Conforme'];if(d<0)return open?['m','Falta sair '+R0(-d)]:['g','Abaixo do estimado'];return['w','Acima do estimado']};
+  $('#fxTable tbody').innerHTML=L.length?L.map(x=>{te+=x.est;tr+=x.real;const [t,l]=st(x),d=x.real-x.est;return`<tr><td data-l="Despesa fixa">${esc(x.cat)}</td><td data-l="Estimado" class="r num">${esc(R0(x.est))}</td><td data-l="Realizado" class="r num">${esc(R0(x.real))}</td><td data-l="Diferença" class="r num ${d>0?'neg':''}">${esc((d>0?'+':'')+R0(d))}</td><td data-l="Situação"><span class="tag ${t}">${esc(l)}</span></td></tr>`}).join('')+`<tr><td data-l=""><b>Total</b></td><td data-l="Estimado" class="r num"><b>${esc(R0(te))}</b></td><td data-l="Realizado" class="r num"><b>${esc(R0(tr))}</b></td><td data-l="Diferença" class="r num ${tr-te>0?'neg':''}"><b>${esc((tr-te>0?'+':'')+R0(tr-te))}</b></td><td data-l="">${open?'<span class="hint">mês em andamento</span>':''}</td></tr>`:'<tr><td colspan="5" class="empty">Nenhuma despesa fixa estimada.</td></tr>';
+}
+$('#fxMonths').addEventListener('click',e=>{const b=e.target.closest('[data-fxm]');if(!b)return;FXM=b.dataset.fxm;renderFixed()});
+
 function renderAccounts(){
   const s=stats(VIEW),bal=M.bal,nx=addM(CUR,1),lbl=VIEW===CUR?'neste mês':'em '+mShort(VIEW);
   const sources=Array.from(s.incomeSources).sort((a,b)=>b[1]-a[1]);
