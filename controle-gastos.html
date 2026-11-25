@@ -857,4 +857,4 @@ document.addEventListener('DOMContentLoaded',()=>{
  document.querySelectorAll('[data-finance-go]').forEach(btn=>btn.addEventListener('click',()=>{if(h)h.textContent=names[btn.dataset.financeGo]||'Controle Financeiro';if(btn.dataset.financeGo==='analysis'&&h)h.textContent='Visão geral'}));
  const nav=document.querySelector('[data-finance-go="analysis"]');if(nav)nav.click();
 });
-</script></body></html>
+</script><script>addEventListener("load",()=>{if(location.hash==="#importar")document.querySelector('[data-finance-go="upload"]')?.click()})</script></body></html>
