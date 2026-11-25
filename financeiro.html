@@ -94,6 +94,31 @@
 .cf .balform{display:grid;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .cf .balrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,9em) minmax(0,9.5em);gap:8px;align-items:end}
 .cf .txp{margin-top:16px}
+.cf input[type=checkbox]{width:18px;min-height:18px}
+.cf .shero{margin-top:16px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:20px 28px;align-items:start}
+@media(max-width:900px){.cf .shero{grid-template-columns:minmax(0,1fr)}}
+.cf .shero h2{font-size:clamp(24px,3vw,34px);line-height:1.1}
+.cf .shero h2.neg{color:var(--bad)}.cf .shero h2.pos{color:var(--good)}
+.cf .flow{display:grid;gap:6px}
+.cf .fl{display:grid;grid-template-columns:minmax(0,9.5em) minmax(0,1fr) minmax(0,7.5em);gap:10px;align-items:center;font-size:14px}
+.cf .fl .bar{height:16px;border-radius:3px;background:var(--grid);position:relative;overflow:hidden}
+.cf .fl .bar i{position:absolute;top:0;bottom:0;border-radius:3px}
+.cf .fl.tot{font-weight:700;border-top:1px solid var(--line);padding-top:6px}
+.cf .src{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,9em);gap:8px 12px;align-items:center}
+.cf .src small{display:block;color:var(--muted);font-size:12px}
+.cf .src input{text-align:right;font-variant-numeric:tabular-nums}
+.cf .big{font:600 clamp(24px,2.6vw,30px)/1.15 var(--display);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cf .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px}
+.cf .meta div small{display:block;color:var(--muted);font-size:13px;font-weight:600}
+.cf ul.acts{margin:12px 0 0;padding-left:18px;display:grid;gap:6px}
+.cf .loanin{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}
+.cf .chk{display:flex;gap:8px;align-items:center;font-weight:600;font-size:14px}
+.cf .chk input{width:20px;min-height:20px}
+.cf .sfig{position:relative;height:260px}
+.cf .sfig>svg{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
+.cf .goal{font:600 clamp(22px,2.4vw,28px)/1.2 var(--display)}
+.cf .meta .kpi2{background:var(--bg);border-radius:12px;padding:10px 12px}
+
 .cf .accp{margin-top:16px}
 .cf .acct td{padding:12px 8px}
 .cf .acct td b{font:600 clamp(17px,1.9vw,22px)/1.2 var(--display);white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -137,12 +162,37 @@
   <div id="loading" class="state">Carregando dados financeiros…</div>
   <div id="app" hidden>
 <nav class="actions" id="financeNav"><button class="btn pri" aria-pressed="true" id="overviewBtn">Visão geral</button><button class="btn" aria-pressed="false" id="healthBtn">Saúde financeira</button></nav>
-<section class="panel" id="health"><h2>Saúde financeira</h2><p class="hint" id="healthBase"></p>
-<h3>Receitas previstas</h3><p class="hint">Informe valores mensais líquidos disponíveis para pagar as contas. Em produtos, desconte o custo das vendas. Os campos começam em zero.</p>
-<div class="irow" id="forecastInputs"></div><button class="btn sm" id="applyForecast">Aplicar receitas deste mês aos seguintes</button>
-<h3>Empréstimo simulado</h3><label><input type="checkbox" id="simulateCredit"> Incluir empréstimo</label>
-<fieldset id="creditFields" disabled><div class="irow"></div><h3>Dívidas a quitar na liberação</h3><p class="hint">Marque as dívidas e informe o valor negociado de cada quitação. Para liberação no mês atual, informe o valor após a prestação deste mês. Nesse caso, a economia começa no próximo mês.</p><div id="payoffs"></div></fieldset>
-<p class="hint" id="healthNote" role="status"></p><div class="scroll"><table><thead><tr></tr></thead><tbody></tbody></table></div></section>
+<section id="health">
+    <section class="panel shero">
+      <div>
+        <h2 id="sHead"></h2><p class="sub" id="sSub"></p>
+        <div class="meta" id="sKpi" style="margin-top:16px;grid-template-columns:repeat(2,minmax(0,1fr))"></div>
+      </div>
+      <div><div class="ph" style="margin-bottom:4px"><h3>Saldo das contas mês a mês</h3><span class="hint">toque num mês para ver o detalhe</span></div><div class="sfig" id="sFig"><svg id="sChart" role="img" aria-label="Resultado e saldo projetado por mês"></svg></div>
+        <div class="legend"><span><i style="background:var(--good)"></i>Sobrou no mês</span><span><i style="background:var(--bad)"></i>Faltou no mês</span><span><i class="ln" style="background:var(--ink)"></i>Saldo no fim do mês</span></div></div>
+    </section>
+    <div class="g2">
+      <section class="panel"><div class="ph"><h3>Entradas previstas por mês</h3><button class="btn link" id="sReset">Voltar para a média</button></div>
+        <p class="hint" id="sSrcH" style="margin-bottom:10px"></p>
+        <div class="actions" style="margin-bottom:12px"><span class="hint">Ajustar tudo:</span><div class="seg" id="sPct"><button data-pct="-20">−20%</button><button data-pct="-10">−10%</button><button data-pct="0">média</button><button data-pct="10">+10%</button><button data-pct="20">+20%</button></div></div>
+        <div class="src" id="sSrc"></div>
+        <div class="src" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)"><b>Total simulado</b><b class="num r" id="sSrcT"></b></div></section>
+      <div class="stackcol">
+        <section class="panel"><div class="ph"><h3>Para não faltar caixa</h3></div><div id="sGoal"></div><ul class="acts" id="sActs"></ul></section>
+        <section class="panel"><div class="ph"><h3 id="sFlowT">Como fecha o mês</h3></div><div class="flow" id="sFlow"></div><p class="hint" style="margin-top:8px" id="sFlowN"></p></section>
+      </div>
+    </div>
+    <section class="panel txp"><div class="ph"><h3>Empréstimo para quitar as parcelas</h3><label class="chk"><input type="checkbox" id="lOn">Usar no cenário</label></div>
+      <div class="loanin">
+        <label class="f">Valor (R$)<input id="lVal" inputmode="decimal"></label>
+        <label class="f">Juros ao mês (%)<input id="lRate" inputmode="decimal"></label>
+        <label class="f">Prazo (meses)<input id="lN" type="number" min="1" max="120"></label>
+        <label class="f">Carência (meses)<input id="lGrace" type="number" min="0" max="24"></label>
+      </div>
+      <div class="meta" id="lOut" style="margin-top:14px"></div>
+      <p class="hint" style="margin-top:10px" id="lNote"></p>
+    </section>
+  </section>
   <section class="panel imp" id="impPanel" hidden>
     <div class="ph"><h3>Importar extrato ou fatura</h3><button class="btn link" id="iClose">Fechar</button></div>
     <div class="irow">
@@ -241,7 +291,7 @@ const mShort=m=>MN[+m.slice(5)-1]+(m.slice(0,4)!==CUR.slice(0,4)?' '+m.slice(2,4
 const mLong=m=>ML[+m.slice(5)-1]+' de '+m.slice(0,4);
 const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
 const fmtD=d=>d?d.slice(8,10)+'/'+d.slice(5,7):'';
-const parseMoney=s=>{s=String(s??'').trim();if(!s)return NaN;const neg=/^-/.test(s);s=s.replace(/[^\d,.]/g,'');if(/,\d{1,2}$/.test(s))s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');const v=parseFloat(s);return isNaN(v)?NaN:Math.round((neg?-v:v)*100)};
+const parseMoney=s=>{s=String(s??'').trim();if(!s)return NaN;const neg=/^-/.test(s);s=s.replace(/[^\d,.]/g,'');if(/,\d{1,2}$/.test(s))s=s.replace(/\./g,'').replace(',','.');else if(/^\d{1,3}(\.\d{3})+$/.test(s))s=s.replace(/\./g,'');else s=s.replace(/,/g,'');const v=parseFloat(s);return isNaN(v)?NaN:Math.round((neg?-v:v)*100)};
 
 /* Regras herdadas da central anterior */
 const TRANSFER_CATS=new Set(['Cartões','Contas próprias','Aporte Gym Pop','Reembolso GymPop']);
@@ -366,82 +416,100 @@ function render(){
   alerts();headline();drawChart();renderCmp();renderTx();renderCats();renderParc();renderInv();
 }
 
-let healthUnit, forecasts=new Map();
-const healthSources=['Wellhub','TotalPass','Planos e outras','Produtos (líquido)'];
-function initHealth(){
-  const start=addM(CUR,1);
-  if(healthUnit===UNIT)return;
-  healthUnit=UNIT;forecasts=new Map();payoffSignature='';
-  $('#forecastInputs').innerHTML='<label class="f">Mês<input type="month" id="forecastMonth" min="'+start+'" max="'+addM(CUR,600)+'" value="'+start+'"></label>'+healthSources.map((name,i)=>'<label class="f">'+name+' (R$)<input data-source="'+i+'" type="number" min="0" step=".01" value="0"></label>').join('');
-  $('#simulateCredit').checked=false;$('#creditFields').disabled=true;
-  $('#creditFields .irow').innerHTML=[['advance','Crédito líquido (R$)','number'],['released','Mês da liberação','month'],['inst','Valor da prestação (R$)','number'],['count','Quantidade de parcelas','number'],['due','Primeira parcela','month']].map(([id,label,type])=>'<label class="f">'+label+'<input required id="'+id+'" type="'+type+'" '+(type==='month'?'min="'+CUR+'" value="'+start+'"':id==='count'?'min="1" step="1" max="600"':'min=".01" step=".01"')+'></label>').join('');
-  $('#health thead tr').innerHTML=['Mês','Fixas','Parceladas','Pontuais','Variáveis estimadas','Receitas previstas','Crédito','Quitações','Parcelas retiradas','Prestação nova','Produtos líquidos necessários¹','Caixa sem crédito','Caixa simulado'].map(n=>'<th>'+n+'</th>').join('');
+/* ---------- aba Saúde financeira: o real de base, com as entradas e o empréstimo simulados por cima ---------- */
+const SKEY='cf-saude-v1';let SIM={};try{SIM=JSON.parse(localStorage.getItem(SKEY)||'{}')||{}}catch(e){SIM={}}
+const saveSim=()=>{try{localStorage.setItem(SKEY,JSON.stringify(SIM))}catch(e){}};
+let SMON=addM(CUR,1);
+const H=6;
+function incomeSources(){
+  const months=[...M.past];if(+TD.slice(8)>=20&&!months.includes(CUR))months.push(CUR);
+  const by={};for(const m of months)for(const e of items())if(e.comp===m&&!e.out&&e.v>0&&e.type==='income')by[e.category]=(by[e.category]||0)+e.v;
+  const n=months.length||1;return{months:months.sort(),list:Object.entries(by).map(([cat,v])=>({cat,avg:Math.round(v/n)})).sort((a,b)=>b.avg-a.avg)};
 }
-let payoffSignature='';
-function updatePayoffs(){
-  const release=$('#released').value;
-  const month=release===CUR?addM(CUR,1):release;
-  const eligible=release?M.PARC.filter(p=>p.m0<=release&&installmentDue(p,month)):[];
-  const signature=JSON.stringify([UNIT,release,eligible.map(p=>[p.key,p.nome,p.valor,p.n,p.k0,p.m0])]);
-  if(signature!==payoffSignature){
-    payoffSignature=signature;
-    $('#payoffs').innerHTML=eligible.map((p,i)=>'<div class="irow"><label><input type="checkbox" data-pay="'+i+'"> '+esc(p.nome)+' · '+esc(p.orig)+' · '+esc(R(p.valor))+' × '+(p.n-partAt(p,month)+1)+' restantes</label><label class="f">Quitação (R$)<input type="number" disabled required min="0.01" step="0.01" data-price="'+i+'"></label></div>').join('')||'<p class="hint">Nenhuma dívida parcelada elegível neste mês.</p>';
-  }
-  const selected=[];let total=0;
-  eligible.forEach((p,i)=>{
-    const active=$('[data-pay="'+i+'"]').checked,price=$('[data-price="'+i+'"]');
-    price.disabled=!active;
-    if(active){selected.push(p);total+=cents(price.value)}
-  });
-  return {selected,total};
+const srcVal=s=>SIM.src&&SIM.src[s.cat]!=null?SIM.src[s.cat]:s.avg;
+const simIncome=()=>incomeSources().list.reduce((a,s)=>a+srcVal(s),0)+(SIM.extra||0);
+function quitTotal(){let t=0;for(let k=1;k<=120;k++)t+=commitFor(addM(CUR,k)).pc;return t}
+function loanCfg(){const L=SIM.loan||{};return{on:!!L.on,val:L.val!=null?L.val:quitTotal(),rate:L.rate!=null?L.rate:1.5,n:L.n||36,grace:L.grace||0}}
+const pmt=(v,r,n)=>r>0?Math.round(v*r/(1-Math.pow(1+r,-n))):Math.round(v/n);
+function loanCalc(on){const L=loanCfg();if(on!==undefined)L.on=on;const i=L.rate/100,start=addM(CUR,1);let bal=L.val;for(let k=0;k<L.grace;k++)bal=Math.round(bal*(1+i));const p=pmt(bal,i,L.n);
+  return{...L,start,first:addM(start,L.grace+1),last:addM(start,L.grace+L.n),p,total:p*L.n,interest:p*L.n-L.val,payIn:m=>L.on&&m>=addM(start,L.grace+1)&&m<=addM(start,L.grace+L.n)?p:0}}
+function sproj(loanOn){
+  const ent=simIncome(),LC=loanCalc(loanOn),quit=LC.on?quitTotal():0;let prev=M.bal.total;const rows=[];
+  for(let k=0;k<=H;k++){const m=addM(CUR,k),c=commitFor(m),pc=LC.on&&k>0?0:c.pc,lp=LC.payIn(m),inLoan=LC.on&&m===LC.start?LC.val-quit:0;
+    const out=c.fix+c.uni+pc+M.VAR+lp,startBal=prev;let end=null,res=ent+inLoan-out;
+    if(prev!=null){if(k===0){const s=stats(CUR);res=Math.max(0,ent-s.ent)-Math.max(0,out-s.sai);end=prev+res}else end=prev+res}
+    rows.push({m,ent,fix:c.fix,uni:c.uni,pc,var:M.VAR,lp,inLoan,out,startBal,end,res});prev=end}
+  // quanto precisa entrar a mais, todo mês, para o saldo não ficar negativo em nenhum mês do horizonte
+  let extra=0;rows.slice(1).forEach((r,i)=>{if(r.end!=null&&r.end<0)extra=Math.max(extra,Math.ceil(-r.end/(i+1)))});
+  return{rows,LC,quit,extra};
 }
-function renderHealth(){
-  if(!$('#app').classList.contains('health'))return;
-  initHealth();
-  const start=addM(CUR,1),enabled=$('#simulateCredit').checked,bal=M.bal;
-  const base=bal.missing.length||!M.past.length?null:M.rows.find(r=>r.m===CUR).end;
-  $('#healthBase').textContent='Saldo apurado: '+(bal.total==null||bal.missing.length?'incompleto':R(bal.total))+'. Fechamento estimado de '+mShort(CUR)+': '+(base==null?'indisponível':R(base))+'. A projeção parte desse fechamento. Fixas, parcelas e pontuais vêm da Central. Variáveis usam a média histórica.';
-  const payoff=updatePayoffs();
-  const invalid=enabled&&(!Array.from($('#creditFields').querySelectorAll('input')).every(el=>el.validity.valid)||$('#due').value<$('#released').value||diffM(CUR,$('#due').value)>600);
-  const note=$('#healthNote'),body=$('#health tbody');
-  if(invalid||!$('#forecastMonth').checkValidity()||!$('#forecastMonth').value||Array.from($('#forecastInputs').querySelectorAll('[data-source]')).some(el=>!el.validity.valid)){
-    note.textContent='Confira os valores e os meses. A primeira prestação deve vencer a partir da liberação.';body.innerHTML='';return;
-  }
-  const release=$('#released').value,first=$('#due').value,payment=cents($('#inst').value),credit=cents($('#advance').value),n=Number($('#count').value);
-  let cash=base??0,simulation=cash+(enabled&&release===CUR?credit-payoff.total:0)-(enabled&&first===CUR?payment:0);
-  const horizon=Math.max(12,...(enabled?payoff.selected.map(p=>diffM(start,p.m0)+p.n-p.k0+1):[]),enabled?diffM(start,first)+n:0,...Array.from(forecasts.keys(),m=>diffM(start,m)+1));
-  const output=[];
-  for(let k=0;k<horizon;k++){
-    const m=addM(start,k),c=commitFor(m),[hub,tp,other,products]=forecasts.get(m)||[0,0,0,0];
-    const income=hub+tp+other+products,age=diffM(first,m),p=enabled&&age>=0&&age<n?payment:0,deposit=enabled&&release===m?credit:0;
-    const saved=enabled&&m>=release?payoff.selected.reduce((sum,p)=>sum+(installmentDue(p,m)?p.valor:0),0):0;
-    const settlement=enabled&&m===release?payoff.total:0;
-    const costs=c.committed+M.VAR;cash+=income-costs;simulation+=income-costs+deposit-p+saved-settlement;
-    output.push('<tr><td>'+mShort(m)+'</td>'+[c.fix,c.pc,c.uni,M.VAR,income,deposit,settlement,saved,p,Math.max(0,costs-saved+p-hub-tp-other),base==null?null:cash,base==null?null:simulation].map(v=>'<td class="r num '+(v<0?'neg':'')+'">'+(v==null?'—':esc(R(v)))+'</td>').join('')+'</tr>');
-  }
-  note.textContent='¹ Meta mensal de produtos após custos, antes de usar o saldo ou o crédito. '+(enabled?'Quitações na liberação: '+R(payoff.total)+'. Total das novas prestações: '+R(n*payment)+'. ':'')+(enabled&&(release===CUR||first===CUR)?'Movimentos do empréstimo no mês atual já entram no saldo inicial simulado. ':'')+'Cenário temporário desta unidade.';
-  body.innerHTML=output.join('');
+let SRC_KEYS='',SP=null;
+function renderSaude(){
+  if(!M)return;const IS=incomeSources(),keys=IS.list.map(s=>s.cat).join('|');
+  if(keys!==SRC_KEYS){SRC_KEYS=keys;$('#sSrc').innerHTML=IS.list.map(s=>`<label for="src_${esc(s.cat)}">${esc(s.cat)}<small>média ${esc(R0(s.avg))}</small></label><input id="src_${esc(s.cat)}" data-src="${esc(s.cat)}" inputmode="decimal">`).join('')+`<label for="src_extra">Outras entradas<small>receita nova, evento, aporte</small></label><input id="src_extra" data-src="__extra" inputmode="decimal" placeholder="0">`;fillSrc();
+    const L=loanCfg();$('#lVal').value=(L.val/100).toLocaleString('pt-BR',{maximumFractionDigits:0});$('#lRate').value=String(L.rate).replace('.',',');$('#lN').value=L.n;$('#lGrace').value=L.grace;$('#lOn').checked=L.on}
+  $('#sSrcH').textContent=IS.months.length?'Começa com a média de '+IS.months.map(mShort).join(' e ')+'. Troque pelo que você espera receber de cada fonte.':'Ainda não há meses completos: preencha o que espera receber.';
+  renderSaudeOut();
 }
+function fillSrc(){for(const s of incomeSources().list){const el=document.querySelector(`[data-src="${CSS.escape(s.cat)}"]`);if(el)el.value=(srcVal(s)/100).toLocaleString('pt-BR',{maximumFractionDigits:0})}$('#src_extra').value=SIM.extra?(SIM.extra/100).toLocaleString('pt-BR',{maximumFractionDigits:0}):''}
+const mName=m=>ML[+m.slice(5)-1]+(m.slice(0,4)!==CUR.slice(0,4)?' de '+m.slice(0,4):'');
+function renderSaudeOut(){
+  SP=sproj();const P=SP,rows=P.rows.slice(1),r=rows.find(x=>x.m===SMON)||rows[0],LC=P.LC;
+  $('#sSrcT').textContent=R0(rows[0].ent);
+  const h=$('#sHead'),firstNeg=rows.find(x=>x.end!=null&&x.end<0),avgRes=Math.round(rows.reduce((a,x)=>a+x.res,0)/rows.length);
+  if(M.bal.total==null){h.className='';h.textContent='Informe os saldos das contas para ver até quando o caixa aguenta';$('#sSub').textContent='A simulação usa o saldo de hoje como ponto de partida.'}
+  else if(!firstNeg){h.className='pos';h.textContent='O caixa fica positivo nos próximos '+H+' meses';$('#sSub').textContent=(avgRes>=0?'Em média sobram '+R0(avgRes)+' por mês':'O saldo cai '+R0(-avgRes)+' por mês em média, mas o que já está em conta cobre')+'. Saldo previsto em '+mName(rows[rows.length-1].m)+': '+R0(rows[rows.length-1].end)+'.'}
+  else{h.className='neg';const i=rows.indexOf(firstNeg);h.textContent=i===0?'O caixa fica negativo já em '+mName(firstNeg.m):'O caixa aguenta até '+mName(rows[i-1].m);$('#sSub').textContent='Com as entradas simuladas, cada mês sai em média '+R0(-avgRes)+' a mais do que entra. Em '+mName(firstNeg.m)+' o saldo chega a '+R0(firstNeg.end)+'.'}
+  $('#sKpi').innerHTML=[['Entradas por mês',R0(rows[0].ent),''],['Saídas em '+mShort(rows[0].m),R0(rows[0].out),''],['Resultado em '+mShort(rows[0].m),R0(rows[0].res),rows[0].res<0?'neg':'pos'],['Saldo hoje',M.bal.total!=null?R0(M.bal.total):'—','']].map(([l,v,c])=>`<div class="kpi2"><small>${esc(l)}</small><span class="big ${c}">${esc(v)}</span></div>`).join('');
+  // meta
+  const goal=$('#sGoal');
+  if(M.bal.total==null)goal.innerHTML='<p class="hint">Informe os saldos para calcular.</p>';
+  else if(P.extra>0)goal.innerHTML=`<p class="goal neg">Faltam ${esc(R0(P.extra))} por mês</p><p class="sub">Para o saldo não ficar negativo até ${esc(mName(rows[rows.length-1].m))}, as entradas precisam ser de ${esc(R0(rows[0].ent+P.extra))} por mês, ${Math.round(P.extra/Math.max(1,rows[0].ent)*100)}% a mais que o simulado. Para empatar sem usar o saldo, ${esc(R0(rows[0].out))} por mês.</p>`;
+  else goal.innerHTML=`<p class="goal pos">Com essa entrada não falta caixa</p><p class="sub">Para empatar o mês sem usar o saldo, as entradas precisam ser de ${esc(R0(rows[0].out))}. A simulação prevê ${esc(R0(rows[0].ent))}.</p>`;
+  const A=[];
+  const ending=M.PARC.map(p=>({p,fim:addM(p.m0,p.n-p.k0)})).filter(x=>x.fim>=CUR&&x.fim<addM(CUR,H)).sort((a,b)=>a.fim.localeCompare(b.fim));
+  if(ending.length){const byM={};for(const x of ending)byM[x.fim]=(byM[x.fim]||0)+x.p.valor;A.push('Parcelas que terminam: '+Object.entries(byM).map(([m,v])=>'a partir de '+mShort(addM(m,1))+' sobram '+R0(v)+'/mês').join('; ')+'.')}
+  const fixL=[];for(const rr of recurrences())fixL.push([rr.description,Math.abs(cents(rr.amount))]);for(const c of (D.commitments||[]).filter(c=>c.kind==='monthly'&&inUnit(c)))fixL.push([c.description,cents(c.amount)]);fixL.sort((a,b)=>b[1]-a[1]);
+  if(fixL.length)A.push('Maiores despesas fixas: '+fixL.slice(0,3).map(([n,v])=>n.slice(0,26)+' '+R0(v)).join(', ')+'.');
+  const pcNext=commitFor(addM(CUR,1)).pc;
+  if(pcNext&&!LC.on){const W=sproj(true),lastW=W.rows[W.rows.length-1].end,lastN=rows[rows.length-1].end;A.push('Trocar as parcelas ('+R0(pcNext)+'/mês) pelo empréstimo simulado abaixo ('+R0(LC.p)+'/mês)'+(lastW!=null&&lastN!=null?' deixaria o saldo de '+mShort(rows[rows.length-1].m)+' em '+R0(lastW)+' em vez de '+R0(lastN):'')+'.')}
+  $('#sActs').innerHTML=A.map(t=>`<li>${esc(t)}</li>`).join('');
+  // como fecha o mês escolhido
+  const F=[['Entradas',r.ent+r.inLoan,'+'],['Despesas fixas',-r.fix,'-'],['Parcelas',-(r.pc+r.lp),'-']];if(r.uni)F.push(['Pontuais',-r.uni,'-']);F.push(['Variáveis (média)',-r.var,'-']);
+  const mx=Math.max(1,...F.map(x=>Math.abs(x[1])));
+  $('#sFlowT').textContent='Como fecha '+mName(r.m);
+  $('#sFlow').innerHTML=F.map(([l,v,t])=>`<div class="fl"><span>${esc(l)}</span><div class="bar"><i style="left:0;width:${(Math.abs(v)/mx*100).toFixed(1)}%;background:${t==='-'?'var(--bad)':'var(--good)'};opacity:${t==='-'?.7:1}"></i></div><span class="num r ${v<0?'neg':''}">${esc(R0(v))}</span></div>`).join('')+`<div class="fl tot"><span>Resultado do mês</span><span></span><span class="num r ${r.res<0?'neg':'pos'}">${esc(R0(r.res))}</span></div>`+(r.end!=null?`<div class="fl"><span>Saldo no fim</span><span></span><span class="num r ${r.end<0?'neg':''}">${esc(R0(r.end))}</span></div>`:'');
+  $('#sFlowN').textContent='Saídas: o que já está comprometido mais os gastos variáveis na média dos últimos meses ('+R0(M.VAR)+').'+(r.lp?' Inclui a parcela do empréstimo.':'');
+  // empréstimo
+  $('#lOut').innerHTML=`<div class="kpi2"><small>Parcela do empréstimo</small><span class="big">${esc(R0(LC.p))}</span></div><div class="kpi2"><small>Parcelas de hoje por mês</small><span class="big">${esc(R0(pcNext))}</span></div><div class="kpi2"><small>Alívio por mês</small><span class="big ${pcNext-LC.p>=0?'pos':'neg'}">${esc(R0(pcNext-LC.p))}</span></div><div class="kpi2"><small>Juros no total</small><span class="big">${esc(R0(LC.interest))}</span></div>`;
+  $('#lNote').textContent='Valor sugerido: o total das parcelas que ainda faltam ('+R0(P.quit||quitTotal())+'). '+(LC.on?'No cenário: recebe em '+mShort(LC.start)+', quita as parcelas e paga '+LC.n+'x de '+R0(LC.p)+' de '+mShort(LC.first)+' a '+mShort(LC.last)+'. ':'')+'Linhas do governo, como o Pronampe, têm taxa, prazo e carência próprios: confirme com o banco antes de decidir.';
+  drawS();
+}
+const sFig=$('#sFig'),sSvg=$('#sChart');
+function drawS(){
+  if(!SP||!sFig.clientWidth)return;const W=sFig.clientWidth,Hh=sFig.clientHeight,m={l:8,r:8,t:24,b:40},rows=SP.rows.slice(1),n=rows.length;
+  const vals=rows.flatMap(x=>[x.res,x.end??0,0]),top=Math.max(...vals),bot=Math.min(...vals),pad=(top-bot||1)*.12,y1=top+pad,y0=bot-pad;
+  const Y=v=>m.t+(y1-v)/(y1-y0)*(Hh-m.t-m.b),slot=(W-m.l-m.r)/n,bw=Math.min(46,slot*.5),X=i=>m.l+slot*i+slot/2,lab=v=>W<520?Math.round(v/100000)+'k':Rk(v);
+  let o=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)"/>`;
+  rows.forEach((x,i)=>{const sel=x.m===SMON;if(sel)o+=`<rect x="${m.l+slot*i+2}" y="${m.t-18}" width="${slot-4}" height="${Hh-m.t-m.b+34}" rx="8" fill="var(--accent-soft)"/>`;
+    const a=Y(Math.max(0,x.res)),b=Y(Math.min(0,x.res));o+=`<rect x="${X(i)-bw/2}" y="${a}" width="${bw}" height="${Math.max(1,b-a)}" rx="3" fill="var(${x.res<0?'--bad':'--good'})" opacity=".8"/>`;
+    o+=`<text x="${X(i)}" y="${Hh-m.b+18}" text-anchor="middle" style="fill:var(--ink);font-weight:${sel?700:500}">${mShort(x.m)}</text><text x="${X(i)}" y="${Hh-m.b+34}" text-anchor="middle" class="${x.res<0?'n':''}">${lab(x.res)}</text>`});
+  const pts=rows.map((x,i)=>x.end==null?null:[X(i),Y(x.end)]).filter(Boolean);
+  if(pts.length){o+=`<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="var(--ink)" stroke-width="2.5"/>`;rows.forEach((x,i)=>{if(x.end==null)return;o+=`<circle cx="${X(i)}" cy="${Y(x.end)}" r="4.5" fill="var(${x.end<0?'--bad':'--ink'})" stroke="var(--surface)" stroke-width="2"/><text x="${X(i)}" y="${Y(x.end)-10}" text-anchor="middle" class="v${x.end<0?' n':''}">${lab(x.end)}</text>`})}
+  sSvg.innerHTML=o;sSvg.onclick=ev=>{const r=sSvg.getBoundingClientRect(),i=Math.floor((ev.clientX-r.left-m.l)/slot);if(rows[i]){SMON=rows[i].m;renderSaudeOut()}};
+}
+const sro=new ResizeObserver(drawS);sro.observe(sFig);
+$('#sSrc').addEventListener('input',e=>{const t=e.target.closest('[data-src]');if(!t)return;const v=parseMoney(t.value);if(t.dataset.src==='__extra')SIM.extra=isNaN(v)?0:v;else{SIM.src=SIM.src||{};if(isNaN(v))delete SIM.src[t.dataset.src];else SIM.src[t.dataset.src]=v}saveSim();renderSaudeOut()});
+$('#sPct').addEventListener('click',e=>{const b=e.target.closest('[data-pct]');if(!b)return;const k=1+(+b.dataset.pct)/100;SIM.src={};for(const s of incomeSources().list)SIM.src[s.cat]=Math.round(s.avg*k/10000)*10000;if(+b.dataset.pct===0)delete SIM.src;saveSim();fillSrc();renderSaudeOut()});
+$('#sReset').onclick=()=>{delete SIM.src;delete SIM.extra;saveSim();fillSrc();renderSaudeOut()};
+['lVal','lRate','lN','lGrace','lOn'].forEach(id=>$('#'+id).addEventListener('input',()=>{const v=parseMoney($('#lVal').value),r=parseFloat(String($('#lRate').value).replace(',','.'));SIM.loan={on:$('#lOn').checked,val:isNaN(v)?undefined:v,rate:isNaN(r)?undefined:r,n:Math.max(1,+$('#lN').value||36),grace:Math.max(0,+$('#lGrace').value||0)};saveSim();renderSaudeOut()}));
+
 for(const [id,on] of [['healthBtn',true],['overviewBtn',false]])$('#'+id).onclick=()=>{
   $('#app').classList.toggle('health',on);
   for(const [btn,active] of [['healthBtn',on],['overviewBtn',!on]]){$('#'+btn).setAttribute('aria-pressed',String(active));$('#'+btn).classList.toggle('pri',active)}
   if(on)renderHealth();else drawChart();
 };
-$('#health').addEventListener('input',e=>{
-  const m=$('#forecastMonth').value,inputs=Array.from($('#forecastInputs').querySelectorAll('[data-source]'));
-  if(e.target.id==='forecastMonth'){inputs.forEach((el,i)=>el.value=(forecasts.get(m)?.[i]||0)/100)}
-  else if(e.target.hasAttribute('data-source')&&m&&inputs.every(el=>el.validity.valid))forecasts.set(m,inputs.map(el=>cents(el.value)));
-  $('#creditFields').disabled=!$('#simulateCredit').checked;renderHealth();
-});
-$('#applyForecast').onclick=()=>{
-  const m=$('#forecastMonth').value;
-  if(!m||!$('#forecastMonth').checkValidity())return;
-  const values=forecasts.get(m)||[0,0,0,0];
-  const last=Math.max(12,$('#simulateCredit').checked&&Array.from($('#creditFields').querySelectorAll('input')).every(el=>el.validity.valid)?diffM(CUR,$('#due').value)+Number($('#count').value)-1:0);
-  for(let i=diffM(CUR,m)+1;i<=last;i++)forecasts.set(addM(CUR,i),values.slice());
-  renderHealth();
-};
-
+function renderHealth(){renderSaude();drawS()}
 function renderAccounts(){
   const s=stats(VIEW),bal=M.bal,nx=addM(CUR,1),lbl=VIEW===CUR?'neste mês':'em '+mShort(VIEW);
   const sources=Array.from(s.incomeSources).sort((a,b)=>b[1]-a[1]);
