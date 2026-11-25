@@ -1285,9 +1285,14 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           if(!/^\d{11}$/.test(cpf))return json({ok:false,error:"CPF_NAO_DISPONIVEL"},422);
           const hash=await sha256(cpf),existing=await env.DB.prepare("SELECT id,pin_hash,evo_member_id,gym_client_id FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first();
           const collision=await env.DB.prepare("SELECT id,cpf_hash FROM members WHERE "+(unit==="bike"?"evo_member_id":"gym_client_id")+"=? LIMIT 1").bind(unit==="bike"?Number(id):id).first();
-          if(collision&&collision.cpf_hash!==hash)return json({ok:false,error:"CADASTRO_JA_VINCULADO_A_OUTRO_CPF"},409);
+          // A provisional "evo-placeholder:" hash is not a CPF: it receives the real one instead of blocking.
+          const placeholder=!!(collision&&String(collision.cpf_hash||"").startsWith("evo-placeholder:"));
+          if(collision&&!placeholder&&collision.cpf_hash!==hash)return json({ok:false,error:"CADASTRO_JA_VINCULADO_A_OUTRO_CPF"},409);
+          if(placeholder&&existing&&existing.id!==collision.id)return json({ok:false,error:"CPF_JA_VINCULADO_A_OUTRO_ID"},409);
           const name=String(p.firstName||p.name||""),last=String(p.lastName||"");
-          if(existing){
+          if(placeholder){
+            await env.DB.prepare("UPDATE members SET cpf_hash=?,cpf_last4=?,first_name=?,last_name=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND cpf_hash LIKE 'evo-placeholder:%'").bind(hash,cpf.slice(-4),name,last,collision.id).run();
+          }else if(existing){
             const linked=unit==="bike"?existing.evo_member_id:existing.gym_client_id;
             if(linked&&String(linked)!==id)return json({ok:false,error:"CPF_JA_VINCULADO_A_OUTRO_ID"},409);
             await env.DB.prepare("UPDATE members SET "+(unit==="bike"?"evo_member_id":"gym_client_id")+"=?,first_name=?,last_name=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(unit==="bike"?Number(id):id,name,last,existing.id).run();
@@ -1876,13 +1881,16 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const hash=validCpf?await sha256(cpf):null;
         const byId=await env.DB.prepare("SELECT id,cpf_hash,evo_member_id,gym_client_id,email,birth_date FROM members WHERE "+(unit==="gym"?"gym_client_id":"evo_member_id")+"=? LIMIT 1").bind(unit==="gym"?String(evoId):evoId).first();
         const byCpf=hash?await env.DB.prepare("SELECT id,cpf_hash,evo_member_id,gym_client_id,email,birth_date FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first():null;
-        if(byId&&hash&&byId.cpf_hash!==hash)return json({ok:false,error:"CONFLITO_CPF_ID_EVO"},409);
+        // A member created from an EVO id alone carries a provisional "evo-placeholder:" hash: it is not a CPF, so it never conflicts.
+        const placeholderId=!!(byId&&String(byId.cpf_hash||"").startsWith("evo-placeholder:"));
+        if(byId&&hash&&!placeholderId&&byId.cpf_hash!==hash)return json({ok:false,error:"CONFLITO_CPF_ID_EVO"},409);
         if(byId&&byCpf&&byId.id!==byCpf.id)return json({ok:false,error:"CADASTROS_CONFLITANTES"},409);
         const existing=byId||byCpf;
         const linkedId=existing&&(unit==="gym"?existing.gym_client_id:existing.evo_member_id);
         if(linkedId&&String(linkedId)!==String(evoId))return json({ok:false,error:"CPF_VINCULADO_A_OUTRO_EVO"},409);
         let memberId=existing?.id||null;
         if(existing){
+          if(placeholderId&&hash)await env.DB.prepare("UPDATE members SET cpf_hash=?,cpf_last4=? WHERE id=? AND cpf_hash LIKE 'evo-placeholder:%'").bind(hash,cpf.slice(-4),existing.id).run();
           await env.DB.prepare("UPDATE members SET "+(unit==="gym"?"gym_client_id":"evo_member_id")+"=?,first_name=COALESCE(NULLIF(?,''),first_name),last_name=COALESCE(NULLIF(?,''),last_name),email=COALESCE(?,email),birth_date=COALESCE(?,birth_date),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(unit==="gym"?String(evoId):evoId,first,last,email,birth,memberId).run();
         }else if(validCpf){
           const inserted=await env.DB.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date) VALUES(?,?,?,?,?,?,?,?)").bind(unit==="bike"?evoId:null,unit==="gym"?String(evoId):null,hash,cpf.slice(-4),first,last,email,birth).run();
@@ -6347,10 +6355,13 @@ async function currentStudentJob(env, body) {
     for(const [index,{p,cpf,hash,evoId}] of group.entries()){
       const byCpf=lookups?lookups[index*2].results[0]:await byCpfQuery(hash).first();
       const byUnit=lookups?lookups[index*2+1].results[0]:await byUnitQuery(evoId).first();
-      if((byUnit&&byUnit.cpf_hash!==hash)||(byCpf&&byUnit&&byCpf.id!==byUnit.id))continue;
+      // A provisional "evo-placeholder:" hash is not a CPF: it is upgraded to the real one, never skipped.
+      const placeholder=!!(byUnit&&String(byUnit.cpf_hash||"").startsWith("evo-placeholder:"));
+      if((byUnit&&!placeholder&&byUnit.cpf_hash!==hash)||(byCpf&&byUnit&&byCpf.id!==byUnit.id))continue;
       const current=byCpf||byUnit,existingUnit=current&&(unit==="gym"?current.gym_client_id:current.evo_member_id);
       if(existingUnit&&String(existingUnit)!==evoId)continue;
       if(current){
+        if(placeholder)await db.prepare("UPDATE members SET cpf_hash=?,cpf_last4=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND cpf_hash LIKE 'evo-placeholder:%'").bind(hash,cpf.slice(-4),current.id).run();
         if(!existingUnit)await db.prepare("UPDATE members SET "+(unit==="gym"?"gym_client_id":"evo_member_id")+"=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(unit==="gym"?evoId:Number(evoId),current.id).run();
       }else{
         await db.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date) VALUES(?,?,?,?,?,?,?,?)").bind(unit==="bike"?Number(evoId):null,unit==="gym"?evoId:null,hash,cpf.slice(-4),String(p.firstName||p.registerName||"").slice(0,120),String(p.lastName||p.registerLastName||"").slice(0,160),normalizeEmail(p.email||"")||null,normalizeDate(p.birthDate||"")||null).run();
