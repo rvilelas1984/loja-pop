@@ -94,6 +94,13 @@
 .cf .balform{display:grid;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .cf .balrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,9em) minmax(0,9.5em);gap:8px;align-items:end}
 .cf .txp{margin-top:16px}
+.cf .accp{margin-top:16px}
+.cf .acct td{padding:12px 8px}
+.cf .acct td b{font:600 clamp(17px,1.9vw,22px)/1.2 var(--display);white-space:nowrap;font-variant-numeric:tabular-nums}
+.cf .acct tr.tot td{background:var(--accent-soft);border-bottom:2px solid var(--line)}
+.cf .acct tr.tot td:first-child{border-radius:10px 0 0 10px}.cf .acct tr.tot td:last-child{border-radius:0 10px 10px 0}
+.cf .acct td small{display:block;color:var(--muted);font-size:12px;font-weight:400}
+
 .cf tr.pick td{background:var(--accent-soft)}
 .cf .pickbox{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
 .cf .pickbox label{flex:1 1 260px}
@@ -113,6 +120,7 @@
 .cf .tag.b{background:var(--bad-soft);color:var(--bad)}
 .cf .ok{color:var(--good);font-weight:600}.cf .bad{color:var(--bad);font-weight:600}
 @media(max-width:600px){.cf table{font-size:13px}.cf th,.cf td{padding:6px 4px}.cf .stack thead{display:none}.cf .stack tr{display:grid;padding-block:10px;border-bottom:1px solid var(--grid)}.cf .stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:3px 0}.cf .stack td::before{content:attr(data-l);color:var(--muted);font-size:12px}.cf .mnav b{min-width:7.5em}.cf form.cform{grid-template-columns:minmax(0,1fr)}.cf .balrow{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.cf .acct.stack tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 12px;padding:12px 4px}.cf .acct.stack td{display:block;text-align:left;padding:0;border:0;background:none}.cf .acct.stack td:first-child{grid-column:1/-1}.cf .acct.stack td::before{display:block;font-size:12px;color:var(--muted);margin-bottom:2px}.cf .acct.stack td:empty{display:none}.cf .acct.stack tr.tot{background:var(--accent-soft);border-radius:10px;padding:12px 10px;border:0}.cf .acct.stack td b{font-size:18px}.cf .acct.stack tr.tot td{border:0;background:none}}
 </style></head><body>
 <div class="cf"><div class="wrap">
   <div class="top">
@@ -146,13 +154,12 @@
   </section>
   <div class="alerts" id="alerts"></div>
 
-  <div class="kpis">
-    <div class="kpi"><small>Saldo em conta</small><div class="row"><b id="kSaldo">—</b><button class="btn link" id="btnSaldo">Informar</button></div><span id="kSaldoD"></span>
-      <form class="balform" id="balForm" hidden><div id="balRows"></div><div class="actions"><button class="btn sm pri">Salvar saldos</button><span class="hint">Use o saldo do fim do último extrato.</span></div></form></div>
-    <div class="kpi"><small id="kEntL">Entradas</small><b id="kEnt" class="pos">—</b><span id="kEntD"></span></div>
-    <div class="kpi"><small id="kSaiL">Saídas</small><b id="kSai">—</b><span id="kSaiD"></span></div>
-    <div class="kpi"><small id="kNxL">Já comprometido</small><b id="kNx">—</b><span id="kNxD"></span></div>
-  </div>
+  <section class="panel accp">
+    <div class="ph"><h3>Contas</h3><div class="actions"><span class="hint" id="accSub"></span><button class="btn sm" id="btnSaldo">Informar saldos</button></div></div>
+    <form class="balform" id="balForm" hidden><div id="balRows"></div><div class="actions"><button class="btn sm pri">Salvar saldos</button><span class="hint">Use o saldo do fim do último extrato de cada conta.</span></div></form>
+    <div class="scroll"><table class="acct stack" id="accTable"><thead><tr><th>Conta</th><th class="r">Saldo</th><th class="r" id="thEnt">Entradas</th><th class="r" id="thSai">Saídas</th><th class="r" id="thNx">Já comprometido</th></tr></thead><tbody></tbody></table></div>
+    <p class="hint" id="accNote" style="margin-top:8px"></p>
+  </section>
 
   <section class="panel chartp">
     <div class="find"><h2 id="headline"></h2><p id="headsub"></p></div>
@@ -161,7 +168,7 @@
       <span><i style="background:var(--c-real)"></i>Saídas reais</span>
       <span><i style="background:var(--c-fix)"></i>Despesas fixas</span>
       <span><i style="background:var(--c-parc)"></i>Parcelas</span>
-      <span><i style="background:var(--c-uni)"></i>Compromissos do mês</span>
+      <span><i style="background:var(--c-uni)"></i>Pontuais (uma vez)</span>
       <span><i style="background:var(--c-var)"></i>Variáveis (média)</span>
       <span><i class="ln"></i>Entradas (reais ou média)</span>
     </div>
@@ -169,7 +176,7 @@
 
   <div class="g2">
     <section class="panel">
-      <div class="ph"><h3>Compromissos</h3><span class="hint" id="cmpTot"></span></div>
+      <div class="ph"><h3>Despesas fixas e compromissos</h3><span class="hint" id="cmpTot"></span></div>
       <div class="cmplist" id="cmpList"></div>
       <form class="cform" id="cmpForm">
         <div class="full chips" id="chips"></div>
@@ -180,6 +187,7 @@
         <label class="f">Dia do pagamento<input id="cDia" type="number" min="1" max="31" value="10"></label>
         <label class="f" id="cNL" hidden>Nº de parcelas<input id="cN" type="number" min="2" max="120" value="10"></label>
         <label class="f">Categoria<select id="cCat"></select></label>
+        <label class="f">Sai de qual conta<select id="cAcc"></select></label>
         <div class="full"><button class="btn pri" id="cBtn">Adicionar compromisso</button><p class="msg" id="cMsg" role="status"></p></div>
       </form>
     </section>
@@ -237,7 +245,7 @@ async function call(action,body){
 }
 
 let D=null,UNIT='bike',VIEW=CUR,FILTER='all',M=null;
-let docOf=new Map(),linkOf=new Map(),ITEMS=[];
+let docOf=new Map(),linkOf=new Map(),ITEMS=[],ITEM_BY_ID=new Map();
 
 function prepare(d){
   D=d;
@@ -254,6 +262,7 @@ function prepare(d){
     else if(!card&&!e.classified&&v<0&&CARD_PAY_RE.test(e.description))out='pagamento de fatura';
     return{...e,v,comp,card,doc,out,classified:!!e.classified}
   });
+  ITEM_BY_ID=new Map(ITEMS.map(e=>[e.id,e]));
   const hasGym=ITEMS.some(e=>e.unit==='gym');$('#unit').hidden=!hasGym;
 }
 const inUnit=x=>UNIT==='all'||!x.unit||x.unit===UNIT;
@@ -268,24 +277,33 @@ function stats(m){
   }
   return{ent,sai,n,pendIn,cat}
 }
+/* De qual conta sai cada coisa: extrato pela conta do lançamento; cartão pela conta cadastrada no cartão ou pela que paga as faturas dele. */
+function accIdByName(n){return(D.accounts||[]).find(a=>a.name===n)?.id||''}
+function cardAccount(cardId){
+  const c=(D.cards||[]).find(x=>x.id===cardId);if(!c)return'';if(c.accountId)return c.accountId;
+  const keys=new Set((D.links||[]).filter(l=>l.cardId===cardId).map(l=>l.documentKey)),cnt={};
+  for(const l of D.transactionLinks||[])if(l.kind==='invoice'&&keys.has(l.documentKey)){const e=ITEM_BY_ID.get(l.itemId);const a=e&&accIdByName(e.account);if(a)cnt[a]=(cnt[a]||0)+1}
+  return Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
+}
+function itemAccount(id){const e=ITEM_BY_ID.get(id);if(!e)return'';if(e.card){const cid=(D.links||[]).find(l=>l.documentKey===e.doc?.id)?.cardId;return cid?cardAccount(cid):''}return accIdByName(e.account)}
 function installments(){
   const ign=new Set(D.ignoredInstallments||[]);
-  const L=(D.installments||[]).filter(p=>p.active&&!ign.has(p.sourceId)&&inUnit(p)&&p.firstMonth).map(p=>({nome:String(p.description).replace(/\s*[-–]?\s*Parcela.*$/i,'').replace(/\s+\d+\s*\/\s*\d+$/,'').trim()||p.description,valor:Math.abs(cents(p.amount)),k0:+p.currentPart,n:+p.totalParts,m0:p.firstMonth,orig:'cartão'}));
+  const L=(D.installments||[]).filter(p=>p.active&&!ign.has(p.sourceId)&&inUnit(p)&&p.firstMonth).map(p=>({nome:String(p.description).replace(/\s*[-–]?\s*Parcela.*$/i,'').replace(/\s+\d+\s*\/\s*\d+$/,'').trim()||p.description,valor:Math.abs(cents(p.amount)),k0:+p.currentPart,n:+p.totalParts,m0:p.firstMonth,orig:'cartão',acc:itemAccount(p.sourceId)}));
   for(const f of FINITE_FIXED){
     const its=items().filter(e=>e.category===f.cat&&e.v<0).sort((a,b)=>a.comp.localeCompare(b.comp));
     const last=its[its.length-1];if(!last)continue;
-    L.push({nome:f.nome,valor:-last.v,k0:diffM(f.inicio,last.comp)+1,n:f.total,m0:last.comp,orig:'despesa fixa'});
+    L.push({nome:f.nome,valor:-last.v,k0:diffM(f.inicio,last.comp)+1,n:f.total,m0:last.comp,orig:'despesa fixa',acc:itemAccount(last.id)});
   }
-  for(const c of (D.commitments||[]).filter(c=>c.kind==='installment'&&inUnit(c)))L.push({nome:c.description,valor:cents(c.amount),k0:1,n:+c.totalParts,m0:c.startMonth,orig:'compromisso',manual:true});
+  for(const c of (D.commitments||[]).filter(c=>c.kind==='installment'&&inUnit(c)))L.push({nome:c.description,valor:cents(c.amount),k0:1,n:+c.totalParts,m0:c.startMonth,orig:'compromisso',manual:true,acc:c.accountId||''});
   return L;
 }
 const partAt=(p,m)=>p.k0+diffM(p.m0,m);
 function recurrences(){return(D.recurrences||[]).filter(r=>r.active&&inUnit(r))}
-function commitFor(m){
-  let fix=0,uni=0,pc=0;
-  for(const r of recurrences())if((!r.startMonth||r.startMonth<=m)&&(!r.endMonth||r.endMonth>=m))fix+=Math.abs(cents(r.amount));
-  for(const c of (D.commitments||[]).filter(inUnit)){const v=cents(c.amount);if(c.kind==='monthly'&&c.startMonth<=m)fix+=v;else if(c.kind==='once'&&c.startMonth===m)uni+=v}
-  for(const p of M.PARC){const k=partAt(p,m);if(k>=1&&k<=p.n&&(p.manual?diffM(p.m0,m)>=0:diffM(p.m0,m)>=(m===CUR?1:0)))pc+=p.valor}
+function commitFor(m,acc){
+  const ok=a=>acc===undefined||(a||'')===acc;let fix=0,uni=0,pc=0;
+  for(const r of recurrences())if((!r.startMonth||r.startMonth<=m)&&(!r.endMonth||r.endMonth>=m)&&ok(itemAccount(r.sourceId)))fix+=Math.abs(cents(r.amount));
+  for(const c of (D.commitments||[]).filter(inUnit)){if(!ok(c.accountId))continue;const v=cents(c.amount);if(c.kind==='monthly'&&c.startMonth<=m)fix+=v;else if(c.kind==='once'&&c.startMonth===m)uni+=v}
+  for(const p of M.PARC){if(!ok(p.acc))continue;const k=partAt(p,m);if(k>=1&&k<=p.n&&(p.manual?diffM(p.m0,m)>=0:diffM(p.m0,m)>=(m===CUR?1:0)))pc+=p.valor}
   return{fix,uni,pc,committed:fix+uni+pc}
 }
 function model(){
@@ -314,19 +332,25 @@ function balances(){
 function render(){
   model();
   $('#mLabel').textContent=cap(mLong(VIEW));
-  const s=stats(VIEW),bal=M.bal;
-  $('#kSaldo').textContent=bal.total!=null?R(bal.total):'Não informado';$('#kSaldo').className=bal.total<0?'neg':'';
-  $('#btnSaldo').textContent=bal.total!=null?'Ajustar':'Informar';
-  $('#kSaldoD').textContent=bal.total!=null?(bal.missing.length?'sem saldo de '+bal.missing.join(', '):bal.list.length+(bal.list.length>1?' contas':' conta')+', com os extratos importados'):'informe para prever o caixa';
-  const lbl=VIEW===CUR?'neste mês':'em '+mShort(VIEW);
-  $('#kEntL').textContent='Entradas '+lbl;$('#kEnt').textContent=R(s.ent);
-  $('#kEntD').textContent=M.past.length?'média de '+M.past.map(mShort).reverse().join(', ')+': '+R0(M.ENT):'';
-  $('#kSaiL').textContent='Saídas '+lbl;$('#kSai').textContent=R(s.sai);
-  const res=s.ent-s.sai;$('#kSaiD').innerHTML='resultado <strong class="'+(res<0?'neg':'pos')+'">'+esc(R(res))+'</strong>';
-  const nx=addM(CUR,1),cn=commitFor(nx);
-  $('#kNxL').textContent='Já comprometido em '+ML[+nx.slice(5)-1];$('#kNx').textContent=R(cn.committed);
-  $('#kNxD').textContent='fixas '+R0(cn.fix)+' · parcelas '+R0(cn.pc)+(cn.uni?' · outros '+R0(cn.uni):'');
+  renderAccounts();
   alerts();headline();drawChart();renderCmp();renderTx();renderCats();renderParc();renderInv();
+}
+function renderAccounts(){
+  const s=stats(VIEW),bal=M.bal,nx=addM(CUR,1),lbl=VIEW===CUR?'neste mês':'em '+mShort(VIEW);
+  $('#thEnt').textContent='Entradas '+lbl;$('#thSai').textContent='Saídas '+lbl;$('#thNx').textContent='Já comprometido em '+ML[+nx.slice(5)-1];
+  $('#btnSaldo').textContent=bal.total!=null?'Ajustar saldos':'Informar saldos';
+  const cn=commitFor(nx),res=s.ent-s.sai,cell=(l,v,sub,cls)=>`<td data-l="${esc(l)}" class="r"><b class="${cls||''}">${esc(v)}</b>${sub?'<small>'+esc(sub)+'</small>':''}</td>`;
+  const brk=c=>[c.fix?'fixas '+R0(c.fix):'',c.pc?'parcelas '+R0(c.pc):'',c.uni?'pontuais '+R0(c.uni):''].filter(Boolean).join(' · ');
+  let h=`<tr class="tot"><td data-l=""><b>Empresa</b><small>resultado do mês: gasto de verdade</small></td>`+cell('Saldo',bal.total!=null?R(bal.total):'—',bal.missing.length?'sem saldo de '+bal.missing.join(', '):'',bal.total<0?'neg':'')+cell($('#thEnt').textContent,R(s.ent),M.ENT?'média '+R0(M.ENT):'','pos')+cell($('#thSai').textContent,R(s.sai),'resultado '+R(res),'')+cell($('#thNx').textContent,R(cn.committed),brk(cn),'')+'</tr>';
+  let attributed=0;
+  for(const x of bal.list){const a=x.a;const bank=ITEMS.filter(e=>e.account===a.name&&e.doc?.kind==='bank'&&ymOf(e.date)===VIEW);
+    const ent=bank.reduce((t,e)=>t+(e.v>0?e.v:0),0),sai=bank.reduce((t,e)=>t-(e.v<0?e.v:0),0),fat=bank.filter(e=>e.v<0&&e.out==='pagamento de fatura').reduce((t,e)=>t-e.v,0);
+    const c=commitFor(nx,a.id);attributed+=c.committed;
+    h+=`<tr><td data-l=""><b>${esc(a.name)}</b><small>${x.lastDate?'extrato até '+fmtD(x.lastDate):'sem extrato importado'}</small></td>`+cell('Saldo',x.cur!=null?R(x.cur):'Não informado',x.b?'base '+fmtD(x.b.baseDate):'',x.cur<0?'neg':'')+cell($('#thEnt').textContent,R(ent),'','pos')+cell($('#thSai').textContent,R(sai),fat?'inclui faturas pagas '+R0(fat):'','')+cell($('#thNx').textContent,R(c.committed),brk(c),'')+'</tr>'}
+  const rest=commitFor(nx,'');if(rest.committed)h+=`<tr><td data-l=""><b>Sem conta definida</b><small>escolha a conta nos compromissos</small></td><td data-l="Saldo" class="r"></td><td data-l="" class="r"></td><td data-l="" class="r"></td>`+cell($('#thNx').textContent,R(rest.committed),brk(rest),'')+'</tr>';
+  $('#accTable tbody').innerHTML=h;
+  $('#accSub').textContent=bal.total!=null?'saldo total '+R(bal.total):'';
+  $('#accNote').textContent='Nas contas aparece o movimento do extrato, inclusive pagamento de fatura e transferência entre contas. Na linha Empresa conta o gasto de verdade: compras do cartão no mês da fatura, sem pagamento de fatura e sem transferência entre contas.';
 }
 function alerts(){
   const A=[];const bal=M.bal;
@@ -378,13 +402,13 @@ function drawChart(){
 const ro=new ResizeObserver(drawChart);ro.observe(fig);
 
 function renderCmp(){
-  const L=[];
-  for(const c of (D.commitments||[]).filter(inUnit)){if(c.kind==='installment')continue;L.push({id:c.id,src:'m',nome:c.description,v:cents(c.amount),desc:c.kind==='monthly'?'todo mês, dia '+c.day+(c.startMonth>CUR?' · a partir de '+mShort(c.startMonth):''):'uma vez, '+pad(c.day)+'/'+c.startMonth.slice(5)+'/'+c.startMonth.slice(0,4),cat:c.category})}
-  for(const r of recurrences()){if(r.endMonth&&r.endMonth<CUR)continue;L.push({id:r.id,src:'r',nome:r.description,v:Math.abs(cents(r.amount)),desc:'todo mês, dia '+r.day+(r.endMonth?' · até '+mShort(r.endMonth):'')+' · do extrato',cat:r.category})}
+  const L=[],accName=id=>(D.accounts||[]).find(a=>a.id===id)?.name||'';
+  for(const c of (D.commitments||[]).filter(inUnit)){if(c.kind==='installment')continue;const an=accName(c.accountId);L.push({id:c.id,src:'m',nome:c.description,v:cents(c.amount),desc:(c.kind==='monthly'?'Fixa · todo mês, dia '+c.day+(c.startMonth>CUR?' · a partir de '+mShort(c.startMonth):''):'Uma vez · '+pad(c.day)+'/'+c.startMonth.slice(5)+'/'+c.startMonth.slice(0,4))+(an?' · sai do '+an:' · conta não definida'),cat:c.category})}
+  for(const r of recurrences()){if(r.endMonth&&r.endMonth<CUR)continue;const an=accName(itemAccount(r.sourceId));L.push({id:r.id,src:'r',nome:r.description,v:Math.abs(cents(r.amount)),desc:'Fixa · todo mês, dia '+r.day+(r.endMonth?' · até '+mShort(r.endMonth):'')+(an?' · sai do '+an:'')+' · veio do extrato',cat:r.category})}
   L.sort((a,b)=>b.v-a.v);
   const fix=commitFor(addM(CUR,1)).fix;
-  $('#cmpTot').textContent=fix?R0(fix)+' fixos por mês':'';
-  $('#cmpList').innerHTML=L.length?L.map(c=>`<div class="cmp"><div><b>${esc(c.nome)}</b><small>${esc(c.desc)}${c.cat?' · '+esc(c.cat):''}</small></div><span class="num">${esc(R(c.v))}</span>${c.src==='m'?`<button class="btn sm" data-delc="${esc(c.id)}">Excluir</button>`:`<button class="btn sm" data-pause="${esc(c.id)}">Pausar</button>`}</div>`).join(''):'<p class="empty">Nenhum compromisso ainda.</p>';
+  $('#cmpTot').textContent=fix?R0(fix)+' em despesas fixas por mês':'';
+  $('#cmpList').innerHTML=L.length?L.map(c=>`<div class="cmp"><div><b>${esc(c.nome)}</b><small>${esc(c.desc)}${c.cat?' · '+esc(c.cat):''}</small></div><span class="num">${esc(R(c.v))}</span>${c.src==='m'?`<button class="btn sm" data-delc="${esc(c.id)}">Excluir</button>`:`<button class="btn sm" data-pause="${esc(c.id)}">Pausar</button>`}</div>`).join(''):'<p class="empty">Nenhuma despesa fixa ainda.</p>';
 }
 let PICK='';
 function invoices(){
@@ -438,6 +462,8 @@ async function linkPayment(it,docKey){
   if(docKey)await call('saveTransactionLink',{itemId:it.id,kind:'invoice',documentKey:docKey});
   if(it.type!=='cardpayment')await call('classify',{id:it.id,unit:it.unit||(UNIT==='all'?'bike':UNIT),type:'cardpayment',category:'Cartões',recurring:false});
   if(!docKey)return;
+  const cid=(D.links||[]).find(l=>l.documentKey===docKey)?.cardId,card=(D.cards||[]).find(c=>c.id===cid),acc=accIdByName(it.account);
+  if(card&&!card.accountId&&acc)try{await call('saveRegistry',{kind:'card',id:card.id,name:card.name,unit:card.unit||'',closingDay:+card.closingDay,dueDay:+card.dueDay,creditLimit:+card.creditLimit||0,accountId:acc})}catch(e){}
   prepare(await call('list'));const inv=invoices().find(i=>i.id===docKey);
   if(inv&&(inv.k==='paid'||inv.k==='over'))try{await call('invoiceStatus',{documentKey:docKey,status:inv.open?'open':'closed',paid:true,dueDate:inv.due,note:''})}catch(e){}
 }
@@ -480,7 +506,7 @@ $('#btnSaldo').onclick=()=>{const f=$('#balForm');f.hidden=!f.hidden;if(f.hidden
   $('#balRows').innerHTML=M.bal.list.map(x=>`<div class="balrow" data-acc="${esc(x.a.id)}"><b>${esc(x.a.name)}</b><label class="f">Saldo (R$)<input inputmode="decimal" value="${x.b?esc((cents(x.b.openingBalance)/100).toLocaleString('pt-BR',{minimumFractionDigits:2})):''}" placeholder="0,00"></label><label class="f">Em<input type="date" value="${esc(x.b?.baseDate||x.lastDate||TD)}"></label></div>`).join('')||'<p class="hint">Nenhuma conta cadastrada. Cadastre em Controle de Gastos › Cadastros financeiros.</p>'};
 $('#balForm').onsubmit=async e=>{e.preventDefault();const reqs=[];
   for(const r of document.querySelectorAll('#balRows .balrow')){const [v,d]=r.querySelectorAll('input');const c=parseMoney(v.value);if(isNaN(c)||!d.value)continue;reqs.push(call('setAccountBalance',{accountId:r.dataset.acc,baseDate:d.value,openingBalance:c/100}))}
-  if(!reqs.length)return;try{await Promise.all(reqs);$('#balForm').hidden=true;await reload()}catch(err){$('#kSaldoD').textContent=err.message}};
+  if(!reqs.length)return;try{await Promise.all(reqs);$('#balForm').hidden=true;await reload()}catch(err){$('#accNote').textContent=err.message}};
 
 /* compromissos */
 const PRESETS=[['Pagamento de sócios','monthly','Pagamentos Ex sócios'],['Aluguel','monthly','Aluguel'],['Pagamento de professores','monthly','Pagamento Professores'],['Impostos','monthly','Impostos de Vendas'],['13º salário','once','Salários']];
@@ -490,7 +516,7 @@ $('#chips').innerHTML=PRESETS.map((p,i)=>`<button type="button" class="chip" dat
 $('#chips').onclick=e=>{const b=e.target.closest('[data-pre]');if(!b)return;const p=PRESETS[+b.dataset.pre];$('#cNome').value=p[0];$('#cTipo').value=p[1];if([...$('#cCat').options].some(o=>o.value===p[2]))$('#cCat').value=p[2];syncTipo();$('#cValor').focus()};
 $('#cIni').value=addM(CUR,1);
 $('#cmpForm').onsubmit=e=>{e.preventDefault();const v=parseMoney($('#cValor').value);if(!(v>0)){$('#cValor').focus();return}
-  const body={id:'cmt_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),unit:UNIT==='all'?'bike':UNIT,description:$('#cNome').value.trim(),category:$('#cCat').value,amount:v/100,kind:$('#cTipo').value,day:Math.min(31,Math.max(1,+$('#cDia').value||1)),startMonth:$('#cIni').value||CUR,totalParts:+$('#cN').value||0};
+  const body={id:'cmt_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),unit:UNIT==='all'?'bike':UNIT,description:$('#cNome').value.trim(),category:$('#cCat').value,amount:v/100,kind:$('#cTipo').value,day:Math.min(31,Math.max(1,+$('#cDia').value||1)),startMonth:$('#cIni').value||CUR,totalParts:+$('#cN').value||0,accountId:$('#cAcc').value};
   $('#cBtn').disabled=true;act($('#cMsg'),()=>call('commitment',body),'Compromisso adicionado.').then(()=>{$('#cBtn').disabled=false;if(!$('#cMsg').classList.contains('err')){$('#cNome').value='';$('#cValor').value=''}})};
 
 /* ---------- importação (leitura compartilhada com o Controle de Gastos: /finance-import.js) ---------- */
@@ -655,6 +681,7 @@ async function saveImport(sel,rem=[]){
 (async()=>{try{const d=await call('list');prepare(d);
   const kinds=new Map((d.categoryKinds||[]).map(k=>[k.name,k.nature]));
   $('#cCat').innerHTML=(d.categories||[]).filter(c=>kinds.get(c)!=='income'&&!TRANSFER_CATS.has(c)).map(c=>`<option>${esc(c)}</option>`).join('');
+  $('#cAcc').innerHTML=(d.accounts||[]).filter(a=>a.active!==0).map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')+'<option value="">Ainda não sei</option>';
   $('#loading').hidden=true;$('#app').hidden=false;render()}catch(e){fail(e)}})();
 })();
 </script>
