@@ -1876,13 +1876,16 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const hash=validCpf?await sha256(cpf):null;
         const byId=await env.DB.prepare("SELECT id,cpf_hash,evo_member_id,gym_client_id,email,birth_date FROM members WHERE "+(unit==="gym"?"gym_client_id":"evo_member_id")+"=? LIMIT 1").bind(unit==="gym"?String(evoId):evoId).first();
         const byCpf=hash?await env.DB.prepare("SELECT id,cpf_hash,evo_member_id,gym_client_id,email,birth_date FROM members WHERE cpf_hash=? LIMIT 1").bind(hash).first():null;
-        if(byId&&hash&&byId.cpf_hash!==hash)return json({ok:false,error:"CONFLITO_CPF_ID_EVO"},409);
+        // A member created from an EVO id alone carries a provisional "evo-placeholder:" hash: it is not a CPF, so it never conflicts.
+        const placeholderId=!!(byId&&String(byId.cpf_hash||"").startsWith("evo-placeholder:"));
+        if(byId&&hash&&!placeholderId&&byId.cpf_hash!==hash)return json({ok:false,error:"CONFLITO_CPF_ID_EVO"},409);
         if(byId&&byCpf&&byId.id!==byCpf.id)return json({ok:false,error:"CADASTROS_CONFLITANTES"},409);
         const existing=byId||byCpf;
         const linkedId=existing&&(unit==="gym"?existing.gym_client_id:existing.evo_member_id);
         if(linkedId&&String(linkedId)!==String(evoId))return json({ok:false,error:"CPF_VINCULADO_A_OUTRO_EVO"},409);
         let memberId=existing?.id||null;
         if(existing){
+          if(placeholderId&&hash)await env.DB.prepare("UPDATE members SET cpf_hash=?,cpf_last4=? WHERE id=? AND cpf_hash LIKE 'evo-placeholder:%'").bind(hash,cpf.slice(-4),existing.id).run();
           await env.DB.prepare("UPDATE members SET "+(unit==="gym"?"gym_client_id":"evo_member_id")+"=?,first_name=COALESCE(NULLIF(?,''),first_name),last_name=COALESCE(NULLIF(?,''),last_name),email=COALESCE(?,email),birth_date=COALESCE(?,birth_date),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(unit==="gym"?String(evoId):evoId,first,last,email,birth,memberId).run();
         }else if(validCpf){
           const inserted=await env.DB.prepare("INSERT INTO members(evo_member_id,gym_client_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date) VALUES(?,?,?,?,?,?,?,?)").bind(unit==="bike"?evoId:null,unit==="gym"?String(evoId):null,hash,cpf.slice(-4),first,last,email,birth).run();

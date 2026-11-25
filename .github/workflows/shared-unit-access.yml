@@ -10,6 +10,7 @@ on:
       - 'lib/admin-gym-ranking.mjs'
       - 'tests/checkin-*.test.mjs'
       - 'tests/aula-experimental.test.mjs'
+      - 'tests/evo-student-sync-placeholder.test.mjs'
       - 'lib/aula-experimental.mjs'
       - 'lib/useful-links-routes.mjs'
       - 'aula-experimental/**'
@@ -37,5 +38,6 @@ jobs:
           node-version: '24'
       - run: node tests/pop-live-operation.test.mjs
       - run: node --test tests/aula-experimental.test.mjs
+      - run: node --test tests/evo-student-sync-placeholder.test.mjs
       - run: node --test tests/shared-unit-access.test.mjs tests/member-identity.test.mjs tests/promotion-eligibility.test.mjs tests/student-lucky-numbers.test.mjs tests/reservation-sync.test.mjs
       - run: node --test tests/checkin-unit-race.test.mjs tests/checkin-highlights.test.mjs tests/checkin-mirror.test.mjs tests/checkin-layout.test.mjs tests/scheduled-isolation.test.mjs tests/reservation-invalid-session.test.mjs tests/partner-media.test.mjs
