@@ -499,7 +499,8 @@ let IMP=null;
 const detectParts=t=>{const m=String(t||'').match(/(?:parcela\s*)?(\d{1,3})\s*(?:de|\/|of)\s*(\d{1,3})(?:\s*parcela[s]?)?/i);if(!m)return null;const c=+m[1],n=+m[2];return c>=1&&n>=2&&c<=n&&n<=120?{c,n}:null};
 const cleanKey=v=>String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/(?:PARCELA\s*)?\b\d{1,3}\s*(?:\/|DE)\s*\d{1,3}\b/g,'').replace(/[^A-Z0-9]/g,'');
 async function sha(s){const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return[...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('')}
-const txId=(account,x)=>sha([account,x.fid||'',x.date,FI().norm(x.description),Math.round(x.amount*100)].join('|'));
+/* Mesmo id do Controle de Gastos. Em fatura, a parcela entra no id: senão a 02/06 teria o mesmo id da 01/06 do mês anterior e seria descartada. */
+const txId=(account,x,card)=>{const p=card?detectParts(x.description):null;return sha([account,x.fid||'',x.date,FI().norm(x.description),Math.round(x.amount*100)].join('|')+(p?'|parcela '+p.c+'/'+p.n:''))};
 function sources(){
   const L=[];
   for(const a of (D.accounts||[]).filter(a=>a.active!==0))L.push({v:'a:'+a.id,label:'Extrato · '+a.name,kind:'bank',acc:a});
@@ -567,17 +568,23 @@ async function readImport(files){
   if(!valid.length){iMsg('Não encontrei lançamentos neste arquivo. Confira se escolheu a conta ou o cartão certo.',true);return}
   const known=new Set(ITEMS.map(e=>e.id));
   const docKeys=new Set((D.documents||[]).filter(d=>d.kind==='card'&&d.paymentMonth===pm&&(((D.links||[]).some(l=>l.documentKey===d.id&&l.cardId===s.card?.id))||String(d.account).toUpperCase()===account.toUpperCase())).map(d=>d.id));
-  const existing=kind==='card'?ITEMS.filter(e=>e.doc&&docKeys.has(e.doc.id)):[];
+  const inDoc=new Set((D.docItems||[]).filter(l=>docKeys.has(l.documentKey)).map(l=>l.itemId));
+  const existing=kind==='card'?ITEMS.filter(e=>inDoc.has(e.id)):[],used=new Set();
   const L=[];
   for(const x of valid){
-    const id=await txId(account,x);const part=detectParts(x.description);const key=cleanKey(x.description),val=Math.abs(x.amount);
-    let st='new',label='Novo';
-    if(known.has(id)){st='dup';label='Já importado'}
-    else if(kind==='card'&&existing.some(e=>cleanKey(e.description)===key&&Math.abs(Math.abs(e.amount)-val)<.011&&JSON.stringify(detectParts(e.description))===JSON.stringify(part))){st='dup';label='Já está nesta fatura'}
+    const id=await txId(account,x,kind==='card');const part=detectParts(x.description);const key=cleanKey(x.description),val=Math.abs(x.amount);
+    let st='new',label='Novo',match=null;
+    // Na mesma fatura, a compra já importada é reconhecida pelo id, ou pela mesma data e valor (a versão lida por imagem pode ter a descrição com erro).
+    if(kind==='card'){const free=existing.filter(e=>!used.has(e.id)&&e.date===x.date&&Math.abs(Math.abs(e.amount)-val)<.005);match=existing.find(e=>!used.has(e.id)&&e.id===id)||free.find(e=>cleanKey(e.description)===key)||free[0]||null}
+    if(match){used.add(match.id);st='dup';label='Já está nesta fatura'}
+    else if(known.has(id)){st='dup';label='Já importado'}
     else if(part&&kind==='card'){const tracked=trackedInstallment(key,val,part,pm);st='parc';label='Parcela '+part.c+' de '+part.n+(tracked?' · já prevista':'')}
     else if(kind==='bank'&&FI().bankCardPayment(x)){st='pay';label='Pagamento de fatura?'}
-    L.push({...x,id,part,st,label,on:st!=='dup'});
+    L.push({...x,id,part,st,label,on:st!=='dup',match:match?.id||''});
   }
+  // Fatura fechada que confere com o total substitui a versão parcial: o que só existia na parcial é proposto para sair.
+  const fileSum=L.reduce((a,x)=>a-x.amount,0);
+  if(kind==='card'&&expectedTotal!=null&&Math.abs(fileSum-expectedTotal)<.011)for(const e of existing){if(used.has(e.id))continue;L.push({date:e.date,description:e.description,amount:e.amount,id:e.id,part:null,st:'old',label:'Só na versão parcial · sai da fatura',on:true,match:''})}
   IMP={kind,account,unit,cardId:s.card?.id||'',accId:s.acc?.id||'',pm,status:$('#iSt').value,format,expectedTotal,ocr,bal,skipped,rows:L};
   iMsg('');renderImp();
 }
@@ -586,53 +593,61 @@ function trackedInstallment(key,val,part,pm){
 }
 function impRows(){return IMP.rows.map((x,i)=>{if(!IMP.ocr)return x;const tr=document.querySelector(`#iRows tr[data-i="${i}"]`);if(!tr)return x;const [d,ds,v]=tr.querySelectorAll('input:not([type=checkbox])');const val=parseMoney(v.value);return{...x,date:d.value,description:ds.value.trim(),amount:isNaN(val)?NaN:-Math.abs(val)/100}})}
 function renderImp(){
-  const I=IMP;const tg={new:'',dup:'m',parc:'g',pay:'w'};
-  $('#iRows').innerHTML=I.rows.map((x,i)=>`<tr data-i="${i}" class="${x.on?'':'off'}"><td><input type="checkbox" data-ion="${i}"${x.on?' checked':''} aria-label="Incluir"></td>`+(I.ocr?`<td><input type="date" value="${esc(x.date)}" aria-label="Data"></td><td><input value="${esc(x.description)}" aria-label="Descrição"></td><td class="r"><input inputmode="decimal" style="max-width:8em;text-align:right" value="${esc((Math.abs(x.amount)).toLocaleString('pt-BR',{minimumFractionDigits:2}))}" aria-label="Valor"></td>`:`<td class="num">${fmtD(x.date)}</td><td>${esc(x.description)}</td><td class="r num ${x.amount>0?'pos':''}">${esc(R(Math.round(x.amount*100)))}</td>`)+`<td><span class="tag ${tg[x.st]}">${esc(x.label)}</span></td></tr>`).join('');
+  const I=IMP;const tg={new:'',dup:'m',parc:'g',pay:'w',old:'b'};
+  $('#iRows').innerHTML=I.rows.map((x,i)=>`<tr data-i="${i}" class="${x.on?'':'off'}"><td><input type="checkbox" data-ion="${i}"${x.on?' checked':''} aria-label="${x.st==='old'?'Remover':'Incluir'}"></td>`+(I.ocr?`<td><input type="date" value="${esc(x.date)}" aria-label="Data"></td><td><input value="${esc(x.description)}" aria-label="Descrição"></td><td class="r"><input inputmode="decimal" style="max-width:8em;text-align:right" value="${esc((Math.abs(x.amount)).toLocaleString('pt-BR',{minimumFractionDigits:2}))}" aria-label="Valor"></td>`:`<td class="num">${fmtD(x.date)}</td><td>${esc(x.description)}</td><td class="r num ${x.amount>0?'pos':''}">${esc(R(Math.round(x.amount*100)))}</td>`)+`<td><span class="tag ${tg[x.st]}">${esc(x.label)}</span></td></tr>`).join('');
   const c=I.rows.reduce((a,x)=>(a[x.st]=(a[x.st]||0)+1,a),{});
-  $('#iInfo').textContent=I.format+' · '+I.rows.length+' lançamentos'+(c.dup?' · '+c.dup+' já importados (desmarcados)':'')+(c.parc?' · '+c.parc+' parcelas':'')+(c.pay?' · '+c.pay+' possível pagamento de fatura, que fica fora da conta':'')+(I.skipped?' · '+I.skipped+' linhas de saldo ignoradas':'')+(I.kind==='card'?' · gastos entram em '+mLong(I.pm):'');
+  $('#iInfo').textContent=I.format+' · '+I.rows.length+' lançamentos'+(c.dup?' · '+c.dup+' já importados (desmarcados)':'')+(c.old?' · '+c.old+' da versão parcial que não estão na fatura fechada (marcados para sair)':'')+(c.parc?' · '+c.parc+' parcelas':'')+(c.pay?' · '+c.pay+' possível pagamento de fatura, que fica fora da conta':'')+(I.skipped?' · '+I.skipped+' linhas de saldo ignoradas':'')+(I.kind==='card'?' · gastos entram em '+mLong(I.pm):'');
   $('#iOcr').hidden=!I.ocr;$('#iReview').hidden=false;impSum();
 }
-function impSum(){
-  const I=IMP;const sel=impRows().filter((x,i)=>I.rows[i].on);
-  const out=sel.reduce((a,x)=>a+(x.amount<0?-x.amount:0),0),inn=sel.reduce((a,x)=>a+(x.amount>0?x.amount:0),0);
-  let t=(I.kind==='card'?'compras ':'saídas ')+R(Math.round(out*100))+(inn?' · entradas '+R(Math.round(inn*100)):'');
+function impCalc(){
+  const I=IMP,rows=impRows();
+  const sel=rows.filter((x,i)=>I.rows[i].on&&I.rows[i].st!=='old');
+  const rem=I.rows.filter(x=>x.st==='old'&&x.on);
+  // Fatura: confere o que ela vai ter depois de salvar (o que já estava + o que entra - o que sai). Extrato: só o que entra.
+  const after=I.kind==='card'?rows.filter((x,i)=>I.rows[i].st==='dup'||(I.rows[i].st==='old'?!I.rows[i].on:I.rows[i].on)):sel;
+  const out=after.reduce((a,x)=>a+(x.amount<0?-x.amount:0),0),inn=after.reduce((a,x)=>a+(x.amount>0?x.amount:0),0);
   const ref=I.ocr?parseMoney($('#iOfficial').value)/100:I.expectedTotal;
-  if(ref!=null&&!isNaN(ref)&&ref>0){const ok=Math.abs(out-inn-ref)<.011||Math.abs(out-ref)<.011;t+=` · total da fatura ${R(Math.round(ref*100))} `+(ok?'✓ confere':'⚠ não confere')}
+  const has=ref!=null&&!isNaN(ref)&&ref>0,matches=has&&(Math.abs(out-inn-ref)<.011||Math.abs(out-ref)<.011);
+  return{sel,rem,out,inn,ref,has,matches};
+}
+function impSum(){
+  const I=IMP,c=impCalc();
+  let t=(I.kind==='card'?'fatura depois de salvar: compras ':'saídas ')+R(Math.round(c.out*100))+(c.inn?' · '+(I.kind==='card'?'créditos ':'entradas ')+R(Math.round(c.inn*100)):'');
+  if(c.has)t+=` · total da fatura ${R(Math.round(c.ref*100))} `+(c.matches?'✓ confere':'⚠ não confere');
   $('#iSum').innerHTML=esc(t).replace('✓ confere','<span class="ok">✓ confere</span>').replace('⚠ não confere','<span class="bad">⚠ não confere</span>');
-  $('#iGo').textContent='Importar '+sel.length+' lançamento'+(sel.length===1?'':'s');$('#iGo').disabled=!sel.length;
+  $('#iGo').textContent=(c.sel.length?'Importar '+c.sel.length+' lançamento'+(c.sel.length===1?'':'s'):'Salvar')+(c.rem.length?' e tirar '+c.rem.length+' da versão parcial':'');$('#iGo').disabled=!c.sel.length&&!c.rem.length;
 }
 $('#iRows').addEventListener('change',e=>{const c=e.target.closest('[data-ion]');if(c){IMP.rows[+c.dataset.ion].on=c.checked;c.closest('tr').classList.toggle('off',!c.checked)}impSum()});
 $('#iRows').addEventListener('input',()=>impSum());
 $('#iOfficial').addEventListener('input',()=>impSum());
 $('#iCancel').onclick=()=>{cancelImp();iMsg('')};
 $('#iGo').onclick=e=>{const b=e.currentTarget;const I=IMP;if(!I)return;
-  const all=impRows();const sel=all.filter((x,i)=>I.rows[i].on);
-  if(sel.some(x=>!/^\d{4}-\d{2}-\d{2}$/.test(x.date)||!x.description||!Number.isFinite(x.amount)||!x.amount)){iMsg('Confira data, descrição e valor dos lançamentos marcados.',true);return}
-  const out=sel.reduce((a,x)=>a+(x.amount<0?-x.amount:0),0),inn=sel.reduce((a,x)=>a+(x.amount>0?x.amount:0),0);
-  const ref=I.ocr?parseMoney($('#iOfficial').value)/100:I.expectedTotal;const matches=ref!=null&&!isNaN(ref)&&(Math.abs(out-inn-ref)<.011||Math.abs(out-ref)<.011);
-  if(I.ocr&&!matches){iMsg('Na leitura de imagem, a soma precisa conferir com o total da fatura no app do banco. Corrija os valores ou marque o que faltou.',true);return}
-  if(/mercado pago/i.test(I.format)&&!matches){iMsg('A soma não confere com o total da fatura Mercado Pago. Nada foi importado.',true);return}
-  if(ref!=null&&!matches&&!b.dataset.armed){b.dataset.armed=1;b.textContent='A soma não confere. Importar mesmo assim?';setTimeout(()=>{delete b.dataset.armed;if(IMP)impSum()},5000);return}
-  delete b.dataset.armed;saveImport(sel);
+  const c=impCalc();
+  if(c.sel.some(x=>!/^\d{4}-\d{2}-\d{2}$/.test(x.date)||!x.description||!Number.isFinite(x.amount)||!x.amount)){iMsg('Confira data, descrição e valor dos lançamentos marcados.',true);return}
+  if(I.ocr&&!c.matches){iMsg('Na leitura de imagem, a soma precisa conferir com o total da fatura no app do banco. Corrija os valores ou marque o que faltou.',true);return}
+  if(/mercado pago/i.test(I.format)&&!c.matches){iMsg('A soma não confere com o total da fatura Mercado Pago. Nada foi importado.',true);return}
+  if(c.ref!=null&&!c.matches&&!b.dataset.armed){b.dataset.armed=1;b.textContent='A soma não confere. Salvar mesmo assim?';setTimeout(()=>{delete b.dataset.armed;if(IMP)impSum()},5000);return}
+  delete b.dataset.armed;saveImport(c.sel,c.rem);
 };
-async function saveImport(sel){
+async function saveImport(sel,rem=[]){
   const I=IMP;$('#iGo').disabled=true;iMsg('Salvando…');
   try{
-    const rows=[];for(const x of sel)rows.push({id:await txId(I.account,x),date:x.date,description:x.description,amount:x.amount,fid:x.fid||''});
+    const rows=[];for(const x of sel)rows.push({id:await txId(I.account,x,I.kind==='card'),date:x.date,description:x.description,amount:x.amount,fid:x.fid||''});
     for(let i=0;i<rows.length;i+=200)await call('import',{account:I.account,unit:I.unit,kind:I.kind,status:I.kind==='card'?I.status:'',paymentMonth:I.kind==='card'?I.pm:'',rows:rows.slice(i,i+200)});
     if(I.kind==='card'&&I.cardId)await call('linkInvoice',{documentKey:['card',I.account.toUpperCase(),I.pm,I.unit||'indefinida'].join('|'),cardId:I.cardId});
     let balMsg='';
     if(I.bal&&I.accId&&Number.isFinite(I.bal.value)&&I.bal.date){const cur=(D.accountBalances||[]).find(b=>b.accountId===I.accId);if(!cur||I.bal.date>=cur.baseDate){await call('setAccountBalance',{accountId:I.accId,baseDate:I.bal.date,openingBalance:I.bal.value});balMsg=' Saldo da conta atualizado pelo OFX.'}}
+    let nr=0;for(const x of rem){try{await call('ignoreTransaction',{id:x.id});nr++}catch(e){}}
     prepare(await call('list'));
     let np=0;
-    if(I.kind==='card'){for(const r of rows){const p=detectParts(r.description);if(!p)continue;const it=ITEMS.find(e=>e.id===r.id);if(!it||!it.classified||it.v>=0)continue;if((D.installments||[]).some(t=>t.sourceId===r.id)||trackedInstallment(cleanKey(r.description),Math.abs(r.amount),p,I.pm))continue;
+    if(I.kind==='card'){const cand=rows.concat(I.rows.filter(x=>x.st==='dup'&&x.match&&x.part).map(x=>({id:x.match,description:x.description,amount:x.amount})));for(const r of cand){const p=detectParts(r.description);if(!p)continue;const it=ITEMS.find(e=>e.id===r.id);if(!it||!it.classified||it.v>=0)continue;if((D.installments||[]).some(t=>t.sourceId===r.id)||trackedInstallment(cleanKey(r.description),Math.abs(r.amount),p,I.pm))continue;
       try{await call('installment',{sourceId:r.id,currentPart:p.c,totalParts:p.n,firstMonth:I.pm,enabled:true});np++}catch(e){}}
       if(np)prepare(await call('list'))}
     const ids=new Set(rows.map(r=>r.id));const pend=ITEMS.filter(e=>ids.has(e.id)&&!e.classified&&!e.out).length;
-    VIEW=I.kind==='card'?I.pm:ymOf(rows.map(r=>r.date).sort().pop());
+    VIEW=I.kind==='card'?I.pm:ymOf(rows.map(r=>r.date).sort().pop()||TD);
     FILTER=pend?'pend':'all';[...$('#txFilter').children].forEach(x=>x.setAttribute('aria-pressed',x.dataset.f===FILTER));
     cancelImp();render();
-    iMsg(rows.length+' lançamentos salvos.'+(np?' '+np+' parcela'+(np>1?'s entraram':' entrou')+' na previsão.':'')+(pend?' '+pend+(pend>1?' ficaram':' ficou')+' sem classificação: escolha a categoria na lista abaixo.':'')+balMsg);
+    iMsg(rows.length+' lançamentos salvos.'+(nr?' '+nr+' da versão parcial saíram da fatura.':'')+(np?' '+np+' parcela'+(np>1?'s entraram':' entrou')+' na previsão.':'')+(pend?' '+pend+(pend>1?' ficaram':' ficou')+' sem classificação: escolha a categoria na lista abaixo.':'')+balMsg);
   }catch(e){iMsg('Não consegui salvar: '+e.message+'. Os lançamentos que já tinham entrado não duplicam se você tentar de novo.',true);$('#iGo').disabled=false}
 }
 
