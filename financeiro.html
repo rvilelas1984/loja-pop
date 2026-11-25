@@ -161,6 +161,11 @@
     <p class="hint" id="accNote" style="margin-top:8px"></p>
   </section>
 
+  <section class="panel">
+    <div class="ph"><h3>Principais fontes de receita</h3><span class="hint" id="incomeMonth"></span></div>
+    <div id="incomeSources"></div>
+  </section>
+
   <section class="panel chartp">
     <div class="find"><h2 id="headline"></h2><p id="headsub"></p></div>
     <div class="fig" id="fig"><svg id="chart" role="img" aria-label="Saídas por mês, reais e previstas"></svg></div>
@@ -270,13 +275,16 @@ const inUnit=x=>UNIT==='all'||!x.unit||x.unit===UNIT;
 const items=()=>ITEMS.filter(inUnit);
 
 function stats(m){
-  let ent=0,sai=0,n=0,pendIn=0;const cat={};
+  let ent=0,sai=0,n=0,pendIn=0;const cat={}, incomeSources=new Map();
   for(const e of items()){
     if(e.comp!==m)continue;n++;if(e.out)continue;
-    if(e.v>0){if(e.type==='income')ent+=e.v;else if(e.type==='refund'){sai-=e.v;cat[e.category]=(cat[e.category]||0)-e.v}else pendIn+=e.v}
+    if(e.v>0){if(e.type==='income'){
+      ent+=e.v;
+      incomeSources.set(e.category,(incomeSources.get(e.category)||0)+e.v);
+    }else if(e.type==='refund'){sai-=e.v;cat[e.category]=(cat[e.category]||0)-e.v}else pendIn+=e.v}
     else{sai-=e.v;cat[e.category]=(cat[e.category]||0)-e.v}
   }
-  return{ent,sai,n,pendIn,cat}
+  return{ent,sai,n,pendIn,cat,incomeSources}
 }
 /* De qual conta sai cada coisa: extrato pela conta do lançamento; cartão pela conta cadastrada no cartão ou pela que paga as faturas dele. */
 function accIdByName(n){return(D.accounts||[]).find(a=>a.name===n)?.id||''}
@@ -338,6 +346,11 @@ function render(){
 }
 function renderAccounts(){
   const s=stats(VIEW),bal=M.bal,nx=addM(CUR,1),lbl=VIEW===CUR?'neste mês':'em '+mShort(VIEW);
+  const sources=Array.from(s.incomeSources).sort((a,b)=>b[1]-a[1]);
+  $('#incomeMonth').textContent=cap(mLong(VIEW))+' · Total '+R(s.ent);
+  $('#incomeSources').innerHTML=sources.length?sources.map(([name,value])=>
+    `<div class="cat"><span>${esc(name)}</span><div class="bar"><i style="width:${(100*value/s.ent).toFixed(2)}%"></i></div><span class="num">${esc(R(value))}</span></div>`
+  ).join(''):'<p class="empty">Nenhuma receita classificada neste mês.</p>';
   $('#thEnt').textContent='Entradas '+lbl;$('#thSai').textContent='Saídas '+lbl;$('#thNx').textContent='Já comprometido em '+ML[+nx.slice(5)-1];
   $('#btnSaldo').textContent=bal.total!=null?'Ajustar saldos':'Informar saldos';
   const cn=commitFor(nx),res=s.ent-s.sai,cell=(l,v,sub,cls)=>`<td data-l="${esc(l)}" class="r"><b class="${cls||''}">${esc(v)}</b>${sub?'<small>'+esc(sub)+'</small>':''}</td>`;
