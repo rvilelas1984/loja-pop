@@ -201,7 +201,7 @@ async function parseMercadoPagoPdf(f,opts={}){
    if(!description||!Number.isFinite(value)||value<=0)continue;
    let yy=year;if(Number(match[2])>month)yy--;
    const date=yy+'-'+match[2]+'-'+match[1];
-   rows.push({date,description,amount:-value});
+   rows.push({date,description,amount:/reembolso|estorno|devolu|cr[e\u00e9]dito/i.test(description)?value:-value});
   }
  }
  if(!foundBrand||!foundTable)throw Error('Este PDF não foi reconhecido como fatura Mercado Pago. Nenhum lançamento foi importado.');
