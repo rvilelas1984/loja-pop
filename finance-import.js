@@ -78,38 +78,51 @@ async function parsePdf(f,opts={}){
  if(!window.pdfjsLib)await new Promise((ok,fail)=>{const el=document.createElement('script');el.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';el.onload=ok;el.onerror=()=>fail(Error('Falha ao carregar leitor PDF'));document.head.appendChild(el)});
  const lib=window.pdfjsLib;lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
  const pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
- const pay=(opts.paymentMonth||''),pm=Number(pay.slice(5)),py=Number(pay.slice(0,4)),rows=[];let total=null;
+ const pay=(opts.paymentMonth||''),pm=Number(pay.slice(5)),py=Number(pay.slice(0,4)),rows=[],future=[];let total=null;
  const normPdf=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
  for(let p=1;p<=pdf.numPages;p++){
   const page=await pdf.getPage(p),tc=await page.getTextContent(),width=page.view[2]-page.view[0];
   const parts=tc.items.map(i=>({x:i.transform[4],y:i.transform[5],t:String(i.str||'').trim()})).filter(i=>i.t);
-  const left=parts.filter(i=>i.x<width*.57);
-  const groups=[];
-  for(const i of left.sort((a,b)=>b.y-a.y||a.x-b.x)){let g=groups.find(g=>Math.abs(g.y-i.y)<=5);if(!g){g={y:i.y,parts:[]};groups.push(g)}g.parts.push(i)}
-  const lines=groups.sort((a,b)=>b.y-a.y).map(g=>({y:g.y,parts:g.parts.sort((a,b)=>a.x-b.x),text:g.parts.map(i=>i.t).join(' ').replace(/\s+/g,' ').trim()}));
-  const section=lines.find(l=>{const n=normPdf(l.text);return n.includes('lancamentos')&&n.includes('compras')&&n.includes('saques')});
-  const end=lines.find(l=>normPdf(l.text).includes('lancamentos no cartao'));
-  const future=lines.find(l=>normPdf(l.text).includes('compras parceladas'));
-  // PDF.js coordinates are bottom-up. The purchase heading has higher Y than purchases.
-  // Fallback: only allow rows in a table headed DATA / ESTABELECIMENTO / VALOR EM R$.
-  const header=lines.find(l=>l.text.includes('ESTABELECIMENTO')&&l.text.includes('DATA')&&l.text.includes('VALOR'));
-  const upper=section?.y??header?.y,lower=end?.y??future?.y;
-  if(upper===undefined||lower===undefined||upper<=lower)continue;
-  for(const line of lines.filter(l=>l.y<upper&&l.y>lower)){
-   const datePart=line.parts.find(i=>/^\d{2}\/\d{2}(?:\/\d{2,4})?$/.test(i.t));
-   if(!datePart||datePart.x>width*.3)continue;
-   const moneyParts=line.parts.filter(i=>/^-?(?:R\$\s*)?[\d.]+,\d{2}$/.test(i.t)&&i.x>datePart.x+90&&i.x<width*.57);
-   if(moneyParts.length!==1)continue;
-   const amountPart=moneyParts[0],desc=line.parts.filter(i=>i.x>datePart.x+10&&i.x<amountPart.x).map(i=>i.t).join(' ').trim();
-   if(desc.length<3||/^(principal|total|saldo|limite|pagamento)/i.test(desc))continue;
-   const d=datePart.t.split('/');let year=d[2]?Number(d[2]):py;if(year<100)year+=2000;if(!d[2]&&Number(d[1])>pm)year--;
-   const value=Math.abs(num(amountPart.t));if(!Number.isFinite(value)||value<=0)continue;
-   rows.push({date:year+'-'+d[1]+'-'+d[0],description:desc,amount:/\b(estorno|credito|crédito|devolucao|devolução)\b/i.test(desc)||amountPart.t.startsWith('-')?value:-value});
+  // A fatura do Itaú pode ter duas colunas por página: a lista de compras começa na esquerda e pode continuar na direita.
+  // Cada coluna é lida de cima para baixo; só entram linhas do bloco "Lançamentos: compras e saques" (ou de uma tabela
+  // DATA / ESTABELECIMENTO / VALOR que continua a lista), nunca de "Compras parceladas - próximas faturas" nem de "Pagamentos efetuados".
+  const split=width*.57;
+  for(const [col,right] of [[parts.filter(i=>i.x<split),split],[parts.filter(i=>i.x>=split),width]]){
+   if(!col.length)continue;
+   const groups=[];
+   for(const i of col.sort((a,b)=>b.y-a.y||a.x-b.x)){let g=groups.find(g=>Math.abs(g.y-i.y)<=5);if(!g){g={y:i.y,parts:[]};groups.push(g)}g.parts.push(i)}
+   const lines=groups.sort((a,b)=>b.y-a.y).map(g=>({y:g.y,parts:g.parts.sort((a,b)=>a.x-b.x),text:g.parts.map(i=>i.t).join(' ').replace(/\s+/g,' ').trim()}));
+   let mode='';
+   for(const line of lines){
+    const n=normPdf(line.text).replace(/\s/g,'');
+    if(n.includes('lancamentos')&&n.includes('compras')&&n.includes('saques')){mode='buy';continue}
+    if(n.includes('comprasparceladas')||n.includes('proximasfaturas')){mode='future';continue}
+    if(/pagamentosefetuados|lancamentosnocartao|totaldoslancamentos|encargoscobrados|limitesdecredito/.test(n)){mode='';continue}
+    if(line.text.includes('ESTABELECIMENTO')&&line.text.includes('DATA')&&line.text.includes('VALOR')){if(mode!=='future')mode='buy';continue}
+    if(mode!=='buy'&&mode!=='future')continue;
+    const datePart=line.parts.find(i=>/^\d{2}\/\d{2}(?:\/\d{2,4})?$/.test(i.t));
+    if(!datePart||(right===split?datePart.x>width*.3:datePart.x-split>(width-split)*.3))continue;
+    const moneyParts=line.parts.filter(i=>/^-?(?:R\$\s*)?[\d.]+,\d{2}$/.test(i.t)&&i.x>datePart.x+90&&i.x<right);
+    if(moneyParts.length!==1)continue;
+    const amountPart=moneyParts[0],desc=line.parts.filter(i=>i.x>datePart.x+10&&i.x<amountPart.x).map(i=>i.t).join(' ').trim();
+    if(desc.length<3||/^(principal|total|saldo|limite|pagamento)/i.test(desc))continue;
+    const d=datePart.t.split('/');let year=d[2]?Number(d[2]):py;if(year<100)year+=2000;if(!d[2]&&Number(d[1])>pm)year--;
+    const value=Math.abs(num(amountPart.t));if(!Number.isFinite(value)||value<=0)continue;
+    const row={date:year+'-'+d[1]+'-'+d[0],description:desc,amount:/\b(estorno|credito|crédito|devolucao|devolução)\b/i.test(desc)||amountPart.t.startsWith('-')?value:-value};
+    (mode==='future'?future:rows).push(row);
+   }
   }
   // Read total independently, without borrowing amounts from other columns.
   const summary=parts.filter(i=>normPdf(i.t).includes('total desta fatura'));
   for(const label of summary){const same=parts.filter(i=>Math.abs(i.y-label.y)<6&&i.x>label.x).sort((a,b)=>a.x-b.x);const value=same.find(i=>/^[\d.]+,\d{2}$/.test(i.t));if(value)total=num(value.t)}
  }
+ // Parcelas: quando a linha desta fatura não traz "02/10", completa pelo bloco "Compras parceladas - próximas faturas"
+ // (mesma data e mesmo valor; a próxima é k/n, então esta é k-1/n). Cada linha do bloco completa no máximo uma compra.
+ const partRx=/\b(\d{1,2})\s*\/\s*(\d{1,2})\s*$/;
+ for(const r of rows){if(partRx.test(r.description))continue;
+  const i=future.findIndex(f=>f.date===r.date&&Math.abs(f.amount-r.amount)<.005&&partRx.test(f.description));if(i<0)continue;
+  const m=future[i].description.match(partRx),k=Number(m[1])-1,n=Number(m[2]);future.splice(i,1);
+  if(k>=1&&n>=2&&k<n)r.description+=' '+String(k).padStart(2,'0')+'/'+String(n).padStart(2,'0')}
  if(!rows.length)throw Error('Não consegui identificar compras com segurança. Nenhum lançamento foi importado.');
  const sum=rows.reduce((n,r)=>n-r.amount,0);return {rows,pages:pdf.numPages,expectedTotal:total,recognizedTotal:Math.round(sum*100)/100,totalMatches:total!==null&&Math.abs(sum-total)<0.011};
 }
