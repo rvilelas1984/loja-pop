@@ -182,6 +182,10 @@
         <section class="panel"><div class="ph"><h3 id="sFlowT">Como fecha o mês</h3></div><div class="flow" id="sFlow"></div><p class="hint" style="margin-top:8px" id="sFlowN"></p></section>
       </div>
     </div>
+    <section class="panel txp"><div class="ph"><h3>Despesas fixas: estimado × realizado</h3><div class="seg" id="fxMonths"></div></div>
+      <p class="hint" style="margin-bottom:10px">O estimado vem das despesas fixas cadastradas e, quando o valor varia (como os professores), da média dos últimos meses. O realizado é o que saiu nos extratos importados.</p>
+      <div class="scroll"><table class="stack" id="fxTable"><thead><tr><th>Despesa fixa</th><th class="r">Estimado</th><th class="r">Realizado</th><th class="r">Diferença</th><th>Situação</th></tr></thead><tbody></tbody></table></div>
+    </section>
     <section class="panel txp"><div class="ph"><h3>Empréstimo para quitar as parcelas</h3><label class="chk"><input type="checkbox" id="lOn">Usar no cenário</label></div>
       <div class="loanin">
         <label class="f">Valor (R$)<input id="lVal" inputmode="decimal"></label>
@@ -379,16 +383,26 @@ function fixedDates(b,kind,m){
   if(applies(m)&&!changes.some(x=>x.month===m))dates.push(originalDue(b,m));
   return dates.sort();
 }
+/* Despesa marcada como fixa que não tem recorrência (ex.: vários PIX de professores que mudam todo mês) entra pela média da
+   categoria nos últimos meses, descontando o que já está em recorrência ou compromisso da mesma categoria. */
+function avgFixed(past){
+  if(!past.length)return[];const finite=new Set(FINITE_FIXED.map(f=>f.cat)),tot={},acc={};
+  for(const e of items()){if(!past.includes(e.comp)||e.type!=='fixed'||e.v>=0||e.out||TRANSFER_CATS.has(e.category)||finite.has(e.category))continue;tot[e.category]=(tot[e.category]||0)-e.v;const a=itemAccount(e.id);if(a)acc[e.category]=(acc[e.category]||{}),acc[e.category][a]=(acc[e.category][a]||0)-e.v}
+  const covered={};for(const r of recurrences())covered[r.category]=(covered[r.category]||0)+Math.abs(cents(r.amount));for(const c of (D.commitments||[]).filter(c=>c.kind==='monthly'&&inUnit(c)))covered[c.category]=(covered[c.category]||0)+cents(c.amount);
+  return Object.entries(tot).map(([cat,v])=>{const avg=Math.round(v/past.length),rest=avg-(covered[cat]||0),a=Object.entries(acc[cat]||{}).sort((x,y)=>y[1]-x[1])[0]?.[0]||'';return{cat,avg,valor:rest,acc:a,months:past}}).filter(x=>x.valor>=1000).sort((a,b)=>b.valor-a.valor);
+}
 function commitFor(m,acc){
   const ok=a=>acc===undefined||(a||'')===acc;let fix=0,uni=0,pc=0;
   for(const r of recurrences())if(ok(itemAccount(r.sourceId)))fix+=fixedDates(r,'r',m).length*Math.abs(cents(r.amount));
   for(const c of (D.commitments||[]).filter(inUnit)){if(!ok(c.accountId))continue;const v=cents(c.amount);if(c.kind==='monthly')fix+=v*fixedDates(c,'m',m).length;else if(c.kind==='once')uni+=v*fixedDates(c,'m',m).length}
   for(const p of M.PARC){if(!ok(p.acc))continue;if(installmentDue(p,m))pc+=p.valor}
+  for(const a of (M.AVGFIX||[]))if(ok(a.acc))fix+=a.valor;
   return{fix,uni,pc,committed:fix+uni+pc}
 }
 function model(){
   M={PARC:installments()};
   const past=[...new Set(items().map(e=>e.comp))].filter(m=>m<CUR&&stats(m).n>5).sort().reverse().slice(0,3);
+  M.AVGFIX=avgFixed(past);
   let ENT=0,VAR=0;
   if(past.length){for(const m of past){const s=stats(m),c=commitFor(m);ENT+=s.ent;VAR+=Math.max(0,s.sai-c.committed)}ENT=Math.round(ENT/past.length);VAR=Math.round(VAR/past.length)}
   Object.assign(M,{ENT,VAR,past});
@@ -469,7 +483,7 @@ function renderSaudeOut(){
   const A=[];
   const ending=M.PARC.map(p=>({p,fim:addM(p.m0,p.n-p.k0)})).filter(x=>x.fim>=CUR&&x.fim<addM(CUR,H)).sort((a,b)=>a.fim.localeCompare(b.fim));
   if(ending.length){const byM={};for(const x of ending)byM[x.fim]=(byM[x.fim]||0)+x.p.valor;A.push('Parcelas que terminam: '+Object.entries(byM).map(([m,v])=>'a partir de '+mShort(addM(m,1))+' sobram '+R0(v)+'/mês').join('; ')+'.')}
-  const fixL=[];for(const rr of recurrences())fixL.push([rr.description,Math.abs(cents(rr.amount))]);for(const c of (D.commitments||[]).filter(c=>c.kind==='monthly'&&inUnit(c)))fixL.push([c.description,cents(c.amount)]);fixL.sort((a,b)=>b[1]-a[1]);
+  const fixL=[];for(const rr of recurrences())fixL.push([rr.description,Math.abs(cents(rr.amount))]);for(const x of (M.AVGFIX||[]))fixL.push([x.cat,x.valor]);for(const c of (D.commitments||[]).filter(c=>c.kind==='monthly'&&inUnit(c)))fixL.push([c.description,cents(c.amount)]);fixL.sort((a,b)=>b[1]-a[1]);
   if(fixL.length)A.push('Maiores despesas fixas: '+fixL.slice(0,3).map(([n,v])=>n.slice(0,26)+' '+R0(v)).join(', ')+'.');
   const pcNext=commitFor(addM(CUR,1)).pc;
   if(pcNext&&!LC.on){const W=sproj(true),lastW=W.rows[W.rows.length-1].end,lastN=rows[rows.length-1].end;A.push('Trocar as parcelas ('+R0(pcNext)+'/mês) pelo empréstimo simulado abaixo ('+R0(LC.p)+'/mês)'+(lastW!=null&&lastN!=null?' deixaria o saldo de '+mShort(rows[rows.length-1].m)+' em '+R0(lastW)+' em vez de '+R0(lastN):'')+'.')}
@@ -509,7 +523,25 @@ for(const [id,on] of [['healthBtn',true],['overviewBtn',false]])$('#'+id).onclic
   for(const [btn,active] of [['healthBtn',on],['overviewBtn',!on]]){$('#'+btn).setAttribute('aria-pressed',String(active));$('#'+btn).classList.toggle('pri',active)}
   if(on)renderHealth();else drawChart();
 };
-function renderHealth(){renderSaude();drawS()}
+function renderHealth(){renderSaude();renderFixed();drawS()}
+/* Despesas fixas: estimado (recorrências, compromissos mensais e média da categoria) x realizado (extratos do mês) */
+let FXM=CUR;
+function fixedEstimate(m){
+  const est={},finite=new Set(FINITE_FIXED.map(f=>f.cat));
+  for(const r of recurrences()){const n=fixedDates(r,'r',m).length;if(n)est[r.category||r.description]=(est[r.category||r.description]||0)+n*Math.abs(cents(r.amount))}
+  for(const c of (D.commitments||[]).filter(c=>c.kind==='monthly'&&inUnit(c))){const n=fixedDates(c,'m',m).length;if(n)est[c.category||c.description]=(est[c.category||c.description]||0)+n*cents(c.amount)}
+  for(const a of (M.AVGFIX||[]))est[a.cat]=(est[a.cat]||0)+a.valor;
+  const real={};for(const e of items()){if(e.comp!==m||e.v>=0||e.out||finite.has(e.category))continue;if(est[e.category]!=null||e.type==='fixed')real[e.category]=(real[e.category]||0)-e.v}
+  return Object.keys({...est,...real}).map(cat=>({cat,est:est[cat]||0,real:real[cat]||0})).sort((a,b)=>b.est-a.est||b.real-a.real);
+}
+function renderFixed(){
+  $('#fxMonths').innerHTML=[addM(CUR,-1),CUR].map(m=>`<button data-fxm="${m}" aria-pressed="${m===FXM}">${esc(mShort(m))}</button>`).join('');
+  const L=fixedEstimate(FXM),open=FXM===CUR;let te=0,tr=0;
+  const st=x=>{const d=x.real-x.est;if(!x.est)return['w','Sem estimativa: cadastre ou classifique como fixa'];if(Math.abs(d)<=Math.max(1000,x.est*.05))return['g','Conforme'];if(d<0)return open?['m','Falta sair '+R0(-d)]:['g','Abaixo do estimado'];return['w','Acima do estimado']};
+  $('#fxTable tbody').innerHTML=L.length?L.map(x=>{te+=x.est;tr+=x.real;const [t,l]=st(x),d=x.real-x.est;return`<tr><td data-l="Despesa fixa">${esc(x.cat)}</td><td data-l="Estimado" class="r num">${esc(R0(x.est))}</td><td data-l="Realizado" class="r num">${esc(R0(x.real))}</td><td data-l="Diferença" class="r num ${d>0?'neg':''}">${esc((d>0?'+':'')+R0(d))}</td><td data-l="Situação"><span class="tag ${t}">${esc(l)}</span></td></tr>`}).join('')+`<tr><td data-l=""><b>Total</b></td><td data-l="Estimado" class="r num"><b>${esc(R0(te))}</b></td><td data-l="Realizado" class="r num"><b>${esc(R0(tr))}</b></td><td data-l="Diferença" class="r num ${tr-te>0?'neg':''}"><b>${esc((tr-te>0?'+':'')+R0(tr-te))}</b></td><td data-l="">${open?'<span class="hint">mês em andamento</span>':''}</td></tr>`:'<tr><td colspan="5" class="empty">Nenhuma despesa fixa estimada.</td></tr>';
+}
+$('#fxMonths').addEventListener('click',e=>{const b=e.target.closest('[data-fxm]');if(!b)return;FXM=b.dataset.fxm;renderFixed()});
+
 function renderAccounts(){
   const s=stats(VIEW),bal=M.bal,nx=addM(CUR,1),lbl=VIEW===CUR?'neste mês':'em '+mShort(VIEW);
   const sources=Array.from(s.incomeSources).sort((a,b)=>b[1]-a[1]);
@@ -618,10 +650,11 @@ function renderCmp(){
   const L=[],accName=id=>(D.accounts||[]).find(a=>a.id===id)?.name||'';
   for(const c of (D.commitments||[]).filter(inUnit)){if(c.kind==='installment')continue;const an=accName(c.accountId);L.push({id:c.id,src:'m',nome:c.description,v:cents(c.amount),desc:(c.kind==='monthly'?'Fixa · todo mês, dia '+c.day+(c.startMonth>CUR?' · a partir de '+mShort(c.startMonth):''):'Uma vez · '+pad(c.day)+'/'+c.startMonth.slice(5)+'/'+c.startMonth.slice(0,4))+(an?' · sai do '+an:' · conta não definida'),cat:c.category})}
   for(const r of recurrences()){if(r.endMonth&&r.endMonth<CUR)continue;const an=accName(itemAccount(r.sourceId));L.push({id:r.id,src:'r',nome:r.description,v:Math.abs(cents(r.amount)),desc:'Fixa · todo mês, dia '+r.day+(r.endMonth?' · até '+mShort(r.endMonth):'')+(an?' · sai do '+an:'')+' · veio do extrato',cat:r.category})}
+  for(const a of (M.AVGFIX||[])){const an=accName(a.acc);L.push({id:'avg_'+a.cat,src:'a',nome:a.cat,v:a.valor,desc:'Fixa · pela média de '+a.months.map(mShort).reverse().join(', ')+' ('+R0(a.avg)+'/mês'+(a.avg!==a.valor?', descontado o que já está cadastrado':'')+') · vários pagamentos no mês'+(an?' · sai do '+an:''),cat:''})}
   L.sort((a,b)=>b.v-a.v);
   const fix=commitFor(addM(CUR,1)).fix;
   $('#cmpTot').textContent=fix?R0(fix)+' em despesas fixas por mês':'';
-  $('#cmpList').innerHTML=L.length?L.map(c=>`<div class="cmp"><div><b>${esc(c.nome)}</b><small>${esc(c.desc)}${(D.dueChanges||[]).filter(x=>x.kind===c.src&&x.id===c.id&&(x.month===VIEW||ymOf(x.date)===VIEW)).map(x=>' · cobrança de '+esc(mShort(x.month))+' em '+esc(fmtD(x.date))).join('')}${c.cat?' · '+esc(c.cat):''}</small></div><span class="num">${esc(R(c.v))}</span><button class="btn sm" data-due-id="${esc(c.id)}" data-kind="${c.src}">Editar data</button>${c.src==='m'?`<button class="btn sm" data-delc="${esc(c.id)}">Excluir</button>`:`<button class="btn sm" data-pause="${esc(c.id)}">Pausar</button>`}</div>`).join(''):'<p class="empty">Nenhuma despesa fixa ainda.</p>';
+  $('#cmpList').innerHTML=L.length?L.map(c=>`<div class="cmp"><div><b>${esc(c.nome)}</b><small>${esc(c.desc)}${(D.dueChanges||[]).filter(x=>x.kind===c.src&&x.id===c.id&&(x.month===VIEW||ymOf(x.date)===VIEW)).map(x=>' · cobrança de '+esc(mShort(x.month))+' em '+esc(fmtD(x.date))).join('')}${c.cat?' · '+esc(c.cat):''}</small></div><span class="num">${esc(R(c.v))}</span>${c.src==='a'?'':`<button class="btn sm" data-due-id="${esc(c.id)}" data-kind="${c.src}">Editar data</button>`}${c.src==='a'?'<span class="tag m">média</span>':c.src==='m'?`<button class="btn sm" data-delc="${esc(c.id)}">Excluir</button>`:`<button class="btn sm" data-pause="${esc(c.id)}">Pausar</button>`}</div>`).join(''):'<p class="empty">Nenhuma despesa fixa ainda.</p>';
 }
 let PICK='';
 function invoices(){
