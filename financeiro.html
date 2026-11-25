@@ -199,7 +199,7 @@
   </div>
 
   <section class="panel txp">
-    <div class="ph"><h3 id="txTitle">Lançamentos</h3><div class="seg" id="txFilter"><button data-f="all" aria-pressed="true">Todos</button><button data-f="out" aria-pressed="false">Saídas</button><button data-f="in" aria-pressed="false">Entradas</button><button data-f="pend" aria-pressed="false">Sem classificação</button></div></div>
+    <div class="ph"><h3 id="txTitle">Lançamentos</h3><div class="seg" id="txFilter"><button data-f="all" aria-pressed="true">Todos</button><button data-f="out" aria-pressed="false">Saídas</button><button data-f="in" aria-pressed="false">Entradas</button><button data-f="pend" aria-pressed="false">Sem classificação</button><button data-f="pay" aria-pressed="false">Fatura a ligar</button></div></div>
     <div class="scroll"><table class="stack" id="txTable"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th class="r">Valor</th><th></th></tr></thead><tbody></tbody></table></div>
     <p class="msg" id="txMsg" role="status"></p>
     <p class="hint">Trocar a categoria vale também para os próximos lançamentos com a mesma descrição. Pagamento de fatura e transferência entre contas ficam fora da conta, porque os gastos já entram pela fatura. Compras do cartão entram no mês do vencimento da fatura.</p>
@@ -258,6 +258,7 @@ function prepare(d){
     const v=cents(e.amount);
     let out='';
     if(linkOf.get(e.id)==='invoice'||e.type==='cardpayment')out='pagamento de fatura';
+    else if(!card&&v<0&&e.category==='Cartões'&&linkOf.get(e.id)!=='transfer')out='pagamento de fatura';
     else if(linkOf.get(e.id)==='transfer'||e.type==='transfer'||TRANSFER_CATS.has(e.category))out='transferência';
     else if(!card&&!e.classified&&v<0&&CARD_PAY_RE.test(e.description))out='pagamento de fatura';
     return{...e,v,comp,card,doc,out,classified:!!e.classified}
@@ -360,6 +361,8 @@ function alerts(){
   if(stale!=null&&stale>7)A.push(['warn','Extrato desatualizado','O último lançamento de extrato é de '+fmtD(lastBank)+' ('+stale+' dias). Importe o extrato mais recente para a previsão ficar certa.']);
   const pend=items().filter(e=>!e.classified&&!e.out).length;
   if(pend)A.push(['warn',pend+' lançamento'+(pend>1?'s':'')+' sem classificação','Entradas sem classificação ficam fora das receitas. Use o filtro “Sem classificação” abaixo.']);
+  const toLink=items().filter(unlinkedPay).sort((a,b)=>b.date.localeCompare(a.date));
+  if(toLink.length)A.push(['warn',toLink.length+(toLink.length>1?' pagamentos de fatura':' pagamento de fatura')+' sem fatura ligada',toLink.slice(0,3).map(e=>fmtD(e.date)+' · '+e.description.slice(0,32)+' · '+R(e.v)).join('; ')+(toLink.length>3?'…':'')+'. Use o filtro “Fatura a ligar” nos lançamentos do mês.']);
   const INV=invoices();const late=INV.filter(i=>i.k==='late');const over=INV.filter(i=>i.k==='over'||i.k==='manual');
   if(late.length)A.push(['bad',late.length+(late.length>1?' faturas vencidas':' fatura vencida')+' sem pagamento ligado',late.map(invName).join(', ')+'. Se já pagou, ligue o pagamento no lançamento do extrato.']);
   if(over.length)A.push(['warn','Pagamentos de fatura para conferir',over.map(i=>invName(i)+(i.k==='over'?' recebeu mais que o total':' está marcada como paga sem pagamento ligado')).join('; ')+'.']);
@@ -432,11 +435,12 @@ function payCandidates(e){
 function suggestion(e){
   const c=payCandidates(e).filter(x=>x.exact<2&&daysBetween(e.date,x.i.due)>=-25&&daysBetween(e.date,x.i.due)<=10);return c.length===1?c[0].i:null;
 }
+const unlinkedPay=e=>e.out==='pagamento de fatura'&&e.doc?.kind==='bank'&&e.v<0&&linkOf.get(e.id)!=='invoice';
 const canPay=e=>e.v<0&&e.doc?.kind==='bank'&&linkOf.get(e.id)!=='invoice';
 function renderTx(){
   $('#txTitle').textContent='Lançamentos de '+mLong(VIEW);
   let L=items().filter(e=>e.comp===VIEW);
-  if(FILTER==='in')L=L.filter(e=>e.v>0);if(FILTER==='out')L=L.filter(e=>e.v<0);if(FILTER==='pend')L=L.filter(e=>!e.classified);
+  if(FILTER==='in')L=L.filter(e=>e.v>0);if(FILTER==='out')L=L.filter(e=>e.v<0);if(FILTER==='pend')L=L.filter(e=>!e.classified);if(FILTER==='pay')L=L.filter(unlinkedPay);
   L.sort((a,b)=>b.date.localeCompare(a.date)||a.v-b.v);
   const kinds=new Map((D.categoryKinds||[]).map(k=>[k.name,k.nature]));
   const cats=D.categories||[];const INV=invoices();const invOf=new Map((D.transactionLinks||[]).filter(l=>l.kind==='invoice').map(l=>[l.itemId,INV.find(i=>i.id===l.documentKey)]));
