@@ -173,6 +173,7 @@
     <div id="incomeSources"></div>
   </section>
 
+  <section class="panel"><div class="ph"><h3>Próximas despesas fixas</h3><span class="hint" id="upcomingMonth"></span></div><div id="upcomingBody"></div><p class="hint">Estimativa pelas recorrências e compromissos mensais cadastrados. Pagamentos identificados nos lançamentos importados saem da lista. Confira os itens de datas anteriores separadamente.</p></section>
   <section class="panel chartp">
     <div class="find"><h2 id="headline"></h2><p id="headsub"></p></div>
     <div class="fig" id="fig"><svg id="chart" role="img" aria-label="Saídas por mês, reais e previstas"></svg></div>
@@ -349,7 +350,7 @@ function balances(){
 function render(){
   model();
   $('#mLabel').textContent=cap(mLong(VIEW));
-  renderAccounts();renderHealth();
+  renderAccounts();renderHealth();renderUpcoming();
   alerts();headline();drawChart();renderCmp();renderTx();renderCats();renderParc();renderInv();
 }
 
@@ -505,6 +506,32 @@ function drawChart(){
 }
 const ro=new ResizeObserver(drawChart);ro.observe(fig);
 
+function pendingFixed(month){
+  const end=new Date(+month.slice(0,4),+month.slice(5),0).getDate();
+  const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  const bills=recurrences().filter(r=>(!r.startMonth||r.startMonth<=month)&&(!r.endMonth||r.endMonth>=month)).map(r=>({...r,accountId:itemAccount(r.sourceId)}));
+  bills.push(...(D.commitments||[]).filter(c=>inUnit(c)&&c.kind==='monthly'&&c.startMonth<=month));
+  const debits=items().filter(e=>e.comp===month&&e.v<0&&!e.out);
+  const used=new Set(),remaining=[];
+  for(const b of bills.sort((a,b)=>Number(!!b.sourceId)-Number(!!a.sourceId)||a.day-b.day)){
+    const name=normalize(b.description),date=month+'-'+pad(Math.min(end,Math.max(1,+b.day||1)));
+    const key=name.match(/\b\d{2} \d{3} \d{3} \d{4} \d{2}\b|\b\d{3} \d{3} \d{3} \d{2}\b/)?.[0];
+    const eligible=debits.filter(e=>!used.has(e.id)&&(!b.unit||!e.unit||b.unit===e.unit)&&(!b.accountId||itemAccount(e.id)===b.accountId));
+    const exact=eligible.find(e=>e.id===b.sourceId);
+    const matches=eligible.filter(e=>{const desc=normalize(e.description);return e.category===b.category&&(desc===name||(key&&desc.includes(key)))});
+    const paid=exact||matches.find(e=>e.v===-Math.abs(cents(b.amount)))||(matches.length===1?matches[0]:null);
+    if(paid){used.add(paid.id);continue}
+    remaining.push({date,name:b.description,category:b.category,amount:Math.abs(cents(b.amount))});
+  }
+  return remaining.sort((a,b)=>a.date.localeCompare(b.date));
+}
+function renderUpcoming(){
+  const pending=pendingFixed(VIEW),upcoming=pending.filter(b=>b.date>=TD),past=pending.filter(b=>b.date<TD);
+  const total=list=>R(list.reduce((sum,b)=>sum+b.amount,0));
+  const rows=list=>list.map(b=>'<div class="cmp"><div><b>'+esc(b.category||b.name)+'</b><small>'+esc(b.name)+'</small></div><span>'+fmtD(b.date)+'</span><strong class="num">'+esc(R(b.amount))+'</strong></div>').join('');
+  $('#upcomingMonth').textContent=cap(mLong(VIEW));
+  $('#upcomingBody').innerHTML='<p>Previsto de hoje ao fim do mês selecionado: <strong>'+esc(total(upcoming))+'</strong></p>'+(rows(upcoming)||'<p class="empty">Nenhuma despesa fixa prevista nesse período.</p>')+(past.length?'<details><summary>Datas anteriores sem pagamento identificado · '+esc(total(past))+'</summary>'+rows(past)+'</details>':'');
+}
 function renderCmp(){
   const L=[],accName=id=>(D.accounts||[]).find(a=>a.id===id)?.name||'';
   for(const c of (D.commitments||[]).filter(inUnit)){if(c.kind==='installment')continue;const an=accName(c.accountId);L.push({id:c.id,src:'m',nome:c.description,v:cents(c.amount),desc:(c.kind==='monthly'?'Fixa · todo mês, dia '+c.day+(c.startMonth>CUR?' · a partir de '+mShort(c.startMonth):''):'Uma vez · '+pad(c.day)+'/'+c.startMonth.slice(5)+'/'+c.startMonth.slice(0,4))+(an?' · sai do '+an:' · conta não definida'),cat:c.category})}
