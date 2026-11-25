@@ -141,7 +141,7 @@
 <h3>Receitas previstas</h3><p class="hint">Informe valores mensais líquidos disponíveis para pagar as contas. Em produtos, desconte o custo das vendas. Os campos começam em zero.</p>
 <div class="irow" id="forecastInputs"></div><button class="btn sm" id="applyForecast">Aplicar receitas deste mês aos seguintes</button>
 <h3>Empréstimo simulado</h3><label><input type="checkbox" id="simulateCredit"> Incluir empréstimo</label>
-<fieldset id="creditFields" disabled><div class="irow"></div></fieldset><p class="hint">O crédito entra uma vez. Cada prestação é somada aos compromissos existentes. Esta simulação considera parcelas iguais e mantém as dívidas atuais até seus vencimentos.</p>
+<fieldset id="creditFields" disabled><div class="irow"></div><h3>Dívidas a quitar na liberação</h3><p class="hint">Marque as dívidas e informe o valor negociado de cada quitação. Para liberação no mês atual, informe o valor após a prestação deste mês. Nesse caso, a economia começa no próximo mês.</p><div id="payoffs"></div></fieldset>
 <p class="hint" id="healthNote" role="status"></p><div class="scroll"><table><thead><tr></tr></thead><tbody></tbody></table></div></section>
   <section class="panel imp" id="impPanel" hidden>
     <div class="ph"><h3>Importar extrato ou fatura</h3><button class="btn link" id="iClose">Fechar</button></div>
@@ -304,22 +304,23 @@ function cardAccount(cardId){
 function itemAccount(id){const e=ITEM_BY_ID.get(id);if(!e)return'';if(e.card){const cid=(D.links||[]).find(l=>l.documentKey===e.doc?.id)?.cardId;return cid?cardAccount(cid):''}return accIdByName(e.account)}
 function installments(){
   const ign=new Set(D.ignoredInstallments||[]);
-  const L=(D.installments||[]).filter(p=>p.active&&!ign.has(p.sourceId)&&inUnit(p)&&p.firstMonth).map(p=>({nome:String(p.description).replace(/\s*[-–]?\s*Parcela.*$/i,'').replace(/\s+\d+\s*\/\s*\d+$/,'').trim()||p.description,valor:Math.abs(cents(p.amount)),k0:+p.currentPart,n:+p.totalParts,m0:p.firstMonth,orig:'cartão',acc:itemAccount(p.sourceId)}));
+  const L=(D.installments||[]).filter(p=>p.active&&!ign.has(p.sourceId)&&inUnit(p)&&p.firstMonth).map(p=>({key:'card:'+p.sourceId,nome:String(p.description).replace(/\s*[-–]?\s*Parcela.*$/i,'').replace(/\s+\d+\s*\/\s*\d+$/,'').trim()||p.description,valor:Math.abs(cents(p.amount)),k0:+p.currentPart,n:+p.totalParts,m0:p.firstMonth,orig:'cartão',acc:itemAccount(p.sourceId)}));
   for(const f of FINITE_FIXED){
     const its=items().filter(e=>e.category===f.cat&&e.v<0).sort((a,b)=>a.comp.localeCompare(b.comp));
     const last=its[its.length-1];if(!last)continue;
-    L.push({nome:f.nome,valor:-last.v,k0:diffM(f.inicio,last.comp)+1,n:f.total,m0:last.comp,orig:'despesa fixa',acc:itemAccount(last.id)});
+    L.push({key:'fixed:'+f.cat,nome:f.nome,valor:-last.v,k0:diffM(f.inicio,last.comp)+1,n:f.total,m0:last.comp,orig:'despesa fixa',acc:itemAccount(last.id)});
   }
-  for(const c of (D.commitments||[]).filter(c=>c.kind==='installment'&&inUnit(c)))L.push({nome:c.description,valor:cents(c.amount),k0:1,n:+c.totalParts,m0:c.startMonth,orig:'compromisso',manual:true,acc:c.accountId||''});
+  for(const c of (D.commitments||[]).filter(c=>c.kind==='installment'&&inUnit(c)))L.push({key:'manual:'+c.id,nome:c.description,valor:cents(c.amount),k0:1,n:+c.totalParts,m0:c.startMonth,orig:'compromisso',manual:true,acc:c.accountId||''});
   return L;
 }
 const partAt=(p,m)=>p.k0+diffM(p.m0,m);
 function recurrences(){return(D.recurrences||[]).filter(r=>r.active&&inUnit(r))}
+function installmentDue(p,m){const k=partAt(p,m);return k>=1&&k<=p.n&&(p.manual?diffM(p.m0,m)>=0:diffM(p.m0,m)>=(m===CUR?1:0))}
 function commitFor(m,acc){
   const ok=a=>acc===undefined||(a||'')===acc;let fix=0,uni=0,pc=0;
   for(const r of recurrences())if((!r.startMonth||r.startMonth<=m)&&(!r.endMonth||r.endMonth>=m)&&ok(itemAccount(r.sourceId)))fix+=Math.abs(cents(r.amount));
   for(const c of (D.commitments||[]).filter(inUnit)){if(!ok(c.accountId))continue;const v=cents(c.amount);if(c.kind==='monthly'&&c.startMonth<=m)fix+=v;else if(c.kind==='once'&&c.startMonth===m)uni+=v}
-  for(const p of M.PARC){if(!ok(p.acc))continue;const k=partAt(p,m);if(k>=1&&k<=p.n&&(p.manual?diffM(p.m0,m)>=0:diffM(p.m0,m)>=(m===CUR?1:0)))pc+=p.valor}
+  for(const p of M.PARC){if(!ok(p.acc))continue;if(installmentDue(p,m))pc+=p.valor}
   return{fix,uni,pc,committed:fix+uni+pc}
 }
 function model(){
@@ -357,11 +358,29 @@ const healthSources=['Wellhub','TotalPass','Planos e outras','Produtos (líquido
 function initHealth(){
   const start=addM(CUR,1);
   if(healthUnit===UNIT)return;
-  healthUnit=UNIT;forecasts=new Map();
+  healthUnit=UNIT;forecasts=new Map();payoffSignature='';
   $('#forecastInputs').innerHTML='<label class="f">Mês<input type="month" id="forecastMonth" min="'+start+'" max="'+addM(CUR,600)+'" value="'+start+'"></label>'+healthSources.map((name,i)=>'<label class="f">'+name+' (R$)<input data-source="'+i+'" type="number" min="0" step=".01" value="0"></label>').join('');
   $('#simulateCredit').checked=false;$('#creditFields').disabled=true;
   $('#creditFields .irow').innerHTML=[['advance','Crédito líquido (R$)','number'],['released','Mês da liberação','month'],['inst','Valor da prestação (R$)','number'],['count','Quantidade de parcelas','number'],['due','Primeira parcela','month']].map(([id,label,type])=>'<label class="f">'+label+'<input required id="'+id+'" type="'+type+'" '+(type==='month'?'min="'+CUR+'" value="'+start+'"':id==='count'?'min="1" step="1" max="600"':'min=".01" step=".01"')+'></label>').join('');
-  $('#health thead tr').innerHTML=['Mês','Fixas','Parceladas','Pontuais','Variáveis estimadas','Receitas previstas','Crédito','Prestação nova','Produtos líquidos necessários¹','Caixa sem crédito','Caixa simulado'].map(n=>'<th>'+n+'</th>').join('');
+  $('#health thead tr').innerHTML=['Mês','Fixas','Parceladas','Pontuais','Variáveis estimadas','Receitas previstas','Crédito','Quitações','Parcelas retiradas','Prestação nova','Produtos líquidos necessários¹','Caixa sem crédito','Caixa simulado'].map(n=>'<th>'+n+'</th>').join('');
+}
+let payoffSignature='';
+function updatePayoffs(){
+  const release=$('#released').value;
+  const month=release===CUR?addM(CUR,1):release;
+  const eligible=release?M.PARC.filter(p=>p.m0<=release&&installmentDue(p,month)):[];
+  const signature=JSON.stringify([UNIT,release,eligible.map(p=>[p.key,p.nome,p.valor,p.n,p.k0,p.m0])]);
+  if(signature!==payoffSignature){
+    payoffSignature=signature;
+    $('#payoffs').innerHTML=eligible.map((p,i)=>'<div class="irow"><label><input type="checkbox" data-pay="'+i+'"> '+esc(p.nome)+' · '+esc(p.orig)+' · '+esc(R(p.valor))+' × '+(p.n-partAt(p,month)+1)+' restantes</label><label class="f">Quitação (R$)<input type="number" disabled required min="0.01" step="0.01" data-price="'+i+'"></label></div>').join('')||'<p class="hint">Nenhuma dívida parcelada elegível neste mês.</p>';
+  }
+  const selected=[];let total=0;
+  eligible.forEach((p,i)=>{
+    const active=$('[data-pay="'+i+'"]').checked,price=$('[data-price="'+i+'"]');
+    price.disabled=!active;
+    if(active){selected.push(p);total+=cents(price.value)}
+  });
+  return {selected,total};
 }
 function renderHealth(){
   if(!$('#app').classList.contains('health'))return;
@@ -369,22 +388,25 @@ function renderHealth(){
   const start=addM(CUR,1),enabled=$('#simulateCredit').checked,bal=M.bal;
   const base=bal.missing.length||!M.past.length?null:M.rows.find(r=>r.m===CUR).end;
   $('#healthBase').textContent='Saldo apurado: '+(bal.total==null||bal.missing.length?'incompleto':R(bal.total))+'. Fechamento estimado de '+mShort(CUR)+': '+(base==null?'indisponível':R(base))+'. A projeção parte desse fechamento. Fixas, parcelas e pontuais vêm da Central. Variáveis usam a média histórica.';
+  const payoff=updatePayoffs();
   const invalid=enabled&&(!Array.from($('#creditFields').querySelectorAll('input')).every(el=>el.validity.valid)||$('#due').value<$('#released').value||diffM(CUR,$('#due').value)>600);
   const note=$('#healthNote'),body=$('#health tbody');
   if(invalid||!$('#forecastMonth').checkValidity()||!$('#forecastMonth').value||Array.from($('#forecastInputs').querySelectorAll('[data-source]')).some(el=>!el.validity.valid)){
     note.textContent='Confira os valores e os meses. A primeira prestação deve vencer a partir da liberação.';body.innerHTML='';return;
   }
   const release=$('#released').value,first=$('#due').value,payment=cents($('#inst').value),credit=cents($('#advance').value),n=Number($('#count').value);
-  let cash=base??0,simulation=cash+(enabled&&release===CUR?credit:0)-(enabled&&first===CUR?payment:0);
-  const horizon=Math.max(12,enabled?diffM(start,first)+n:0,...Array.from(forecasts.keys(),m=>diffM(start,m)+1));
+  let cash=base??0,simulation=cash+(enabled&&release===CUR?credit-payoff.total:0)-(enabled&&first===CUR?payment:0);
+  const horizon=Math.max(12,...(enabled?payoff.selected.map(p=>diffM(start,p.m0)+p.n-p.k0+1):[]),enabled?diffM(start,first)+n:0,...Array.from(forecasts.keys(),m=>diffM(start,m)+1));
   const output=[];
   for(let k=0;k<horizon;k++){
     const m=addM(start,k),c=commitFor(m),[hub,tp,other,products]=forecasts.get(m)||[0,0,0,0];
     const income=hub+tp+other+products,age=diffM(first,m),p=enabled&&age>=0&&age<n?payment:0,deposit=enabled&&release===m?credit:0;
-    const costs=c.committed+M.VAR;cash+=income-costs;simulation+=income-costs+deposit-p;
-    output.push('<tr><td>'+mShort(m)+'</td>'+[c.fix,c.pc,c.uni,M.VAR,income,deposit,p,Math.max(0,costs+p-hub-tp-other),base==null?null:cash,base==null?null:simulation].map(v=>'<td class="r num '+(v<0?'neg':'')+'">'+(v==null?'—':esc(R(v)))+'</td>').join('')+'</tr>');
+    const saved=enabled&&m>=release?payoff.selected.reduce((sum,p)=>sum+(installmentDue(p,m)?p.valor:0),0):0;
+    const settlement=enabled&&m===release?payoff.total:0;
+    const costs=c.committed+M.VAR;cash+=income-costs;simulation+=income-costs+deposit-p+saved-settlement;
+    output.push('<tr><td>'+mShort(m)+'</td>'+[c.fix,c.pc,c.uni,M.VAR,income,deposit,settlement,saved,p,Math.max(0,costs-saved+p-hub-tp-other),base==null?null:cash,base==null?null:simulation].map(v=>'<td class="r num '+(v<0?'neg':'')+'">'+(v==null?'—':esc(R(v)))+'</td>').join('')+'</tr>');
   }
-  note.textContent='¹ Meta mensal de produtos após custos, antes de usar o saldo ou o crédito. '+(enabled?'Total das novas prestações: '+R(n*payment)+'. ':'')+(enabled&&(release===CUR||first===CUR)?'Movimentos do empréstimo no mês atual já entram no saldo inicial simulado. ':'')+'Cenário temporário desta unidade.';
+  note.textContent='¹ Meta mensal de produtos após custos, antes de usar o saldo ou o crédito. '+(enabled?'Quitações na liberação: '+R(payoff.total)+'. Total das novas prestações: '+R(n*payment)+'. ':'')+(enabled&&(release===CUR||first===CUR)?'Movimentos do empréstimo no mês atual já entram no saldo inicial simulado. ':'')+'Cenário temporário desta unidade.';
   body.innerHTML=output.join('');
 }
 for(const [id,on] of [['healthBtn',true],['overviewBtn',false]])$('#'+id).onclick=()=>{
