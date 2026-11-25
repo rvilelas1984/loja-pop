@@ -584,7 +584,7 @@ async function readImport(files){
       if(files.length>1)throw Error('Envie um arquivo por vez (ou várias imagens da mesma fatura).');
       const f=files[0];
       if(/\.pdf$/i.test(f.name)||f.type==='application/pdf'){
-        if(kind==='bank'){rows=await FI().parseBankPdf(f,CUR);format='PDF do extrato'}
+        if(kind==='bank'){rows=await FI().parseBankPdf(f,CUR);format='PDF do extrato';if(rows.balance)bal=rows.balance}
         else{const d=/mercado\s*pago/i.test(srcName)?await FI().parseMercadoPagoPdf(f,{paymentMonth:pm}):await FI().parsePdf(f,{paymentMonth:pm});rows=d.rows;expectedTotal=d.expectedTotal;format=d.format||'PDF da fatura'}
       }else{
         const raw=await f.text();const ofx=/\.(ofx|qfx)$/i.test(f.name)||/<STMTTRN>/i.test(raw);
@@ -666,7 +666,7 @@ async function saveImport(sel,rem=[]){
     for(let i=0;i<rows.length;i+=200)await call('import',{account:I.account,unit:I.unit,kind:I.kind,status:I.kind==='card'?I.status:'',paymentMonth:I.kind==='card'?I.pm:'',rows:rows.slice(i,i+200)});
     if(I.kind==='card'&&I.cardId)await call('linkInvoice',{documentKey:['card',I.account.toUpperCase(),I.pm,I.unit||'indefinida'].join('|'),cardId:I.cardId});
     let balMsg='';
-    if(I.bal&&I.accId&&Number.isFinite(I.bal.value)&&I.bal.date){const cur=(D.accountBalances||[]).find(b=>b.accountId===I.accId);if(!cur||I.bal.date>=cur.baseDate){await call('setAccountBalance',{accountId:I.accId,baseDate:I.bal.date,openingBalance:I.bal.value});balMsg=' Saldo da conta atualizado pelo OFX.'}}
+    if(I.bal&&I.accId&&Number.isFinite(I.bal.value)&&I.bal.date){const cur=(D.accountBalances||[]).find(b=>b.accountId===I.accId);if(!cur||I.bal.date>=cur.baseDate){await call('setAccountBalance',{accountId:I.accId,baseDate:I.bal.date,openingBalance:I.bal.value});balMsg=' Saldo da conta atualizado pelo extrato: '+R(Math.round(I.bal.value*100))+' em '+fmtD(I.bal.date)+'.'}}
     let nr=0;for(const x of rem){try{await call('ignoreTransaction',{id:x.id});nr++}catch(e){}}
     prepare(await call('list'));
     let np=0;
