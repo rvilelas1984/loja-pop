@@ -173,7 +173,7 @@
     <div id="incomeSources"></div>
   </section>
 
-  <section class="panel"><div class="ph"><h3>Próximas despesas fixas</h3><span class="hint" id="upcomingMonth"></span></div><div id="upcomingBody"></div><p class="hint">Estimativa pelas recorrências e compromissos mensais cadastrados. Pagamentos identificados nos lançamentos importados saem da lista. Confira os itens de datas anteriores separadamente.</p></section>
+  <section class="panel"><div class="ph"><h3>Próximas despesas fixas</h3><span class="hint" id="upcomingMonth"></span></div><div id="upcomingBody"></div><p class="hint">Somente despesas fixas identificadas em extratos bancários, como Pix, boletos e débitos em conta. Compras no cartão compõem a fatura. O pagamento identificado no extrato retira a despesa da previsão. Confira os itens de datas anteriores separadamente.</p></section>
   <section class="panel chartp">
     <div class="find"><h2 id="headline"></h2><p id="headsub"></p></div>
     <div class="fig" id="fig"><svg id="chart" role="img" aria-label="Saídas por mês, reais e previstas"></svg></div>
@@ -509,9 +509,11 @@ const ro=new ResizeObserver(drawChart);ro.observe(fig);
 function pendingFixed(month){
   const end=new Date(+month.slice(0,4),+month.slice(5),0).getDate();
   const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-  const bills=recurrences().filter(r=>(!r.startMonth||r.startMonth<=month)&&(!r.endMonth||r.endMonth>=month)).map(r=>({...r,accountId:itemAccount(r.sourceId)}));
-  bills.push(...(D.commitments||[]).filter(c=>inUnit(c)&&c.kind==='monthly'&&c.startMonth<=month));
-  const debits=items().filter(e=>e.comp===month&&e.v<0&&!e.out);
+  const bills=recurrences().filter(r=>{
+    const source=ITEM_BY_ID.get(r.sourceId);
+    return source?.doc?.kind==='bank'&&source.v<0&&!source.out;
+  }).filter(r=>(!r.startMonth||r.startMonth<=month)&&(!r.endMonth||r.endMonth>=month)).map(r=>({...r,accountId:itemAccount(r.sourceId)}));
+  const debits=items().filter(e=>e.doc?.kind==='bank'&&e.comp===month&&e.v<0&&!e.out);
   const used=new Set(),remaining=[];
   for(const b of bills.sort((a,b)=>Number(!!b.sourceId)-Number(!!a.sourceId)||a.day-b.day)){
     const name=normalize(b.description),date=month+'-'+pad(Math.min(end,Math.max(1,+b.day||1)));
