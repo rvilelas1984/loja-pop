@@ -191,6 +191,7 @@
     <section class="panel">
       <div class="ph"><h3>Despesas fixas e compromissos</h3><span class="hint" id="cmpTot"></span></div>
       <div class="cmplist" id="cmpList"></div>
+      <form id="dueForm" hidden><h4 id="dueName"></h4><label class="f">Mês original da cobrança<input id="dueOrigin" type="month" required></label><label class="f">Novo vencimento desta cobrança<input id="dueNew" type="date" required></label><p class="hint">A alteração vale somente para a cobrança escolhida. As próximas seguem o dia habitual.</p><button class="btn pri">Salvar data</button> <button type="button" class="btn" id="dueCancel">Cancelar</button><p id="dueMsg" role="status"></p></form>
       <form class="cform" id="cmpForm">
         <div class="full chips" id="chips"></div>
         <label class="f full">Nome<input id="cNome" required maxlength="120" placeholder="Ex.: Pagamento de sócios"></label>
@@ -317,10 +318,21 @@ function installments(){
 const partAt=(p,m)=>p.k0+diffM(p.m0,m);
 function recurrences(){return(D.recurrences||[]).filter(r=>r.active&&inUnit(r))}
 function installmentDue(p,m){const k=partAt(p,m);return k>=1&&k<=p.n&&(p.manual?diffM(p.m0,m)>=0:diffM(p.m0,m)>=(m===CUR?1:0))}
+function originalDue(b,m){
+  const lastDay=new Date(+m.slice(0,4),+m.slice(5),0).getDate();
+  return m+'-'+pad(Math.min(lastDay,+b.day));
+}
+function fixedDates(b,kind,m){
+  const changes=(D.dueChanges||[]).filter(x=>x.kind===kind&&x.id===b.id);
+  const applies=origin=>(!b.startMonth||origin>=b.startMonth)&&(!b.endMonth||origin<=b.endMonth)&&(b.kind!=='once'||origin===b.startMonth);
+  const dates=changes.filter(x=>x.date.slice(0,7)===m&&applies(x.month)).map(x=>x.date);
+  if(applies(m)&&!changes.some(x=>x.month===m))dates.push(originalDue(b,m));
+  return dates.sort();
+}
 function commitFor(m,acc){
   const ok=a=>acc===undefined||(a||'')===acc;let fix=0,uni=0,pc=0;
-  for(const r of recurrences())if((!r.startMonth||r.startMonth<=m)&&(!r.endMonth||r.endMonth>=m)&&ok(itemAccount(r.sourceId)))fix+=Math.abs(cents(r.amount));
-  for(const c of (D.commitments||[]).filter(inUnit)){if(!ok(c.accountId))continue;const v=cents(c.amount);if(c.kind==='monthly'&&c.startMonth<=m)fix+=v;else if(c.kind==='once'&&c.startMonth===m)uni+=v}
+  for(const r of recurrences())if(ok(itemAccount(r.sourceId)))fix+=fixedDates(r,'r',m).length*Math.abs(cents(r.amount));
+  for(const c of (D.commitments||[]).filter(inUnit)){if(!ok(c.accountId))continue;const v=cents(c.amount);if(c.kind==='monthly')fix+=v*fixedDates(c,'m',m).length;else if(c.kind==='once')uni+=v*fixedDates(c,'m',m).length}
   for(const p of M.PARC){if(!ok(p.acc))continue;if(installmentDue(p,m))pc+=p.valor}
   return{fix,uni,pc,committed:fix+uni+pc}
 }
@@ -507,16 +519,15 @@ function drawChart(){
 const ro=new ResizeObserver(drawChart);ro.observe(fig);
 
 function pendingFixed(month){
-  const end=new Date(+month.slice(0,4),+month.slice(5),0).getDate();
   const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const bills=recurrences().filter(r=>{
     const source=ITEM_BY_ID.get(r.sourceId);
     return source?.doc?.kind==='bank'&&source.v<0&&!source.out;
-  }).filter(r=>(!r.startMonth||r.startMonth<=month)&&(!r.endMonth||r.endMonth>=month)).map(r=>({...r,accountId:itemAccount(r.sourceId)}));
+  }).flatMap(r=>fixedDates(r,'r',month).map(date=>({...r,date,accountId:itemAccount(r.sourceId)})));
   const debits=items().filter(e=>e.doc?.kind==='bank'&&e.comp===month&&e.v<0&&!e.out);
   const used=new Set(),remaining=[];
-  for(const b of bills.sort((a,b)=>Number(!!b.sourceId)-Number(!!a.sourceId)||a.day-b.day)){
-    const name=normalize(b.description),date=month+'-'+pad(Math.min(end,Math.max(1,+b.day||1)));
+  for(const b of bills.sort((a,b)=>Number(!!b.sourceId)-Number(!!a.sourceId)||a.date.localeCompare(b.date))){
+    const name=normalize(b.description),date=b.date;
     const key=name.match(/\b\d{2} \d{3} \d{3} \d{4} \d{2}\b|\b\d{3} \d{3} \d{3} \d{2}\b/)?.[0];
     const eligible=debits.filter(e=>!used.has(e.id)&&(!b.unit||!e.unit||b.unit===e.unit)&&(!b.accountId||itemAccount(e.id)===b.accountId));
     const exact=eligible.find(e=>e.id===b.sourceId);
@@ -535,13 +546,14 @@ function renderUpcoming(){
   $('#upcomingBody').innerHTML='<p>Previsto de hoje ao fim do mês selecionado: <strong>'+esc(total(upcoming))+'</strong></p>'+(rows(upcoming)||'<p class="empty">Nenhuma despesa fixa prevista nesse período.</p>')+(past.length?'<details><summary>Datas anteriores sem pagamento identificado · '+esc(total(past))+'</summary>'+rows(past)+'</details>':'');
 }
 function renderCmp(){
+  $('#dueForm').hidden=true;
   const L=[],accName=id=>(D.accounts||[]).find(a=>a.id===id)?.name||'';
   for(const c of (D.commitments||[]).filter(inUnit)){if(c.kind==='installment')continue;const an=accName(c.accountId);L.push({id:c.id,src:'m',nome:c.description,v:cents(c.amount),desc:(c.kind==='monthly'?'Fixa · todo mês, dia '+c.day+(c.startMonth>CUR?' · a partir de '+mShort(c.startMonth):''):'Uma vez · '+pad(c.day)+'/'+c.startMonth.slice(5)+'/'+c.startMonth.slice(0,4))+(an?' · sai do '+an:' · conta não definida'),cat:c.category})}
   for(const r of recurrences()){if(r.endMonth&&r.endMonth<CUR)continue;const an=accName(itemAccount(r.sourceId));L.push({id:r.id,src:'r',nome:r.description,v:Math.abs(cents(r.amount)),desc:'Fixa · todo mês, dia '+r.day+(r.endMonth?' · até '+mShort(r.endMonth):'')+(an?' · sai do '+an:'')+' · veio do extrato',cat:r.category})}
   L.sort((a,b)=>b.v-a.v);
   const fix=commitFor(addM(CUR,1)).fix;
   $('#cmpTot').textContent=fix?R0(fix)+' em despesas fixas por mês':'';
-  $('#cmpList').innerHTML=L.length?L.map(c=>`<div class="cmp"><div><b>${esc(c.nome)}</b><small>${esc(c.desc)}${c.cat?' · '+esc(c.cat):''}</small></div><span class="num">${esc(R(c.v))}</span>${c.src==='m'?`<button class="btn sm" data-delc="${esc(c.id)}">Excluir</button>`:`<button class="btn sm" data-pause="${esc(c.id)}">Pausar</button>`}</div>`).join(''):'<p class="empty">Nenhuma despesa fixa ainda.</p>';
+  $('#cmpList').innerHTML=L.length?L.map(c=>`<div class="cmp"><div><b>${esc(c.nome)}</b><small>${esc(c.desc)}${(D.dueChanges||[]).filter(x=>x.kind===c.src&&x.id===c.id&&(x.month===VIEW||ymOf(x.date)===VIEW)).map(x=>' · cobrança de '+esc(mShort(x.month))+' em '+esc(fmtD(x.date))).join('')}${c.cat?' · '+esc(c.cat):''}</small></div><span class="num">${esc(R(c.v))}</span><button class="btn sm" data-due-id="${esc(c.id)}" data-kind="${c.src}">Editar data</button>${c.src==='m'?`<button class="btn sm" data-delc="${esc(c.id)}">Excluir</button>`:`<button class="btn sm" data-pause="${esc(c.id)}">Pausar</button>`}</div>`).join(''):'<p class="empty">Nenhuma despesa fixa ainda.</p>';
 }
 let PICK='';
 function invoices(){
@@ -671,7 +683,28 @@ $('#alerts').addEventListener('click',async e=>{const b=e.target.closest('[data-
 $('#txFilter').onclick=e=>{const b=e.target.closest('[data-f]');if(!b)return;FILTER=b.dataset.f;[...$('#txFilter').children].forEach(x=>x.setAttribute('aria-pressed',x===b));renderTx()};
 $('#mPrev').onclick=()=>{VIEW=addM(VIEW,-1);render()};$('#mNext').onclick=()=>{VIEW=addM(VIEW,1);render()};
 $('#unit').onchange=e=>{UNIT=e.target.value;render()};
-$('#cmpList').addEventListener('click',e=>{const d=e.target.closest('[data-delc]');if(d){arm(d,()=>act($('#cMsg'),()=>call('commitmentDelete',{id:d.dataset.delc}),'Compromisso excluído.'));return}
+let editingDue=null;
+function fillDue(){
+  const month=$('#dueOrigin').value;
+  if(!month||!editingDue)return;
+  const {bill,kind}=editingDue;
+  $('#dueNew').value=(D.dueChanges||[]).find(x=>x.kind===kind&&x.id===bill.id&&x.month===month)?.date||originalDue(bill,month);
+}
+$('#dueOrigin').onchange=fillDue;
+$('#dueCancel').onclick=()=>{$('#dueForm').hidden=true;editingDue=null};
+$('#dueForm').onsubmit=async e=>{
+  e.preventDefault();if(!editingDue)return;
+  const form=e.currentTarget,btn=form.querySelector('button'),{kind,bill}=editingDue;
+  btn.disabled=true;
+  try{await call('fixedDue',{kind,id:bill.id,month:$('#dueOrigin').value,date:$('#dueNew').value});await reload();form.hidden=true;$('#cMsg').textContent='Vencimento atualizado.'}
+  catch(err){$('#dueMsg').textContent=err.message}finally{btn.disabled=false}
+};
+$('#cmpList').addEventListener('click',e=>{const edit=e.target.closest('[data-due-id]');
+  if(edit){const kind=edit.dataset.kind,bill=(kind==='r'?D.recurrences:D.commitments).find(b=>b.id===edit.dataset.dueId);
+    editingDue={bill,kind};const origin=$('#dueOrigin');origin.min=bill.startMonth||'';origin.max=bill.kind==='once'?bill.startMonth:bill.endMonth||'';
+    origin.value=origin.max&&origin.max<VIEW?origin.max:origin.min>VIEW?origin.min:VIEW;
+    $('#dueName').textContent=bill.description;$('#dueMsg').textContent='';fillDue();$('#dueForm').hidden=false;$('#dueNew').focus();return}
+const d=e.target.closest('[data-delc]');if(d){arm(d,()=>act($('#cMsg'),()=>call('commitmentDelete',{id:d.dataset.delc}),'Compromisso excluído.'));return}
   const p=e.target.closest('[data-pause]');if(p)arm(p,()=>act($('#cMsg'),()=>call('recurrenceStatus',{id:p.dataset.pause,active:false}),'Despesa pausada. Dá para reativar em Controle de Gastos › Fluxo de caixa.'))});
 
 /* saldo */
