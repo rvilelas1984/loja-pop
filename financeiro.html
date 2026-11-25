@@ -121,7 +121,7 @@
 .cf .ok{color:var(--good);font-weight:600}.cf .bad{color:var(--bad);font-weight:600}
 @media(max-width:600px){.cf table{font-size:13px}.cf th,.cf td{padding:6px 4px}.cf .stack thead{display:none}.cf .stack tr{display:grid;padding-block:10px;border-bottom:1px solid var(--grid)}.cf .stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:3px 0}.cf .stack td::before{content:attr(data-l);color:var(--muted);font-size:12px}.cf .mnav b{min-width:7.5em}.cf form.cform{grid-template-columns:minmax(0,1fr)}.cf .balrow{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:600px){.cf .acct.stack tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 12px;padding:12px 4px}.cf .acct.stack td{display:block;text-align:left;padding:0;border:0;background:none}.cf .acct.stack td:first-child{grid-column:1/-1}.cf .acct.stack td::before{display:block;font-size:12px;color:var(--muted);margin-bottom:2px}.cf .acct.stack td:empty{display:none}.cf .acct.stack tr.tot{background:var(--accent-soft);border-radius:10px;padding:12px 10px;border:0}.cf .acct.stack td b{font-size:18px}.cf .acct.stack tr.tot td{border:0;background:none}}
-</style></head><body>
+#health{display:none}#app.health> :not(#financeNav):not(#health){display:none}#app.health #health{display:block}.cf:has(#app.health) .mnav,.cf:has(#app.health) #btnImp{display:none}#health td,#health th{white-space:nowrap}#health .irow label{min-width:135px}#financeNav{margin-bottom:14px}</style></head><body>
 <div class="cf"><div class="wrap">
   <div class="top">
     <div>
@@ -136,6 +136,13 @@
   </div>
   <div id="loading" class="state">Carregando dados financeiros…</div>
   <div id="app" hidden>
+<nav class="actions" id="financeNav"><button class="btn pri" aria-pressed="true" id="overviewBtn">Visão geral</button><button class="btn" aria-pressed="false" id="healthBtn">Saúde financeira</button></nav>
+<section class="panel" id="health"><h2>Saúde financeira</h2><p class="hint" id="healthBase"></p>
+<h3>Receitas previstas</h3><p class="hint">Informe valores mensais líquidos disponíveis para pagar as contas. Em produtos, desconte o custo das vendas. Os campos começam em zero.</p>
+<div class="irow" id="forecastInputs"></div><button class="btn sm" id="applyForecast">Aplicar receitas deste mês aos seguintes</button>
+<h3>Empréstimo simulado</h3><label><input type="checkbox" id="simulateCredit"> Incluir empréstimo</label>
+<fieldset id="creditFields" disabled><div class="irow"></div></fieldset><p class="hint">O crédito entra uma vez. Cada prestação é somada aos compromissos existentes. Esta simulação considera parcelas iguais e mantém as dívidas atuais até seus vencimentos.</p>
+<p class="hint" id="healthNote" role="status"></p><div class="scroll"><table><thead><tr></tr></thead><tbody></tbody></table></div></section>
   <section class="panel imp" id="impPanel" hidden>
     <div class="ph"><h3>Importar extrato ou fatura</h3><button class="btn link" id="iClose">Fechar</button></div>
     <div class="irow">
@@ -341,9 +348,65 @@ function balances(){
 function render(){
   model();
   $('#mLabel').textContent=cap(mLong(VIEW));
-  renderAccounts();
+  renderAccounts();renderHealth();
   alerts();headline();drawChart();renderCmp();renderTx();renderCats();renderParc();renderInv();
 }
+
+let healthUnit, forecasts=new Map();
+const healthSources=['Wellhub','TotalPass','Planos e outras','Produtos (líquido)'];
+function initHealth(){
+  const start=addM(CUR,1);
+  if(healthUnit===UNIT)return;
+  healthUnit=UNIT;forecasts=new Map();
+  $('#forecastInputs').innerHTML='<label class="f">Mês<input type="month" id="forecastMonth" min="'+start+'" max="'+addM(CUR,600)+'" value="'+start+'"></label>'+healthSources.map((name,i)=>'<label class="f">'+name+' (R$)<input data-source="'+i+'" type="number" min="0" step=".01" value="0"></label>').join('');
+  $('#simulateCredit').checked=false;$('#creditFields').disabled=true;
+  $('#creditFields .irow').innerHTML=[['advance','Crédito líquido (R$)','number'],['released','Mês da liberação','month'],['inst','Valor da prestação (R$)','number'],['count','Quantidade de parcelas','number'],['due','Primeira parcela','month']].map(([id,label,type])=>'<label class="f">'+label+'<input required id="'+id+'" type="'+type+'" '+(type==='month'?'min="'+CUR+'" value="'+start+'"':id==='count'?'min="1" step="1" max="600"':'min=".01" step=".01"')+'></label>').join('');
+  $('#health thead tr').innerHTML=['Mês','Fixas','Parceladas','Pontuais','Variáveis estimadas','Receitas previstas','Crédito','Prestação nova','Produtos líquidos necessários¹','Caixa sem crédito','Caixa simulado'].map(n=>'<th>'+n+'</th>').join('');
+}
+function renderHealth(){
+  if(!$('#app').classList.contains('health'))return;
+  initHealth();
+  const start=addM(CUR,1),enabled=$('#simulateCredit').checked,bal=M.bal;
+  const base=bal.missing.length||!M.past.length?null:M.rows.find(r=>r.m===CUR).end;
+  $('#healthBase').textContent='Saldo apurado: '+(bal.total==null||bal.missing.length?'incompleto':R(bal.total))+'. Fechamento estimado de '+mShort(CUR)+': '+(base==null?'indisponível':R(base))+'. A projeção parte desse fechamento. Fixas, parcelas e pontuais vêm da Central. Variáveis usam a média histórica.';
+  const invalid=enabled&&(!Array.from($('#creditFields').querySelectorAll('input')).every(el=>el.validity.valid)||$('#due').value<$('#released').value||diffM(CUR,$('#due').value)>600);
+  const note=$('#healthNote'),body=$('#health tbody');
+  if(invalid||!$('#forecastMonth').checkValidity()||!$('#forecastMonth').value||Array.from($('#forecastInputs').querySelectorAll('[data-source]')).some(el=>!el.validity.valid)){
+    note.textContent='Confira os valores e os meses. A primeira prestação deve vencer a partir da liberação.';body.innerHTML='';return;
+  }
+  const release=$('#released').value,first=$('#due').value,payment=cents($('#inst').value),credit=cents($('#advance').value),n=Number($('#count').value);
+  let cash=base??0,simulation=cash+(enabled&&release===CUR?credit:0)-(enabled&&first===CUR?payment:0);
+  const horizon=Math.max(12,enabled?diffM(start,first)+n:0,...Array.from(forecasts.keys(),m=>diffM(start,m)+1));
+  const output=[];
+  for(let k=0;k<horizon;k++){
+    const m=addM(start,k),c=commitFor(m),[hub,tp,other,products]=forecasts.get(m)||[0,0,0,0];
+    const income=hub+tp+other+products,age=diffM(first,m),p=enabled&&age>=0&&age<n?payment:0,deposit=enabled&&release===m?credit:0;
+    const costs=c.committed+M.VAR;cash+=income-costs;simulation+=income-costs+deposit-p;
+    output.push('<tr><td>'+mShort(m)+'</td>'+[c.fix,c.pc,c.uni,M.VAR,income,deposit,p,Math.max(0,costs+p-hub-tp-other),base==null?null:cash,base==null?null:simulation].map(v=>'<td class="r num '+(v<0?'neg':'')+'">'+(v==null?'—':esc(R(v)))+'</td>').join('')+'</tr>');
+  }
+  note.textContent='¹ Meta mensal de produtos após custos, antes de usar o saldo ou o crédito. '+(enabled?'Total das novas prestações: '+R(n*payment)+'. ':'')+(enabled&&(release===CUR||first===CUR)?'Movimentos do empréstimo no mês atual já entram no saldo inicial simulado. ':'')+'Cenário temporário desta unidade.';
+  body.innerHTML=output.join('');
+}
+for(const [id,on] of [['healthBtn',true],['overviewBtn',false]])$('#'+id).onclick=()=>{
+  $('#app').classList.toggle('health',on);
+  for(const [btn,active] of [['healthBtn',on],['overviewBtn',!on]]){$('#'+btn).setAttribute('aria-pressed',String(active));$('#'+btn).classList.toggle('pri',active)}
+  if(on)renderHealth();else drawChart();
+};
+$('#health').addEventListener('input',e=>{
+  const m=$('#forecastMonth').value,inputs=Array.from($('#forecastInputs').querySelectorAll('[data-source]'));
+  if(e.target.id==='forecastMonth'){inputs.forEach((el,i)=>el.value=(forecasts.get(m)?.[i]||0)/100)}
+  else if(e.target.hasAttribute('data-source')&&m&&inputs.every(el=>el.validity.valid))forecasts.set(m,inputs.map(el=>cents(el.value)));
+  $('#creditFields').disabled=!$('#simulateCredit').checked;renderHealth();
+});
+$('#applyForecast').onclick=()=>{
+  const m=$('#forecastMonth').value;
+  if(!m||!$('#forecastMonth').checkValidity())return;
+  const values=forecasts.get(m)||[0,0,0,0];
+  const last=Math.max(12,$('#simulateCredit').checked&&Array.from($('#creditFields').querySelectorAll('input')).every(el=>el.validity.valid)?diffM(CUR,$('#due').value)+Number($('#count').value)-1:0);
+  for(let i=diffM(CUR,m)+1;i<=last;i++)forecasts.set(addM(CUR,i),values.slice());
+  renderHealth();
+};
+
 function renderAccounts(){
   const s=stats(VIEW),bal=M.bal,nx=addM(CUR,1),lbl=VIEW===CUR?'neste mês':'em '+mShort(VIEW);
   const sources=Array.from(s.incomeSources).sort((a,b)=>b[1]-a[1]);
