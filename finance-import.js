@@ -65,6 +65,33 @@ function parseNubankPJText(text,referenceMonth){
  if(end&&fin&&longMonths[end[2].toUpperCase()])rows.balance={value:num(fin[1]),date:end[3]+'-'+String(longMonths[end[2].toUpperCase()]).padStart(2,'0')+'-'+end[1].padStart(2,'0')};
  return rows;
 }
+/* Extrato de conta Mercado Pago (PDF): linhas "dd-mm-aaaa Descrição ID R$ valor R$ saldo"; a descrição pode quebrar
+   em linhas acima e abaixo da data. Movimentos com o mesmo ID de operação são somados (liberação e cancelamento se anulam). */
+function parseMercadoPagoStatementText(text){
+ const lines=String(text||'').normalize('NFC').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+ if(!lines.some(x=>/EXTRATO DE CONTA/i.test(x))||!lines.some(x=>/DETALHE DOS MOVIMENTOS/i.test(x))||!lines.some(x=>/mercado ?pago/i.test(x)))return null;
+ const raw=[];let buf=[],last=null,started=false;
+ const loose=t=>!/^(Data\b|Data de gera|\d+\/\d+$|Você tem|o nosso SAC|da ouvidoria|Mercado Pago Institui|903\.|Encontre)/i.test(t);
+ for(const line of lines){
+  if(/DETALHE DOS MOVIMENTOS/i.test(line)){started=true;continue}
+  if(!started)continue;
+  const m=line.match(/^(\d{2})-(\d{2})-(\d{4})\s*(.*)$/);
+  if(m){const money=[...m[4].matchAll(/R\$\s*(-?[\d.]+,\d{2})/g)];if(money.length<1){buf=[];continue}
+   const before=m[4].slice(0,money[0].index).trim(),idm=before.match(/\b(\d{9,})\s*$/),inline=(idm?before.slice(0,idm.index):before).trim();
+   const desc=[...buf,inline].filter(Boolean).join(' ').trim();
+   last={date:m[3]+'-'+m[2]+'-'+m[1],description:desc,amount:num(money[0][1]),fid:idm?idm[1]:'',wrapped:!inline||buf.length>0};
+   raw.push(last);buf=[];continue}
+  if(!loose(line)){buf=[];continue}
+  if(last&&last.wrapped&&!last.cont){last.description=(last.description+' '+line).trim();last.cont=true;continue}
+  buf.push(line);
+ }
+ const groups=new Map();const rows=[];
+ for(const r of raw){if(!r.fid){rows.push(r);continue}const k=r.date+'|'+r.fid;let g=groups.get(k);if(!g){g={date:r.date,fid:r.fid,amount:0,descs:[]};groups.set(k,g);rows.push(g)}g.amount=Math.round((g.amount+r.amount)*100)/100;g.descs.push(r.description)}
+ const out=rows.map(g=>g.descs?{date:g.date,description:(g.descs.find(d=>!/^Cancelamento/i.test(d))||g.descs[0]||'Movimentação').trim(),amount:g.amount,fid:g.fid}:{date:g.date,description:g.description||'Movimentação',amount:g.amount,fid:g.fid}).filter(r=>r.amount);
+ const end=lines.map(x=>x.match(/Periodo:.*?al (\d{2})-(\d{2})-(\d{4})/i)).find(Boolean),fin=lines.map(x=>x.match(/Saldo final:\s*R\$\s*(-?[\d.]+,\d{2})/i)).find(Boolean);
+ if(end&&fin)out.balance={value:num(fin[1]),date:end[3]+'-'+end[2]+'-'+end[1]};
+ return out;
+}
 async function parseBankPdf(file,month){
  if(!window.pdfjsLib)await new Promise((ok,fail)=>{const e=document.createElement('script');e.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';e.onload=ok;e.onerror=()=>fail(Error('Falha ao carregar leitor PDF'));document.head.appendChild(e)});
  const lib=window.pdfjsLib;lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -73,7 +100,7 @@ async function parseBankPdf(file,month){
   for(const item of items.sort((a,b)=>b.y-a.y||a.x-b.x)){let group=groups.find(g=>Math.abs(g.y-item.y)<4);if(!group){group={y:item.y,items:[]};groups.push(group)}group.items.push(item)}
   for(const group of groups.sort((a,b)=>b.y-a.y))lines.push(group.items.sort((a,b)=>a.x-b.x).map(i=>i.t).join(' '));
  }
- const text=lines.join('\n');const nubank=parseNubankPJText(text,month);return nubank!==null?nubank:parseBankStatementText(text,month);
+ const text=lines.join('\n');const nubank=parseNubankPJText(text,month);if(nubank!==null)return nubank;const mp=parseMercadoPagoStatementText(text);if(mp!==null)return mp;return parseBankStatementText(text,month);
 }
 async function parseBankImages(files,month){
  if(!window.Tesseract)await new Promise((ok,fail)=>{const e=document.createElement('script');e.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';e.onload=ok;e.onerror=()=>fail(Error('Falha ao carregar OCR'));document.head.appendChild(e)});
@@ -263,5 +290,5 @@ async function parseImageInvoices(files,opts={}){
  if(!rows.length)throw Error('Não foi possível reconhecer compras. Nenhum lançamento foi importado.');
  return {rows,pages:files.length,expectedTotal:null,recognizedTotal:rows.reduce((n,x)=>n-x.amount,0),format:'Imagem OCR'};
 }
-window.FinanceImport={norm,parseDate,num,csvFields,parseCSV,bankBalance,bankCardPayment,parseOFX,parseBankStatementText,parseNubankPJText,parseBankPdf,parseBankImages,parsePdf,parseMercadoPagoPdf,parseImageInvoices};
+window.FinanceImport={norm,parseMercadoPagoStatementText,parseDate,num,csvFields,parseCSV,bankBalance,bankCardPayment,parseOFX,parseBankStatementText,parseNubankPJText,parseBankPdf,parseBankImages,parsePdf,parseMercadoPagoPdf,parseImageInvoices};
 })();

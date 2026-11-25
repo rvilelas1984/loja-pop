@@ -199,7 +199,7 @@
   </div>
 
   <section class="panel txp">
-    <div class="ph"><h3 id="txTitle">Lançamentos</h3><div class="seg" id="txFilter"><button data-f="all" aria-pressed="true">Todos</button><button data-f="out" aria-pressed="false">Saídas</button><button data-f="in" aria-pressed="false">Entradas</button><button data-f="pend" aria-pressed="false">Sem classificação</button><button data-f="pay" aria-pressed="false">Fatura a ligar</button></div></div>
+    <div class="ph"><h3 id="txTitle">Lançamentos</h3><div class="seg" id="txFilter"><button data-f="all" aria-pressed="true">Todos</button><button data-f="out" aria-pressed="false">Saídas</button><button data-f="in" aria-pressed="false">Entradas</button><button data-f="pend" aria-pressed="false">Sem classificação</button><button data-f="pay" aria-pressed="false">Fatura a ligar</button><button data-f="trf" aria-pressed="false">Transferências</button></div></div>
     <div class="scroll"><table class="stack" id="txTable"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th class="r">Valor</th><th></th></tr></thead><tbody></tbody></table></div>
     <p class="msg" id="txMsg" role="status"></p>
     <p class="hint">Trocar a categoria vale também para os próximos lançamentos com a mesma descrição. Pagamento de fatura e transferência entre contas ficam fora da conta, porque os gastos já entram pela fatura. Compras do cartão entram no mês do vencimento da fatura.</p>
@@ -361,6 +361,9 @@ function alerts(){
   if(stale!=null&&stale>7)A.push(['warn','Extrato desatualizado','O último lançamento de extrato é de '+fmtD(lastBank)+' ('+stale+' dias). Importe o extrato mais recente para a previsão ficar certa.']);
   const pend=items().filter(e=>!e.classified&&!e.out).length;
   if(pend)A.push(['warn',pend+' lançamento'+(pend>1?'s':'')+' sem classificação','Entradas sem classificação ficam fora das receitas. Use o filtro “Sem classificação” abaixo.']);
+  const ownIn=items().filter(e=>e.doc?.kind==='bank'&&e.v>0&&!e.out&&OWN_COMPANY.test(e.description)&&e.comp===VIEW);
+  if(ownIn.length)A.push(['warn',ownIn.length+(ownIn.length>1?' entradas vindas':' entrada vinda')+' da própria empresa contando como receita',ownIn.slice(0,3).map(e=>fmtD(e.date)+' · '+e.account+' · '+R(e.v)).join('; ')+'. Se é dinheiro que veio de outra conta sua, marque como transferência no filtro “Transferências”.']);
+  const pendT=pendingTrf();if(pendT.length)A.push(['warn',pendT.length+(pendT.length>1?' transferências':' transferência')+' com o lançamento da outra conta já importado','Dá para ligar as duas pontas automaticamente.','autotrf']);
   const toLink=items().filter(unlinkedPay).sort((a,b)=>b.date.localeCompare(a.date));
   if(toLink.length)A.push(['warn',toLink.length+(toLink.length>1?' pagamentos de fatura':' pagamento de fatura')+' sem fatura ligada',toLink.slice(0,3).map(e=>fmtD(e.date)+' · '+e.description.slice(0,32)+' · '+R(e.v)).join('; ')+(toLink.length>3?'…':'')+'. Use o filtro “Fatura a ligar” nos lançamentos do mês.']);
   const INV=invoices();const late=INV.filter(i=>i.k==='late');const over=INV.filter(i=>i.k==='over'||i.k==='manual');
@@ -368,7 +371,7 @@ function alerts(){
   if(over.length)A.push(['warn','Pagamentos de fatura para conferir',over.map(i=>invName(i)+(i.k==='over'?' recebeu mais que o total':' está marcada como paga sem pagamento ligado')).join('; ')+'.']);
   const gym=s=>items().filter(e=>e.comp===s&&e.category==='Aporte Gym Pop').reduce((a,e)=>a-e.v,0),back=s=>items().filter(e=>e.comp===s&&e.category==='Reembolso GymPop').reduce((a,e)=>a+e.v,0);
   if(gym(VIEW)>back(VIEW))A.push(['warn','Aporte na Gym Pop sem reembolso','Em '+mLong(VIEW)+' saíram '+R(gym(VIEW))+' para a Gym Pop e voltaram '+R(back(VIEW))+'. Fica fora do resultado, mas saiu do caixa.']);
-  $('#alerts').innerHTML=A.map(([k,t,d])=>`<div class="alert ${k}"><b>${esc(t)}</b><span>${esc(d)}</span></div>`).join('');
+  $('#alerts').innerHTML=A.map(([k,t,d,act])=>`<div class="alert ${k}"><b>${esc(t)}</b><span>${esc(d)}</span>${act==='autotrf'?'<button class="btn sm" data-autotrf="1">Ligar agora</button>':''}</div>`).join('');
 }
 function headline(){
   const h=$('#headline'),p=$('#headsub');
@@ -436,24 +439,53 @@ function suggestion(e){
   const c=payCandidates(e).filter(x=>x.exact<2&&daysBetween(e.date,x.i.due)>=-25&&daysBetween(e.date,x.i.due)<=10);return c.length===1?c[0].i:null;
 }
 const unlinkedPay=e=>e.out==='pagamento de fatura'&&e.doc?.kind==='bank'&&e.v<0&&linkOf.get(e.id)!=='invoice';
+/* Transferência entre contas da própria empresa: a saída numa conta e a entrada na outra ficam ligadas como uma só (vínculo transfer). */
+const OWN_COMPANY=/54\.224\.510|STUDIO BIKE POP|BIKE POP LTDA/i;
+let PICKT='',PICKT_ACC='';
+const trfLink=e=>{const l=(D.transactionLinks||[]).find(x=>x.itemId===e.id);return l&&l.kind==='transfer'?l:null};
+const accNameById=id=>(D.accounts||[]).find(a=>a.id===id)?.name||'';
+function trfCands(e,accId){
+  const busy=new Set((D.transactionLinks||[]).filter(l=>l.kind!=='transfer'||l.counterpartId).map(l=>l.itemId));
+  return ITEMS.filter(x=>x.id!==e.id&&x.doc?.kind==='bank'&&x.account!==e.account&&(!accId||accIdByName(x.account)===accId)&&x.v===-e.v&&Math.abs(daysBetween(x.date,e.date))<=3&&!busy.has(x.id)).sort((a,b)=>Math.abs(daysBetween(a.date,e.date))-Math.abs(daysBetween(b.date,e.date)));
+}
+const canTrf=e=>e.doc?.kind==='bank'&&!linkOf.has(e.id)&&!!accIdByName(e.account)&&(D.accounts||[]).length>1;
+const asTransfer=x=>x.type==='transfer'&&x.category==='Contas próprias'?null:call('classify',{id:x.id,unit:x.unit||(UNIT==='all'?'bike':UNIT),type:'transfer',category:'Contas próprias',recurring:false});
+async function saveTransfer(it,other){
+  const me=accIdByName(it.account);if(!me||!other||me===other)throw Error('Escolha a outra conta.');
+  if(!trfLink(it))await call('saveTransactionLink',{itemId:it.id,kind:'transfer',sourceId:it.v<0?me:other,destinationId:it.v<0?other:me});
+  await asTransfer(it);
+  const c=trfCands(it,other)[0];
+  if(c){await call('confirmTransferMatch',{itemId:it.id,counterpartId:c.id});await asTransfer(c)}
+  return c||null;
+}
+function pendingTrf(){return(D.transactionLinks||[]).filter(l=>l.kind==='transfer'&&!l.counterpartId).map(l=>{const e=ITEM_BY_ID.get(l.itemId);return e&&trfCands(e,e.v<0?l.destinationId:l.sourceId).length?e:null}).filter(Boolean)}
+async function autoMatchTransfers(){
+  let n=0;for(const e of pendingTrf()){const l=trfLink(e);const c=trfCands(e,e.v<0?l.destinationId:l.sourceId)[0];if(!c)continue;try{await call('confirmTransferMatch',{itemId:e.id,counterpartId:c.id});await asTransfer(c);n++}catch(err){}}
+  return n;
+}
 const canPay=e=>e.v<0&&e.doc?.kind==='bank'&&linkOf.get(e.id)!=='invoice';
 function renderTx(){
   $('#txTitle').textContent='Lançamentos de '+mLong(VIEW);
   let L=items().filter(e=>e.comp===VIEW);
-  if(FILTER==='in')L=L.filter(e=>e.v>0);if(FILTER==='out')L=L.filter(e=>e.v<0);if(FILTER==='pend')L=L.filter(e=>!e.classified);if(FILTER==='pay')L=L.filter(unlinkedPay);
+  if(FILTER==='in')L=L.filter(e=>e.v>0);if(FILTER==='out')L=L.filter(e=>e.v<0);if(FILTER==='pend')L=L.filter(e=>!e.classified);if(FILTER==='pay')L=L.filter(unlinkedPay);if(FILTER==='trf')L=L.filter(e=>trfLink(e)||(e.doc?.kind==='bank'&&OWN_COMPANY.test(e.description)));
   L.sort((a,b)=>b.date.localeCompare(a.date)||a.v-b.v);
   const kinds=new Map((D.categoryKinds||[]).map(k=>[k.name,k.nature]));
   const cats=D.categories||[];const INV=invoices();const invOf=new Map((D.transactionLinks||[]).filter(l=>l.kind==='invoice').map(l=>[l.itemId,INV.find(i=>i.id===l.documentKey)]));
-  const opts=e=>{const want=e.v>0?'income':'expense';let list=cats.filter(c=>!kinds.has(c)||kinds.get(c)===want);if(!list.includes(e.category))list=[e.category,...list];return(canPay(e)?'<option value="__inv">Pagamento de fatura…</option>':'')+list.map(c=>`<option${c===e.category?' selected':''}>${esc(c)}</option>`).join('')};
+  const opts=e=>{const want=e.v>0?'income':'expense';let list=cats.filter(c=>!kinds.has(c)||kinds.get(c)===want);if(!list.includes(e.category))list=[e.category,...list];return(canPay(e)?'<option value="__inv">Pagamento de fatura…</option>':'')+(canTrf(e)?'<option value="__trf">Transferência entre contas…</option>':'')+list.map(c=>`<option${c===e.category?' selected':''}>${esc(c)}</option>`).join('')};
   const src=e=>e.card?'Fatura '+(e.doc?.account||'').replace(/^Fatura\s*/i,'')+' · vence '+mShort(e.comp):e.account;
   const row=e=>{
     const linked=linkOf.get(e.id)==='invoice',inv=invOf.get(e.id);const sug=!linked&&canPay(e)&&PICK!==e.id?suggestion(e):null;
+    const tl=trfLink(e),tc=tl&&tl.counterpartId?ITEM_BY_ID.get(tl.counterpartId):null;
+    let tsug='';if(!tl&&!sug&&canTrf(e)&&PICKT!==e.id&&e.out!=='pagamento de fatura'){const c=trfCands(e);if(c.length===1)tsug=`<button class="btn sm" style="margin-top:4px" data-trfsug="${esc(e.id)}" data-acc="${esc(accIdByName(c[0].account))}">Transferência ${e.v<0?'para':'de'} ${esc(c[0].account)}? (${fmtD(c[0].date)})</button>`;else if(OWN_COMPANY.test(e.description))tsug=`<button class="btn sm" style="margin-top:4px" data-trfopen="${esc(e.id)}">É transferência entre contas</button>`}
     let h=`<tr class="${e.out?'off':''}"><td data-l="Data" class="num">${fmtD(e.date)}</td><td data-l="Descrição">${esc(e.description)}${e.classified?'':' <span class="tag w">sem classificação</span>'}<small>${esc(src(e))}${e.out?' · fora da conta ('+esc(e.out)+')':''}</small>`
       +(linked?`<span class="paid">Pagou a fatura ${esc(inv?invName(inv):'')} · <button class="btn link" data-unlink="${esc(e.id)}" style="padding:0">Desfazer</button></span>`:'')
       +(!linked&&canPay(e)&&!sug&&PICK!==e.id&&e.out==='pagamento de fatura'?`<button class="btn sm" style="margin-top:4px" data-pickopen="${esc(e.id)}">Ligar à fatura</button>`:'')
+      +(tl?`<span class="paid">Transferência ${e.v<0?'para':'de'} ${esc(accNameById(e.v<0?tl.destinationId:tl.sourceId))} · ${tc?'ligada ao lançamento de '+fmtD(tc.date)+' no '+esc(tc.account):'aguardando o extrato da outra conta'} · <button class="btn link" data-untrf="${esc(e.id)}" style="padding:0">Desfazer</button></span>`:'')+tsug
       +(sug?`<button class="btn sm" style="margin-top:4px" data-sug="${esc(e.id)}" data-doc="${esc(sug.id)}">Pagar fatura ${esc(invName(sug))}?</button>`:'')
-      +`</td><td data-l="Categoria"><select data-cat="${esc(e.id)}" aria-label="Categoria"${linked?' disabled':''}>${opts(e)}</select></td><td data-l="Valor" class="r num ${e.v>0?'pos':''}">${esc(R(e.v))}</td><td data-l="" class="r"><button class="btn link" data-ign="${esc(e.id)}" style="color:var(--bad)" title="Só para lançamento duplicado ou errado: o saldo da conta muda">Remover</button></td></tr>`;
+      +`</td><td data-l="Categoria"><select data-cat="${esc(e.id)}" aria-label="Categoria"${linked||tl?' disabled':''}>${opts(e)}</select></td><td data-l="Valor" class="r num ${e.v>0?'pos':''}">${esc(R(e.v))}</td><td data-l="" class="r"><button class="btn link" data-ign="${esc(e.id)}" style="color:var(--bad)" title="Só para lançamento duplicado ou errado: o saldo da conta muda">Remover</button></td></tr>`;
     if(PICK===e.id){const c=payCandidates(e);h+=`<tr class="pick"><td colspan="5"><div class="pickbox"><label class="f">Qual fatura este pagamento quitou?<select id="pickSel">${c.map(x=>`<option value="${esc(x.i.id)}">${esc(invName(x.i))} · total ${esc(R(x.i.total))}${x.i.pg?' · falta '+esc(R(x.i.falta)):''}${x.exact<2?' · valor confere':''}</option>`).join('')}<option value="">Fatura ainda não importada</option></select></label><button class="btn sm pri" data-pick-save="${esc(e.id)}">Salvar</button><button class="btn sm" data-pick-cancel="1">Cancelar</button></div></td></tr>`}
+    if(PICKT===e.id){const others=(D.accounts||[]).filter(a=>a.active!==0&&a.name!==e.account);const first=trfCands(e)[0];const sel=PICKT_ACC||(first?accIdByName(first.account):others[0]?.id)||'';const c=trfCands(e,sel)[0];
+      h+=`<tr class="pick"><td colspan="5"><div class="pickbox"><label class="f">${e.v<0?'Para qual conta foi':'De qual conta veio'}?<select id="trfSel">${others.map(a=>`<option value="${esc(a.id)}"${a.id===sel?' selected':''}>${esc(a.name)}</option>`).join('')}</select></label><button class="btn sm pri" data-trf-save="${esc(e.id)}">Salvar</button><button class="btn sm" data-trf-cancel="1">Cancelar</button></div><p class="hint" style="margin-top:6px">${c?'Achei no extrato do '+esc(c.account)+': '+fmtD(c.date)+' · '+esc(c.description.slice(0,50))+' · '+esc(R(c.v))+'. Os dois ficam ligados.':'A outra conta ainda não tem esse lançamento. Quando o extrato dela for importado, a Central liga os dois sozinha.'}</p></td></tr>`}
     return h};
   $('#txTable tbody').innerHTML=L.length?L.slice(0,400).map(row).join(''):`<tr><td colspan="5" class="empty">Nenhum lançamento em ${esc(mLong(VIEW))}.</td></tr>`;
 }
@@ -487,20 +519,28 @@ function renderParc(){
 /* ---------- ações ---------- */
 async function reload(){try{prepare(await call('list'));render()}catch(e){fail(e)}}
 function fail(e){$('#loading').hidden=false;$('#app').hidden=true;$('#loading').textContent=e.status===403?'Acesso restrito. Entre no admin para ver a Central Financeira.':'Não consegui carregar os dados financeiros: '+e.message}
+async function doTrf(it,acc){const m=$('#txMsg');m.className='msg';m.textContent='Salvando…';try{const c=await saveTransfer(it,acc);await reload();m.textContent=c?'Transferência ligada ao lançamento de '+fmtD(c.date)+' no '+c.account+'. Nenhum dos dois conta como receita ou gasto.':'Marcada como transferência para '+accNameById(acc)+'. Quando o extrato dessa conta for importado, a Central liga os dois.'}catch(err){m.className='msg err';m.textContent=err.message}}
 function arm(b,fn,ask){if(b.dataset.armed){fn();return}b.dataset.armed=1;const t=b.textContent;b.textContent=ask||'Confirmar?';setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent=t}},3500)}
 async function act(msgEl,fn,okText){msgEl.className='msg';msgEl.textContent='Salvando…';try{await fn();await reload();msgEl.textContent=okText||''}catch(e){msgEl.className='msg err';msgEl.textContent=e.message}}
 
-$('#txTable').addEventListener('change',e=>{const s=e.target.closest('[data-cat]');if(!s)return;const it=ITEMS.find(x=>x.id===s.dataset.cat);if(!it)return;
-  if(s.value==='__inv'){PICK=it.id;renderTx();return}
+$('#txTable').addEventListener('change',e=>{if(e.target.id==='trfSel'){PICKT_ACC=e.target.value;renderTx();return}const s=e.target.closest('[data-cat]');if(!s)return;const it=ITEMS.find(x=>x.id===s.dataset.cat);if(!it)return;
+  if(s.value==='__inv'){PICK=it.id;PICKT='';renderTx();return}
+  if(s.value==='__trf'){PICKT=it.id;PICKT_ACC='';PICK='';renderTx();return}
   const unit=it.unit||(UNIT==='all'?'bike':UNIT),type=it.type||(it.v>0?'income':'variable');
   act($('#txMsg'),()=>call('classify',{id:it.id,unit,type,category:s.value,recurring:!!it.recurring}),'Categoria salva. Lançamentos iguais também foram atualizados.')});
 $('#txTable').addEventListener('click',e=>{
   const ps=e.target.closest('[data-pick-save]');if(ps){const it=ITEMS.find(x=>x.id===ps.dataset.pickSave);const doc=$('#pickSel').value;PICK='';act($('#txMsg'),()=>linkPayment(it,doc),doc?'Pagamento ligado à fatura.':'Marcado como pagamento de fatura. Ligue à fatura quando ela for importada.');return}
   if(e.target.closest('[data-pick-cancel]')){PICK='';renderTx();return}
+  const tsv=e.target.closest('[data-trf-save]');if(tsv){const it=ITEM_BY_ID.get(tsv.dataset.trfSave),acc=$('#trfSel').value;PICKT='';PICKT_ACC='';doTrf(it,acc);return}
+  if(e.target.closest('[data-trf-cancel]')){PICKT='';PICKT_ACC='';renderTx();return}
+  const tsg=e.target.closest('[data-trfsug]');if(tsg){doTrf(ITEM_BY_ID.get(tsg.dataset.trfsug),tsg.dataset.acc);return}
+  const top=e.target.closest('[data-trfopen]');if(top){PICKT=top.dataset.trfopen;PICKT_ACC='';PICK='';renderTx();return}
+  const ut=e.target.closest('[data-untrf]');if(ut){arm(ut,()=>act($('#txMsg'),async()=>{const it=ITEM_BY_ID.get(ut.dataset.untrf),l=trfLink(it);await call('removeTransactionLink',{itemId:it.id});if(l?.counterpartId){const cl=(D.transactionLinks||[]).find(x=>x.itemId===l.counterpartId);if(cl&&(!cl.counterpartId||cl.counterpartId===it.id))await call('removeTransactionLink',{itemId:l.counterpartId})}},'Transferência desfeita. Escolha a categoria certa ou ligue de novo.'),'Desfazer?');return}
   const po=e.target.closest('[data-pickopen]');if(po){PICK=po.dataset.pickopen;renderTx();return}
   const sg=e.target.closest('[data-sug]');if(sg){const it=ITEMS.find(x=>x.id===sg.dataset.sug);act($('#txMsg'),()=>linkPayment(it,sg.dataset.doc),'Pagamento ligado à fatura.');return}
   const ul=e.target.closest('[data-unlink]');if(ul){arm(ul,()=>act($('#txMsg'),()=>call('removeTransactionLink',{itemId:ul.dataset.unlink}),'Pagamento desligado da fatura. Escolha a fatura certa em “Pagamento de fatura…”.'),'Desligar?');return}
   const b=e.target.closest('[data-ign]');if(!b)return;arm(b,()=>act($('#txMsg'),()=>call('ignoreTransaction',{id:b.dataset.ign}),'Lançamento removido da conta.'),'Remover? Só se for duplicado ou erro');});
+$('#alerts').addEventListener('click',async e=>{const b=e.target.closest('[data-autotrf]');if(!b)return;b.disabled=true;try{const n=await autoMatchTransfers();await reload();$('#txMsg').textContent=n+(n===1?' transferência ligada.':' transferências ligadas.')}catch(err){b.disabled=false}});
 $('#txFilter').onclick=e=>{const b=e.target.closest('[data-f]');if(!b)return;FILTER=b.dataset.f;[...$('#txFilter').children].forEach(x=>x.setAttribute('aria-pressed',x===b));renderTx()};
 $('#mPrev').onclick=()=>{VIEW=addM(VIEW,-1);render()};$('#mNext').onclick=()=>{VIEW=addM(VIEW,1);render()};
 $('#unit').onchange=e=>{UNIT=e.target.value;render()};
@@ -672,6 +712,7 @@ async function saveImport(sel,rem=[]){
     if(I.kind==='card'&&I.cardId)await call('linkInvoice',{documentKey:['card',I.account.toUpperCase(),I.pm,I.unit||'indefinida'].join('|'),cardId:I.cardId});
     let balMsg='';
     if(I.bal&&I.accId&&Number.isFinite(I.bal.value)&&I.bal.date){const cur=(D.accountBalances||[]).find(b=>b.accountId===I.accId);if(!cur||I.bal.date>=cur.baseDate){await call('setAccountBalance',{accountId:I.accId,baseDate:I.bal.date,openingBalance:I.bal.value});balMsg=' Saldo da conta atualizado pelo extrato: '+R(Math.round(I.bal.value*100))+' em '+fmtD(I.bal.date)+'.'}}
+    let nt=0;if(I.kind==='bank'){prepare(await call('list'));nt=await autoMatchTransfers()}
     let nr=0;for(const x of rem){try{await call('ignoreTransaction',{id:x.id});nr++}catch(e){}}
     prepare(await call('list'));
     let np=0;
@@ -682,7 +723,7 @@ async function saveImport(sel,rem=[]){
     VIEW=I.kind==='card'?I.pm:ymOf(rows.map(r=>r.date).sort().pop()||TD);
     FILTER=pend?'pend':'all';[...$('#txFilter').children].forEach(x=>x.setAttribute('aria-pressed',x.dataset.f===FILTER));
     cancelImp();render();
-    iMsg(rows.length+' lançamentos salvos.'+(nr?' '+nr+' da versão parcial saíram da fatura.':'')+(np?' '+np+' parcela'+(np>1?'s entraram':' entrou')+' na previsão.':'')+(pend?' '+pend+(pend>1?' ficaram':' ficou')+' sem classificação: escolha a categoria na lista abaixo.':'')+balMsg);
+    iMsg(rows.length+' lançamentos salvos.'+(nt?' '+nt+(nt>1?' transferências entre contas ligadas':' transferência entre contas ligada')+' com a outra conta.':'')+(nr?' '+nr+' da versão parcial saíram da fatura.':'')+(np?' '+np+' parcela'+(np>1?'s entraram':' entrou')+' na previsão.':'')+(pend?' '+pend+(pend>1?' ficaram':' ficou')+' sem classificação: escolha a categoria na lista abaixo.':'')+balMsg);
   }catch(e){iMsg('Não consegui salvar: '+e.message+'. Os lançamentos que já tinham entrado não duplicam se você tentar de novo.',true);$('#iGo').disabled=false}
 }
 
