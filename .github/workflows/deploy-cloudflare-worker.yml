@@ -19,6 +19,7 @@ on:
       - "lib/pop-draws.mjs"
       - "lib/pop-live-operation.mjs"
       - "lib/pop-live-photos.mjs"
+      - "lib/pop-live-games.mjs"
       - "lib/partner-media.mjs"
       - "lib/lucky-draw-official.mjs"
       - "lib/lucky-draw-audit.mjs"
