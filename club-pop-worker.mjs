@@ -2390,8 +2390,14 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!activeUnits.length)return json({ok:false,error:"CONTRATO_INATIVO"},403);
         const unit=String(url.searchParams.get("unit")||"");
         if(!["bike","gym"].includes(unit)||!activeUnits.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA",activeUnits},403);
-        const memberId=String((unit==="gym"?linkedGym:member.evo_member_id)||"");
+        // Own EVO id in that unit; with shared access (e.g. Bike Pop recurring plan that also opens Gym Pop) the student
+        // has no id in the other unit and checks in with the cross-unit id 800000000000+members.id, the same one the
+        // tablet uses when the teacher adds that student by CPF (names, photo and results resolve from the home unit).
+        const ownId=String((unit==="gym"?linkedGym:member.evo_member_id)||"");
+        const crossUnit=!/^\d+$/.test(ownId)&&Number.isSafeInteger(Number(member.id))&&Number(member.id)>0;
+        const memberId=crossUnit?String(800000000000+Number(member.id)):ownId;
         if(!/^\d+$/.test(memberId))return json({ok:false,error:"ID_EVO_NAO_VINCULADO"},403);
+        const homeUnit=crossUnit?(unit==="gym"?"bike":"gym"):unit,homeId=crossUnit?String((unit==="gym"?member.evo_member_id:linkedGym)||""):memberId;
         const action=String(url.searchParams.get("action")||(request.method==="GET"?"classes":"checkin"));
         if(action==="status"&&request.method==="GET"){
           const classId=String(url.searchParams.get("class_id")||"");
@@ -2406,7 +2412,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           return json({ok:true,already_registered:!!assigned,session_id:sid,device_number:assigned?.reference_number||null,device_type:assigned?.device_type||null});
         }
         if(action==="health"&&request.method==="GET"){
-          const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(unit,memberId).first();
+          const master=await env.DB.prepare("SELECT personal_json FROM evo_member_master WHERE unit=? AND evo_member_id=? LIMIT 1").bind(homeUnit,homeId).first();
           let personal={};try{personal=JSON.parse(master?.personal_json||"{}")}catch{}
           const profile=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=?").bind(member.id).first();
           const recent=await env.DB.prepare("SELECT weight FROM pop_fit_entries WHERE member_id=? AND weight>0 ORDER BY updated_at DESC LIMIT 1").bind(member.id).first();
