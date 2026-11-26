@@ -2102,6 +2102,32 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        if(request.method==="DELETE"){
+          const sessionId=Number(url.searchParams.get("id"));
+          if(!Number.isSafeInteger(sessionId)||sessionId<1)return json({ok:false,error:"ID_INVALIDO"},400);
+
+          const db=env.DB;
+          const tables=[
+            "pop_live_session_devices","pop_live_member_performance","pop_live_selected_members",
+            "pop_live_session_exclusions","pop_fit_live_overrides","pop_live_calorie_repair_audit",
+            "pop_live_suggested_refresh","pop_live_game_rounds"
+          ];
+          const {results}=await db.prepare(
+            `SELECT name FROM sqlite_master WHERE type='table' AND name IN (${tables.map(()=>"?").join(",")})`
+          ).bind(...tables).all();
+          const existingTables=new Set(results.map(row=>row.name));
+          const ended="id=? AND status IN ('finished','closed')";
+          const deletes=tables.filter(table=>existingTables.has(table)).map(table=>
+            db.prepare(`DELETE FROM ${table} WHERE session_id=? AND EXISTS
+              (SELECT 1 FROM pop_live_sessions WHERE ${ended})`).bind(sessionId,sessionId)
+          );
+          const changes=await db.batch([
+            ...deletes,
+            db.prepare(`DELETE FROM pop_live_sessions WHERE ${ended}`).bind(sessionId)
+          ]);
+          if(!changes.at(-1).meta?.changes)return json({ok:false,error:"Aula encerrada não encontrada."},404);
+          return json({ok:true,id:sessionId});
+        }
         if(request.method==="POST"){
           const body=await request.json().catch(()=>null);
           if(!body||body.action!=="recalculate_calories")return json({ok:false,error:"ACAO_INVALIDA"},400);
