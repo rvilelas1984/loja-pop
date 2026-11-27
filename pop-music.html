@@ -37,6 +37,24 @@ body.inapp main{background:radial-gradient(120% 420px at 50% -60px,#4b1d8c 0,#1b
 body.inapp .top{display:none}
 body.inapp .bar{bottom:calc(92px + env(safe-area-inset-bottom,0px));background:none;padding-bottom:8px}
 body.inapp .bar .in{background:#140826ee;border-radius:20px;padding:8px;box-shadow:0 8px 30px #0005}
+/* Agenda do aluno */
+main:has(.playlist-agenda),body.inapp main:has(.playlist-agenda){color-scheme:light;background:#fcfaf8;color:#262226}
+body:not(.inapp):has(.playlist-agenda){background:#fcfaf8}
+main:has(.playlist-agenda) .top :is(.back,.brand,.brand b){color:#673185}
+.playlist-agenda p{color:#575258;margin:0 0 14px}
+.playlist-agenda .chip{border:1px solid #cec8cd;background:#fff;color:#393139;border-radius:10px;min-height:40px}
+.playlist-agenda .chip.on{background:#efdef8;color:#571e74;border-color:#efdef8}
+.playlist-agenda h2{margin:20px 0 8px;text-transform:capitalize}
+.ag-day{background:white;border:1px solid #ded9dd;border-radius:15px;padding:0 12px}
+.ag-row{display:grid;grid-template-columns:clamp(69px,22%,108px) minmax(0,1fr);gap:14px;padding:15px 0;overflow-wrap:anywhere}
+.ag-row+.ag-row{border-top:1px solid #e6e1e4}
+.ag-time{display:grid;align-content:center;border-right:1px solid #e1dcdf;padding-right:8px;color:#504a50}
+.ag-time strong{font-size:clamp(19px,5vw,26px);color:#272327;font-variant-numeric:tabular-nums}
+.ag-title{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
+.ag-label{display:inline-block;border-radius:8px;background:#f2e6f8;color:#63227d;font-size:12px;font-weight:700;padding:2px 8px}
+.ag-artists{font-size:14px;color:#514b51}
+.playlist-agenda .btn.alt{margin-top:18px;color:#70278a;background:white;border:1px solid #8839a1}
+.playlist-agenda .msg.ok{background:#f1e8f5;color:#4e335a}
 </style></head><body><main>
 <div class="top"><a class="back" href="/">← Início</a><div class="brand"><b>BIKE POP</b> · POP MUSIC</div></div>
 <div id="app"><p class="mut" style="margin-top:30px">Carregando…</p></div>
@@ -159,14 +177,15 @@ function greet(){const g=GUEST||{};
 let agendaRhythm='';
 function agenda(st){bar.classList.add('hide');const L=st.upcoming_themed||[],R=[...new Set(L.map(c=>c.rhythm).filter(Boolean))];
  const list=L.filter(c=>!agendaRhythm||c.rhythm===agendaRhythm);let h='',last='';
- for(const c of list){if(c.class_date!==last){const dt=new Date(c.class_date+'T12:00:00');h+='<div class="sm" style="font-weight:900;color:var(--lilac);margin:16px 2px 6px;text-transform:capitalize">'+WD[dt.getDay()]+', '+c.class_date.slice(8,10)+'/'+c.class_date.slice(5,7)+'</div>';last=c.class_date}
-  h+='<div class="sec" style="margin:0 0 8px;position:relative">'+(c.mine?'<span style="position:absolute;top:12px;right:12px;background:var(--pink);color:#fff;font-size:10px;font-weight:900;padding:3px 8px;border-radius:99px">SEU PEDIDO!</span>':'')+
-   '<b style="font-size:17px">'+esc(c.class_name)+'</b><div class="sm mut">'+esc([c.class_time?String(c.class_time).slice(0,5):'',c.teacher].filter(Boolean).join(' · '))+'</div><div class="chips" style="margin-top:8px">'+(c.rhythm?'<span class="chip on" style="cursor:default">'+esc((c.emoji?c.emoji+' ':'')+c.rhythm)+'</span>':'')+
-   String(c.artists||'').split(/\s*[,;]\s*/).filter(Boolean).map(a=>'<span class="chip" style="cursor:default">'+esc(a)+'</span>').join('')+'</div></div>'}
- app.innerHTML='<h1>Playlists <em>especiais</em></h1><p class="mut" style="margin:0 0 6px">Aulas temáticas dos próximos 30 dias, criadas com as escolhas da turma. Reserve sua bike pelo app da academia.</p>'+
+ for(const c of list){if(c.class_date!==last){const dt=new Date(c.class_date+'T12:00:00');h+=(last?'</div>':'')+'<h2>'+WD[dt.getDay()]+', '+c.class_date.slice(8,10)+'/'+c.class_date.slice(5,7)+'</h2><div class="ag-day">';last=c.class_date}
+  h+='<div class="ag-row"><div class="ag-time"><strong>'+esc(String(c.class_time||'').slice(0,5))+'</strong>'+esc(c.teacher)+'</div>'+
+   '<div><div class="ag-title"><b>'+esc(c.class_name)+'</b>'+(c.mine?'<span class="ag-label">Seu pedido</span>':'')+'</div>'+
+   (c.rhythm?'<span class="ag-label">'+esc(c.rhythm)+'</span>':'')+'<div class="ag-artists">'+String(c.artists||'').split(/\s*[,;]\s*/).filter(Boolean).map(esc).join(' · ')+'</div></div></div>'}
+ if(h)h+='</div>';
+ app.innerHTML='<section class="playlist-agenda"><h1>Playlists especiais</h1><p>Aulas dos próximos 30 dias, escolhidas pela turma. Reserve sua bike pelo app da academia.</p>'+
   (R.length>1?'<div class="chips" id="agR" style="margin:10px 0 0"><button class="chip'+(agendaRhythm?'':' on')+'" data-ar="">Todas</button>'+R.map(r=>'<button class="chip'+(agendaRhythm===r?' on':'')+'" data-ar="'+esc(r)+'">'+esc(r)+'</button>').join('')+'</div>':'')+
   (h||'<div class="msg ok">Nenhuma aula temática programada por enquanto. Vote no Pop Music e ajude a criar a próxima!</div>')+
-  '<a class="btn alt" href="/pop-music.html" style="margin-top:14px">'+(st.voted?'Consultar minhas escolhas do mês':'Escolher minhas playlists')+'</a>';
+  '<a class="btn alt" href="/pop-music.html" style="margin-top:14px">'+(st.voted?'Consultar minhas escolhas do mês':'Escolher minhas playlists')+'</a></section>';
  const ar=$('agR');if(ar)ar.onclick=e=>{const b=e.target.closest('[data-ar]');if(b){agendaRhythm=b.dataset.ar;agenda(st)}};scrollTo(0,0)}
 async function start(recover){
  if(LINK)return linkStart();
