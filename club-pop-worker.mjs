@@ -721,19 +721,21 @@ async function runScheduledReservationSync(env) {
 async function syncBikeFutureWeeks(env,date,evo){const unit="bike";
  if(!evo){const cfg=await getEvoConfig(env,unit);evo=async(url,purpose)=>{const u=new URL(url),r=await fetch(u.href,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,'GET',?,?,?)").bind(unit,purpose,u.pathname,r.status,r.ok?1:0).run()}catch{}return r}}
  try{const once=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'future_weeks',?,'done')").bind(unit,date).run();
-        if(once.meta?.changes){let futureSaved=0;
+        if(once.meta?.changes){let futureSaved=0;const diag=[];
          for(const ref of [date,new Date(Date.parse(date+"T12:00:00Z")+7*864e5).toISOString().slice(0,10)]){
-          const wr=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+encodeURIComponent(ref)+"&showFullWeek=true&onlyAvailables=false&take=200","future_weeks");if(!wr.ok)break;
+          const wr=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+encodeURIComponent(ref)+"&showFullWeek=true&onlyAvailables=false&take=100","future_weeks");if(!wr.ok){diag.push({ref,http:wr.status});break}
           const wraw=await wr.json(),wl=Array.isArray(wraw)?wraw:(Array.isArray(wraw?.data)?wraw.data:[]),st=[];
-          for(const item of wl){const day=String(item?.activityDate||item?.date||"").slice(0,10),sid=item?.idAtividadeSessao??item?.idActivitySession??item?.idActivitieSession;
-           if(!(day>date)||!Number.isSafeInteger(Number(sid))||Number(sid)<=0||[4,6].includes(Number(item?.status)))continue;
-           const instructor=attendanceInstructorName(item),mt=String(item?.startTime||item?.time||item?.activityStartTime||"").trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);if(!instructor||!mt)continue;
+          // Diagnostic kept in the run detail: what EVO returned and why classes were skipped.
+          const dg={ref,shape:Array.isArray(wraw)?"array":typeof wraw+":"+Object.keys(wraw||{}).slice(0,8).join("|"),returned:wl.length,past:0,badId:0,finished:0,noTeacher:0,noTime:0,status:{},sample:wl.slice(0,2).map(x=>Object.fromEntries(Object.entries(x||{}).filter(([k,v])=>v===null||typeof v!=="object").slice(0,14).map(([k,v])=>[k,String(v).slice(0,40)])))};diag.push(dg);
+          for(const item of wl){const day=String(item?.activityDate||item?.date||"").slice(0,10),sid=item?.idAtividadeSessao??item?.idActivitySession??item?.idActivitieSession;dg.status[item?.status]=(dg.status[item?.status]||0)+1;
+           if(!(day>date)){dg.past++;continue}if(!Number.isSafeInteger(Number(sid))||Number(sid)<=0){dg.badId++;continue}if([4,6].includes(Number(item?.status))){dg.finished++;continue}
+           const instructor=attendanceInstructorName(item),mt=String(item?.startTime||item?.time||item?.activityStartTime||"").trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);if(!instructor){dg.noTeacher++;continue}if(!mt){dg.noTime++;continue}
            let hr=Number(mt[1]);if(mt[3])hr=hr%12+(mt[3].toUpperCase()==="PM"?12:0);if(hr>23||Number(mt[2])>59)continue;
            st.push(env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,instructor_name,synced_at) VALUES(?,?,?,?,?,'scheduled',0,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,instructor_name=excluded.instructor_name,synced_at=CURRENT_TIMESTAMP WHERE evo_attendance_sessions.status='scheduled'")
             .bind(unit,String(sid),day,String(hr).padStart(2,"0")+":"+mt[2],String(item?.name||item?.activityName||item?.activity?.name||"Aula").slice(0,200),instructor));}
           for(let i=0;i<st.length;i+=40)await env.DB.batch(st.slice(i,i+40));futureSaved+=st.length;
          }
-         await env.DB.prepare("UPDATE evo_sync_schedule_runs SET detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='future_weeks' AND scheduled_minute=?").bind(JSON.stringify({futureSaved}),unit,date).run();
+         await env.DB.prepare("UPDATE evo_sync_schedule_runs SET detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='future_weeks' AND scheduled_minute=?").bind(JSON.stringify({futureSaved,diag}).slice(0,3800),unit,date).run();
         }}catch(fe){try{await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=? WHERE unit=? AND kind='future_weeks' AND scheduled_minute=?").bind(String(fe?.message||fe).slice(0,300),unit,date).run()}catch{}}
 }
 async function runScheduledAttendanceSync(env,forceUnit=null,forceKey=null,forceDate=null) {
