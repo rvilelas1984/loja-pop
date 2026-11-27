@@ -266,7 +266,21 @@ async function drawStory(list,label,opt=ST){await document.fonts?.ready;const pa
  items.forEach((t,i)=>{const y=y0+i*(h+gap),d=dd(t),time=(t.class_time?String(t.class_time).slice(0,5):''),line=(t.rhythm||t.class_name)+(who(t)?' com '+who(t):'');
   if(opt.model==='cards'){rr(80,y,920,h,34,'#ffffff');rr(104,y+24,150,h-48,26,deep);
    if(d){T(W[d.getDay()],179,y+h/2-34,28,'#ffffff','800','center');T(t.class_date.slice(8,10),179,y+h/2+22,66,'#ffffff','900','center');T(M[d.getMonth()],179,y+h/2+62,26,'#ffffff','800','center')}
-   T(ell(line,690,44,'900'),286,y+78,44,'#1b1430','900');T(time+(t.rhythm&&!same?' · '+ell(t.class_name,520,30,'700'):''),286,y+128,32,deep,'800');if(t.artists)T(ell('♫ '+t.artists,690,28),286,y+176,28,'#4a4160','600')}
+   const cardTitle=t.playlist_name||t.class_name;
+   let titleWidth=690;
+   if(t.rhythm){
+    const tag=ell(String(t.rhythm).toLocaleUpperCase('pt-BR'),188,26,'800');
+    x.font=F('800',26);
+    const tagWidth=Math.ceil(x.measureText(tag).width)+32;
+    const tagX=976-tagWidth;
+    rr(tagX,y+32,tagWidth,46,12,deep+'18');
+    T(tag,tagX+tagWidth/2,y+64,26,deep,'800','center');
+    titleWidth=tagX-286-18;
+   }
+   const titleSize=fit(cardTitle,titleWidth,48);
+   T(ell(cardTitle,titleWidth,titleSize,'900'),286,y+79,titleSize,'#1b1430','900');
+   T(ell([time,who(t)].filter(Boolean).join(' · '),690,32,'800'),286,y+130,32,deep,'800');
+   if(t.artists)T(ell('♫ '+t.artists,690,28),286,y+179,28,'#4a4160','600')}
   else if(opt.model==='lineup'){x.fillStyle=light?'#5b23a833':'#ffffff3d';x.fillRect(80,y,920,3);
    T(time,80,y+96,64,light?deep:acc,'900');if(multiDay&&d)T(W[d.getDay()]+' '+t.class_date.slice(8,10)+'/'+t.class_date.slice(5,7),80,y+142,28,headSub,'800');
    T(ell(line,640,48,'900'),330,y+92,48,head,'900');if(t.artists)T(ell(t.artists,640,32),330,y+144,32,headSub,'600')}
