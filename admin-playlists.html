@@ -46,6 +46,11 @@
 
  <section id="tab-themed" hidden>
   <div class="pm-card"><div class="pm-row"><div><h2>Aulas temáticas</h2><div class="sub" style="margin:2px 0 0">Registre as aulas criadas a partir da pesquisa. Quem pediu o ritmo vê “Seu pedido virou aula!” e o card da próxima aula mostra a playlist.</div></div><button class="pm-btn" id="newThemed">+ Nova aula temática</button></div></div>
+  <div class="pm-card"><div class="pm-row"><div><h2>Filtrar e divulgar</h2><div class="sub" style="margin:2px 0 0" id="tRangeLbl"></div></div></div>
+   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px"><div class="pm-chips" id="tRange"><button class="pm-chip" data-tr="day">Dia</button><button class="pm-chip" data-tr="week">Semana</button><button class="pm-chip on" data-tr="month">Mês</button></div>
+    <input type="date" id="tRef" style="width:auto;flex:0 0 auto"></div>
+   <button class="pm-btn" id="storyBtn" style="margin-top:12px;width:100%">📸 Gerar imagem para stories (9:16)</button>
+   <div class="sub" style="margin:6px 0 0">Imagem 1080×1920 com as aulas do filtro, pronta para Instagram e grupos de WhatsApp.</div></div>
   <div id="themedCompare"></div><div id="themedList"></div>
  </section>
 
@@ -83,7 +88,7 @@ $('tabs').onclick=e=>{const b=e.target.closest('[data-tab]');if(!b)return;tab=b.
  for(const t of ['results','themed','guests','sugg','catalog','settings'])$('tab-'+t).hidden=t!==tab;if(tab==='guests')loadGuests();
  if(tab==='themed')loadThemed();if(tab==='sugg')paintSugg();if(tab==='catalog')paintCatalog();};
 function paintMonths(){const list=[...new Set([OV.current_month,...OV.months])].sort().reverse();$('months').innerHTML=list.map(m=>'<button role="tab" data-m="'+m+'" class="'+(m===month?'on':'')+'">'+mName(m)+(m===OV.current_month?' · atual':'')+'</button>').join('')}
-$('months').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;month=b.dataset.m;F={rhythm:'',artist:'',teacher:''};paintMonths();loadResults();if(tab==='themed')loadThemed()};
+$('months').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;month=b.dataset.m;F={rhythm:'',artist:'',teacher:''};paintMonths();loadResults();$('tRef').value=month===OV.current_month?todaySP():month+'-01';if(tab==='themed')loadThemed()};
 const LINK_URL=location.origin+'/musica';
 $('copyLink').onclick=async()=>{try{await navigator.clipboard.writeText(LINK_URL);toast('Link copiado: '+LINK_URL)}catch{prompt('Copie o link da pesquisa:',LINK_URL)}};
 $('waLink').href='https://wa.me/?text='+encodeURIComponent('🎶 Pop Music Experience — você escolhe a música, a gente pedala! Escolha os ritmos, artistas e professores das aulas temáticas deste mês: '+LINK_URL);
@@ -180,11 +185,19 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
 // ---------- themed classes ----------
 const WD=['dom','seg','ter','qua','qui','sex','sáb'],fdate=d=>{if(!d)return 'sem data';const x=new Date(d+'T12:00:00');return WD[x.getDay()]+', '+d.slice(8,10)+'/'+d.slice(5,7)};
 let TH=null;
-async function loadThemed(){$('themedList').innerHTML='<div class="pm-empty">Carregando…</div>';$('themedCompare').innerHTML='';
- try{TH=await api('action=themed&month='+month);
+// Day / week (Monday to Sunday) / month filter for the themed classes and the story image.
+let tRange='month';const iso=d=>d.toISOString().slice(0,10),todaySP=()=>new Date(Date.now()-3*3600e3).toISOString().slice(0,10);
+function rangeOf(){const ref=$('tRef').value||todaySP(),d=new Date(ref+'T12:00:00Z');
+ if(tRange==='day')return {from:ref,to:ref,label:fdate(ref)};
+ if(tRange==='week'){const m=new Date(d);m.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));const e=new Date(m);e.setUTCDate(m.getUTCDate()+6);return {from:iso(m),to:iso(e),label:'Semana de '+iso(m).slice(8,10)+'/'+iso(m).slice(5,7)+' a '+iso(e).slice(8,10)+'/'+iso(e).slice(5,7)}}
+ const f=ref.slice(0,8)+'01',e=new Date(Date.UTC(+ref.slice(0,4),+ref.slice(5,7),0));return {from:f,to:iso(e),label:['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][+ref.slice(5,7)-1]+' de '+ref.slice(0,4)}}
+$('tRange').onclick=e=>{const b=e.target.closest('[data-tr]');if(!b)return;tRange=b.dataset.tr;$('tRange').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));loadThemed()};
+$('tRef').onchange=()=>loadThemed();
+async function loadThemed(){if(!$('tRef').value)$('tRef').value=month&&month!==todaySP().slice(0,7)?month+'-01':todaySP();const R=rangeOf();$('tRangeLbl').textContent=R.label;$('themedList').innerHTML='<div class="pm-empty">Carregando…</div>';$('themedCompare').innerHTML='';
+ try{TH=await api('action=themed&month='+R.from.slice(0,7)+'&from='+R.from+'&to='+R.to);TH.range=R;
   if(TH.comparison){const c=TH.comparison,mx=Math.max(c.themed_avg,c.regular_avg,1);$('themedCompare').innerHTML='<div class="pm-card"><h2>Ocupação: temáticas x convencionais</h2><div class="sub">Média de alunos presentes · mesmos professores em '+mName(month)+'</div>'+bar('','t','🎉 Aulas temáticas ('+c.themed_classes+')',c.themed_avg,mx,0)+bar('','r','Aulas convencionais ('+c.regular_classes+')',c.regular_avg,mx,0)+'</div>';
    requestAnimationFrame(()=>document.querySelectorAll('#themedCompare .f').forEach(f=>f.style.width=f.dataset.w+'%'));document.querySelectorAll('#themedCompare .v small').forEach(s=>s.remove())}
-  $('themedList').innerHTML='<div class="pm-card"><h2>'+TH.list.length+' aula(s) em '+mName(month)+'</h2>'+(TH.list.length?'<div class="pm-list">'+TH.list.map(t=>'<div><div style="min-width:0"><b>'+esc(t.class_name)+'</b>'+(t.rhythm?' <span class="pm-tag">'+esc(t.rhythm)+'</span>':'')+'<div class="meta">'+fdate(t.class_date)+(t.class_time?' às '+esc(t.class_time):'')+' · '+esc(t.teacher_name)+(t.artists?' · '+esc(t.artists):'')+'</div>'+(t.teacher_changed?'<div class="meta" style="color:#8a5200;font-weight:700">⚠️ Professor mudou na EVO: '+esc(t.teacher_name)+' → '+esc(t.evo_teacher)+' <button class="pm-btn alt sm" data-tsync="'+t.id+'">Atualizar</button><br><span style="font-weight:500">Os alunos já veem '+esc(t.evo_teacher)+' no aviso.</span></div>':'')+'<div class="meta">'+(t.evo_session_id?(t.attendance!=null?'<span class="pm-tag ok">'+t.attendance+' presentes</span>':'<span class="pm-tag">aula oficial vinculada</span>'):'<span class="pm-tag warn">sem aula oficial vinculada</span>')+'</div></div><button class="pm-btn danger sm" data-tdel="'+t.id+'">Excluir</button></div>').join('')+'</div>':'<div class="pm-empty">Nenhuma aula temática neste mês. Use “+ Nova aula temática”.</div>')+'</div>';
+  $('themedList').innerHTML='<div class="pm-card"><h2>'+TH.list.length+' aula(s) · '+esc(R.label)+'</h2>'+(TH.list.length?'<div class="pm-list">'+TH.list.map(t=>'<div><div style="min-width:0"><b>'+esc(t.class_name)+'</b>'+(t.rhythm?' <span class="pm-tag">'+esc(t.rhythm)+'</span>':'')+'<div class="meta">'+fdate(t.class_date)+(t.class_time?' às '+esc(t.class_time):'')+' · '+esc(t.teacher_name)+(t.artists?' · '+esc(t.artists):'')+'</div>'+(t.teacher_changed?'<div class="meta" style="color:#8a5200;font-weight:700">⚠️ Professor mudou na EVO: '+esc(t.teacher_name)+' → '+esc(t.evo_teacher)+' <button class="pm-btn alt sm" data-tsync="'+t.id+'">Atualizar</button><br><span style="font-weight:500">Os alunos já veem '+esc(t.evo_teacher)+' no aviso.</span></div>':'')+'<div class="meta">'+(t.evo_session_id?(t.attendance!=null?'<span class="pm-tag ok">'+t.attendance+' presentes</span>':'<span class="pm-tag">aula oficial vinculada</span>'):'<span class="pm-tag warn">sem aula oficial vinculada</span>')+'</div></div><button class="pm-btn danger sm" data-tdel="'+t.id+'">Excluir</button></div>').join('')+'</div>':'<div class="pm-empty">Nenhuma aula temática neste mês. Use “+ Nova aula temática”.</div>')+'</div>';
  }catch(e){$('themedList').innerHTML='<div class="pm-card pm-empty">'+esc(why(e))+'</div>'}}
 $('newThemed').onclick=async()=>{if(!TH)await loadThemed();
  sheet('<h2 style="margin:0 0 4px">Nova aula temática</h2><div class="sub" style="color:var(--pm-mut);font-size:13px">O nome é definido pelo professor. Os alunos que pediram o ritmo são avisados no app.</div><form id="themedForm"><div class="pm-form">'+
@@ -199,6 +212,67 @@ $('newThemed').onclick=async()=>{if(!TH)await loadThemed();
  $('tEvo').addEventListener('change',()=>{const s=(TH?.sessions||[]).find(x=>x.id===$('tEvo').value);if(s&&!f.elements.class_time.value)f.elements.class_time.value=String(s.time||'').slice(0,5)});
  $('tRh').addEventListener('change',()=>{const r=CAT.rhythms.find(x=>String(x.id)===$('tRh').value),top=(RANK?.artists_by_rhythm||[]).filter(a=>a.rhythm===r?.name).slice(0,8);
   $('tPick').innerHTML=top.length?'<span style="font-size:12px;color:var(--pm-mut);align-self:center">Mais votados:</span>'+top.map(a=>'<button type="button" class="pm-chip" data-pick="'+esc(a.name)+'">+ '+esc(a.name)+' ('+a.votes+')</button>').join(''):''});evo()};
+// ---------- story image 9:16: models + colour palettes + live preview (same flow as Pop Fit: canvas → PNG → share/download) ----------
+const STORY_MODELS=[['cards','Cartões','Cartões brancos, leitura fácil'],['lineup','Line-up','Cartaz de show: horário grande'],['tickets','Ingressos','Cada aula vira um ingresso'],['hero','Destaque','Uma aula por imagem, título enorme']];
+const STORY_PALETTES=[['roxo','Roxo Bike Pop','#2a0e52','#7b3fd1','#ff8fd1','#5b23a8'],['pink','Pink','#8e0f57','#ff4fb6','#ffe14d','#c2186b'],['neon','Preto + Neon','#0d0c14','#251c3d','#c6ff3d','#6b2bd9'],['azul','Azul Club','#063e73','#18a8e0','#ffe14d','#0b5fa8'],['claro','Branco + Roxo','#ffffff','#efe6ff','#e8449b','#5b23a8']];
+let ST={model:'cards',pal:'roxo',page:0};
+function wrapText(ctx,text,maxW){const words=String(text||'').split(/\s+/),lines=[];let cur='';for(const w of words){const t=cur?cur+' '+w:w;if(ctx.measureText(t).width>maxW&&cur){lines.push(cur);cur=w}else cur=t}if(cur)lines.push(cur);return lines}
+function storyPages(list,model){if(model==='hero')return list.map(x=>[x]);const P=[];for(let i=0;i<list.length;i+=5)P.push(list.slice(i,i+5));return P}
+async function drawStory(list,label,opt=ST){await document.fonts?.ready;const pages=storyPages(list,opt.model),items=pages[Math.min(opt.page,pages.length-1)]||[];
+ const [,,b1,b2,acc,deep]=STORY_PALETTES.find(p=>p[0]===opt.pal)||STORY_PALETTES[0],light=opt.pal==='claro';
+ const head=light?'#1b1430':'#ffffff',headSub=light?deep:'#f3ecff';
+ const c=document.createElement('canvas');c.width=1080;c.height=1920;const x=c.getContext('2d');
+ const g=x.createLinearGradient(0,0,1080,1920);g.addColorStop(0,b1);g.addColorStop(1,b2);x.fillStyle=g;x.fillRect(0,0,1080,1920);
+ x.fillStyle=light?'#5b23a812':'#ffffff10';for(let i=0;i<8;i++){x.beginPath();x.arc(990-i*36,170+i*10,250-i*24,0,Math.PI*2);x.fill()}
+ const F=(w,s)=>w+' '+s+'px Inter,system-ui,-apple-system,Segoe UI,sans-serif',T=(t,X,Y,s,col,w='800',al='left')=>{x.font=F(w,s);x.fillStyle=col;x.textAlign=al;x.fillText(t,X,Y)};
+ const fit=(t,max,size,w='900')=>{let z=size;x.font=F(w,z);while(z>26&&x.measureText(t).width>max){z-=2;x.font=F(w,z)}return z};
+ const ell=(t,max,size,w='600')=>{x.font=F(w,size);if(x.measureText(t).width<=max)return t;let s=t;while(s.length>3&&x.measureText(s+'…').width>max)s=s.slice(0,-1);return s.replace(/[,\s·]+$/,'')+'…'};
+ const W=['DOM','SEG','TER','QUA','QUI','SEX','SÁB'],M=['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+ const dd=t=>t.class_date?new Date(t.class_date+'T12:00:00'):null,multiDay=new Set(list.map(t=>t.class_date)).size>1,who=t=>t.evo_teacher||t.teacher_name;
+ const same=list.every(t=>t.class_name===list[0].class_name),title=same&&opt.model!=='hero'?list[0].class_name:'Playlists especiais';
+ const rr=(X,Y,w,h,r,col)=>{x.fillStyle=col;x.beginPath();x.roundRect(X,Y,w,h,r);x.fill()};
+ const cta=(y)=>{rr(80,y,920,104,52,light?deep:'#ffffff');T('Garanta sua bike no app',540,y+66,40,light?'#ffffff':deep,'900','center');T('Você escolheu. A gente pedala! · Bike Pop',540,y+150,28,headSub,'700','center')};
+ T('BIKE POP · PLAYLISTS ESPECIAIS',80,150,30,light?deep:acc,'900');
+ if(opt.model==='hero'){const t=items[0];if(!t)return null;const d=dd(t);
+  x.save();x.translate(820,700);for(let r=420;r>60;r-=26){x.strokeStyle=light?'#5b23a81f':'#ffffff1c';x.lineWidth=10;x.beginPath();x.arc(0,0,r,0,Math.PI*2);x.stroke()}x.fillStyle=acc;x.beginPath();x.arc(0,0,90,0,Math.PI*2);x.fill();x.restore();
+  T(d?(['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]+', '+t.class_date.slice(8,10)+'/'+t.class_date.slice(5,7)):'',80,1060,46,headSub,'800');
+  T(t.class_time?String(t.class_time).slice(0,5):'',80,1150,92,head,'900');
+  const main=(t.rhythm||t.class_name)+(who(t)?' com '+who(t):'');x.font=F('900',118);const ls=wrapText(x,main,920).slice(0,3);ls.forEach((l,k)=>T(l,80,1290+k*124,fit(l,920,118),head,'900'));
+  let y=1290+ls.length*124;if(t.rhythm&&t.class_name)T(ell(t.class_name,920,46,'800'),80,y,46,light?deep:acc,'800');
+  if(t.artists){y+=70;let xx=80;x.font=F('800',32);for(const a of String(t.artists).split(/\s*[,;]\s*/).filter(Boolean).slice(0,4)){const w=x.measureText(a).width+56;if(xx+w>1000)break;rr(xx,y-44,w,64,32,light?'#5b23a81a':'#ffffff26');T(a,xx+28,y,32,head,'800');xx+=w+14}}
+  cta(1690);return await new Promise(r=>c.toBlob(r,'image/png'))}
+ T(ell(title,920,104,'900'),80,272,fit(title,920,104),head,'900');T(label+' · '+list.length+(list.length===1?' aula temática':' aulas temáticas'),80,342,38,headSub,'700');
+ const top=420,foot=1650,gap=opt.model==='lineup'?0:24,h=Math.min(opt.model==='lineup'?236:230,Math.floor((foot-top-gap*(items.length-1))/Math.max(1,items.length)));
+ const blockH=items.length*h+gap*Math.max(0,items.length-1),y0=top+Math.max(0,Math.round((foot-top-blockH)/2*0.8));
+ items.forEach((t,i)=>{const y=y0+i*(h+gap),d=dd(t),time=(t.class_time?String(t.class_time).slice(0,5):''),line=(t.rhythm||t.class_name)+(who(t)?' com '+who(t):'');
+  if(opt.model==='cards'){rr(80,y,920,h,34,'#ffffff');rr(104,y+24,150,h-48,26,deep);
+   if(d){T(W[d.getDay()],179,y+h/2-34,28,'#ffffff','800','center');T(t.class_date.slice(8,10),179,y+h/2+22,66,'#ffffff','900','center');T(M[d.getMonth()],179,y+h/2+62,26,'#ffffff','800','center')}
+   T(ell(line,690,44,'900'),286,y+78,44,'#1b1430','900');T(time+(t.rhythm&&!same?' · '+ell(t.class_name,520,30,'700'):''),286,y+128,32,deep,'800');if(t.artists)T(ell('♫ '+t.artists,690,28),286,y+176,28,'#4a4160','600')}
+  else if(opt.model==='lineup'){x.fillStyle=light?'#5b23a833':'#ffffff3d';x.fillRect(80,y,920,3);
+   T(time,80,y+96,64,light?deep:acc,'900');if(multiDay&&d)T(W[d.getDay()]+' '+t.class_date.slice(8,10)+'/'+t.class_date.slice(5,7),80,y+142,28,headSub,'800');
+   T(ell(line,640,48,'900'),330,y+92,48,head,'900');if(t.artists)T(ell(t.artists,640,32),330,y+144,32,headSub,'600')}
+  else{rr(80,y,920,h,30,light?deep:'#ffffff');const ink=light?'#ffffff':'#1b1430',sub=light?'#f3ecff':deep;
+   x.fillStyle=light?'#ffffff':b1;x.beginPath();x.arc(330,y,22,0,Math.PI*2);x.arc(330,y+h,22,0,Math.PI*2);x.fill();
+   x.setLineDash([12,12]);x.strokeStyle=light?'#ffffff80':deep+'66';x.lineWidth=3;x.beginPath();x.moveTo(330,y+30);x.lineTo(330,y+h-30);x.stroke();x.setLineDash([]);
+   T(time,205,y+h/2+(multiDay?0:20),58,ink,'900','center');T(multiDay&&d?W[d.getDay()]+' '+t.class_date.slice(8,10)+'/'+t.class_date.slice(5,7):ell(String(who(t)||'').toUpperCase(),220,26,'800'),205,y+h/2+(multiDay?48:64),26,sub,'800','center');
+   T(ell(t.rhythm||t.class_name,620,48,'900'),370,y+88,48,ink,'900');T(ell((multiDay&&who(t)?'com '+who(t):''),620,30,'700'),370,y+132,30,sub,'700');if(t.artists)T(ell('♫ '+t.artists,620,28),370,y+(multiDay?178:140),28,sub,'600')}});
+ if(pages.length>1)T('Imagem '+(opt.page+1)+' de '+pages.length,540,foot+10,28,headSub,'700','center');
+ cta(1690);return await new Promise(r=>c.toBlob(r,'image/png'))}
+let storyUrl='';
+async function storyRender(){const L=TH.list,blob=await drawStory(L,TH.range.label,ST);if(!blob)return;if(storyUrl)URL.revokeObjectURL(storyUrl);storyUrl=URL.createObjectURL(blob);
+ const pages=storyPages(L,ST.model).length,name='playlists-especiais-'+TH.range.from+(TH.range.to!==TH.range.from?'_'+TH.range.to:'')+'-'+ST.model+(pages>1?'-'+(ST.page+1):'')+'.png';
+ $('stImg').src=storyUrl;$('stDown').href=storyUrl;$('stDown').download=name;$('stPage').hidden=pages<2;$('stPageLbl').textContent=(ST.model==='hero'?'Aula ':'Imagem ')+(ST.page+1)+' de '+pages;$('stShare').file=new File([blob],name,{type:'image/png'})}
+$('storyBtn').onclick=async()=>{if(!TH)await loadThemed();if(!(TH?.list||[]).length){toast('Nenhuma aula temática nesse período.',true);return}ST.page=0;
+ sheet('<h2 style="margin:0 0 10px">Imagem para stories</h2><label>Modelo</label><div class="pm-chips" id="stModel">'+STORY_MODELS.map(m=>'<button type="button" class="pm-chip'+(m[0]===ST.model?' on':'')+'" data-m="'+m[0]+'" title="'+esc(m[2])+'">'+m[1]+'</button>').join('')+'</div>'+
+  '<label>Cores</label><div style="display:flex;gap:10px;flex-wrap:wrap" id="stPal">'+STORY_PALETTES.map(p=>'<button type="button" data-p="'+p[0]+'" title="'+p[1]+'" aria-label="'+p[1]+'" style="width:44px;height:44px;border-radius:50%;cursor:pointer;background:linear-gradient(135deg,'+p[2]+','+p[3]+');border:3px solid '+(p[0]===ST.pal?'#1d1330':'#fff')+';box-shadow:0 0 0 1px #d9d1e8"></button>').join('')+'</div>'+
+  '<div style="display:flex;justify-content:center;margin-top:14px"><img id="stImg" alt="Prévia da imagem" style="width:100%;max-width:300px;border-radius:16px;box-shadow:0 6px 24px #0003"></div>'+
+  '<div id="stPage" hidden style="display:flex;justify-content:center;align-items:center;gap:10px;margin-top:8px"><button type="button" class="pm-btn alt sm" id="stPrev">‹</button><b id="stPageLbl" style="font-size:13px"></b><button type="button" class="pm-btn alt sm" id="stNext">›</button></div>'+
+  '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="pm-btn" id="stShare" style="flex:1">Compartilhar</button><a class="pm-btn alt" id="stDown" style="flex:1;text-align:center;text-decoration:none">Baixar PNG</a></div><button type="button" class="pm-btn ghost" data-close style="width:100%;margin-top:6px">Fechar</button>');
+ $('stModel').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;ST.model=b.dataset.m;ST.page=0;$('stModel').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));storyRender()};
+ $('stPal').onclick=e=>{const b=e.target.closest('[data-p]');if(!b)return;ST.pal=b.dataset.p;$('stPal').querySelectorAll('button').forEach(x=>x.style.borderColor=x===b?'#1d1330':'#fff');storyRender()};
+ $('stPrev').onclick=()=>{const n=storyPages(TH.list,ST.model).length;ST.page=(ST.page-1+n)%n;storyRender()};$('stNext').onclick=()=>{const n=storyPages(TH.list,ST.model).length;ST.page=(ST.page+1)%n;storyRender()};
+ $('stShare').onclick=async()=>{const file=$('stShare').file;try{if(file&&navigator.canShare&&navigator.canShare({files:[file]}))await navigator.share({files:[file],title:'Playlists especiais · Bike Pop'});else $('stDown').click()}catch(e){if(e.name!=='AbortError')toast('Não foi possível compartilhar. Use Baixar PNG.',true)}};
+ try{await storyRender()}catch(e){toast('Não foi possível gerar a imagem.',true)}};
 // ---------- settings ----------
 $('saveSettings').onclick=async()=>{try{await post({op:'settings',first_month:$('firstMonth').value});toast('Configuração salva.')}catch(e){toast('Não foi possível: '+why(e),true)}};
 init();
