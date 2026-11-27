@@ -123,6 +123,20 @@ const fr=await S('buy',{ticket_type_id:T.free,activity_id:A.auto},cp.body.token)
 assert.equal((await S('leave',{activity_id:A.surv})).body.status,'left');assert.equal((await S('event')).body.balance.extras.left,1);
 const det=(await adminCall(E)).body;assert.equal(det.purchases.find(p=>p.ticket==='Maratona + camiseta + 2 atividades').shirt_size,'M');assert.equal(det.purchases[0].visitor,1);
 assert.equal(det.enrollments.filter(n=>n.activity_id===A.auto).length,2);assert.equal(det.tickets.find(t=>t.id===T.combo).sold,1);
+// Equipment numbers: automatic (lowest free), chosen by the student, swapped by the admin.
+let autoRows=det.enrollments.filter(n=>n.activity_id===A.auto).sort((x,y)=>x.seat_number-y.seat_number);assert.deepEqual(autoRows.map(n=>n.seat_number),[1,2]);
+d=(await S('event')).body;assert.equal(d.activities.find(a=>a.id===A.auto).my_seat,1);assert.deepEqual(d.activities.find(a=>a.id===A.auto).taken_seats.sort(),[1,2]);
+assert.equal((await S('enroll',{activity_id:A.surv,seat_number:5})).body.error,'NUMERO_INVALIDO','Sobrevivência has 1 seat');
+const ch=await S('enroll',{activity_id:A.surv,seat_number:1});assert.equal(ch.body.seat,1);
+const me1=autoRows.find(n=>n.first_name==='Marina');
+await op({op:'seat_set',enrollment_id:me1.id,seat_number:2});
+autoRows=(await adminCall(E)).body.enrollments.filter(n=>n.activity_id===A.auto);assert.equal(autoRows.find(n=>n.first_name==='Marina').seat_number,2);assert.equal(autoRows.find(n=>n.first_name!=='Marina').seat_number,1,'swapped');
+assert.equal(autoRows.find(n=>n.first_name==='Marina').shirt_size,'M');
+// Admin edits an activity (no longer main) and removes a participant.
+assert.equal((await op({op:'activity_update',activity_id:A.m2,start:'13:00',end:'13:45',unit:'bike',activity_type:'Desafio de Distância',name:'Maratona Pop 5 km',seats:15,is_main:false})).status,200);
+let acts=(await adminCall(E)).body.activities;assert.equal(acts.find(a=>a.id===A.m2).is_main,0);assert.equal(acts.find(a=>a.id===A.m2).seats,15);
+await op({op:'enrollment_remove',enrollment_id:autoRows.find(n=>n.first_name!=='Marina').id});
+assert.equal((await adminCall(E)).body.enrollments.filter(n=>n.activity_id===A.auto).length,1);
 assert.equal((await op({op:'ticket_delete',ticket_type_id:T.combo})).body.error,'INGRESSO_JA_VENDIDO_DESATIVE');
 assert.equal((await op({op:'activity_delete',activity_id:A.auto})).body.error,'ATIVIDADE_COM_INSCRITOS');
 // Visitor still cannot use store routes.
