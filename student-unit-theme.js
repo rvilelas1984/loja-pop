@@ -12,6 +12,7 @@ function themeKey(u){return "clubpop_unit_theme_"+u}
 function applyTheme(d,u){if(!d||!d.backgroundColor)return;paintPage(d.backgroundColor);if(d.faviconData){let fav=document.querySelector('link[rel="icon"]');if(!fav){fav=document.createElement("link");fav.rel="icon";document.head.appendChild(fav)}fav.href=d.faviconData}render(d,u)}
 async function refresh(){const u=unit();document.documentElement.dataset.clubUnit=u;try{const cached=JSON.parse(localStorage.getItem(themeKey(u))||"null");if(cached)applyTheme(cached,u)}catch{}try{const r=await fetch("/api/evo-config?route=unit-theme&unit="+u,{cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok)return;try{localStorage.setItem(themeKey(u),JSON.stringify(d))}catch{}applyTheme(d,u)}catch(e){}}
 // One navigation definition for every student page, including promotion details.
+const studentLiveIcon="<path d='M3 12h4l2.5-6 4 12 2.5-6H21'/>",studentLogoutIcon="<path d='M15 4h4v16h-4'/><path d='M10 8l-4 4 4 4'/><path d='M6 12h10'/>";
 const studentNavItems=[["home", "Início", "/", "<path d='M3 10.5 12 3l9 7.5'/><path d='M5 9.5V21h14V9.5'/><path d='M9 21v-7h6v7'/>"], ["challenges", "Desafios", "/missoes.html", "<path d='m12 3 2.1 4.3 4.8.7-3.5 3.4.8 4.8L12 14l-4.2 2.2.8-4.8L5.1 8l4.8-.7L12 3Z'/><path d='M7 20h10'/>"], ["benefits", "Benefícios", "/beneficios.html", "<path d='M20 12v8H4v-8'/><path d='M2 7h20v5H2z'/><path d='M12 7v13'/><path d='M12 7H7.5A2.5 2.5 0 1 1 10 4.5L12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5L12 7Z'/>"], ["store", "Loja", "/loja.html", "<path d='M6 8h12l1 13H5L6 8Z'/><path d='M9 10V6a3 3 0 0 1 6 0v4'/>"], ["fit", "Pop Fit", "/pop-fit", "<path d=\"M4 18 9 13l4 3 7-9\"/><path d=\"M16 7h4v4\"/>"], ["profile", "Perfil", "/perfil.html", "<circle cx='12' cy='8' r='4'/><path d='M4.5 21a7.5 7.5 0 0 1 15 0'/>"]];
 function ensurePopFitNav(){
  const menus=document.querySelectorAll('.navwrap > nav');if(!menus.length)return;
@@ -34,7 +35,11 @@ function ensurePopFitNav(){
  menus.forEach(nav=>{
   if(nav.dataset.standardNavigation==='1')return;
   nav.dataset.standardNavigation='1';nav.className='cp-student-navigation';nav.setAttribute('aria-label','Menu do aluno');nav.parentElement.classList.add('cp-student-navigation-wrap');
-  nav.replaceChildren(...studentNavItems.map(([key,label,url,icon])=>{const button=document.createElement('button');button.type='button';button.dataset.studentNav=key;if(key===section)button.setAttribute('aria-current','page');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+icon+'</svg><span>'+label+'</span>';button.onclick=()=>location.href=url;return button}));
+  // Pop Live visitors (session limited to Pop Live and Pop Fit) get only those, plus Sair.
+  let liveOnly=false;try{liveOnly=sessionStorage.getItem('clubpop_scope')==='live'}catch{}
+  const items=liveOnly?[["live","Pop Live","/pop-live.html",studentLiveIcon],studentNavItems.find(x=>x[0]==='fit'),["logout","Sair","#logout",studentLogoutIcon]]:studentNavItems;
+  if(liveOnly)nav.style.setProperty('grid-template-columns','repeat(3,minmax(0,1fr))','important');
+  nav.replaceChildren(...items.map(([key,label,url,icon])=>{const button=document.createElement('button');button.type='button';button.dataset.studentNav=key;if(key===section)button.setAttribute('aria-current','page');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+icon+'</svg><span>'+label+'</span>';button.onclick=()=>{if(url==='#logout'){try{sessionStorage.removeItem('clubpop_token');sessionStorage.removeItem('clubpop_scope');localStorage.removeItem('clubpop_remember')}catch{}location.replace('/');return}location.href=url};return button}));
  });
  const content=document.getElementById('dashboard')||document.querySelector('main.app,main.shell,.app,.shell')||document.querySelector('main');content?.classList.add('cp-student-navigation-content');
 }

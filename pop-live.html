@@ -42,9 +42,13 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
 .evc h4{font:900 italic 20px/1.05 "Exo 2",system-ui;margin:4px 0}
 .k{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
 .k div{background:#1a1226;border-radius:12px;padding:10px;text-align:center}.k b{display:block;font:800 20px system-ui;white-space:nowrap}.k span{font-size:11.5px;color:var(--mut)}
-.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;border-top:1px solid var(--line);background:#150f20;padding:8px 6px calc(10px + env(safe-area-inset-bottom))}
-.tabs a,.tabs button{background:none;border:0;color:var(--mut);font:600 11.5px system-ui;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:84px;min-height:44px;cursor:pointer}
-.tabs .on{color:var(--pink)}.tabs i{font-style:normal;font-size:19px}
+.tabs{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(460px,100%);padding:0 10px max(10px,env(safe-area-inset-bottom));z-index:40}
+.tabs nav{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));align-items:center;height:84px;padding:6px;border:1px solid #e5e9ee;border-radius:24px;background:#fff;box-shadow:0 10px 30px #1112;font-family:Inter,system-ui,sans-serif}
+.tabs nav>a,.tabs nav>button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;height:70px;padding:0 2px;border:0;border-radius:18px;background:none;color:#8b929b;cursor:pointer;font:800 11px/13px Inter,system-ui,sans-serif;white-space:nowrap}
+.tabs nav>[aria-current=page]{color:#078fcb;background:#eaf8fe}
+.tabs nav>[aria-current=page]:after{content:"";position:absolute;bottom:3px;width:20px;height:3px;border-radius:9px;background:#08a9e3}
+.tabs svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.app{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
 .hide{display:none!important}
 </style></head><body>
 <main class="app">
@@ -103,7 +107,13 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
  </section>
 </main>
 <div id="pixSheet" class="hide" style="position:fixed;inset:0;z-index:50;background:rgba(10,6,18,.86);display:flex;align-items:flex-end;justify-content:center"><div id="pixBox" class="box" style="width:min(480px,100%);margin:0;border-radius:22px 22px 0 0;padding:20px 18px calc(24px + env(safe-area-inset-bottom));max-height:92vh;overflow:auto"></div></div>
-<nav class="tabs hide" id="tabs"><button class="on" data-tab="dash"><i>⌂</i>Pop Live</button><a href="/pop-fit.html"><i>📈</i>Pop Fit</a><a href="/" id="tabClub" class="hide"><i>★</i>Club Pop</a><button id="logout"><i>⎋</i>Sair</button></nav>
+<div class="tabs hide" id="tabs"><nav aria-label="Menu" id="tabNav">
+<a href="/" id="tabClub" class="hide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d='M3 10.5 12 3l9 7.5'/><path d='M5 9.5V21h14V9.5'/><path d='M9 21v-7h6v7'/></svg>Início</a>
+<a href="/pop-live.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d='M3 12h4l2.5-6 4 12 2.5-6H21'/></svg>Pop Live</a>
+<a href="/pop-fit.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18 9 13l4 3 7-9"/><path d="M16 7h4v4"/></svg>Pop Fit</a>
+<a href="/perfil.html" id="tabProfile" class="hide"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx='12' cy='8' r='4'/><path d='M4.5 21a7.5 7.5 0 0 1 15 0'/></svg>Perfil</a>
+<button type="button" id="logout" class="hide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d='M15 4h4v16h-4'/><path d='M10 8l-4 4 4 4'/><path d='M6 12h10'/></svg>Sair</button>
+</nav></div>
 <script>
 {
 const $=id=>document.getElementById(id),digits=v=>String(v||'').replace(/\D/g,''),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -127,7 +137,7 @@ $('createPin').onclick=async()=>{const pin=digits($('nPin').value);if(pin.length
 $('signup').onclick=async()=>{const pin=digits($('sPin').value);if(pin.length!==6||pin!==digits($('sPin2').value))return msg('Os PINs devem ter 6 números e ser iguais.');busy($('signup'),true);msg('Criando sua conta…');
  try{const d=await call('pop-live-signup',{method:'POST',body:JSON.stringify({name:$('sName').value,cpf:digits($('sCpf').value),birthDate:$('sBirth').value,sex:$('sSex').value,phone:digits($('sPhone').value),email:$('sEmail').value.trim(),pin,terms:$('sTerms').checked,rememberDevice:false})});saveToken(d.token,false);boot()}
  catch(e){if(e.code==='ALUNO_ENCONTRADO_USE_PRIMEIRO_ACESSO'){step('stFirst');$('fCpf').value=$('sCpf').value}msg(e.message)}finally{busy($('signup'),false)}};
-$('logout').onclick=async()=>{try{await call('logout',{method:'POST',body:'{}'})}catch{}try{sessionStorage.removeItem('clubpop_token');sessionStorage.removeItem('clubpop');localStorage.removeItem('clubpop_remember')}catch{}location.replace('/')};
+$('logout').onclick=async()=>{try{await call('logout',{method:'POST',body:'{}'})}catch{}try{sessionStorage.removeItem('clubpop_token');sessionStorage.removeItem('clubpop');sessionStorage.removeItem('clubpop_scope');localStorage.removeItem('clubpop_remember')}catch{}location.replace('/')};
 
 // ---- Events and tickets (free: spot at once; paid: Pix through the store checkout) ----
 let events=[];
@@ -194,7 +204,7 @@ async function boot(){
  if(!token){$('access').classList.remove('hide');$('dash').classList.add('hide');$('tabs').classList.add('hide');step('stLogin');return}
  try{me=(await call('me')).member}catch(e){if(e.status===401||e.status===403){try{sessionStorage.removeItem('clubpop_token')}catch{}token=null;$('access').classList.remove('hide');step('stLogin');if(e.code==='CONTRATO_INATIVO')msg('Entre com seu CPF e PIN para usar o Pop Live.');return}msg(e.message);return}
  $('access').classList.add('hide');$('dash').classList.remove('hide');$('tabs').classList.remove('hide');$('toEntry').classList.add('hide');
- const club=me.scope!=='live';$('tabClub').classList.toggle('hide',!club);
+ const club=me.scope!=='live';try{sessionStorage.setItem('clubpop_scope',club?'club':'live')}catch{}['tabClub','tabProfile'].forEach(id=>$(id).classList.toggle('hide',!club));$('logout').classList.toggle('hide',club);$('tabNav').style.setProperty('--n',club?4:3);
  $('hello').textContent='Olá, '+String(me.firstName||'').trim().split(/\s+/)[0]+'!';$('who').textContent=club?'Aluno Club Pop':'Pop Live';
  paintDash();
 }
