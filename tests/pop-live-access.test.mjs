@@ -86,6 +86,7 @@ admin='reception';assert.equal((await adminCall('/admin/pop-live-events',{unit:'
 const ev=await adminCall('/admin/pop-live-events',{unit:'both',kind:'event',name:'Bike Pop Games 1ª Edição',date:day,time:'08:00',end_time:'14:00',status:'published'});assert.equal(ev.status,200,JSON.stringify(ev.body));
 const E='/admin/pop-live-events?id='+ev.body.id,op=b=>adminCall(E,b);
 assert.equal((await op({op:'activity_add',unit:'bike',start:'09:00',end:'08:00',activity_type:'Autódromo Pop',seats:12})).body.error,'HORARIO_INVALIDO');
+assert.equal((await op({op:'activity_add',unit:'bike',start:'07:00',end:'07:30',activity_type:'Outra atividade',seats:12})).body.error,'NOME_DA_ATIVIDADE_OBRIGATORIO');
 const A={};
 A.m1=(await op({op:'activity_add',unit:'bike',start:'08:00',end:'08:45',activity_type:'Desafio de Distância',name:'Maratona Pop 5 km',seats:2,is_main:true})).body.activity_id;
 A.auto=(await op({op:'activity_add',unit:'bike',start:'09:00',end:'09:45',activity_type:'Autódromo Pop',seats:12})).body.activity_id;
