@@ -155,6 +155,15 @@ assert.equal((await op({op:'ticket_sell',ticket_type_id:T.combo,member_id:fm.mem
 assert.ok((await op({op:'ticket_sell',ticket_type_id:T.combo,member_id:fm.members[0].id,payment_method:'credit',shirt_size:'G'})).body.purchase_id);
 assert.equal((await S('event',undefined,cp.body.token)).body.balance.tickets.length,before+1,'sold ticket shows in the student balance');
 const sold=(await adminCall(E)).body.purchases.find(p=>p.payment_method==='credit');assert.equal(sold.amount_cents,11990);assert.equal(sold.shirt_size,'G');
+// Pending Pix received at the desk: ticket released, a later Pix confirmation changes nothing.
+const pend=await S('buy',{ticket_type_id:T.combo,shirt_size:'P'},cp.body.token);assert.equal(pend.body.status,'pending',JSON.stringify(pend.body));
+let pp=(await adminCall(E)).body.purchases.filter(p=>p.status==='pending').pop();assert.ok(pp);
+const tBefore=(await S('event',undefined,cp.body.token)).body.balance.tickets.length;
+assert.equal((await op({op:'purchase_receive',purchase_id:pp.id,payment_method:'xx'})).body.error,'FORMA_DE_PAGAMENTO_INVALIDA');
+assert.equal((await op({op:'purchase_receive',purchase_id:pp.id,payment_method:'debit'})).status,200);
+assert.equal((await op({op:'purchase_receive',purchase_id:pp.id,payment_method:'debit'})).body.error,'COMPRA_JA_RESOLVIDA');
+pp=(await adminCall(E)).body.purchases.find(p=>p.id===pp.id);assert.equal(pp.status,'paid');assert.equal(pp.payment_method,'debit');
+assert.equal((await S('event',undefined,cp.body.token)).body.balance.tickets.length,tBefore+1);
 // Reception: only with the Central Pop Live page released, and only view + sell.
 admin='reception';perms=['/tela-checkin.html'];assert.equal((await adminCall(E)).status,403);
 perms=['/admin-dispositivos-pop-live.html'];assert.equal((await adminCall(E)).status,200);
