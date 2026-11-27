@@ -166,7 +166,7 @@ $('monitorSessions').addEventListener('click',async e=>{const b=e.target.closest
   $('financeTotals').innerHTML=[['Receita recebida',f.revenue],['Despesas',f.spent],['Saldo '+status,f.balance]].map(([label,value],i)=>'<div class="row">'+label+'<br><strong style="font-size:1.3rem;'+(i===2&&value?'color:'+(value>0?'#66e3a6':'#ff929e'):'')+'">'+money(value)+'</strong></div>').join('');
   const methods={...PAYTXT,online_pix:'Pix pelo app',pix:'Pix no balcão'};
   $('financeReceipts').textContent=f.receipts.map(r=>(methods[r.method]||r.method)+' · '+money(r.amount_cents)).join(' | ');
-  $('financeExpenses').innerHTML=f.expenses.map(x=>'<div class="row">'+esc(x.description)+' · <b>'+money(x.amount_cents)+'</b></div>').join('')||'Nenhuma despesa cadastrada.';
+  $('financeExpenses').innerHTML=f.expenses.map((x,i)=>'<div class="row">'+esc(x.description)+' · <b>'+money(x.amount_cents)+'</b> <button type="button" data-expense-edit="'+i+'">Editar</button> <button type="button" data-expense-delete="'+i+'">Excluir</button></div>').join('')||'Nenhuma despesa cadastrada.';
  }
  const auditLabels={review:'Conferir ingresso antigo do evento',paid:'Ingresso pago',free:'Ingresso gratuito',courtesy:'Cortesia',received:'Recebido no balcão',pending:'Pagamento pendente',missing:'Sem recebimento identificado'};
  function renderAudit(list){
@@ -194,6 +194,21 @@ $('monitorSessions').addEventListener('click',async e=>{const b=e.target.closest
   try{await post(pending?{op:'purchase_receive',purchase_id:pending,payment_method:method}:{op:'attendance_receive',session_id:Number(form.dataset.sid),participant_id:form.dataset.raw,payment_method:method,amount_cents:amount});
    const updated=await evApi(id);if(curId===id){cur=updated;paintManage();msg('auditMessage','Recebimento conferido. Indicadores atualizados.')}}
   catch(e){if(curId===id)msg('auditMessage',why(e))}finally{button.disabled=false}
+ });
+ $('financeExpenses').addEventListener('click',async ev=>{
+  const button=ev.target.closest('[data-expense-edit],[data-expense-delete]');if(!button||button.disabled)return;
+  const editing=button.hasAttribute('data-expense-edit'),id=curId,x=cur.finances?.expenses[Number(editing?button.dataset.expenseEdit:button.dataset.expenseDelete)];if(!x)return;
+  const payload={op:editing?'expense_update':'expense_delete',request_id:x.request_id};
+  if(editing){
+   const description=prompt('Descrição da despesa',x.description);if(description===null)return;
+   const raw=prompt('Valor da despesa (R$)',(x.amount_cents/100).toFixed(2).replace('.',','));if(raw===null)return;
+   const amount=Math.round(Number(raw.trim().replace(/\./g,'').replace(',','.'))*100);
+   if(!description.trim()||description.trim().length>140||!/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(raw.trim())||!Number.isSafeInteger(amount)||amount<=0||amount>99999999999){msg('expenseStatus','Informe uma descrição e um valor válido maior que zero.');return}
+   payload.description=description.trim();payload.amount_cents=amount;
+  }else if(!confirm('Excluir a despesa "'+x.description+'" de '+money(x.amount_cents)+'?'))return;
+  const buttons=$('financeExpenses').querySelectorAll('button');buttons.forEach(b=>b.disabled=true);
+  try{await post(payload);const updated=await evApi(id);if(curId===id){cur=updated;paintManage();msg('expenseStatus',editing?'Despesa atualizada.':'Despesa excluída.')}}
+  catch(e){if(curId===id)msg('expenseStatus',why(e))}finally{buttons.forEach(b=>b.disabled=false)}
  });
  const expenseForm=$('expenseForm');
  expenseForm.onsubmit=async ev=>{
