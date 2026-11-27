@@ -27,8 +27,9 @@
    <optgroup label="Pop Games"><option>Desafio de Distância</option><option>Autódromo Pop</option><option>Sobrevivência</option><option>Revezamento</option></optgroup>
    <optgroup label="Desafios da aula · Bike"><option>Corrida de distância</option><option>Maior pico de RPM</option><option>Maior pico de velocidade</option><option>Tempo na faixa de RPM</option><option>Ritmo perfeito</option><option>Escadinha de RPM</option><option>Desafio da Turma</option></optgroup>
    <optgroup label="Desafios da aula · Gym"><option>Batalha dos Batimentos</option><option>Corrida das Calorias</option></optgroup>
-   <optgroup label="Outra"><option>Aula livre</option></optgroup></select></div>
-  <div><label>Nome no cronograma (opcional)</label><input name="name" maxlength="80" placeholder="Maratona Pop 5 km"></div>
+   <optgroup label="Aulas"><option>Aula de Bike</option><option>Aula de Gym</option></optgroup>
+   <optgroup label="Outra"><option value="Outra atividade">Outra atividade (digitar o nome)</option></optgroup></select></div>
+  <div><label id="actNameLbl">Nome no cronograma (opcional)</label><input name="name" maxlength="80" placeholder="Maratona Pop 5 km"></div>
   <div><label>Vagas</label><input type="number" name="seats" min="1" max="500" value="12" required></div>
  </div><label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" name="is_main" style="width:auto"> ★ Atividade principal (só entra com o direito de principal do ingresso, 1 por ingresso; o saldo de extras não vale)</label>
  <button>+ Adicionar ao cronograma</button></form>
@@ -128,7 +129,7 @@ $('monitorSessions').addEventListener('click',async e=>{const b=e.target.closest
 {const ef=$('eventForm'),F=n=>ef.elements[n],brl=c=>c?(c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'Gratuito';let evList=[],cur=null,curId=0;
  const evApi=(id,opt={})=>req('pop-live-events'+(id?'&id='+id:''),{headers:{'content-type':'application/json'},...opt});
  const post=(body)=>evApi(curId,{method:'POST',body:JSON.stringify(body)});
- const msg=(el,t)=>{$(el).textContent=t};const ERR={HORARIO_INVALIDO:'Horário inválido (fim depois do início).',HORARIO_FIM_INVALIDO:'O fim precisa ser depois do início.',VAGAS_INVALIDAS:'Vagas: de 1 a 500.',VALOR_INVALIDO:'Valor: 0 (gratuito) ou de R$ 1,00 a R$ 5.000,00.',INGRESSO_SEM_ATIVIDADES:'O ingresso precisa incluir a atividade principal ou um saldo de extras.',ATIVIDADE_COM_INSCRITOS:'Há alunos inscritos nessa atividade.',INGRESSO_JA_VENDIDO_DESATIVE:'Ingresso já vendido: desative em vez de excluir.',NOME_OBRIGATORIO:'Informe o nome.'};
+ const msg=(el,t)=>{$(el).textContent=t};const ERR={NOME_DA_ATIVIDADE_OBRIGATORIO:'Digite o nome da atividade.',HORARIO_INVALIDO:'Horário inválido (fim depois do início).',HORARIO_FIM_INVALIDO:'O fim precisa ser depois do início.',VAGAS_INVALIDAS:'Vagas: de 1 a 500.',VALOR_INVALIDO:'Valor: 0 (gratuito) ou de R$ 1,00 a R$ 5.000,00.',INGRESSO_SEM_ATIVIDADES:'O ingresso precisa incluir a atividade principal ou um saldo de extras.',ATIVIDADE_COM_INSCRITOS:'Há alunos inscritos nessa atividade.',INGRESSO_JA_VENDIDO_DESATIVE:'Ingresso já vendido: desative em vez de excluir.',NOME_OBRIGATORIO:'Informe o nome.'};
  const why=e=>ERR[e.message]||e.message;
  const statusTxt={draft:'Rascunho',published:'Publicado',cancelled:'Cancelado'},unitTxt={bike:'Bike Pop',gym:'Gym Pop',both:'Bike Pop e Gym Pop'};
  const when=e=>String(e.starts_at).slice(8,10)+'/'+String(e.starts_at).slice(5,7)+' '+String(e.starts_at).slice(11,16)+(e.ends_at?'–'+String(e.ends_at).slice(11,16):'');
@@ -154,6 +155,8 @@ $('monitorSessions').addEventListener('click',async e=>{const b=e.target.closest
   const st={confirmed:'Confirmado',paid:'Pago',pending:'Pix pendente'};
   $('emBuyers').innerHTML=cur.purchases.length?cur.purchases.map(p=>'<div class="row">'+esc([p.first_name,p.last_name].filter(Boolean).join(' ')||'Aluno')+(p.cpf_last4?' · CPF •••'+esc(p.cpf_last4):'')+(p.visitor?' · visitante':' · aluno')+' · '+esc(p.ticket)+' · <b>'+(st[p.status]||esc(p.status))+'</b>'+(p.amount_cents?' · '+brl(p.amount_cents):'')+(p.shirt_size?' · camiseta '+esc(p.shirt_size):'')+'</div>').join(''):'Nenhuma compra ainda.';
  }
+ // "Outra atividade": the name is the activity, so it becomes required.
+ {const af=$('actForm'),sync=()=>{const other=af.elements.activity_type.value==='Outra atividade';af.elements.name.required=other;$('actNameLbl').textContent=other?'Nome da atividade (obrigatório)':'Nome no cronograma (opcional)';af.elements.name.placeholder=other?'Ex.: Maratona Pop, Aulão beneficente':'Maratona Pop 5 km'};af.elements.activity_type.onchange=()=>{sync();if(af.elements.activity_type.value==='Outra atividade')af.elements.name.focus()};sync()}
  $('actForm').onsubmit=async ev=>{ev.preventDefault();const f=Object.fromEntries(new FormData(ev.target));try{await post({op:'activity_add',...f,is_main:ev.target.elements.is_main.checked});msg('emStatus','Atividade adicionada.');ev.target.elements.name.value='';ev.target.elements.is_main.checked=false;cur=await evApi(curId);paintManage()}catch(e){msg('emStatus','Não foi possível: '+why(e))}};
  $('ticketForm').onsubmit=async ev=>{ev.preventDefault();const f=Object.fromEntries(new FormData(ev.target));try{await post({op:'ticket_add',...f,extra_credits:Number(f.extra_credits),stock:Number(f.stock||0)});msg('emStatus','Ingresso adicionado.');ev.target.reset();cur=await evApi(curId);paintManage()}catch(e){msg('emStatus','Não foi possível: '+why(e))}};
  $('eventManage').onclick=async ev=>{const b=ev.target.closest('button');if(!b||b.type==='submit')return;
