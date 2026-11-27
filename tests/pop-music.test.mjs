@@ -116,6 +116,15 @@ adminRole='admin';adminPerms=['*'];
 sql.exec(`INSERT INTO evo_attendance_sessions VALUES('bike','d1','2026-12-10','07:00','Bike','Douglas','done',30),('bike','d2','2026-12-11','07:00','Bike','Douglas','done',20),('bike','d3','2026-12-12','07:00','Bike','Douglas','done',10)`);
 const ta=await admin('',{op:'themed_add',month:'2026-12',teacher:'Douglas',class_name:'Divas do Pop',rhythm_id:pop.id,class_date:'2026-12-10',evo_session_id:'d1',artists:'Dua Lipa'});assert.equal(ta.status,200);assert.equal(ta.body.notified,3,'students who asked for Pop');
 // The student sees "your request became a class": rhythm, the teacher they chose, their artists; only for matching requests.
+const edit={op:'themed_update',id:ta.body.id,month:'2026-12',teacher:'Douglas',class_name:'Divas do Pop',playlist_name:'Pop de sábado',rhythm_id:pop.id,class_date:'2026-12-10',evo_session_id:'d1',artists:'Dua Lipa'};
+const beforeEdit=sql.prepare('SELECT COUNT(*) n FROM pm_themed_classes').get().n;
+assert.equal((await admin('',edit)).status,200);
+const edited=sql.prepare('SELECT * FROM pm_themed_classes WHERE id=?').get(edit.id);
+assert.equal(edited.class_name,edit.class_name);
+assert.equal(edited.playlist_name,edit.playlist_name);
+assert.equal(edited.evo_session_id,'d1');
+assert.equal(sql.prepare('SELECT COUNT(*) n FROM pm_themed_classes').get().n,beforeEdit);
+assert.equal((await admin('',{...edit,id:-1})).status,404);
 assert.equal((await admin('',{op:'themed_add',month:'2026-12',teacher:'Will',class_name:'Rock Ride',rhythm_id:rock.id,class_date:'2026-12-20',class_time:'19:00'})).body.notified,1);
 let th1=(await call('/member/pop-music?action=status',null,tBike)).body.themed;assert.deepEqual(th1.map(t=>t.class_name),['Divas do Pop','Rock Ride']);
 assert.equal(th1[0].your_teacher,true);assert.deepEqual(th1[0].your_artists,['Dua Lipa']);assert.equal(th1[1].your_teacher,true);
