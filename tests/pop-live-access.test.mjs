@@ -145,6 +145,16 @@ assert.equal((await S('event')).body.activities.find(a=>a.id===A.surv).equipment
 const ne=(await S('enroll',{activity_id:A.surv,seat_number:1})).body;assert.equal(ne.status,'enrolled');assert.equal(ne.seat,null);assert.equal(ne.equipment,'none');
 assert.equal((await op({op:'ticket_delete',ticket_type_id:T.combo})).body.error,'INGRESSO_JA_VENDIDO_DESATIVE');
 assert.equal((await op({op:'activity_delete',activity_id:A.auto})).body.error,'ATIVIDADE_COM_INSCRITOS');
+// Counter sale: find the student by CPF / Pop Live ID and sell a ticket paid at the desk.
+assert.equal((await op({op:'member_find',identifier:'00000000191'})).body.error,'ALUNO_NAO_ENCONTRADO');
+const fm=(await op({op:'member_find',identifier:'529.982.247-25'})).body;assert.equal(fm.members.length,1);assert.equal(fm.members[0].visitor,0);
+assert.equal((await op({op:'member_find',identifier:String(800000000000+fm.members[0].id)})).body.members[0].id,fm.members[0].id);
+const evA=await S('event',undefined,cp.body.token);assert.ok(evA.body.balance,JSON.stringify(evA.body));const before=evA.body.balance.tickets.length;
+assert.equal((await op({op:'ticket_sell',ticket_type_id:T.combo,member_id:fm.members[0].id,payment_method:'credit'})).body.error,'ESCOLHA_O_TAMANHO_DA_CAMISETA');
+assert.equal((await op({op:'ticket_sell',ticket_type_id:T.combo,member_id:fm.members[0].id,payment_method:'cheque',shirt_size:'G'})).body.error,'FORMA_DE_PAGAMENTO_INVALIDA');
+assert.ok((await op({op:'ticket_sell',ticket_type_id:T.combo,member_id:fm.members[0].id,payment_method:'credit',shirt_size:'G'})).body.purchase_id);
+assert.equal((await S('event',undefined,cp.body.token)).body.balance.tickets.length,before+1,'sold ticket shows in the student balance');
+const sold=(await adminCall(E)).body.purchases.find(p=>p.payment_method==='credit');assert.equal(sold.amount_cents,11990);assert.equal(sold.shirt_size,'G');
 // Visitor still cannot use store routes.
 assert.equal((await call('/checkout/pix/draft',{unit:'bike',itemType:'product',itemId:'x'},vt)).status,401);
 globalThis.fetch=realFetch;

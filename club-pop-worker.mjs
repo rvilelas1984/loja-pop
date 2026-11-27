@@ -2269,7 +2269,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
         if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
-        try{return await adminEvents(request,env.DB,url,json)}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
+        try{return await adminEvents(request,env.DB,url,json,{role:vd.role,user:vd.email||vd.name||vd.username||vd.role})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
       }
       if(["/admin/pop-live-devices","/admin/pop-live-sessions","/admin/pop-live-drafts"].includes(url.pathname)){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
