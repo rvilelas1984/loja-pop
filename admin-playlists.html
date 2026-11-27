@@ -1,162 +1,178 @@
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Club Pop · Playlists</title><link rel="stylesheet" href="/admin-common.css"><style>
-:root{font-family:Inter,system-ui,sans-serif;color:#f4f7ff;background:#0e0a1d}*{box-sizing:border-box}body{margin:0}header{padding:22px;background:#1d1236}main{max-width:1150px;margin:auto;padding:20px}
-.panel{background:#1a1430;border:1px solid #3d2f63;border-radius:16px;padding:18px;margin:14px 0}.panel>summary{font-size:17px;font-weight:750;cursor:pointer;list-style-position:inside}.panel>summary::marker{color:#c9a7ff}.panel[open]>summary{margin-bottom:12px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}label{display:block;font-size:13px;margin:8px 0 4px;color:#d9c9f5}
-input,select,button,textarea{width:100%;padding:10px;border:1px solid #4a3b72;border-radius:9px;background:#120d24;color:#fff;font:inherit}button{background:#7b3fd1;border:0;font-weight:700;cursor:pointer;margin-top:10px}button.secondary{background:#3a2d5c}button.sm{width:auto;padding:6px 11px;font-size:12px;margin:4px 4px 0 0}
-.muted{color:#b9a9d6;font-size:13px}.err{color:#ffb0b0}.ok{color:#8ff0c0}h1{margin:0;font-size:24px}h3{margin:14px 0 8px;font-size:16px}a{color:#c9a7ff}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.kpi{background:#241a42;border-radius:14px;padding:14px}.kpi b{display:block;font-size:26px;margin-top:4px}.kpi span{font-size:12px;color:#c9b6ec;text-transform:uppercase;letter-spacing:.5px}
-table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 6px;border-bottom:1px solid #33285a;text-align:left;vertical-align:top}th{color:#c9b6ec;font-weight:700;font-size:12px}td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.bar{height:8px;border-radius:9px;background:linear-gradient(90deg,#7b3fd1,#c9a7ff);min-width:3px}.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:14px}
-.box{background:#140f28;border:1px solid #33285a;border-radius:12px;padding:12px;overflow-x:auto}.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;background:#3a2d5c;margin-left:4px}.tag.off{background:#5a2433}.tag.sug{background:#5b3a12}
-.chart{display:grid;gap:9px}.crow{display:grid;grid-template-columns:minmax(90px,34%) 1fr auto;align-items:center;gap:10px;font-size:13px;padding:2px 0;border-radius:8px}.crow:hover,.crow:focus{background:#ffffff0d;outline:none}
-.crow .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.crow .trk{height:14px;background:#2a2150;border-radius:4px;overflow:hidden}.crow .fill{height:100%;background:#a77bff;border-radius:0 4px 4px 0;min-width:4px}
-.crow .val{font-variant-numeric:tabular-nums;font-weight:700;min-width:64px;text-align:right}.crow .val small{color:#b9a9d6;font-weight:500}.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px;margin-top:14px}
-.ccard{background:#140f28;border:1px solid #33285a;border-radius:14px;padding:14px}.ccard h3{margin:0 0 2px}.ccard p{margin:0 0 12px}.hero{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}.hero b{font-size:44px;line-height:1}
-.pick{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.pick button{width:auto;margin:0;padding:6px 10px;font-size:12px;background:#3a2d5c;border-radius:99px}
-.chk{display:inline-flex;align-items:center;gap:6px;margin:4px 10px 4px 0;font-size:13px}.chk input{width:auto}.empty{color:#b9a9d6;font-size:13px;padding:8px 0}
-@media(max-width:520px){main{padding:10px}.panel{padding:12px}}
+:root{--pm-ink:#1d1330;--pm-mut:#6f6487;--pm-line:#ebe5f5;--pm-bg:#f6f3fb;--pm-card:#fff;--pm-p:#7b3fd1;--pm-p2:#a77bff;--pm-soft:#f1eaff;--pm-pink:#e8449b;--pm-ok:#178a5b;--pm-err:#b4233a;font-family:Inter,system-ui,-apple-system,sans-serif;color:var(--pm-ink)}
+*{box-sizing:border-box}body{margin:0;background:var(--pm-bg)}
+.pm{max-width:1100px;margin:0 auto;padding:16px 16px 90px}
+.pm button,.pm input,.pm select{font:inherit}
+.pm-hero{background:linear-gradient(135deg,#2a0e52,#5b23a8 60%,#8b3dff);color:#fff;border-radius:22px;padding:20px;box-shadow:0 10px 30px #5b23a833}
+.pm-hero small{letter-spacing:1.4px;font-weight:800;font-size:11px;color:#e7d8ff}.pm-hero h1{margin:4px 0 2px;font-size:24px;line-height:1.15}.pm-hero p{margin:0;color:#e7d8ff;font-size:13px}
+.pm-months{display:flex;gap:8px;overflow-x:auto;margin:14px -4px 0;padding:2px 4px 4px;scrollbar-width:none}.pm-months::-webkit-scrollbar{display:none}
+.pm-months button{flex:0 0 auto;border:1px solid #ffffff55;background:#ffffff1a;color:#fff;border-radius:99px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer}.pm-months button.on{background:#fff;color:#3b136a;border-color:#fff}
+.pm-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.pm-kpi{background:#ffffff1f;border-radius:14px;padding:10px 12px}.pm-kpi span{display:block;font-size:11px;color:#e7d8ff;font-weight:700;text-transform:uppercase;letter-spacing:.5px}.pm-kpi b{font-size:22px}
+.pm-tabs{position:sticky;top:0;z-index:20;display:flex;gap:6px;overflow-x:auto;background:var(--pm-bg);padding:12px 0 10px;margin-top:6px;scrollbar-width:none}.pm-tabs::-webkit-scrollbar{display:none}
+.pm-tabs button{flex:0 0 auto;border:0;background:#fff;color:var(--pm-mut);border-radius:12px;padding:10px 14px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 1px 0 var(--pm-line)}.pm-tabs button.on{background:var(--pm-p);color:#fff}
+.pm-tabs i{font-style:normal;background:var(--pm-pink);color:#fff;border-radius:99px;padding:1px 7px;font-size:11px;margin-left:6px}
+.pm-card{background:var(--pm-card);border-radius:18px;padding:16px;margin:0 0 12px;box-shadow:0 4px 18px #2a0e520d;border:1px solid var(--pm-line)}
+.pm-card h2{font-size:17px;margin:0}.pm-card .sub{color:var(--pm-mut);font-size:13px;margin:2px 0 12px}
+.pm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px}.pm-grid .pm-card{margin:0}
+.pm-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.pm-bar{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,38%) 1fr auto;align-items:center;gap:10px;font-size:14px;padding:6px 6px;margin:0 -6px;border-radius:10px;cursor:pointer;border:0;background:none;width:calc(100% + 12px);text-align:left;color:inherit}
+.pm-bar:hover,.pm-bar:focus-visible{background:var(--pm-soft);outline:none}.pm-bar.on{background:var(--pm-soft);box-shadow:inset 3px 0 0 var(--pm-p)}
+.pm-bar .l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.pm-bar .t{height:12px;background:#efe9fa;border-radius:4px;overflow:hidden}.pm-bar .f{display:block;height:100%;width:0;background:var(--pm-p2);border-radius:0 4px 4px 0;transition:width .6s ease}
+.pm-bar .v{font-variant-numeric:tabular-nums;font-weight:800;min-width:56px;text-align:right}.pm-bar .v small{color:var(--pm-mut);font-weight:600;margin-left:3px}
+.pm-tag{display:inline-block;font-size:11px;font-weight:800;padding:2px 8px;border-radius:99px;background:var(--pm-soft);color:#5b23a8;vertical-align:middle}.pm-tag.warn{background:#fff1dc;color:#8a5200}.pm-tag.off{background:#fde8ec;color:var(--pm-err)}.pm-tag.ok{background:#e3f6ee;color:var(--pm-ok)}
+.pm-btn{border:0;border-radius:12px;padding:11px 16px;font-weight:800;cursor:pointer;background:var(--pm-p);color:#fff}.pm-btn.alt{background:var(--pm-soft);color:#5b23a8}.pm-btn.ghost{background:none;color:var(--pm-p);padding:8px 10px}.pm-btn.danger{background:#fde8ec;color:var(--pm-err)}.pm-btn.sm{padding:7px 11px;font-size:13px;border-radius:10px}.pm-btn:disabled{opacity:.5}
+.pm label{display:block;font-size:13px;font-weight:700;margin:10px 0 5px;color:#3d2f5a}.pm input,.pm select{width:100%;border:1.5px solid var(--pm-line);border-radius:12px;padding:11px 12px;background:#fff;color:var(--pm-ink)}.pm input:focus,.pm select:focus{outline:2px solid var(--pm-p2);border-color:transparent}
+.pm-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:0 12px}
+.pm-chips{display:flex;flex-wrap:wrap;gap:6px}.pm-chip{border:1.5px solid var(--pm-line);background:#fff;border-radius:99px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;color:var(--pm-ink)}.pm-chip.on{background:var(--pm-p);border-color:var(--pm-p);color:#fff}
+.pm-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border:1px dashed var(--pm-p2);border-radius:14px;padding:10px 12px;margin:0 0 12px;font-size:13px}
+.pm-list>div{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--pm-line)}.pm-list>div:last-child{border-bottom:0}.pm-list .meta{color:var(--pm-mut);font-size:12px;margin-top:2px}
+.pm-empty{color:var(--pm-mut);font-size:14px;text-align:center;padding:18px 8px}
+.pm-switch{position:relative;width:44px;height:26px;flex:0 0 auto;border:0;border-radius:99px;background:#d9d1e8;cursor:pointer}.pm-switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s}.pm-switch.on{background:var(--pm-ok)}.pm-switch.on::after{left:21px}
+.pm-cols{display:flex;align-items:flex-end;gap:10px;height:130px;padding-top:8px}.pm-cols div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--pm-mut)}.pm-cols b{color:var(--pm-ink);font-size:13px}.pm-cols i{display:block;width:100%;max-width:46px;background:var(--pm-p2);border-radius:4px 4px 0 0}
+.pm-toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1d1330;color:#fff;border-radius:14px;padding:12px 16px;font-weight:700;font-size:14px;z-index:99;max-width:92vw;box-shadow:0 8px 30px #0004}.pm-toast.err{background:var(--pm-err)}
+.pm.pm-sheet{max-width:none;margin:0;padding:0}.pm-sheet{position:fixed;inset:0;background:#1d133066;z-index:10000;display:flex;align-items:flex-end;justify-content:center}.pm-sheet>div{background:#fff;width:min(100%,560px);max-height:92dvh;overflow:auto;border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+@media(min-width:700px){.pm-sheet{align-items:center}.pm-sheet>div{border-radius:22px}}
+[hidden]{display:none!important}
 </style></head><body>
-<header><h1>Playlists · Pop Music Experience</h1><a href="/admin.html">← Administrativo</a></header><main>
-<p class="muted">Pesquisa musical mensal dos alunos ativos do Bike Pop: ritmos, artistas e professores indicados. Os números abaixo vêm só das respostas reais gravadas no D1.</p>
-<p id="status" class="muted" role="status"></p>
+<main class="pm">
+ <section class="pm-hero"><small>♫ POP MUSIC EXPERIENCE</small><h1>Playlists</h1><p>O que os alunos do Bike Pop querem ouvir — respostas reais da pesquisa mensal.</p>
+  <div class="pm-months" id="months" role="tablist" aria-label="Mês"></div>
+  <div class="pm-kpis"><div class="pm-kpi"><span>Participação</span><b id="kPct">—</b></div><div class="pm-kpi"><span>Responderam</span><b id="kPart">—</b></div><div class="pm-kpi"><span>Elegíveis</span><b id="kElig">—</b></div></div>
+ </section>
+ <nav class="pm-tabs" id="tabs"><button data-tab="results" class="on">📊 Resultados</button><button data-tab="themed">🎉 Aulas temáticas</button><button data-tab="sugg">💡 Sugestões<i id="suggBadge" hidden></i></button><button data-tab="catalog">🎵 Catálogo</button><button data-tab="settings">⚙️ Configuração</button></nav>
 
-<details class="panel" open id="pOverview"><summary>Visão geral e rankings</summary>
- <div class="grid">
-  <div><label>Mês</label><select id="fMonth"></select></div>
-  <div><label>Ritmo</label><select id="fRhythm"><option value="">Todos</option></select></div>
-  <div><label>Artista</label><select id="fArtist"><option value="">Todos</option></select></div>
-  <div><label>Professor</label><select id="fTeacher"><option value="">Todos</option></select></div>
- </div>
- <button id="loadRank">Carregar rankings</button>
- <div id="rank"></div>
-</details>
+ <section id="tab-results"><div id="filterBar"></div><div id="results"><div class="pm-empty">Carregando resultados…</div></div></section>
 
-<details class="panel" id="pCatalog"><summary>Catálogo musical (ritmos e artistas)</summary>
- <div class="cols">
-  <div class="box"><h3>Ritmos</h3><div id="rhythmList" class="muted">Abra para carregar.</div>
-   <form id="rhythmForm"><input type="hidden" name="id"><div class="grid"><div><label>Nome do ritmo</label><input name="name" maxlength="40" required></div><div><label>Emoji</label><input name="emoji" maxlength="8" placeholder="🎵"></div></div>
-   <label class="chk"><input type="checkbox" name="active" checked> Ativo</label><button id="rhythmSave">Salvar ritmo</button><button type="button" class="secondary" id="rhythmNew">Novo ritmo</button></form></div>
-  <div class="box"><h3>Cadastrar / editar artista</h3>
-   <form id="artistForm"><input type="hidden" name="id"><label>Nome do artista</label><input name="name" maxlength="60" required>
-   <label>Ritmos</label><div id="artistRhythms"></div><label class="chk"><input type="checkbox" name="active" checked> Ativo (aparece para os alunos)</label>
-   <button>Salvar artista</button><button type="button" class="secondary" id="artistNew">Limpar</button></form></div>
- </div>
- <h3>Artistas</h3><div class="grid"><div><label>Buscar</label><input id="artistSearch" type="search" placeholder="Nome"></div><div><label>Ritmo</label><select id="artistRhythmFilter"><option value="">Todos</option></select></div><div><label>Situação</label><select id="artistActiveFilter"><option value="">Todos</option><option value="1">Ativos</option><option value="0">Desativados</option></select></div></div>
- <div class="box" style="margin-top:10px"><div id="artistList" class="muted"></div></div>
-</details>
+ <section id="tab-themed" hidden>
+  <div class="pm-card"><div class="pm-row"><div><h2>Aulas temáticas</h2><div class="sub" style="margin:2px 0 0">Registre as aulas criadas a partir da pesquisa. Quem pediu o ritmo vê “Seu pedido virou aula!” e o card da próxima aula mostra a playlist.</div></div><button class="pm-btn" id="newThemed">+ Nova aula temática</button></div></div>
+  <div id="themedCompare"></div><div id="themedList"></div>
+ </section>
 
-<details class="panel" id="pSuggestions"><summary>Sugestões dos alunos</summary>
- <p class="muted">Artistas que os alunos sugeriram fora do catálogo. Incorporar cria o artista no ritmo sugerido; os votos antigos continuam no histórico.</p>
- <div id="suggList" class="muted">Abra para carregar.</div>
-</details>
+ <section id="tab-sugg" hidden><div class="pm-card"><h2>Sugestões dos alunos</h2><div class="sub">Artistas fora do catálogo. Incorporar adiciona o artista no ritmo sugerido (os votos continuam no histórico).</div><div class="pm-chips" id="suggFilter"><button class="pm-chip on" data-s="pending">Para analisar</button><button class="pm-chip" data-s="added">Incorporadas</button><button class="pm-chip" data-s="dismissed">Descartadas</button></div><div class="pm-list" id="suggList" style="margin-top:10px"></div></div></section>
 
-<details class="panel" id="pThemed"><summary>Histórico e aulas temáticas</summary>
- <p class="muted">Registre as aulas temáticas criadas a partir das pesquisas. Vinculando a aula oficial da EVO, a ocupação é comparada com as aulas convencionais do mesmo professor no mês (dados já sincronizados, sem novas consultas à EVO).</p>
- <div class="grid"><div><label>Mês</label><select id="tMonth"></select></div></div>
- <form id="themedForm"><div class="grid">
-  <div><label>Professor</label><select name="teacher" required></select></div><div><label>Ritmo</label><select name="rhythm_id"><option value="">—</option></select></div>
-  <div><label>Nome da aula temática</label><input name="class_name" maxlength="80" required placeholder="Definido pelo professor"></div><div><label>Data</label><input type="date" name="class_date"></div><div><label>Horário</label><input type="time" name="class_time"></div>
-  <div><label>Aula oficial (EVO)</label><select name="evo_session_id"><option value="">Vincular depois</option></select></div>
- </div><label>Sugestões aproveitadas (artistas)</label><input name="artists" maxlength="300" placeholder="Ex.: Dua Lipa, Anitta"><div class="pick" id="themedPick"></div><p class="muted" style="margin:6px 0 0">Os alunos que pediram esse ritmo (ou esses artistas) nos últimos 3 meses recebem o aviso “Seu pedido virou aula!” no app até a data da aula.</p><label>Observações</label><input name="notes" maxlength="300">
- <button>Registrar aula temática</button></form>
- <div id="themedList" class="muted" style="margin-top:12px"></div>
-</details>
+ <section id="tab-catalog" hidden>
+  <div class="pm-card"><div class="pm-row"><div><h2>Artistas</h2><div class="sub" style="margin:2px 0 0" id="catCount"></div></div><button class="pm-btn" id="newArtist">+ Artista</button></div>
+   <input id="catSearch" type="search" placeholder="Buscar artista" style="margin-top:12px"><div class="pm-chips" id="catRhythms" style="margin-top:10px"></div>
+   <div class="pm-list" id="artistList" style="margin-top:8px"></div></div>
+  <div class="pm-card"><div class="pm-row"><div><h2>Ritmos</h2><div class="sub" style="margin:2px 0 0">Ritmos desativados somem da pesquisa, mas ficam no histórico.</div></div><button class="pm-btn alt" id="newRhythm">+ Ritmo</button></div><div class="pm-list" id="rhythmList" style="margin-top:8px"></div></div>
+ </section>
 
-<details class="panel" id="pSettings"><summary>Configuração da campanha</summary>
- <p class="muted">A pesquisa renova sozinha no 1º dia de cada mês (horário de Brasília). Antes do mês inicial o bloco não aparece para os alunos.</p>
- <div class="grid"><div><label>Primeiro mês da pesquisa</label><input type="month" id="firstMonth"></div></div><button id="saveSettings" style="max-width:260px">Salvar</button>
-</details>
+ <section id="tab-settings" hidden><div class="pm-card"><h2>Campanha</h2><div class="sub">A pesquisa abre sozinha no dia 1º de cada mês (horário de Brasília). Antes do mês inicial o bloco não aparece para os alunos.</div>
+  <label for="firstMonth">Primeiro mês da pesquisa</label><input type="month" id="firstMonth" style="max-width:260px"><button class="pm-btn" id="saveSettings" style="margin-top:12px">Salvar</button></div>
+  <div class="pm-card"><h2>Como funciona</h2><div class="sub" style="margin:6px 0 0;line-height:1.6">1. O aluno do Bike Pop escolhe ritmos, até 5 artistas por ritmo e um professor por ritmo (1 resposta por mês).<br>2. Em <b>Resultados</b> você vê o que a turma quer ouvir e quais professores foram indicados.<br>3. O professor cria a aula e você registra em <b>Aulas temáticas</b> — os alunos que pediram são avisados no app.<br>4. Em <b>Sugestões</b> você incorpora artistas novos ao catálogo.</div></div>
+ </section>
 </main>
+<div class="pm pm-sheet" id="sheet" hidden><div id="sheetBody"></div></div>
 <script src="/admin-common.js" defer></script>
 <script>
 const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const MONTHS=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'],mName=m=>{const [y,mm]=String(m).split('-');return (MONTHS[+mm-1]||'')+'/'+y};
-const ERR={APENAS_ADMIN:'Somente o administrador pode alterar o catálogo.',ARTISTA_JA_EXISTE:'Esse artista já está no catálogo.',RITMO_JA_EXISTE:'Esse ritmo já existe.',ESCOLHA_AO_MENOS_UM_RITMO:'Marque ao menos um ritmo.',NOME_INVALIDO:'Nome inválido.',NOME_DA_AULA_OBRIGATORIO:'Informe o nome da aula.',PROFESSOR_OBRIGATORIO:'Escolha o professor.'};
+const MN=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'],mName=m=>{const [y,mm]=String(m).split('-');return (MN[+mm-1]||'')+'/'+String(y).slice(2)};
+const ERR={APENAS_ADMIN:'Somente o administrador pode alterar.',ARTISTA_JA_EXISTE:'Esse artista já está no catálogo.',RITMO_JA_EXISTE:'Esse ritmo já existe.',ESCOLHA_AO_MENOS_UM_RITMO:'Marque ao menos um ritmo.',NOME_INVALIDO:'Nome inválido.',NOME_DA_AULA_OBRIGATORIO:'Informe o nome da aula.',PROFESSOR_OBRIGATORIO:'Escolha o professor.',MES_INVALIDO:'Mês inválido.'};
 const why=e=>ERR[e.message]||e.message;
 async function api(q,opt={}){const r=await fetch('/api/admin-auth?route=playlists&'+q,{credentials:'include',cache:'no-store',headers:{'content-type':'application/json'},...opt});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw Error(d.error||'Erro na API');return d}
 const post=b=>api('action=write',{method:'POST',body:JSON.stringify(b)});
-const msg=(t,bad)=>{$('status').textContent=t;$('status').className=bad?'err':'ok'};
-let OV=null,CAT=null,RANK=null;
-const table=(head,rows,empty)=>rows.length?'<table><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr>'+rows.join('')+'</table>':'<div class="empty">'+(empty||'Sem respostas ainda.')+'</div>';
-const barRow=(cells,v,max)=>'<tr>'+cells.map(c=>'<td>'+c+'</td>').join('')+'<td style="width:30%"><div class="bar" style="width:'+Math.max(2,Math.round(v*100/(max||1)))+'%"></div></td><td class="n">'+v+'</td></tr>';
-async function init(){try{OV=await api('action=overview');
- const months=[...new Set([OV.current_month,...OV.months])].sort().reverse();
- for(const id of ['fMonth','tMonth'])$(id).innerHTML=months.map(m=>'<option value="'+m+'">'+mName(m)+(m===OV.current_month?' (atual)':'')+'</option>').join('');
- $('fTeacher').innerHTML='<option value="">Todos</option>'+OV.teachers.map(t=>'<option>'+esc(t)+'</option>').join('');
- document.querySelector('#themedForm [name=teacher]').innerHTML='<option value="">Escolha</option>'+OV.teachers.map(t=>'<option>'+esc(t)+'</option>').join('');
- $('firstMonth').value=OV.first_month;
- await loadCatalog(false);loadRank();
-}catch(e){msg('Não foi possível carregar: '+why(e),true)}}
-async function loadRank(){const q=new URLSearchParams({action:'rankings',month:$('fMonth').value});for(const [k,id] of [['rhythm','fRhythm'],['artist','fArtist'],['teacher','fTeacher']])if($(id).value)q.set(k,$(id).value);
- $('rank').innerHTML='<p class="muted">Carregando…</p>';
- try{const d=await api(q.toString());const mx=a=>Math.max(1,...a.map(x=>x.votes));
-  const kpi=(l,v)=>'<div class="kpi"><span>'+l+'</span><b>'+v+'</b></div>';
-  let h='<div class="kpis" style="margin-top:12px">'+kpi('Alunos elegíveis',d.eligible)+kpi('Participantes'+(d.filtered?' (filtro)':''),d.participants)+kpi('Participação',d.participation_pct==null?'—':d.participation_pct.toLocaleString('pt-BR')+'%')+kpi('Artistas votados',d.artists_voted)+kpi('Ritmos selecionados',d.rhythms_selected)+'</div>';
-  // Visual summary: one series per chart (single hue), value + share of participants at the end of each bar.
-  const P=Math.max(1,d.participants),chart=(title,sub,list,label)=>{const top=list.slice(0,8),m=Math.max(1,...top.map(x=>x.votes));
-   return '<div class="ccard"><h3>'+title+'</h3><p class="muted">'+sub+'</p>'+(top.length?'<div class="chart" role="list">'+top.map(x=>{const pct=Math.round(x.votes*100/P);
-    return '<div class="crow" role="listitem" tabindex="0" title="'+esc(label(x))+': '+x.votes+' voto(s) · '+pct+'% dos participantes"><span class="lbl">'+esc(label(x))+'</span><span class="trk"><span class="fill" style="display:block;width:'+Math.max(2,Math.round(x.votes*100/m))+'%"></span></span><span class="val">'+x.votes+' <small>'+pct+'%</small></span></div>'}).join('')+'</div>':'<div class="empty">Sem respostas neste mês.</div>')+'</div>'};
-  const teach={};for(const t of d.teachers_by_rhythm)teach[t.teacher]=(teach[t.teacher]||0)+t.votes;
-  h+='<div class="charts">'+chart('Ritmos mais escolhidos','Alunos que escolheram cada ritmo',d.rhythms,x=>(x.emoji?x.emoji+' ':'')+x.name)+
-   chart('Artistas mais votados','Top 8 no geral',d.artists,x=>x.name+(x.suggested?' (sugestão)':''))+
-   chart('Professores mais indicados','Somando todos os ritmos',Object.entries(teach).map(([name,votes])=>({name,votes})).sort((a,b)=>b.votes-a.votes),x=>x.name)+
-   '<div class="ccard"><h3>Participação</h3><p class="muted">Alunos ativos do Bike Pop que responderam</p><div class="hero"><b>'+(d.participation_pct==null?'—':d.participation_pct.toLocaleString('pt-BR')+'%')+'</b><span class="muted">'+d.participants+' de '+d.eligible+' alunos</span></div><div class="trk" style="height:14px;background:#2a2150;border-radius:4px;margin-top:14px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,d.participation_pct||0)+'%;background:#a77bff;border-radius:0 4px 4px 0"></div></div></div></div>';
-  h+='<details style="margin-top:16px"><summary style="cursor:pointer;font-weight:700">Ver detalhes: comparativo mensal, rankings por ritmo e por professor</summary>';
-  h+='<h3>Comparativo mensal</h3>'+table(['Mês','Participantes','Artistas','Ritmos'],d.history.map(x=>'<tr><td>'+mName(x.month)+'</td><td class="n">'+x.participants+'</td><td class="n">'+x.artists+'</td><td class="n">'+x.rhythms+'</td></tr>'),'Nenhuma pesquisa respondida ainda.');
-  h+='<div class="cols"><div><h3>Ritmos mais votados</h3><div class="box">'+table(['Ritmo','',''],d.rhythms.map(r=>barRow([esc((r.emoji||'')+' '+r.name)],r.votes,mx(d.rhythms))))+'</div></div>'+
-   '<div><h3>Artistas mais votados (geral)</h3><div class="box">'+table(['Artista','',''],d.artists.map(a=>barRow([esc(a.name)+(a.suggested?'<span class="tag sug">sugestão</span>':'')],a.votes,mx(d.artists))))+'</div></div></div>';
-  const group=(list,k)=>{const g={};for(const x of list)(g[x[k]]=g[x[k]]||[]).push(x);return g};
-  const byR=group(d.artists_by_rhythm,'rhythm'),tByR=group(d.teachers_by_rhythm,'rhythm'),aByT=group(d.artists_by_teacher,'teacher');
-  h+='<h3>Artistas e professores por ritmo</h3><div class="cols">'+(Object.keys(byR).length?Object.keys(byR).map(r=>'<div class="box"><b>'+esc(r)+'</b>'+table(['Artista','Votos'],byR[r].slice(0,10).map(a=>'<tr><td>'+esc(a.name)+'</td><td class="n">'+a.votes+'</td></tr>'))+'<div class="muted" style="margin-top:8px">Professores indicados</div>'+table(['Professor','Indicações'],(tByR[r]||[]).map(t=>'<tr><td>'+esc(t.teacher)+'</td><td class="n">'+t.votes+'</td></tr>'))+'</div>').join(''):'<div class="empty">Sem respostas ainda.</div>')+'</div>';
-  h+='<h3>Artistas sugeridos para cada professor</h3><div class="cols">'+(Object.keys(aByT).length?Object.keys(aByT).map(t=>'<div class="box"><b>'+esc(t)+'</b>'+table(['Ritmo','Artista','Votos'],aByT[t].slice(0,15).map(a=>'<tr><td>'+esc(a.rhythm)+'</td><td>'+esc(a.name)+'</td><td class="n">'+a.votes+'</td></tr>'))+'</div>').join(''):'<div class="empty">Sem respostas ainda.</div>')+'</div>';
-  h+='<h3>Novos artistas sugeridos pelos alunos</h3><div class="box">'+table(['Artista','Ritmo','Situação','Votos'],d.suggestions.map(s=>'<tr><td>'+esc(s.name)+'</td><td>'+esc(s.rhythm)+'</td><td>'+({pending:'Para analisar',added:'Incorporado',dismissed:'Descartado'}[s.status]||esc(s.status))+'</td><td class="n">'+s.votes+'</td></tr>'),'Nenhuma sugestão neste mês.')+'</div></details>';
-  RANK=d;$('rank').innerHTML=h}catch(e){$('rank').innerHTML='<p class="err">'+esc(why(e))+'</p>'}}
-$('loadRank').onclick=loadRank;
-async function loadCatalog(paint=true){CAT=await api('action=catalog');
- const ro='<option value="">Todos</option>'+CAT.rhythms.map(r=>'<option value="'+r.id+'">'+esc(r.name)+'</option>').join('');$('fRhythm').innerHTML=ro;$('artistRhythmFilter').innerHTML=ro;
- document.querySelector('#themedForm [name=rhythm_id]').innerHTML='<option value="">—</option>'+CAT.rhythms.map(r=>'<option value="'+r.id+'">'+esc(r.name)+'</option>').join('');
- const keepA=$('fArtist').value;$('fArtist').innerHTML='<option value="">Todos</option>'+CAT.artists.filter(a=>a.votes).map(a=>'<option value="'+a.id+'">'+esc(a.name)+'</option>').join('');$('fArtist').value=keepA;
- $('artistRhythms').innerHTML=CAT.rhythms.map(r=>'<label class="chk"><input type="checkbox" value="'+r.id+'">'+esc(r.name)+'</label>').join('');
- if(paint)paintCatalog();}
-function paintCatalog(){
- $('rhythmList').innerHTML=table(['Ritmo','Artistas',''],CAT.rhythms.map(r=>'<tr><td>'+esc((r.emoji||'')+' '+r.name)+(r.active?'':'<span class="tag off">desativado</span>')+'</td><td class="n">'+CAT.artists.filter(a=>a.rhythm_ids.includes(r.id)&&a.active).length+'</td><td><button class="sm secondary" data-redit="'+r.id+'">Editar</button></td></tr>'));
- const q=$('artistSearch').value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''),rf=+$('artistRhythmFilter').value||0,af=$('artistActiveFilter').value;
- const list=CAT.artists.filter(a=>(!q||a.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').includes(q))&&(!rf||a.rhythm_ids.includes(rf))&&(af===''||String(a.active)===af));
- const rn=id=>CAT.rhythms.find(r=>r.id===id)?.name||'';
- $('artistList').innerHTML='<div class="muted">'+list.length+' artistas</div>'+table(['Artista','Ritmos','Votos',''],list.slice(0,300).map(a=>'<tr><td>'+esc(a.name)+(a.active?'':'<span class="tag off">desativado</span>')+(a.origin==='suggestion'?'<span class="tag sug">veio de sugestão</span>':'')+'</td><td>'+esc(a.rhythm_ids.map(rn).join(', '))+'</td><td class="n">'+a.votes+'</td><td><button class="sm secondary" data-aedit="'+a.id+'">Editar</button><button class="sm secondary" data-atoggle="'+a.id+'">'+(a.active?'Desativar':'Ativar')+'</button></td></tr>'));
- $('suggList').innerHTML=table(['Artista sugerido','Ritmo','Desde','Votos','Situação',''],CAT.suggestions.map(s=>'<tr><td>'+esc(s.name)+'</td><td>'+esc(s.rhythm)+'</td><td>'+mName(s.first_month)+'</td><td class="n">'+s.votes+'</td><td>'+({pending:'Para analisar',added:'Incorporado',dismissed:'Descartado'}[s.status]||s.status)+'</td><td>'+(s.status==='pending'?'<button class="sm" data-sadd="'+s.id+'">Incorporar ao catálogo</button><button class="sm secondary" data-sdis="'+s.id+'">Descartar</button>':'')+'</td></tr>'),'Nenhuma sugestão ainda.');}
-for(const id of ['artistSearch','artistRhythmFilter','artistActiveFilter'])$(id).addEventListener('input',paintCatalog);
-$('pCatalog').addEventListener('toggle',e=>{if(e.target.open)paintCatalog()});$('pSuggestions').addEventListener('toggle',e=>{if(e.target.open)paintCatalog()});
+function toast(t,bad){const el=document.createElement('div');el.className='pm-toast'+(bad?' err':'');el.textContent=t;document.body.appendChild(el);setTimeout(()=>el.remove(),3200)}
+let OV=null,CAT=null,RANK=null,month='',F={rhythm:'',artist:'',teacher:''},tab='results',suggStatus='pending',catRhythm=0;
+// ---------- shell ----------
+$('tabs').onclick=e=>{const b=e.target.closest('[data-tab]');if(!b)return;tab=b.dataset.tab;document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
+ for(const t of ['results','themed','sugg','catalog','settings'])$('tab-'+t).hidden=t!==tab;
+ if(tab==='themed')loadThemed();if(tab==='sugg')paintSugg();if(tab==='catalog')paintCatalog();};
+function paintMonths(){const list=[...new Set([OV.current_month,...OV.months])].sort().reverse();$('months').innerHTML=list.map(m=>'<button role="tab" data-m="'+m+'" class="'+(m===month?'on':'')+'">'+mName(m)+(m===OV.current_month?' · atual':'')+'</button>').join('')}
+$('months').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;month=b.dataset.m;F={rhythm:'',artist:'',teacher:''};paintMonths();loadResults();if(tab==='themed')loadThemed()};
+async function init(){try{OV=await api('action=overview');month=OV.current_month;paintMonths();$('firstMonth').value=OV.first_month;
+ CAT=await api('action=catalog');paintBadge();await loadResults()}catch(e){$('results').innerHTML='<div class="pm-card pm-empty">Não foi possível carregar: '+esc(why(e))+'</div>'}}
+// ---------- results ----------
+const bar=(key,id,label,votes,max,total,on)=>{const pct=total?Math.round(votes*100/total):0;key=id===''?'':key;return '<div role="'+(key?'button':'listitem')+'" tabindex="'+(key?0:-1)+'" class="pm-bar'+(on?' on':'')+'" data-f="'+key+'" data-id="'+esc(id)+'" title="'+esc(label)+': '+votes+' voto(s) · '+pct+'% de quem respondeu'+(key?' — toque para filtrar':'')+'"><span class="l">'+esc(label)+'</span><span class="t"><span class="f" data-w="'+Math.max(3,Math.round(votes*100/(max||1)))+'"></span></span><span class="v">'+votes+'<small>'+pct+'%</small></span></div>'};
+function chartCard(title,sub,items,key,more){const max=Math.max(1,...items.map(x=>x.votes)),P=Math.max(1,RANK.participants);
+ return '<div class="pm-card"><h2>'+title+'</h2><div class="sub">'+sub+'</div>'+(items.length?items.map(x=>bar(key,x.id??x.name,x.label,x.votes,max,P,key&&F[key]!==''&&String(F[key])===String(x.id??x.name))).join(''):'<div class="pm-empty">Sem respostas neste mês.</div>')+(more||'')+'</div>'}
+async function loadResults(){$('results').innerHTML='<div class="pm-empty">Carregando…</div>';
+ const q=new URLSearchParams({action:'rankings',month});for(const k of ['rhythm','artist','teacher'])if(F[k])q.set(k,F[k]);
+ try{RANK=await api(q.toString());paintResults()}catch(e){$('results').innerHTML='<div class="pm-card pm-empty">'+esc(why(e))+'</div>'}}
+function paintResults(){const d=RANK;
+ $('kPct').textContent=d.participation_pct==null?'—':d.participation_pct.toLocaleString('pt-BR')+'%';$('kPart').textContent=d.participants;$('kElig').textContent=d.eligible;
+ const active=Object.entries(F).filter(([,v])=>v);const rn=id=>CAT.rhythms.find(r=>String(r.id)===String(id))?.name||id,an=id=>CAT.artists.find(a=>String(a.id)===String(id))?.name||id;
+ $('filterBar').innerHTML=active.length?'<div class="pm-filter">Filtrando: '+active.map(([k,v])=>'<span class="pm-tag">'+esc(k==='rhythm'?rn(v):k==='artist'?an(v):v)+'</span>').join(' ')+' · '+d.participants+' aluno(s)<button class="pm-btn ghost sm" id="clearF">Limpar filtro ✕</button></div>':'';
+ if(!d.participants&&!active.length){$('results').innerHTML='<div class="pm-card pm-empty">Ninguém respondeu a pesquisa de '+mName(month)+' ainda.<br>Os gráficos aparecem aqui assim que chegarem as primeiras respostas.</div>'+history();return}
+ const teach={};for(const t of d.teachers_by_rhythm)teach[t.teacher]=(teach[t.teacher]||0)+t.votes;
+ const artistsByR={},teachByR={};for(const a of d.artists_by_rhythm)(artistsByR[a.rhythm]=artistsByR[a.rhythm]||[]).push(a);for(const t of d.teachers_by_rhythm)(teachByR[t.rhythm]=teachByR[t.rhythm]||[]).push(t);
+ const catId=name=>CAT.artists.find(a=>a.name===name)?.id;
+ let h='<div class="pm-grid">'+chartCard('Ritmos mais escolhidos','Toque em um ritmo para ver só quem escolheu',d.rhythms.map(r=>({id:r.id,label:(r.emoji?r.emoji+' ':'')+r.name,votes:r.votes})),'rhythm')+
+  chartCard('Artistas mais votados','Top 10 · toque para filtrar',d.artists.slice(0,10).map(a=>({id:catId(a.name)??'',name:a.name,label:a.name+(a.suggested?' ✦':''),votes:a.votes})),'artist',d.artists.some(a=>a.suggested)?'<div class="sub" style="margin:8px 0 0">✦ sugestão dos alunos (fora do catálogo)</div>':'')+
+  chartCard('Professores mais indicados','Somando todos os ritmos · toque para filtrar',Object.entries(teach).sort((a,b)=>b[1]-a[1]).map(([name,votes])=>({id:name,label:name,votes})),'teacher')+'</div>';
+ h+='<div class="pm-card" style="margin-top:12px"><h2>Por ritmo</h2><div class="sub">O que a turma quer em cada estilo e quem deve comandar a aula</div><div class="pm-grid">'+Object.keys(artistsByR).map(r=>{const A=artistsByR[r].slice(0,5),T=(teachByR[r]||[]).slice(0,3),mx=Math.max(1,...A.map(x=>x.votes));
+  return '<div style="background:var(--pm-bg);border-radius:14px;padding:12px"><b>'+esc(r)+'</b>'+A.map(a=>bar('',a.name,a.name,a.votes,mx,RANK.participants)).join('')+'<div class="sub" style="margin:8px 0 4px">Professores indicados</div><div class="pm-chips">'+T.map(t=>'<span class="pm-tag">'+esc(t.teacher)+' · '+t.votes+'</span>').join('')+'</div></div>'}).join('')+'</div></div>';
+ const news=d.suggestions.filter(s=>s.status==='pending');if(news.length)h+='<div class="pm-card"><div class="pm-row"><div><h2>💡 '+news.length+' artista(s) novo(s) sugerido(s)</h2><div class="sub" style="margin:2px 0 0">'+news.slice(0,4).map(s=>esc(s.name)).join(', ')+(news.length>4?'…':'')+'</div></div><button class="pm-btn alt sm" data-go="sugg">Analisar</button></div></div>';
+ $('results').innerHTML=h+history();
+ requestAnimationFrame(()=>document.querySelectorAll('#results .f').forEach(f=>f.style.width=f.dataset.w+'%'));
+}
+function history(){const H=(RANK?.history||[]).slice(0,6).reverse();if(H.length<2)return '';const mx=Math.max(1,...H.map(x=>x.participants));
+ return '<div class="pm-card"><h2>Evolução mensal</h2><div class="sub">Alunos que responderam em cada mês</div><div class="pm-cols">'+H.map(x=>'<div title="'+mName(x.month)+': '+x.participants+' respostas, '+x.artists+' artistas, '+x.rhythms+' ritmos"><b>'+x.participants+'</b><i style="height:'+Math.max(4,Math.round(x.participants*90/mx))+'px"></i>'+mName(x.month)+'</div>').join('')+'</div></div>'}
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.pm-bar[role=button]')){e.preventDefault();e.target.click()}});
+document.addEventListener('click',e=>{const b=e.target.closest('.pm-bar[data-f]');if(b&&b.dataset.f&&b.dataset.id){const k=b.dataset.f;F[k]=String(F[k])===b.dataset.id?'':b.dataset.id;loadResults();scrollTo({top:0,behavior:'smooth'});return}
+ if(e.target.closest('#clearF')){F={rhythm:'',artist:'',teacher:''};loadResults();return}
+ const g=e.target.closest('[data-go]');if(g){document.querySelector('#tabs [data-tab="'+g.dataset.go+'"]').click()}});
+// ---------- suggestions ----------
+function paintBadge(){const n=CAT.suggestions.filter(s=>s.status==='pending').length;$('suggBadge').hidden=!n;$('suggBadge').textContent=n}
+$('suggFilter').onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;suggStatus=b.dataset.s;$('suggFilter').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));paintSugg()};
+function paintSugg(){const L=CAT.suggestions.filter(s=>s.status===suggStatus);
+ $('suggList').innerHTML=L.length?L.map(s=>'<div><div><b>'+esc(s.name)+'</b><div class="meta">'+esc(s.rhythm)+' · '+s.votes+' voto(s) · desde '+mName(s.first_month)+'</div></div>'+(s.status==='pending'?'<div style="display:flex;gap:6px"><button class="pm-btn sm" data-sadd="'+s.id+'">Incorporar</button><button class="pm-btn danger sm" data-sdis="'+s.id+'">Descartar</button></div>':'<span class="pm-tag '+(s.status==='added'?'ok':'off')+'">'+(s.status==='added'?'no catálogo':'descartada')+'</span>')+'</div>').join(''):'<div class="pm-empty">Nada por aqui.</div>'}
+// ---------- catalog ----------
+const rName=id=>CAT.rhythms.find(r=>r.id===id)?.name||'';
+function paintCatalog(){$('catRhythms').innerHTML='<button class="pm-chip'+(catRhythm?'':' on')+'" data-cr="0">Todos</button>'+CAT.rhythms.map(r=>'<button class="pm-chip'+(catRhythm===r.id?' on':'')+'" data-cr="'+r.id+'">'+esc((r.emoji||'')+' '+r.name)+'</button>').join('');
+ const q=$('catSearch').value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+ const L=CAT.artists.filter(a=>(!q||a.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').includes(q))&&(!catRhythm||a.rhythm_ids.includes(catRhythm)));
+ $('catCount').textContent=CAT.artists.filter(a=>a.active).length+' ativos de '+CAT.artists.length+' · mostrando '+Math.min(L.length,80);
+ $('artistList').innerHTML=L.length?L.slice(0,80).map(a=>'<div><div style="min-width:0"><b>'+esc(a.name)+'</b>'+(a.origin==='suggestion'?' <span class="pm-tag warn">veio de sugestão</span>':'')+'<div class="meta">'+esc(a.rhythm_ids.map(rName).join(' · '))+(a.votes?' · '+a.votes+' voto(s)':'')+'</div></div><div style="display:flex;gap:8px;align-items:center"><button class="pm-btn ghost sm" data-aedit="'+a.id+'">Editar</button><button class="pm-switch'+(a.active?' on':'')+'" data-atoggle="'+a.id+'" aria-label="'+(a.active?'Desativar':'Ativar')+' '+esc(a.name)+'" title="'+(a.active?'Ativo — aparece para os alunos':'Desativado')+'"></button></div></div>').join(''):'<div class="pm-empty">Nenhum artista encontrado.</div>';
+ $('rhythmList').innerHTML=CAT.rhythms.map(r=>'<div><div><b>'+esc((r.emoji||'')+' '+r.name)+'</b><div class="meta">'+CAT.artists.filter(a=>a.active&&a.rhythm_ids.includes(r.id)).length+' artistas ativos</div></div><div style="display:flex;gap:8px;align-items:center"><button class="pm-btn ghost sm" data-redit="'+r.id+'">Editar</button><button class="pm-switch'+(r.active?' on':'')+'" data-rtoggle="'+r.id+'" aria-label="Ativar ou desativar '+esc(r.name)+'"></button></div></div>').join('')}
+$('catSearch').oninput=paintCatalog;$('catRhythms').onclick=e=>{const b=e.target.closest('[data-cr]');if(b){catRhythm=+b.dataset.cr;paintCatalog()}};
+function sheet(html){$('sheetBody').innerHTML=html;$('sheet').hidden=false;const f=$('sheetBody').querySelector('input,select');if(f)f.focus()}
+function closeSheet(){$('sheet').hidden=true}
+$('sheet').onclick=e=>{if(e.target===$('sheet')||e.target.closest('[data-close]'))closeSheet()};
+const artistSheet=a=>sheet('<h2 style="margin:0 0 4px">'+(a?'Editar artista':'Novo artista')+'</h2><form id="artistForm"><label>Nome do artista</label><input name="name" maxlength="60" required value="'+esc(a?.name||'')+'"><label>Ritmos</label><div class="pm-chips" id="aRh">'+CAT.rhythms.map(r=>'<button type="button" class="pm-chip'+(a?.rhythm_ids.includes(r.id)||(!a&&catRhythm===r.id)?' on':'')+'" data-r="'+r.id+'">'+esc(r.name)+'</button>').join('')+'</div><div style="display:flex;gap:8px;margin-top:16px"><button class="pm-btn" style="flex:1">Salvar</button><button type="button" class="pm-btn alt" data-close>Cancelar</button></div></form>',a);
+const rhythmSheet=r=>sheet('<h2 style="margin:0 0 4px">'+(r?'Editar ritmo':'Novo ritmo')+'</h2><form id="rhythmForm"><div class="pm-form"><div><label>Nome</label><input name="name" maxlength="40" required value="'+esc(r?.name||'')+'"></div><div><label>Emoji</label><input name="emoji" maxlength="8" value="'+esc(r?.emoji||'')+'" placeholder="🎵"></div></div><div style="display:flex;gap:8px;margin-top:16px"><button class="pm-btn" style="flex:1">Salvar</button><button type="button" class="pm-btn alt" data-close>Cancelar</button></div></form>');
+let editing=null;
+$('newArtist').onclick=()=>{editing=null;artistSheet(null)};$('newRhythm').onclick=()=>{editing=null;rhythmSheet(null)};
+$('sheetBody').addEventListener('click',e=>{const c=e.target.closest('#aRh [data-r]');if(c)c.classList.toggle('on');const p=e.target.closest('[data-pick]');if(p){const inp=$('sheetBody').querySelector('[name=artists]'),cur=inp.value.split(',').map(x=>x.trim()).filter(Boolean);if(!cur.includes(p.dataset.pick))cur.push(p.dataset.pick);inp.value=cur.join(', ');p.remove()}});
+$('sheetBody').addEventListener('submit',async e=>{e.preventDefault();const f=e.target;
+ try{if(f.id==='artistForm'){const ids=[...f.querySelectorAll('#aRh .on')].map(b=>+b.dataset.r);await post({op:'artist_save',id:editing?.id||0,name:f.elements.name.value,active:editing?!!editing.active:true,rhythm_ids:ids});toast('Artista salvo.')}
+  else if(f.id==='rhythmForm'){await post({op:'rhythm_save',id:editing?.id||0,name:f.elements.name.value,emoji:f.elements.emoji.value,active:editing?!!editing.active:true});toast('Ritmo salvo.')}
+  else if(f.id==='themedForm'){const d=Object.fromEntries(new FormData(f));const r=await post({op:'themed_add',month:d.class_date?d.class_date.slice(0,7):month,...d});closeSheet();toast('Aula registrada.'+(r.notified?' '+r.notified+' aluno(s) que pediram esse ritmo vão ver o aviso.':''));loadThemed();return}
+  closeSheet();CAT=await api('action=catalog');paintCatalog();paintBadge()}catch(err){toast('Não foi possível: '+why(err),true)}});
 document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
  try{
-  if(b.dataset.redit){const r=CAT.rhythms.find(x=>x.id===+b.dataset.redit),f=$('rhythmForm');f.elements.id.value=r.id;f.elements.name.value=r.name;f.elements.emoji.value=r.emoji||'';f.elements.active.checked=!!r.active;f.scrollIntoView({block:'center'});return}
-  if(b.dataset.aedit){const a=CAT.artists.find(x=>x.id===+b.dataset.aedit),f=$('artistForm');f.elements.id.value=a.id;f.elements.name.value=a.name;f.elements.active.checked=!!a.active;$('artistRhythms').querySelectorAll('input').forEach(i=>i.checked=a.rhythm_ids.includes(+i.value));f.scrollIntoView({block:'center'});return}
-  if(b.dataset.atoggle){const a=CAT.artists.find(x=>x.id===+b.dataset.atoggle);await post({op:'artist_active',id:a.id,active:!a.active});msg((a.active?'Desativado: ':'Ativado: ')+a.name+'. Os votos antigos continuam no histórico.');}
-  else if(b.dataset.sadd){const s=CAT.suggestions.find(x=>x.id===+b.dataset.sadd),name=prompt('Nome do artista no catálogo (ritmo: '+s.rhythm+')',s.name);if(!name)return;await post({op:'suggestion_add',id:s.id,name});msg('Incorporado ao catálogo: '+name);}
-  else if(b.dataset.sdis){if(!confirm('Descartar esta sugestão?'))return;await post({op:'suggestion_dismiss',id:+b.dataset.sdis});msg('Sugestão descartada.');}
-  else if(b.dataset.tdel){if(!confirm('Excluir este registro de aula temática?'))return;await post({op:'themed_delete',id:+b.dataset.tdel});loadThemed();msg('Registro excluído.');return}
+  if(b.dataset.aedit){editing=CAT.artists.find(x=>x.id===+b.dataset.aedit);artistSheet(editing);return}
+  if(b.dataset.redit){editing=CAT.rhythms.find(x=>x.id===+b.dataset.redit);rhythmSheet(editing);return}
+  if(b.dataset.atoggle){const a=CAT.artists.find(x=>x.id===+b.dataset.atoggle);await post({op:'artist_active',id:a.id,active:!a.active});a.active=a.active?0:1;paintCatalog();toast(a.name+(a.active?' ativado.':' desativado (histórico mantido).'));return}
+  if(b.dataset.rtoggle){const r=CAT.rhythms.find(x=>x.id===+b.dataset.rtoggle);await post({op:'rhythm_save',id:r.id,name:r.name,emoji:r.emoji,active:!r.active});r.active=r.active?0:1;paintCatalog();toast(r.name+(r.active?' ativado.':' desativado.'));return}
+  if(b.dataset.sadd){const s=CAT.suggestions.find(x=>x.id===+b.dataset.sadd),name=prompt('Nome do artista no catálogo ('+s.rhythm+')',s.name);if(!name)return;await post({op:'suggestion_add',id:s.id,name});toast(name+' entrou no catálogo.')}
+  else if(b.dataset.sdis){if(!confirm('Descartar esta sugestão?'))return;await post({op:'suggestion_dismiss',id:+b.dataset.sdis});toast('Sugestão descartada.')}
+  else if(b.dataset.tdel){if(!confirm('Excluir esta aula temática?'))return;await post({op:'themed_delete',id:+b.dataset.tdel});toast('Aula excluída.');loadThemed();return}
   else return;
-  await loadCatalog();
- }catch(err){msg('Não foi possível: '+why(err),true)}});
-$('rhythmNew').onclick=()=>{$('rhythmForm').reset();$('rhythmForm').elements.id.value=''};$('artistNew').onclick=()=>{$('artistForm').reset();$('artistForm').elements.id.value=''};
-$('rhythmForm').onsubmit=async e=>{e.preventDefault();const f=e.target;try{await post({op:'rhythm_save',id:+f.elements.id.value||0,name:f.elements.name.value,emoji:f.elements.emoji.value,active:f.elements.active.checked});f.reset();f.elements.id.value='';msg('Ritmo salvo.');await loadCatalog()}catch(err){msg('Não foi possível: '+why(err),true)}};
-$('artistForm').onsubmit=async e=>{e.preventDefault();const f=e.target,ids=[...$('artistRhythms').querySelectorAll('input:checked')].map(i=>+i.value);
- try{await post({op:'artist_save',id:+f.elements.id.value||0,name:f.elements.name.value,active:f.elements.active.checked,rhythm_ids:ids});f.reset();f.elements.id.value='';msg('Artista salvo.');await loadCatalog()}catch(err){msg('Não foi possível: '+why(err),true)}};
-async function loadThemed(){const m=$('tMonth').value;$('themedList').textContent='Carregando…';
- try{const d=await api('action=themed&month='+m);
-  document.querySelector('#themedForm [name=evo_session_id]').innerHTML='<option value="">Vincular depois</option>'+d.sessions.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.date.slice(8,10)+'/'+s.date.slice(5,7)+' '+String(s.time||'').slice(0,5)+' · '+(s.name||'Aula')+' · '+(s.teacher||''))+'</option>').join('');
-  const cmp=d.comparison?'<div class="kpis" style="margin:8px 0"><div class="kpi"><span>Média nas aulas temáticas</span><b>'+d.comparison.themed_avg.toLocaleString('pt-BR')+'</b><small class="muted">'+d.comparison.themed_classes+' aula(s)</small></div><div class="kpi"><span>Média nas aulas convencionais</span><b>'+d.comparison.regular_avg.toLocaleString('pt-BR')+'</b><small class="muted">'+d.comparison.regular_classes+' aula(s), mesmos professores</small></div></div>':'<p class="muted">Comparativo de ocupação: aparece quando houver aulas temáticas vinculadas à aula oficial com presença registrada.</p>';
-  $('themedList').innerHTML=cmp+table(['Data','Aula temática','Professor','Ritmo','Sugestões aproveitadas','Presentes',''],d.list.map(t=>'<tr><td>'+(t.class_date?esc(t.class_date.slice(8,10)+'/'+t.class_date.slice(5,7)):'—')+' '+esc(t.class_time||'')+'</td><td>'+esc(t.class_name)+(t.notes?'<div class="muted">'+esc(t.notes)+'</div>':'')+'</td><td>'+esc(t.teacher_name)+'</td><td>'+esc(t.rhythm||'—')+'</td><td>'+esc(t.artists||'—')+'</td><td class="n">'+(t.attendance!=null?t.attendance:t.evo_session_id?'sem presença':'não vinculada')+'</td><td><button class="sm secondary" data-tdel="'+t.id+'">Excluir</button></td></tr>'),'Nenhuma aula temática registrada neste mês.');
- }catch(e){$('themedList').innerHTML='<p class="err">'+esc(why(e))+'</p>'}}
-$('pThemed').addEventListener('toggle',e=>{if(e.target.open)loadThemed()});$('tMonth').onchange=loadThemed;
-async function themedPicks(){const rid=document.querySelector('#themedForm [name=rhythm_id]').value,box=$('themedPick');box.innerHTML='';if(!rid)return;
- const r=CAT.rhythms.find(x=>String(x.id)===rid);let d=RANK&&RANK.month===$('tMonth').value?RANK:null;
- if(!d){try{d=await api('action=rankings&month='+$('tMonth').value)}catch{return}}
- const top=d.artists_by_rhythm.filter(a=>a.rhythm===r?.name).slice(0,8);
- box.innerHTML=top.length?'<span class="muted" style="align-self:center">Mais votados:</span>'+top.map(a=>'<button type="button" data-pick="'+esc(a.name)+'">+ '+esc(a.name)+' ('+a.votes+')</button>').join(''):'';}
-document.querySelector('#themedForm [name=rhythm_id]').addEventListener('change',themedPicks);
-$('themedPick').addEventListener('click',e=>{const b=e.target.closest('[data-pick]');if(!b)return;const inp=document.querySelector('#themedForm [name=artists]'),cur=inp.value.split(',').map(x=>x.trim()).filter(Boolean);if(!cur.includes(b.dataset.pick))cur.push(b.dataset.pick);inp.value=cur.join(', ');b.remove()});
-$('themedForm').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));try{const r=await post({op:'themed_add',month:$('tMonth').value,...f});e.target.reset();$('themedPick').innerHTML='';msg('Aula temática registrada.'+(r.notified?' '+r.notified+(r.notified===1?' aluno que pediu esse ritmo vai':' alunos que pediram esse ritmo vão')+' ver o aviso no app.':''));loadThemed()}catch(err){msg('Não foi possível: '+why(err),true)}};
-$('saveSettings').onclick=async()=>{try{await post({op:'settings',first_month:$('firstMonth').value});msg('Configuração salva.')}catch(e){msg('Não foi possível: '+why(e),true)}};
+  CAT=await api('action=catalog');paintSugg();paintBadge();
+ }catch(err){toast('Não foi possível: '+why(err),true)}});
+// ---------- themed classes ----------
+const WD=['dom','seg','ter','qua','qui','sex','sáb'],fdate=d=>{if(!d)return 'sem data';const x=new Date(d+'T12:00:00');return WD[x.getDay()]+', '+d.slice(8,10)+'/'+d.slice(5,7)};
+let TH=null;
+async function loadThemed(){$('themedList').innerHTML='<div class="pm-empty">Carregando…</div>';$('themedCompare').innerHTML='';
+ try{TH=await api('action=themed&month='+month);
+  if(TH.comparison){const c=TH.comparison,mx=Math.max(c.themed_avg,c.regular_avg,1);$('themedCompare').innerHTML='<div class="pm-card"><h2>Ocupação: temáticas x convencionais</h2><div class="sub">Média de alunos presentes · mesmos professores em '+mName(month)+'</div>'+bar('','t','🎉 Aulas temáticas ('+c.themed_classes+')',c.themed_avg,mx,0)+bar('','r','Aulas convencionais ('+c.regular_classes+')',c.regular_avg,mx,0)+'</div>';
+   requestAnimationFrame(()=>document.querySelectorAll('#themedCompare .f').forEach(f=>f.style.width=f.dataset.w+'%'));document.querySelectorAll('#themedCompare .v small').forEach(s=>s.remove())}
+  $('themedList').innerHTML='<div class="pm-card"><h2>'+TH.list.length+' aula(s) em '+mName(month)+'</h2>'+(TH.list.length?'<div class="pm-list">'+TH.list.map(t=>'<div><div style="min-width:0"><b>'+esc(t.class_name)+'</b>'+(t.rhythm?' <span class="pm-tag">'+esc(t.rhythm)+'</span>':'')+'<div class="meta">'+fdate(t.class_date)+(t.class_time?' às '+esc(t.class_time):'')+' · '+esc(t.teacher_name)+(t.artists?' · '+esc(t.artists):'')+'</div><div class="meta">'+(t.evo_session_id?(t.attendance!=null?'<span class="pm-tag ok">'+t.attendance+' presentes</span>':'<span class="pm-tag">aula oficial vinculada</span>'):'<span class="pm-tag warn">sem aula oficial vinculada</span>')+'</div></div><button class="pm-btn danger sm" data-tdel="'+t.id+'">Excluir</button></div>').join('')+'</div>':'<div class="pm-empty">Nenhuma aula temática neste mês. Use “+ Nova aula temática”.</div>')+'</div>';
+ }catch(e){$('themedList').innerHTML='<div class="pm-card pm-empty">'+esc(why(e))+'</div>'}}
+$('newThemed').onclick=async()=>{if(!TH)await loadThemed();
+ sheet('<h2 style="margin:0 0 4px">Nova aula temática</h2><div class="sub" style="color:var(--pm-mut);font-size:13px">O nome é definido pelo professor. Os alunos que pediram o ritmo são avisados no app.</div><form id="themedForm"><div class="pm-form">'+
+  '<div><label>Nome da aula</label><input name="class_name" maxlength="80" required placeholder="Ex.: Divas do Pop"></div><div><label>Professor</label><select name="teacher" required><option value="">Escolha</option>'+OV.teachers.map(t=>'<option>'+esc(t)+'</option>').join('')+'</select></div>'+
+  '<div><label>Ritmo</label><select name="rhythm_id" id="tRh"><option value="">—</option>'+CAT.rhythms.map(r=>'<option value="'+r.id+'">'+esc((r.emoji||'')+' '+r.name)+'</option>').join('')+'</select></div>'+
+  '<div><label>Data</label><input type="date" name="class_date" required></div><div><label>Horário</label><input type="time" name="class_time"></div>'+
+  '<div><label>Aula oficial (EVO)</label><select name="evo_session_id" id="tEvo"><option value="">Vincular pela data e horário</option></select></div></div>'+
+  '<label>Artistas da playlist</label><input name="artists" maxlength="300" placeholder="Ex.: Dua Lipa, Anitta"><div class="pm-chips" id="tPick" style="margin-top:8px"></div>'+
+  '<label>Observações</label><input name="notes" maxlength="300"><div style="display:flex;gap:8px;margin-top:16px"><button class="pm-btn" style="flex:1">Registrar aula</button><button type="button" class="pm-btn alt" data-close>Cancelar</button></div></form>');
+ const evo=()=>{const f=$('themedForm'),d=f.elements.class_date.value,t=f.elements.teacher.value,list=(TH?.sessions||[]).filter(s=>(!d||s.date===d)&&(!t||s.teacher===t));$('tEvo').innerHTML='<option value="">Vincular pela data e horário</option>'+list.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.date.slice(8,10)+'/'+s.date.slice(5,7)+' '+String(s.time||'').slice(0,5)+' · '+(s.name||'Aula')+' · '+(s.teacher||''))+'</option>').join('')};
+ const f=$('themedForm');f.elements.class_date.addEventListener('change',async()=>{const m=f.elements.class_date.value.slice(0,7);if(m&&m!==TH?.month){try{TH={...TH,...(await api('action=themed&month='+m)),month:m}}catch{}}evo()});f.elements.teacher.addEventListener('change',evo);
+ $('tEvo').addEventListener('change',()=>{const s=(TH?.sessions||[]).find(x=>x.id===$('tEvo').value);if(s&&!f.elements.class_time.value)f.elements.class_time.value=String(s.time||'').slice(0,5)});
+ $('tRh').addEventListener('change',()=>{const r=CAT.rhythms.find(x=>String(x.id)===$('tRh').value),top=(RANK?.artists_by_rhythm||[]).filter(a=>a.rhythm===r?.name).slice(0,8);
+  $('tPick').innerHTML=top.length?'<span style="font-size:12px;color:var(--pm-mut);align-self:center">Mais votados:</span>'+top.map(a=>'<button type="button" class="pm-chip" data-pick="'+esc(a.name)+'">+ '+esc(a.name)+' ('+a.votes+')</button>').join(''):''});evo()};
+// ---------- settings ----------
+$('saveSettings').onclick=async()=>{try{await post({op:'settings',first_month:$('firstMonth').value});toast('Configuração salva.')}catch(e){toast('Não foi possível: '+why(e),true)}};
 init();
 </script></body></html>
