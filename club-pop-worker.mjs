@@ -1,6 +1,7 @@
 import {profilePhotoRoute} from './lib/profile-photo.mjs';
 import {readCheckinMirror,assertCheckinSessionDate} from './lib/checkin-mirror.mjs';
 import {popLiveOperation} from './lib/pop-live-operation.mjs';
+import {adminEvents,studentEvents,takeTicket,eventOrderValid,eventOrderSettled,EVENT_ITEM} from './lib/pop-live-events.mjs';
 import {memberUnitAccess,readAccessSettings,saveAccessSettings,accessCatalog} from './lib/unit-access.mjs';
 import {memberAttendanceIds,unitAttendanceHistory,unitAttendanceRows,unitStars} from './lib/unit-progress.mjs';
 import {serviceSalesAdmin,scheduledServiceSales,ensureServiceSalesTables} from './lib/service-sales-sync.mjs';
@@ -90,6 +91,16 @@ async function clubPixReconcile(env,order,result){
  if(order.status==="refunded")return {status:"refunded",fulfilled:false};
  const raw=String(result.status||"").toLowerCase();
  const next=raw==="processed"?"approved":raw==="cancelled"?"cancelled":raw==="expired"?"expired":raw==="failed"?"rejected":"pending";
+ // Pop Live event ticket: the paid order confirms the ticket (no store delivery, no EVO sale).
+ if(order.item_type===EVENT_ITEM){
+   if(next==="approved"){
+     const payments=result.transactions?.payments||[];
+     if(Math.round(Number(result.total_paid_amount)*100)!==Number(order.amount_cents)||!payments.length||payments.some(p=>p.status!=="processed"||p.payment_method?.id!=="pix")||(result.currency_id&&result.currency_id!=="BRL"))throw Error("PIX_PAYMENT_UNCONFIRMED");
+     await env.DB.prepare("UPDATE club_pix_orders SET status='approved',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='approved'").bind(order.id).run();
+   }else await env.DB.prepare("UPDATE club_pix_orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('approved')").bind(next,order.id).run();
+   await eventOrderSettled(env.DB,order,next);
+   return {status:next,fulfilled:next==="approved",ticket:next==="approved"?"paid":null};
+ }
  if(next==="approved"&&order.original_cents!=null){
    const payments=result.transactions?.payments||[];
    if(Math.round(Number(result.total_paid_amount)*100)!==Number(order.amount_cents)||!payments.length||payments.some(p=>p.status!=="processed"||p.payment_method?.id!=="pix")||(result.currency_id&&result.currency_id!=="BRL"))throw Error("PIX_PAYMENT_UNCONFIRMED");
@@ -2252,6 +2263,14 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         }
         return json({ok:true,sessions:list});
       }
+      if(url.pathname==="/admin/pop-live-events"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";
+        if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
+        const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        try{return await adminEvents(request,env.DB,url,json)}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
+      }
       if(["/admin/pop-live-devices","/admin/pop-live-sessions","/admin/pop-live-drafts"].includes(url.pathname)){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -2435,7 +2454,7 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           // Pop Live dash: booked classes (EVO reservations of this student in this unit), upcoming events and Pop Fit summary.
           const booked=crossUnit?[]:((await env.DB.prepare(`SELECT DISTINCT session_id FROM checkin_reservation_snapshots WHERE unit=? AND evo_member_id=? AND removed=0
             AND activity_date BETWEEN date('now','-3 hours') AND date('now','-3 hours','+2 days')`).bind(unit,memberId).all().catch(()=>({results:[]}))).results||[]).map(r=>String(r.session_id));
-          const events=((await env.DB.prepare(`SELECT id,name,event_date,location FROM pop_live_game_events WHERE event_date>=date('now','-3 hours') ORDER BY event_date,id LIMIT 6`).all().catch(()=>({results:[]}))).results||[]);
+          const events=await studentEvents(env.DB,member.id).catch(()=>[]);
           const perf=((await env.DB.prepare(`SELECT s.class_name,s.starts_at,s.unit,p.calories_estimated calories,p.distance_km,p.duration_seconds FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id
             WHERE p.member_id=? AND s.status='closed' ORDER BY s.starts_at DESC LIMIT 20`).bind(member.id).all().catch(()=>({results:[]}))).results||[]);
           const weekAgo=new Date(Date.now()-3*3600e3-7*86400e3).toISOString().slice(0,10);
@@ -2443,6 +2462,12 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           return json({ok:true,unit,scope:member.session_scope==="live"?"live":"club",visitor:crossUnit,booked,events,
             fit:{week_classes:week.length,week_kcal:Math.round(week.reduce((a,p)=>a+(Number(p.calories)||0),0)),week_km:Math.round(week.reduce((a,p)=>a+(Number(p.distance_km)||0),0)*10)/10,
               last:perf.slice(0,3).map(p=>({name:p.class_name,starts_at:p.starts_at,unit:p.unit,calories:Math.round(Number(p.calories)||0),distance_km:Math.round((Number(p.distance_km)||0)*10)/10}))}});
+        }
+        if(action==="events"&&request.method==="GET")return json({ok:true,events:await studentEvents(env.DB,member.id)});
+        if(action==="ticket"&&request.method==="POST"){
+          let tb;try{tb=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
+          const eid=Number(tb.event_id);if(!Number.isSafeInteger(eid)||eid<1)return json({ok:false,error:"EVENTO_INVALIDO"},400);
+          try{return json({ok:true,...await takeTicket(env.DB,member,eid)})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
         }
         if(!["classes","checkin"].includes(action))return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(request.method==="GET"){
@@ -4650,13 +4675,14 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!token)return json({ok:false,error:"PIX_PRODUCTION_NOT_CONFIGURED"},503);
         if(!savedChoice){
         if(order.status!=="created")return json({ok:false,error:"PEDIDO_NAO_DISPONIVEL"},409);
+        if(order.item_type===EVENT_ITEM){const bad=await eventOrderValid(env.DB,order);if(bad)return json({ok:false,error:bad},409);}else{
         const catalog=await clubContent(env);
         const item=(order.item_type==="product"?catalog.products:catalog.services||[])?.find(x=>String(x.id)===order.item_id&&String(x.unit||"bike")===order.unit);
         if(!item||String(item.status||"Ativo")!=="Ativo")return json({ok:false,error:"ITEM_INDISPONIVEL"},409);
         if(order.item_type==="product"&&Number(item.stock||0)<=0)return json({ok:false,error:"SEM_ESTOQUE"},409);
         if(!["pix","both"].includes(String(item.paymentMethod||"fitcoins")))return json({ok:false,error:"PIX_NAO_HABILITADO"},409);
         if(Math.round(Number(item.price)*100)!==Number(order.amount_cents))return json({ok:false,error:"PRECO_ALTERADO"},409);
-        }
+        }}
         const email=String(member.email||"").trim();
         if(email.includes(" ")||!email.includes("@")||!email.split("@")[1]?.includes("."))return json({ok:false,error:"EMAIL_INVALIDO"},409);
         const claim=await env.DB.prepare(savedChoice?"UPDATE club_pix_orders SET status='creating',choice_expires_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='selected' AND reservation_state='held' AND datetime(choice_expires_at)>datetime('now') AND provider_order_id IS NULL":"UPDATE club_pix_orders SET status='creating',updated_at=CURRENT_TIMESTAMP WHERE id=? AND member_id=? AND status='created' AND provider_order_id IS NULL").bind(id,member.id).run();
@@ -6027,7 +6053,7 @@ async function findGymEvoMember(env, cpf) {
 
 // Pop Live is open to everyone: visitors (and former students) get a "live" session that reaches only Pop Live,
 // Pop Fit and the profile. Club Pop sessions (active contract) are unchanged.
-const POP_LIVE_PATHS=new Set(["/auth/me","/auth/logout","/auth/change-pin","/pop-live/student","/member/pop-fit","/member/profile-photo","/member/app-analytics","/student-next-class"]);
+const POP_LIVE_PATHS=new Set(["/auth/me","/auth/logout","/auth/change-pin","/pop-live/student","/member/pop-fit","/member/profile-photo","/member/app-analytics","/student-next-class","/checkout/pix/create","/checkout/pix/status","/checkout/pix/details"]);
 let popLiveTablesReady=false;
 async function ensurePopLiveAccountTables(env){
   if(popLiveTablesReady)return;
