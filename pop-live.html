@@ -169,48 +169,37 @@ async function openEvent(id){evId=id;$('dash').classList.add('hide');$('evView')
 $('evBack').onclick=()=>{$('evView').classList.add('hide');$('dash').classList.remove('hide');closeSheet();paintDash()};
 async function loadEvent(){try{EV=await ev('event');paintEvent()}catch(e){$('evBody').innerHTML='<div class="box warn">'+esc(eErr(e))+'</div>'}}
 const aName=a=>a.name||a.activity_type;
-function ticketCard(balance,activities,catalog){
- const rows=new Map(),mainTimes=new Map(),extraTimes=[];
+function ticketCard(balance,activities){
+ const rows=[],mainTimes=new Map(),extraTimes=[];
  for(const a of activities.filter(a=>a.mine).sort((a,b)=>a.starts_at.localeCompare(b.starts_at))){
   if(!Number(a.is_main)){extraTimes.push(a.starts_at);continue}
   const key=aName(a);
   if(!mainTimes.has(key))mainTimes.set(key,[]);
   mainTimes.get(key).push(a.starts_at);
  }
- for(const owned of balance.tickets){
-  const t={...catalog.find(item=>item.name===owned.name),...owned},key=t.type_id??t.id??t.name;
-  if(!rows.has(key))rows.set(key,{name:t.name,left:0,free:false,times:[],gifts:[]});
-  const row=rows.get(key);
-  if(t.main_name){
-   const time=mainTimes.get(t.main_name)?.shift();
-   if(time)row.times.push(time);else row.left++;
-  }
-  if(Number(t.extra_credits)===-1)row.free=true;
-  if(t.extra_credits>0){
-   const times=extraTimes.splice(0,t.extra_credits);
-   row.left+=t.extra_credits-times.length;
-   row.times.push(...times);
-  }
-  if(t.gifts)row.gifts.push(t.gifts+(t.shirt_size?' ('+t.shirt_size+')':''));
+ for(const [name,main] of Object.entries(balance.mains)){
+  if(main.rights>0)rows.push({name,left:Math.max(0,main.rights-main.used),times:mainTimes.get(name)||[]});
  }
+ const extras=balance.extras;
+ if(extras.total>0||extras.unlimited)rows.push({name:'Desafios à escolha',left:extras.left,free:extras.unlimited,times:extraTimes});
+ const benefits=balance.tickets.filter(t=>t.gifts).map(t=>t.gifts+(t.shirt_size?' ('+t.shirt_size+')':''));
  const active=r=>r.free||r.left>0;
- const items=[...rows.values()].sort((a,b)=>Number(active(b))-Number(active(a)));
+ const items=rows.sort((a,b)=>Number(active(b))-Number(active(a)));
  const buy='<button class="btn buy-more" data-tlist>Comprar mais ingressos</button>';
  const tile=r=>'<div class="ticket-tile">'+(active(r)?'<small>Saldo para agendar</small><strong>'+(r.free?(r.left?r.left+' + extras livres':'Extras livres'):r.left)+'</strong>':'<b>'+(r.times.length?'✓ Agendado · '+r.times.map(esc).join(', '):'Saldo esgotado')+'</b>')+'</div>';
- const gifts=r=>r.gifts.length?'<small>'+esc(r.gifts.join(', '))+' (retirar na recepção)</small>':'';
- const line=r=>'<div class="ticket-line"><div><b>'+esc(r.name)+'</b>'+gifts(r)+'</div>'+tile(r)+'</div>';
+ const line=r=>'<div class="ticket-line"><div><b>'+esc(r.name)+'</b>'+'</div>'+tile(r)+'</div>';
  const single=items.length===1,r=items[0];
  return '<section class="ticket-balance"><b class="ticket-label">🎟 '+(single?'Seu ingresso':'Meus ingressos')+'</b>'+
- (single?'<h2>'+esc(r.name)+'</h2>'+gifts(r)+'<div class="ticket-actions">'+tile(r)+buy+'</div>':
- items.slice(0,2).map(line).join('')+(items.length>2?'<details><summary>Ver todos ('+items.length+' tipos)</summary>'+items.slice(2).map(line).join('')+'</details>':'')+buy)+
- '<p>'+(items.some(active)?'Escolha a atividade abaixo para agendar.':'Confira seus agendamentos abaixo.')+'</p></section>';
+ (single?'<h2>'+esc(r.name)+'</h2>'+'<div class="ticket-actions">'+tile(r)+buy+'</div>':
+ items.slice(0,2).map(line).join('')+(items.length>2?'<details><summary>Ver todos ('+items.length+' categorias)</summary>'+items.slice(2).map(line).join('')+'</details>':'')+buy)+
+ (benefits.length?'<small>'+esc(benefits.join(', '))+' (retirar na recepção)</small>':'')+'<p>'+(items.some(active)?'Escolha a atividade abaixo para agendar.':'Confira seus agendamentos abaixo.')+'</p></section>';
 }
 function paintEvent(){
  const e=EV.event,b=EV.balance,has=b.tickets.length,open=EV.tickets.filter(t=>!t.out),from=open.length?Math.min(...open.map(t=>t.price_cents)):null;
  let h='<div class="ev-head"'+(e.kind==='special_class'?' style="background:linear-gradient(150deg,#3b2a7a,#1d1540)"':'')+'><span class="sm" style="color:var(--yellow);font-weight:800">'+esc(when(e))+'</span><h3>'+esc(e.name)+'</h3><p class="sm" style="margin:0;color:#f3dbe9">'+esc(unitTxt[e.unit]||'')+(e.location?' · '+esc(e.location):'')+(e.description?'<br>'+esc(e.description):'')+'</p>';
  if(!has)h+='<div class="top ticket-offer"><b>'+(from==null?'Ingressos em breve':from?'A partir de '+brl(from):'Gratuito')+'</b>'+(from!=null?'<button class="btn sm" data-tlist>Ver ingressos</button>':'')+'</div>';
  h+='</div>';
- if(has)h+=ticketCard(b,EV.activities,EV.tickets);
+ if(has)h+=ticketCard(b,EV.activities);
  if(EV.pending&&EV.pending.order_id)h+='<div class="box warn"><b>Pix pendente · '+esc(EV.pending.name)+'</b><button class="btn sm" style="margin-top:8px" data-repay="'+esc(EV.pending.order_id)+'">Pagar agora</button></div>';
  h+='<h2>Cronograma</h2><p class="sm mut" style="margin:0">★ = atividade principal (1 por ingresso). Toque para entrar.</p>';
  h+=EV.activities.map(a=>'<button class="lesson act-btn'+(a.mine?' mine':'')+'" data-a="'+a.id+'"><div class="lt"><b>'+esc(a.starts_at)+'</b><em>até '+esc(a.ends_at)+'</em></div><div><b style="font-size:15px">'+(Number(a.is_main)?'<span style="color:var(--yellow)">★ </span>':'')+esc(aName(a))+'</b><small>'+(Number(a.is_main)?'Principal · ':'')+esc(unitTxt[a.unit])+(a.name&&a.activity_type!=='Outra atividade'?' · '+esc(a.activity_type):'')+'</small></div>'+(a.mine?'<span class="badge">✓ '+(a.my_seat?eqName(a)+' '+pad2(a.my_seat):'Confirmado')+'</span>':'<span class="sm" style="font-weight:800;white-space:nowrap;color:'+(a.left?'var(--yellow)':'#ff8fa3')+'">'+(!a.left?'Esgotado':a.left===1?'1 vaga':a.left<=3?'Só '+a.left+' vagas':a.left+' vagas')+'</span>')+'</button>').join('')||'<p class="mut sm">Cronograma em breve.</p>';
