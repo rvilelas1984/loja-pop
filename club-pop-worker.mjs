@@ -1,7 +1,7 @@
 import {profilePhotoRoute} from './lib/profile-photo.mjs';
 import {readCheckinMirror,assertCheckinSessionDate} from './lib/checkin-mirror.mjs';
 import {popLiveOperation} from './lib/pop-live-operation.mjs';
-import {adminEvents,studentEvents,takeTicket,eventOrderValid,eventOrderSettled,EVENT_ITEM} from './lib/pop-live-events.mjs';
+import {adminEvents,studentEvents,studentEventRoute,eventOrderValid,eventOrderSettled,EVENT_ITEM,TICKET_ITEM} from './lib/pop-live-events.mjs';
 import {memberUnitAccess,readAccessSettings,saveAccessSettings,accessCatalog} from './lib/unit-access.mjs';
 import {memberAttendanceIds,unitAttendanceHistory,unitAttendanceRows,unitStars} from './lib/unit-progress.mjs';
 import {serviceSalesAdmin,scheduledServiceSales,ensureServiceSalesTables} from './lib/service-sales-sync.mjs';
@@ -92,14 +92,14 @@ async function clubPixReconcile(env,order,result){
  const raw=String(result.status||"").toLowerCase();
  const next=raw==="processed"?"approved":raw==="cancelled"?"cancelled":raw==="expired"?"expired":raw==="failed"?"rejected":"pending";
  // Pop Live event ticket: the paid order confirms the ticket (no store delivery, no EVO sale).
- if(order.item_type===EVENT_ITEM){
+ if(order.item_type===EVENT_ITEM||order.item_type===TICKET_ITEM){
    if(next==="approved"){
      const payments=result.transactions?.payments||[];
      if(Math.round(Number(result.total_paid_amount)*100)!==Number(order.amount_cents)||!payments.length||payments.some(p=>p.status!=="processed"||p.payment_method?.id!=="pix")||(result.currency_id&&result.currency_id!=="BRL"))throw Error("PIX_PAYMENT_UNCONFIRMED");
      await env.DB.prepare("UPDATE club_pix_orders SET status='approved',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='approved'").bind(order.id).run();
    }else await env.DB.prepare("UPDATE club_pix_orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('approved')").bind(next,order.id).run();
-   await eventOrderSettled(env.DB,order,next);
-   return {status:next,fulfilled:next==="approved",ticket:next==="approved"?"paid":null};
+   const joined=await eventOrderSettled(env.DB,order,next);
+   return {status:next,fulfilled:next==="approved",ticket:next==="approved"?"paid":null,joined};
  }
  if(next==="approved"&&order.original_cents!=null){
    const payments=result.transactions?.payments||[];
@@ -2463,11 +2463,10 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
             fit:{week_classes:week.length,week_kcal:Math.round(week.reduce((a,p)=>a+(Number(p.calories)||0),0)),week_km:Math.round(week.reduce((a,p)=>a+(Number(p.distance_km)||0),0)*10)/10,
               last:perf.slice(0,3).map(p=>({name:p.class_name,starts_at:p.starts_at,unit:p.unit,calories:Math.round(Number(p.calories)||0),distance_km:Math.round((Number(p.distance_km)||0)*10)/10}))}});
         }
-        if(action==="events"&&request.method==="GET")return json({ok:true,events:await studentEvents(env.DB,member.id)});
-        if(action==="ticket"&&request.method==="POST"){
-          let tb;try{tb=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}
-          const eid=Number(tb.event_id);if(!Number.isSafeInteger(eid)||eid<1)return json({ok:false,error:"EVENTO_INVALIDO"},400);
-          try{return json({ok:true,...await takeTicket(env.DB,member,eid)})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
+        // Events: list, detail with schedule/tickets/balance, buy a ticket, book or leave an activity.
+        if(["events","event","buy","enroll","leave"].includes(action)){
+          let eb={};if(request.method==="POST"){try{eb=await request.json()}catch{return json({ok:false,error:"JSON_INVALIDO"},400)}}
+          try{return json({ok:true,...await studentEventRoute(env.DB,member,action,request.method,url,eb)})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
         }
         if(!["classes","checkin"].includes(action))return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(request.method==="GET"){
@@ -4675,7 +4674,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         if(!token)return json({ok:false,error:"PIX_PRODUCTION_NOT_CONFIGURED"},503);
         if(!savedChoice){
         if(order.status!=="created")return json({ok:false,error:"PEDIDO_NAO_DISPONIVEL"},409);
-        if(order.item_type===EVENT_ITEM){const bad=await eventOrderValid(env.DB,order);if(bad)return json({ok:false,error:bad},409);}else{
+        if(order.item_type===EVENT_ITEM||order.item_type===TICKET_ITEM){const bad=await eventOrderValid(env.DB,order);if(bad)return json({ok:false,error:bad},409);}else{
         const catalog=await clubContent(env);
         const item=(order.item_type==="product"?catalog.products:catalog.services||[])?.find(x=>String(x.id)===order.item_id&&String(x.unit||"bike")===order.unit);
         if(!item||String(item.status||"Ativo")!=="Ativo")return json({ok:false,error:"ITEM_INDISPONIVEL"},409);
