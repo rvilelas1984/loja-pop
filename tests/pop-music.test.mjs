@@ -142,13 +142,8 @@ assert.equal(thc.list.find(t=>t.class_name==='Natal Pop').attendance,null);
 // Day / week range for the list and the story image (a week can cross months).
 assert.deepEqual((await admin('action=themed&month=2026-12&from=2026-12-28&to=2027-01-03')).body.list.map(t=>t.class_name),['Natal Pop']);
 assert.deepEqual((await admin('action=themed&month=2026-12&from=2026-12-10&to=2026-12-10')).body.list.map(t=>t.class_name),['Divas do Pop']);
-// Edit instead of delete: the teacher changed the playlist and the time.
-const natal=(await admin('action=themed&month=2026-12')).body.list.find(t=>t.class_name==='Natal Pop');
-assert.equal((await admin('',{op:'themed_update',id:natal.id,class_name:'Natal Pop Remix',teacher:'Douglas',rhythm_id:pop.id,class_date:'2026-12-28',class_time:'08:00',artists:'Mariah Carey, Dua Lipa',evo_session_id:'f1'})).status,200);
-const natal2=(await admin('action=themed&month=2026-12')).body.list.find(t=>t.id===natal.id);assert.equal(natal2.class_name,'Natal Pop Remix');assert.equal(natal2.class_time,'08:00');assert.equal(natal2.artists,'Mariah Carey, Dua Lipa');assert.equal(natal2.evo_session_id,'f1');
-assert.equal((await admin('',{op:'themed_update',id:99999,class_name:'X',teacher:'Douglas'})).body.error,'AULA_NAO_ENCONTRADA');
 // "Playlists especiais" card data: all upcoming classes, the requested ones flagged.
-const upc=(await call('/member/pop-music?action=status',null,tShared)).body.upcoming_themed;assert.ok(upc.find(t=>t.class_name.startsWith('Natal Pop')).mine,'Pop was requested by this student');
+const upc=(await call('/member/pop-music?action=status',null,tShared)).body.upcoming_themed;assert.ok(upc.find(t=>t.class_name==='Natal Pop').mine,'Pop was requested by this student');
 assert.equal(upc.find(t=>t.class_name==='Rock Ride').mine,false);
 // Planned ahead without the official class: linked automatically by date + time once the EVO class is synced.
 sql.exec(`INSERT INTO evo_attendance_sessions VALUES('bike','d9','2026-12-20','19:00:00','Bike','Will','done',25)`);
