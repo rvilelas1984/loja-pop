@@ -1,4 +1,4 @@
-import {studentPopMusic,adminPopMusic,ADMIN_PAGE as POP_MUSIC_PAGE} from './lib/pop-music.mjs';
+import {studentPopMusic,adminPopMusic,publicPopMusic,ADMIN_PAGE as POP_MUSIC_PAGE} from './lib/pop-music.mjs';
 import {profilePhotoRoute} from './lib/profile-photo.mjs';
 import {readCheckinMirror,assertCheckinSessionDate} from './lib/checkin-mirror.mjs';
 import {popLiveOperation} from './lib/pop-live-operation.mjs';
@@ -1712,12 +1712,16 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const access=await memberUnitAccess(env.DB,member.evo_member_id,member.gym_client_id);
         try{return await studentPopMusic(request,env.DB,url,json,{member,activeUnits:access.activeUnits})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
       }
+      if(url.pathname==='/public/pop-music'&&['GET','POST'].includes(request.method)){
+        // Public survey link (WhatsApp): no session; identity by CPF + birth date, rate limited inside the lib.
+        try{return await publicPopMusic(request,env.DB,url,json,{ip:request.headers.get("x-client-ip")||request.headers.get("CF-Connecting-IP")||"",findPerson:(cpf,birth)=>popMusicFindPerson(env,cpf,birth)})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
+      }
       if(url.pathname==='/admin/pop-music'){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});const vd=await vr.json().catch(()=>({}));
         // Admin, or reception with the Playlists page released (read only; the lib refuses writes).
         if(!vr.ok||!(vd.role==="admin"||vd.role==="reception"&&(vd.permissions||[]).some(p=>p==="*"||p===POP_MUSIC_PAGE)))return json({ok:false,error:"NAO_AUTORIZADO"},403);
-        try{return await adminPopMusic(request,env.DB,url,json,{role:vd.role,user:vd.email||vd.name||vd.role})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
+        try{return await adminPopMusic(request,env.DB,url,json,{role:vd.role,user:vd.email||vd.name||vd.role,searchPeople:q=>popMusicSearchPeople(env,q)})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
       }
       if(url.pathname==='/member/attendance-history'&&request.method==='GET'){
         const member=await authenticatedMember(request,env);
@@ -5968,6 +5972,36 @@ const clubCanonicalId=canonicalEvoId;
 function clubProfile(row){
  const p=clubJson(row.personal_json),c=clubJson(row.contacts_json),raw=clubJson(row.raw_json);
  return {unit:row.unit,id:clubCanonicalId(row.evo_member_id),cpf:clubDigits(p.document||raw.document||raw["CPF (CIN)"]),email:normalizeEmail((Array.isArray(c)?c.find(x=>String(x.contactType||"").toLowerCase().includes("mail"))?.description: c?.email)||p.email||raw.email||raw["E-MAIL"]),birth:normalizeDate(p.birthDate||raw.birthDate||raw["DATA DE NASCIMENTO"]),first:p.firstName||raw.firstName||"",last:p.lastName||raw.lastName||""};
+}
+// Pop Music public link: find the student by CPF + birth date in the Club Pop account or the official EVO records in D1.
+async function popMusicEvoProfiles(env,cpf){
+ const fmt=cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/,"$1.$2.$3-$4");
+ const rows=(await env.DB.prepare("SELECT unit,evo_member_id,personal_json,contacts_json,raw_json FROM evo_member_master WHERE is_current=1 AND unit IN ('bike','gym') AND (personal_json LIKE ? OR personal_json LIKE ? OR raw_json LIKE ? OR raw_json LIKE ?) LIMIT 20")
+  .bind('%'+cpf+'%','%'+fmt+'%','%'+cpf+'%','%'+fmt+'%').all()).results||[];
+ return rows.map(clubProfile).filter(p=>p.cpf===cpf);
+}
+async function popMusicFindPerson(env,cpf,birth){
+ const m=await env.DB.prepare("SELECT id,evo_member_id,gym_client_id,first_name,birth_date FROM members WHERE cpf_hash=? LIMIT 1").bind(await sha256(cpf)).first();
+ const memberOk=!!(m&&normalizeDate(m.birth_date)===birth);
+ const profiles=memberOk&&(m.evo_member_id||m.gym_client_id)?[]:await popMusicEvoProfiles(env,cpf);
+ const evoOk=profiles.filter(p=>p.birth===birth);
+ if(!memberOk&&!evoOk.length)return (m||profiles.length)?{mismatch:true}:null; // known CPF, wrong birth date
+ const bikeId=m?.evo_member_id||evoOk.find(p=>p.unit==="bike")?.id||null,gymId=m?.gym_client_id||evoOk.find(p=>p.unit==="gym")?.id||null;
+ return {memberId:m?.id||null,bikeId:bikeId?String(bikeId):null,gymId:gymId?String(gymId):null,first:String(m?.first_name||evoOk[0]?.first||"").trim().split(/\s+/)[0],activeUnits:(await memberUnitAccess(env.DB,bikeId,gymId)).activeUnits};
+}
+// Admin search to link a "to identify" vote: CPF, EVO id or name, with Bike Pop status.
+async function popMusicSearchPeople(env,q){
+ const d=String(q||"").replace(/\D/g,""),out=[];
+ let rows=[];
+ if(d.length===11)rows=(await popMusicEvoProfiles(env,d)).map(p=>({...p,_p:1}));
+ else if(d.length>=3&&d===String(q).trim())rows=(await env.DB.prepare("SELECT unit,evo_member_id,personal_json,contacts_json,raw_json FROM evo_member_master WHERE is_current=1 AND unit IN ('bike','gym') AND CAST(evo_member_id AS TEXT)=? LIMIT 4").bind(d).all()).results||[];
+ else if(String(q).trim().length>=3)rows=(await env.DB.prepare("SELECT unit,evo_member_id,personal_json,contacts_json,raw_json FROM evo_member_master WHERE is_current=1 AND unit IN ('bike','gym') AND personal_json LIKE ? LIMIT 15").bind('%'+String(q).trim()+'%').all()).results||[];
+ for(const r of rows){const p=r._p?r:clubProfile(r);
+  const m=await env.DB.prepare("SELECT id FROM members WHERE "+(p.unit==="bike"?"evo_member_id":"gym_client_id")+"=? LIMIT 1").bind(p.unit==="bike"?Number(p.id):String(p.id)).first();
+  const acc=await memberUnitAccess(env.DB,p.unit==="bike"?p.id:null,p.unit==="gym"?p.id:null);
+  out.push({unit:p.unit,evo_id:String(p.id),name:[p.first,p.last].filter(Boolean).join(" "),first_name:p.first||"",cpf_last4:p.cpf?p.cpf.slice(-4):null,member_id:m?.id||null,active_bike:acc.activeUnits.includes("bike")});
+ }
+ return out.slice(0,15);
 }
 async function clubActiveUnits(env,bikeId,gymId){
  return (await memberUnitAccess(env.DB,bikeId,gymId)).activeUnits;

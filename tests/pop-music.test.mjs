@@ -10,6 +10,7 @@ sql.exec(readFileSync('tests/currency-schema.sql','utf8'));
 sql.exec(`CREATE TABLE IF NOT EXISTS auth_sessions(id INTEGER PRIMARY KEY AUTOINCREMENT,member_id INTEGER,token_hash TEXT,expires_at TEXT,revoked_at TEXT);
 CREATE TABLE IF NOT EXISTS club_settings(key TEXT PRIMARY KEY,value TEXT,updated_at TEXT);
 CREATE TABLE IF NOT EXISTS evo_member_contracts(unit TEXT,evo_member_id TEXT,id_membership TEXT,membership_name TEXT,membership_status TEXT,start_date TEXT,end_date TEXT,cancel_date TEXT);
+CREATE TABLE IF NOT EXISTS evo_member_master(unit TEXT,evo_member_id TEXT,personal_json TEXT,contacts_json TEXT,raw_json TEXT,is_current INTEGER DEFAULT 1);
 CREATE TABLE IF NOT EXISTS evo_attendance_sessions(unit TEXT,id_activity_session TEXT,activity_date TEXT,start_time TEXT,activity_name TEXT,instructor_name TEXT,status TEXT,attendance_count INTEGER);`);
 const stmt=(text,args=[])=>({text,args,bind:(...v)=>stmt(text,v),first:async()=>sql.prepare(text).get(...args)||null,all:async()=>({results:sql.prepare(text).all(...args)}),run:async()=>{const r=sql.prepare(text).run(...args);return {meta:{changes:r.changes,last_row_id:Number(r.lastInsertRowid)}}}});
 // D1 batch is a transaction: all statements or none.
@@ -21,7 +22,7 @@ globalThis.fetch=async(url,init)=>String(url).includes('/api/admin-auth?route=me
 const call=async(path,body,token)=>{const r=await worker.fetch(new Request('https://worker'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})}),env,{waitUntil(){}});return {status:r.status,body:await r.json().catch(()=>({}))}};
 const admin=async(q,body)=>{const r=await worker.fetch(new Request('https://worker/admin/pop-music?'+q,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','x-clubpop-admin-cookie':'s=1'},...(body?{body:JSON.stringify(body)}:{})}),env,{waitUntil(){}});return {status:r.status,body:await r.json().catch(()=>({}))}};
 const sha=async v=>Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v))).toString('hex');
-async function student(id,bike,gym){sql.prepare("INSERT INTO members(id,evo_member_id,gym_client_id,cpf_hash,first_name,status) VALUES(?,?,?,?,?,'ACTIVE')").run(id,bike,gym,'h'+id,'Aluno'+id);
+async function student(id,bike,gym,cpf,birth){sql.prepare("INSERT INTO members(id,evo_member_id,gym_client_id,cpf_hash,first_name,birth_date,status) VALUES(?,?,?,?,?,?,'ACTIVE')").run(id,bike,gym,cpf?await sha(cpf):'h'+id,'Aluno'+id,birth||null);
  const token='tok-'+id;sql.prepare("INSERT INTO auth_sessions(member_id,token_hash,expires_at) VALUES(?,?,'2099-01-01T00:00:00Z')").run(id,await sha(token));return token}
 
 // Contracts: Bike only (1), Gym only (2), both units (3), Gym contract released for Bike by the shared-access rule (4).
@@ -32,7 +33,7 @@ sql.prepare("INSERT INTO club_settings(key,value) VALUES('shared_unit_access',?)
 // Official Bike Pop classes (teachers) and one Gym class (its teacher must not appear).
 sql.exec(`INSERT INTO evo_attendance_sessions VALUES('bike','s1',date('now','-3 days'),'07:00','Bike','Douglas','done',18),('bike','s2',date('now','-2 days'),'19:00','Bike','Robinho','done',20),
  ('bike','s3',date('now','-1 days'),'08:00','Bike','Will','done',12),('gym','g1',date('now','-1 days'),'08:00','Funcional','Prof. Gym','done',9),('bike','old',date('now','-200 days'),'08:00','Bike','Antigo','done',5)`);
-const tBike=await student(1,100,null),tGym=await student(2,null,'200'),tBoth=await student(3,300,'301'),tShared=await student(4,null,'400'),tOld=await student(5,500,null);
+const tBike=await student(1,100,null,'52998224725','1990-01-01'),tGym=await student(2,null,'200'),tBoth=await student(3,300,'301'),tShared=await student(4,null,'400'),tOld=await student(5,500,null);
 
 const realNow=Date.now;const at=iso=>{Date.now=()=>Date.parse(iso)};
 // Before the first campaign (Dec 2026): eligible students see it closed.
@@ -125,6 +126,61 @@ assert.equal((await call('/member/pop-music?action=mine',null,tBike)).body.theme
 const up=(await call('/member/pop-music?action=status',null,tShared)).body.upcoming_themed;assert.deepEqual(up.map(t=>[t.class_name,t.evo_session_id,t.class_date]),[['Divas do Pop','d1','2026-12-10'],['Rock Ride',null,'2026-12-20']]);
 const th=(await admin('action=themed&month=2026-12')).body;assert.equal(th.list[0].attendance,30);assert.equal(th.list.length,2);assert.deepEqual(th.comparison,{themed_avg:30,themed_classes:1,regular_avg:15,regular_classes:2});
 assert.equal((await admin('action=themed&month=2027-01')).body.comparison,null,'no fake indicators');
+// Planned ahead without the official class: linked automatically by date + time once the EVO class is synced.
+sql.exec(`INSERT INTO evo_attendance_sessions VALUES('bike','d9','2026-12-20','19:00:00','Bike','Will','done',25)`);
+const th2=(await admin('action=themed&month=2026-12')).body.list.find(t=>t.class_name==='Rock Ride');assert.equal(th2.evo_session_id,'d9');assert.equal(th2.attendance,25);
+
+// ===== Public link (WhatsApp): CPF + birth date, one vote per person per month =====
+const pub=async(action,body,token,ip='1.1.1.1')=>{const r=await worker.fetch(new Request('https://worker/public/pop-music?action='+action,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','x-client-ip':ip,...(token?{'x-pm-token':token}:{})},...(body?{body:JSON.stringify(body)}:{})}),env,{waitUntil(){}});return {status:r.status,body:await r.json().catch(()=>({}))}};
+assert.equal((await pub('status')).body.open,true);
+assert.equal((await pub('identify',{cpf:'12345678900',birth_date:'1990-01-01'})).body.error,'CPF_INVALIDO');
+assert.equal((await pub('form')).status,401,'no token, no form');
+// App student who already voted: confirmed by CPF + birth date, sees their answer, cannot vote again.
+let idf=(await pub('identify',{cpf:'529.982.247-25',birth_date:'1990-01-01'})).body;assert.equal(idf.matched,true);assert.equal(idf.first_name,'Aluno1');assert.equal(idf.voted,true);assert.equal(idf.choices.length,3);
+assert.equal((await pub('submit',{rhythms:[{rhythm_id:pop.id,artist_ids:[A('pop','Dua Lipa')],teacher:'Douglas'}]},idf.token)).body.error,'JA_RESPONDEU_ESTE_MES');
+// Same CPF with a wrong birth date: not confirmed, no name, no choices leaked, and still no second vote.
+idf=(await pub('identify',{cpf:'52998224725',birth_date:'1991-01-01'})).body;assert.equal(idf.error,'DADOS_NAO_CONFEREM');assert.equal(idf.first_name,undefined);assert.equal(idf.choices,undefined);assert.equal(idf.token,undefined);
+// Rate limit per CPF (5 per hour).
+for(let i=0;i<3;i++)await pub('identify',{cpf:'52998224725',birth_date:'1991-01-01'},null,'9.9.9.'+i);
+assert.equal((await pub('identify',{cpf:'52998224725',birth_date:'1991-01-01'},null,'8.8.8.8')).status,429);
+// Student only in the official EVO records (no Club Pop account): found, votes once.
+sql.exec(`INSERT INTO evo_member_master(unit,evo_member_id,personal_json,raw_json) VALUES('bike','700','{"firstName":"Jana Lima","lastName":"Souza","document":"390.533.447-05","birthDate":"1985-05-05"}','{}')`);
+sql.exec("INSERT INTO evo_member_contracts(unit,evo_member_id,id_membership,membership_name,membership_status,start_date,end_date,contract_key,raw_json) VALUES('bike','700','10','Plano Bike','active','2020-01-01','2099-01-01','k700','{}')");
+idf=(await pub('identify',{cpf:'39053344705',birth_date:'1985-05-05'},null,'2.2.2.2')).body;assert.equal(idf.matched,true,JSON.stringify(idf));assert.equal(idf.first_name,'Jana');assert.equal(idf.voted,false);
+const jf=(await pub('form',null,idf.token)).body;assert.ok(jf.rhythms.length);
+assert.equal((await pub('submit',{rhythms:[{rhythm_id:funk.id,artist_ids:[A('funk','Anitta')],teacher:'Robinho'}]},idf.token)).status,200);
+assert.equal((await pub('submit',{rhythms:[{rhythm_id:funk.id,artist_ids:[A('funk','Anitta')],teacher:'Robinho'}]},idf.token)).body.error,'JA_RESPONDEU_ESTE_MES');
+const again2=(await pub('identify',{cpf:'39053344705',birth_date:'1985-05-05'},null,'2.2.2.3')).body;assert.equal(again2.voted,true);assert.equal(again2.choices[0].name,'Funk');
+// Gym-only student through the link: refused.
+sql.exec(`INSERT INTO evo_member_master(unit,evo_member_id,personal_json,raw_json) VALUES('gym','200','{"firstName":"Gym","document":"86288366757","birthDate":"1980-01-01"}','{}')`);
+assert.equal((await pub('identify',{cpf:'86288366757',birth_date:'1980-01-01'},null,'3.3.3.3')).body.error,'EXCLUSIVO_ALUNOS_BIKE_POP');
+// Not found: answers with name + WhatsApp as a vote "to identify".
+idf=(await pub('identify',{cpf:'11144477735',birth_date:'1994-04-12'},null,'4.4.4.4')).body;assert.equal(idf.matched,false);assert.equal(idf.needs_contact,true);
+const gplan=[{rhythm_id:pop.id,artist_ids:[A('pop','Rihanna')],teacher:'Will'}];
+assert.equal((await pub('submit',{rhythms:gplan},idf.token)).body.error,'INFORME_SEU_NOME');
+assert.equal((await pub('submit',{name:'Bruna Teste',phone:'(11) 98888-7777',rhythms:gplan},idf.token)).status,200);
+assert.equal((await pub('submit',{name:'Bruna Teste',phone:'11988887777',rhythms:gplan},idf.token)).body.error,'JA_RESPONDEU_ESTE_MES');
+rk=(await admin('action=rankings&month=2026-12')).body;assert.equal(rk.participants,5);assert.equal(rk.via_link,2);assert.equal(rk.to_identify,1);
+assert.equal((await admin('action=rankings&month=2026-12&identified=1')).body.participants,4);
+// Admin links the "to identify" vote: it was the student 3, who had already voted in the app → the first answer stays.
+const gl=(await admin('action=guests')).body.guests;const bruna=gl.find(g=>g.name==='Bruna Teste');assert.equal(bruna.status,'pending');assert.equal(bruna.phone,'(11) 98888-7777');
+assert.ok(gl.find(g=>g.first_name==='Jana'&&g.status==='identified'));
+const ppl=(await admin('action=people&q=39053344705')).body.people;assert.equal(ppl[0].name,'Jana Lima Souza');assert.equal(ppl[0].active_bike,true);
+assert.equal((await admin('action=people&q=Jana')).body.people.length,1);
+const lk=(await admin('',{op:'guest_link',guest_id:bruna.id,member_id:3,evo_bike_id:'300'})).body;assert.equal(lk.duplicates_removed,1);
+rk=(await admin('action=rankings&month=2026-12')).body;assert.equal(rk.participants,4,'same person counted once');assert.equal(rk.to_identify,0);
+assert.ok(!rk.artists.some(a=>a.name==='Rihanna'),'later duplicate answer removed');
+// App member who votes through the link first: the app then shows "already answered".
+const t8=await student(8,800,null,'45317828791','1970-07-07');sql.exec("INSERT INTO evo_member_contracts(unit,evo_member_id,id_membership,membership_name,membership_status,start_date,end_date,contract_key,raw_json) VALUES('bike','800','10','Plano Bike','active','2020-01-01','2099-01-01','k800','{}')");
+idf=(await pub('identify',{cpf:'45317828791',birth_date:'1970-07-07'},null,'5.5.5.5')).body;assert.equal(idf.matched,true);
+assert.equal((await pub('submit',{rhythms:[{rhythm_id:rock.id,artist_ids:[A('rock','Skank')],teacher:'Will'}]},idf.token)).status,200);
+assert.equal((await call('/member/pop-music?action=status',null,t8)).body.voted,true);
+assert.equal((await sub(t8,[{rhythm_id:pop.id,artist_ids:[A('pop','Dua Lipa')],teacher:'Douglas'}])).body.error,'JA_RESPONDEU_ESTE_MES');
+assert.equal((await call('/member/pop-music?action=mine',null,t8)).body.choices[0].name,'Rock');
+// Discard a fake vote.
+idf=(await pub('identify',{cpf:'68412763025',birth_date:'2000-01-01'},null,'6.6.6.6')).body;await pub('submit',{name:'Fake Bot',phone:'11900000000',rhythms:gplan},idf.token);
+const fake=(await admin('action=guests')).body.guests.find(g=>g.name==='Fake Bot');assert.equal((await admin('',{op:'guest_discard',guest_id:fake.id})).body.removed,1);
+assert.equal((await admin('action=rankings&month=2026-12')).body.participants,5);
 
 // Monthly renewal: January opens alone; recovering December returns the old answer (without inactive Queen) and saves nothing until confirmed.
 at('2027-01-01T03:30:00Z');
