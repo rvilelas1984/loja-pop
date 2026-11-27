@@ -55,6 +55,18 @@ main:has(.playlist-agenda) .top :is(.back,.brand,.brand b){color:#673185}
 .ag-artists{font-size:14px;color:#514b51}
 .playlist-agenda .btn.alt{margin-top:18px;color:#70278a;background:white;border:1px solid #8839a1}
 .playlist-agenda .msg.ok{background:#f1e8f5;color:#4e335a}
+.ag-day{padding:0;overflow:hidden}
+.ag-row{padding:15px 12px}
+.ag-row:nth-child(even){background:#f8f3fc}
+.ag-row.ag-request{background:#f0e5fa;box-shadow:inset 3px 0 #8845aa}
+.ag-request .ag-title .ag-label,.ag-dates button[aria-pressed=true]{background:#682589;color:#fff}
+.ag-dates{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin:14px 0 4px}
+.ag-dates button,.ag-nav button{font:inherit;color:#512765;background:#fff;border:1px solid #d9cfdf;border-radius:9px;cursor:pointer}
+.ag-dates button{padding:6px 0;font-size:12px;text-transform:capitalize}
+.ag-dates strong{display:block;font-size:16px}
+.ag-dates button:disabled{color:#716a74;background:#f5f3f5;border-color:transparent;cursor:default}
+.ag-nav{display:flex;gap:8px;justify-content:flex-end}
+.ag-nav button{font-size:13px;padding:7px 10px}
 </style></head><body><main>
 <div class="top"><a class="back" href="/">← Início</a><div class="brand"><b>BIKE POP</b> · POP MUSIC</div></div>
 <div id="app"><p class="mut" style="margin-top:30px">Carregando…</p></div>
@@ -175,18 +187,34 @@ function greet(){const g=GUEST||{};
   if(n.length<3||!/^\d{10,11}$/.test(p)){$('gErr').innerHTML='<div class="msg err">Informe seu nome e um WhatsApp com DDD.</div>';return}CONTACT={name:n,phone:p}}load(false)};scrollTo(0,0)}
 // Full schedule of upcoming themed classes (dashboard "Ver agenda completa").
 let agendaRhythm='';
-function agenda(st){bar.classList.add('hide');const L=st.upcoming_themed||[],R=[...new Set(L.map(c=>c.rhythm).filter(Boolean))];
- const list=L.filter(c=>!agendaRhythm||c.rhythm===agendaRhythm);let h='',last='';
+function agenda(st,day='',offset=null){bar.classList.add('hide');const L=st.upcoming_themed||[],R=[...new Set(L.map(c=>c.rhythm).filter(Boolean))];
+ const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo'}).format(new Date());
+ const start=Date.parse(today+'T00:00:00Z');
+ const dates=Array.from({length:31},(_,i)=>new Date(start+i*86400000).toISOString().slice(0,10));
+ const matches=L.filter(c=>!agendaRhythm||c.rhythm===agendaRhythm);
+ const available=new Set(matches.map(c=>c.class_date));
+ const first=dates.find(d=>available.has(d));
+ if(offset===null)offset=Math.floor(Math.max(0,dates.indexOf(first))/7)*7;
+ const week=dates.slice(offset,offset+7);
+ if(!week.includes(day)||!available.has(day))day=week.find(d=>available.has(d))||'';
+ const calendar='<div class="ag-dates" aria-label="Escolher dia">'+week.map(d=>{
+  const weekday=WD[new Date(d+'T00:00:00Z').getUTCDay()];
+  return '<button data-day="'+d+'" aria-label="'+weekday+', '+d.slice(8)+'/'+d.slice(5,7)+'" aria-pressed="'+(day===d)+'" '+(available.has(d)?'':'disabled')+'>'+weekday.slice(0,3)+'<strong>'+d.slice(8)+'</strong></button>';
+ }).join('')+'</div><div class="ag-nav">'+(offset?'<button data-offset="'+(offset-7)+'">Dias anteriores</button>':'')+(offset+7<dates.length?'<button data-offset="'+(offset+7)+'">Ver mais dias</button>':'')+'</div>';
+ const list=matches.filter(c=>c.class_date===day);let h='',last='';
  for(const c of list){if(c.class_date!==last){const dt=new Date(c.class_date+'T12:00:00');h+=(last?'</div>':'')+'<h2>'+WD[dt.getDay()]+', '+c.class_date.slice(8,10)+'/'+c.class_date.slice(5,7)+'</h2><div class="ag-day">';last=c.class_date}
-  h+='<div class="ag-row"><div class="ag-time"><strong>'+esc(String(c.class_time||'').slice(0,5))+'</strong>'+esc(c.teacher)+'</div>'+
+  h+='<div class="ag-row'+(c.mine?' ag-request':'')+'"><div class="ag-time"><strong>'+esc(String(c.class_time||'').slice(0,5))+'</strong>'+esc(c.teacher)+'</div>'+
    '<div><div class="ag-title"><b>'+esc(c.class_name)+'</b>'+(c.mine?'<span class="ag-label">Seu pedido</span>':'')+'</div>'+
    (c.rhythm?'<span class="ag-label">'+esc(c.rhythm)+'</span>':'')+'<div class="ag-artists">'+String(c.artists||'').split(/\s*[,;]\s*/).filter(Boolean).map(esc).join(' · ')+'</div></div></div>'}
  if(h)h+='</div>';
  app.innerHTML='<section class="playlist-agenda"><h1>Playlists especiais</h1><p>Aulas dos próximos 30 dias, escolhidas pela turma. Reserve sua bike pelo app da academia.</p>'+
   (R.length>1?'<div class="chips" id="agR" style="margin:10px 0 0"><button class="chip'+(agendaRhythm?'':' on')+'" data-ar="">Todas</button>'+R.map(r=>'<button class="chip'+(agendaRhythm===r?' on':'')+'" data-ar="'+esc(r)+'">'+esc(r)+'</button>').join('')+'</div>':'')+
-  (h||'<div class="msg ok">Nenhuma aula temática programada por enquanto. Vote no Pop Music e ajude a criar a próxima!</div>')+
+  (L.length?calendar:'')+(h||(L.length?'<p>Nenhuma aula para este filtro nesses dias.</p>':'<div class="msg ok">Nenhuma aula temática programada por enquanto. Vote no Pop Music e ajude a criar a próxima!</div>'))+
   '<a class="btn alt" href="/pop-music.html" style="margin-top:14px">'+(st.voted?'Consultar minhas escolhas do mês':'Escolher minhas playlists')+'</a></section>';
- const ar=$('agR');if(ar)ar.onclick=e=>{const b=e.target.closest('[data-ar]');if(b){agendaRhythm=b.dataset.ar;agenda(st)}};scrollTo(0,0)}
+ const picker=app.querySelector('.ag-dates'),nav=app.querySelector('.ag-nav');
+ if(picker)picker.onclick=e=>{const b=e.target.closest('[data-day]');if(b&&!b.disabled)agenda(st,b.dataset.day,offset)};
+ if(nav)nav.onclick=e=>{const b=e.target.closest('[data-offset]');if(b)agenda(st,'',Number(b.dataset.offset))};
+ const ar=$('agR');if(ar)ar.onclick=e=>{const b=e.target.closest('[data-ar]');if(b){agendaRhythm=b.dataset.ar;agenda(st,day,available.has(day)&&L.some(c=>c.class_date===day&&(!agendaRhythm||c.rhythm===agendaRhythm))?offset:null)}};scrollTo(0,0)}
 async function start(recover){
  if(LINK)return linkStart();
  if(location.hash==='#agenda'&&!recover){try{agenda(await api('status'))}catch(e){app.innerHTML='<div class="msg err">'+esc(why(e))+'</div>'}return}
