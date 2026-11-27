@@ -177,7 +177,7 @@ function paintEvent(){
 }
 function sheetOpen(html){$('pixBox').innerHTML=html;$('pixSheet').classList.remove('hide')}
 function closeSheet(){clearInterval(pixTimer);$('pixSheet').classList.add('hide')}
-const aHead=a=>'<p class="sm" style="margin:0;color:var(--yellow);font-weight:800">'+esc(a.starts_at)+' às '+esc(a.ends_at)+' · '+esc(unitTxt[a.unit])+(Number(a.is_main)?' · ★ principal':'')+'</p><p class="hi" style="margin:4px 0 8px">'+esc(aName(a))+'</p>';
+const aHead=a=>'<p class="sm" style="margin:0;color:var(--yellow);font-weight:800">'+esc(a.starts_at)+' às '+esc(a.ends_at)+' · '+esc(unitTxt[a.unit])+(Number(a.is_main)?' · ★ principal':'')+'</p><p class="hi" style="margin:4px 0 8px">'+esc(aName(a))+'</p><p class="sm mut" style="margin:0 0 8px">Equipamento: <b style="color:#fff">'+eqLabel[eqKind(a)]+'</b></p>';
 function activitySheet(a){
  const b=EV.balance;
  if(a.mine)return sheetOpen(aHead(a)+'<p class="mut">Você está confirmado'+(a.my_seat?' na <b style="color:#fff">'+eqName(a)+' '+pad2(a.my_seat)+'</b>':'')+'. Chegue 10 minutos antes.</p><button class="btn alt" data-close>Fechar</button><button class="btn" style="background:none;color:#ff8fa3" data-leave="'+a.id+'">Sair desta atividade (o direito volta para o seu saldo)</button>');
@@ -187,10 +187,10 @@ function activitySheet(a){
  sheetOpen(aHead(a)+'<p class="mut">'+(a.can==='main'?'Usa o direito de atividade principal do seu ingresso.':b.extras.unlimited?'Seu passe libera as atividades.':'Usa 1 do seu saldo. Saldo atual: '+b.extras.left+'.')+'</p>'+seatPicker(a)+'<button class="btn" data-enroll="'+a.id+'">Entrar na atividade</button><button class="btn alt" data-close>Agora não</button>');
 }
 let wantAct=null,pickedSeat=null;
-const eqName=a=>a.unit==='gym'?'Relógio':'Bike',pad2=n=>String(n).padStart(2,'0');
+const eqKind=a=>a.equipment||(a.unit==='gym'?'hr_watch':'spin_bike'),eqName=a=>eqKind(a)==='hr_watch'?'Relógio':'Bike',eqLabel={spin_bike:'Bike de spinning',hr_watch:'Relógio cardíaco',none:'Sem equipamento'},pad2=n=>String(n).padStart(2,'0');
 // Equipment number: automatic by default; the student may pick a free one.
-function seatPicker(a){const used=new Set(a.taken_seats||[]);pickedSeat=null;
- return '<label>Escolha sua '+(a.unit==='gym'?'relógio':'bike')+' (opcional)</label><div class="seatgrid"><button type="button" class="on" data-seat="">Automático</button>'+Array.from({length:a.seats},(_,k)=>k+1).map(n=>'<button type="button" data-seat="'+n+'"'+(used.has(n)?' disabled':'')+'>'+pad2(n)+'</button>').join('')+'</div>'}
+function seatPicker(a){const used=new Set(a.taken_seats||[]);pickedSeat=null;if(eqKind(a)==='none')return '';
+ return '<label>Escolha '+(eqKind(a)==='hr_watch'?'seu relógio':'sua bike')+' (opcional)</label><div class="seatgrid"><button type="button" class="on" data-seat="">Automático</button>'+Array.from({length:a.seats},(_,k)=>k+1).map(n=>'<button type="button" data-seat="'+n+'"'+(used.has(n)?' disabled':'')+'>'+pad2(n)+'</button>').join('')+'</div>'}
 const tDesc=t=>[t.main_name?'★ '+t.main_name:'',Number(t.extra_credits)===-1?'todas as atividades':Number(t.extra_credits)>0?'+'+t.extra_credits+(Number(t.extra_credits)===1?' atividade à escolha':' atividades à escolha'):'',t.gifts||''].filter(Boolean).join(' · ');
 function ticketSheet(actId){
  wantAct=actId?EV.activities.find(x=>x.id===actId):null;const a=wantAct;
