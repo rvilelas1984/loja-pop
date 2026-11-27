@@ -1,0 +1,203 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Pop Live</title>
+<meta name="theme-color" content="#100d19">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,800;0,900;1,900&display=swap">
+<style>
+/* Pop Live: access (login, first access, visitor account) and the official Pop Live dash. Open to everyone;
+   students keep the same CPF + PIN. Visitors reach only Pop Live and Pop Fit (enforced by the server). */
+:root{--bg:#100d19;--card:#241b32;--card2:#2d223b;--line:#493752;--mut:#c3b5d0;--pink:#fa4eaa;--purple:#9d72ff;--yellow:#ffd34a;--green:#43f2a4}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at 100% 0,#382043 0,transparent 48%),var(--bg);color:#fff;font:15px/1.5 system-ui,-apple-system,Segoe UI,Arial}
+.app{max-width:480px;margin:auto;padding:max(18px,env(safe-area-inset-top)) 18px calc(90px + env(safe-area-inset-bottom))}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font:900 italic 26px/1 "Exo 2",system-ui;letter-spacing:-.02em}.brand b{color:var(--pink)}
+a{color:inherit;text-decoration:none}
+.back{background:none;border:0;color:#c8b7d4;font:600 14px system-ui;padding:8px 0;cursor:pointer}
+.hi{font:800 22px/1.2 system-ui;margin:14px 0 2px}
+.mut{color:var(--mut)}.sm{font-size:13px}
+label{display:block;font-size:13.5px;color:var(--mut);margin:12px 0 0}
+input,select{width:100%;margin-top:6px;background:#30243e;border:1px solid #685476;border-radius:12px;padding:13px 14px;color:#fff;font:16px system-ui}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{display:block;width:100%;border:0;border-radius:14px;padding:15px;margin-top:16px;background:var(--pink);color:#fff;font:800 16px system-ui;cursor:pointer;min-height:50px}
+.btn:disabled{opacity:.6}
+.btn.alt{background:var(--card2);border:1px solid var(--line)}
+.btn.sm{display:inline-block;width:auto;padding:9px 14px;margin:0;min-height:40px;font-size:14px}
+.link{background:none;border:0;color:#40c8ff;text-decoration:underline;font:700 13.5px system-ui;display:block;margin:14px auto 0;cursor:pointer}
+.box{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:14px 0}
+.warn{background:#2a1f05;border-color:#806a1f}
+.msg{min-height:20px;margin-top:12px;font-weight:700;color:#ffd2e9}
+.check{display:flex;gap:10px;align-items:flex-start;color:#e8e0f0;font-size:14px}.check input{width:auto;margin-top:3px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
+.seg button{border:2px solid var(--line);background:var(--card);color:#fff;border-radius:14px;padding:11px;font:800 15px system-ui;cursor:pointer;min-height:46px}
+.seg button.on{border-color:var(--pink);background:#3a1430}
+.next{background:linear-gradient(150deg,#5a1840,#2a1230);border:2px solid var(--pink)}
+.lesson{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;background:var(--card2);border:1px solid #574463;border-radius:14px;padding:10px 12px;margin:8px 0}
+.lt{display:flex;flex-direction:column;align-items:center;min-width:78px;padding:6px 8px;border-radius:10px;background:#1a1226;border:1px solid #6b4c93}
+.lt b{font:900 26px/1 system-ui}
+.lt em{font:800 11px system-ui;font-style:normal;color:var(--yellow);text-transform:uppercase;margin-top:4px}
+.lesson small{display:block;color:var(--mut);font-size:13px}
+.badge{font:800 11.5px system-ui;padding:4px 8px;border-radius:999px;background:#163a2a;color:var(--green);white-space:nowrap}
+h2{font:800 17px system-ui;margin:20px 0 6px}
+.ev{display:grid;grid-auto-flow:column;grid-auto-columns:80%;gap:10px;overflow-x:auto;padding-bottom:6px}
+.evc{border-radius:16px;padding:14px;min-height:130px;display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--line);background:linear-gradient(150deg,#7a1a52,#2b1030)}
+.evc h4{font:900 italic 20px/1.05 "Exo 2",system-ui;margin:4px 0}
+.k{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.k div{background:#1a1226;border-radius:12px;padding:10px;text-align:center}.k b{display:block;font:800 20px system-ui;white-space:nowrap}.k span{font-size:11.5px;color:var(--mut)}
+.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;border-top:1px solid var(--line);background:#150f20;padding:8px 6px calc(10px + env(safe-area-inset-bottom))}
+.tabs a,.tabs button{background:none;border:0;color:var(--mut);font:600 11.5px system-ui;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:84px;min-height:44px;cursor:pointer}
+.tabs .on{color:var(--pink)}.tabs i{font-style:normal;font-size:19px}
+.hide{display:none!important}
+</style></head><body>
+<main class="app">
+ <div class="top"><div class="brand">POP <b>LIVE</b></div><a class="back" href="/" id="toEntry">← Início</a></div>
+
+ <!-- Access: login, first access (students), visitor account -->
+ <section id="access" class="hide">
+  <p class="hi" id="accTitle">Entrar no Pop Live</p>
+  <p class="mut sm" id="accIntro" style="margin:0">Aulas ao vivo, seu desempenho no telão e o Pop Fit. Aberto a alunos e visitantes.</p>
+  <div id="stLogin">
+   <label for="cpf">CPF</label><input id="cpf" inputmode="numeric" autocomplete="username" placeholder="000.000.000-00">
+   <label for="pin">PIN de 6 números</label><input id="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" placeholder="••••••">
+   <label class="check"><input type="checkbox" id="remember"><span>Manter conectado neste aparelho por até 30 dias</span></label>
+   <button class="btn" id="enter">Entrar no Pop Live</button>
+   <button class="btn alt" id="goFirst">Primeiro acesso / criar conta</button>
+   <p class="mut sm" style="text-align:center;margin-top:12px">Já é aluno? Use o mesmo CPF e PIN do Club Pop.</p>
+  </div>
+  <div id="stFirst" class="hide">
+   <p class="mut sm">Se você é aluno, validamos seus dados para criar o PIN. Se não for, você cria sua conta Pop Live em seguida.</p>
+   <label for="fCpf">CPF</label><input id="fCpf" inputmode="numeric" placeholder="000.000.000-00">
+   <label for="fEmail">E-mail</label><input id="fEmail" type="email" autocomplete="email" placeholder="seu@email.com">
+   <label for="fBirth">Data de nascimento</label><input id="fBirth" type="date">
+   <button class="btn" id="validate">Continuar</button>
+   <button class="link" data-step="stLogin">Voltar ao login</button>
+  </div>
+  <div id="stPin" class="hide">
+   <div class="box"><b id="pinHello">Encontramos seu cadastro de aluno.</b><p class="mut sm" style="margin:4px 0 0">Crie seu PIN. Ele vale para o Pop Live e para o Club Pop.</p></div>
+   <label for="nPin">Crie seu PIN de 6 números</label><input id="nPin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">
+   <label for="nPin2">Confirme o PIN</label><input id="nPin2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">
+   <button class="btn" id="createPin">Criar PIN e entrar</button>
+  </div>
+  <div id="stSignup" class="hide">
+   <div class="box warn"><b>Não encontramos esse CPF entre os alunos.</b><p class="sm" style="margin:4px 0 0">Tudo bem: o Pop Live é aberto a todos. Crie sua conta.</p></div>
+   <label for="sName">Nome completo</label><input id="sName" autocomplete="name">
+   <label for="sCpf">CPF</label><input id="sCpf" inputmode="numeric">
+   <div class="two"><div><label for="sBirth">Nascimento</label><input id="sBirth" type="date"></div><div><label for="sSex">Sexo</label><select id="sSex"><option value="">Escolher</option><option value="f">Feminino</option><option value="m">Masculino</option></select></div></div>
+   <label for="sPhone">Celular (WhatsApp)</label><input id="sPhone" inputmode="tel" autocomplete="tel" placeholder="(11) 90000-0000">
+   <label for="sEmail">E-mail</label><input id="sEmail" type="email" autocomplete="email">
+   <div class="two"><div><label for="sPin">PIN (6 números)</label><input id="sPin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"></div><div><label for="sPin2">Confirme</label><input id="sPin2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"></div></div>
+   <label class="check"><input type="checkbox" id="sTerms"><span>Li e aceito a <a href="/privacidade.html" style="text-decoration:underline">política de privacidade</a> e os termos de uso.</span></label>
+   <p class="mut sm">Sexo, nascimento, peso e altura são usados só para estimar calorias e zonas de batimento.</p>
+   <button class="btn" id="signup">Criar conta e entrar</button>
+   <button class="link" data-step="stLogin">Voltar ao login</button>
+  </div>
+  <p class="msg" id="msg" role="alert"></p>
+ </section>
+
+ <!-- Official Pop Live dash -->
+ <section id="dash" class="hide">
+  <div class="top" style="margin-top:10px"><p class="hi" id="hello" style="margin:0">Olá!</p><span class="badge" id="who"></span></div>
+  <div class="seg"><button data-unit="bike">🚴 Bike Pop</button><button data-unit="gym">💗 Gym Pop</button></div>
+  <div id="nextBox"></div>
+  <h2>Próximas aulas</h2><div id="lessons" class="mut">Carregando aulas…</div>
+  <div id="eventsWrap" class="hide"><h2>Eventos e aulas especiais</h2><div class="ev" id="events"></div></div>
+  <a class="box" href="/pop-fit.html" style="display:block"><div class="top"><b>📈 Pop Fit · últimos 7 dias</b><span class="mut sm">ver tudo →</span></div><div class="k" id="fitK"><div><b>–</b><span>aulas</span></div><div><b>–</b><span>kcal</span></div><div><b>–</b><span>km</span></div></div><div id="fitLast" class="sm mut" style="margin-top:8px"></div></a>
+ </section>
+</main>
+<div id="pixSheet" class="hide" style="position:fixed;inset:0;z-index:50;background:rgba(10,6,18,.86);display:flex;align-items:flex-end;justify-content:center"><div id="pixBox" class="box" style="width:min(480px,100%);margin:0;border-radius:22px 22px 0 0;padding:20px 18px calc(24px + env(safe-area-inset-bottom));max-height:92vh;overflow:auto"></div></div>
+<nav class="tabs hide" id="tabs"><button class="on" data-tab="dash"><i>⌂</i>Pop Live</button><a href="/pop-fit.html"><i>📈</i>Pop Fit</a><a href="/" id="tabClub" class="hide"><i>★</i>Club Pop</a><button id="logout"><i>⎋</i>Sair</button></nav>
+<script>
+{
+const $=id=>document.getElementById(id),digits=v=>String(v||'').replace(/\D/g,''),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ERR={CREDENCIAIS_INVALIDAS:'CPF ou PIN incorretos.',ACESSO_TEMPORARIAMENTE_BLOQUEADO:'Muitas tentativas. Aguarde alguns minutos.',CPF_INVALIDO:'CPF inválido.',DADOS_INCOMPLETOS:'Preencha todos os dados.',DADOS_NAO_CONFEREM:'Os dados não conferem com o cadastro de aluno. Confira e-mail e nascimento.',CONTA_JA_CRIADA:'Este CPF já tem conta. Entre com seu PIN ou use "Esqueci meu PIN" no Club Pop.',CADASTRO_INCOMPLETO:'Seu cadastro de aluno está incompleto. Fale com a recepção.',NOME_COMPLETO_OBRIGATORIO:'Informe nome e sobrenome.',EMAIL_INVALIDO:'E-mail inválido.',DATA_NASCIMENTO_INVALIDA:'Data de nascimento inválida.',CELULAR_INVALIDO:'Celular inválido (DDD + número).',SEXO_OBRIGATORIO:'Escolha o sexo.',PIN_DEVE_TER_6_NUMEROS:'O PIN deve ter 6 números.',ACEITE_OS_TERMOS:'Aceite os termos para continuar.',ALUNO_ENCONTRADO_USE_PRIMEIRO_ACESSO:'Você já é aluno! Use o primeiro acesso com e-mail e nascimento do cadastro.',MUITAS_TENTATIVAS_TENTE_MAIS_TARDE:'Muitas tentativas. Tente mais tarde.',VALIDACAO_EXPIRADA:'A validação expirou. Comece de novo.'};
+let token=null;try{token=sessionStorage.getItem('clubpop_token')}catch{}
+async function call(route,opts={},query=''){const r=await fetch('/api/auth?route='+route+query,{...opts,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},cache:'no-store'});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok){const e=Error(ERR[d.error]||d.error||'Não foi possível concluir agora.');e.code=d.error;e.status=r.status;throw e}return d}
+const msg=t=>{$('msg').textContent=t||''};
+function step(id){['stLogin','stFirst','stPin','stSignup'].forEach(s=>$(s).classList.toggle('hide',s!==id));msg('');$('accTitle').textContent=id==='stSignup'?'Criar conta Pop Live':id==='stLogin'?'Entrar no Pop Live':'Primeiro acesso';}
+document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>step(b.dataset.step));
+$('goFirst').onclick=()=>{step('stFirst');$('fCpf').value=$('cpf').value};
+function saveToken(t,remember){token=t;try{sessionStorage.setItem('clubpop_token',t);localStorage.setItem('clubpop_remember',remember?'1':'0')}catch{}}
+const busy=(b,on)=>{b.disabled=on};
+$('enter').onclick=async()=>{const cpf=digits($('cpf').value),pin=digits($('pin').value);if(cpf.length!==11||pin.length!==6)return msg('Informe CPF e PIN de 6 números.');busy($('enter'),true);msg('Entrando…');
+ try{const d=await call('login',{method:'POST',body:JSON.stringify({cpf,pin,app:'live',rememberDevice:$('remember').checked})});saveToken(d.token,$('remember').checked);boot()}catch(e){msg(e.message)}finally{busy($('enter'),false)}};
+let challenge='';
+$('validate').onclick=async()=>{const cpf=digits($('fCpf').value),email=$('fEmail').value.trim(),birthDate=$('fBirth').value;if(cpf.length!==11||!email||!birthDate)return msg('Preencha CPF, e-mail e data de nascimento.');busy($('validate'),true);msg('Verificando…');
+ try{const d=await call('first-access',{method:'POST',body:JSON.stringify({cpf,email,birthDate,app:'live'})});challenge=d.challenge;$('pinHello').textContent='Olá, '+(d.member?.firstName||'aluno')+'! Encontramos seu cadastro.';step('stPin')}
+ catch(e){if(e.code==='NAO_ENCONTRADO'){step('stSignup');$('sCpf').value=$('fCpf').value;$('sEmail').value=email;$('sBirth').value=birthDate}else msg(e.message)}finally{busy($('validate'),false)}};
+$('createPin').onclick=async()=>{const pin=digits($('nPin').value);if(pin.length!==6||pin!==digits($('nPin2').value))return msg('Os PINs devem ter 6 números e ser iguais.');busy($('createPin'),true);
+ try{const d=await call('create-pin',{method:'POST',body:JSON.stringify({challenge,pin,app:'live',rememberDevice:false})});if(!d.token)throw Error('Não foi possível entrar agora.');saveToken(d.token,false);boot()}catch(e){msg(e.message)}finally{busy($('createPin'),false)}};
+$('signup').onclick=async()=>{const pin=digits($('sPin').value);if(pin.length!==6||pin!==digits($('sPin2').value))return msg('Os PINs devem ter 6 números e ser iguais.');busy($('signup'),true);msg('Criando sua conta…');
+ try{const d=await call('pop-live-signup',{method:'POST',body:JSON.stringify({name:$('sName').value,cpf:digits($('sCpf').value),birthDate:$('sBirth').value,sex:$('sSex').value,phone:digits($('sPhone').value),email:$('sEmail').value.trim(),pin,terms:$('sTerms').checked,rememberDevice:false})});saveToken(d.token,false);boot()}
+ catch(e){if(e.code==='ALUNO_ENCONTRADO_USE_PRIMEIRO_ACESSO'){step('stFirst');$('fCpf').value=$('sCpf').value}msg(e.message)}finally{busy($('signup'),false)}};
+$('logout').onclick=async()=>{try{await call('logout',{method:'POST',body:'{}'})}catch{}try{sessionStorage.removeItem('clubpop_token');sessionStorage.removeItem('clubpop');localStorage.removeItem('clubpop_remember')}catch{}location.replace('/')};
+
+// ---- Events and tickets (free: spot at once; paid: Pix through the store checkout) ----
+let events=[];
+const brl=c=>(c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const when=v=>{const m=/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/.exec(String(v||''));return m?dayLabel(m[1]+'-'+m[2]+'-'+m[3])+' · '+m[4]:''};
+function evButton(e){
+ if(e.my_status==='paid')return '<span class="badge">✓ Ingresso pago</span>';
+ if(e.my_status==='confirmed')return '<span class="badge">✓ Vaga garantida</span>';
+ if(e.my_status==='pending'&&e.my_order)return '<button class="btn sm" data-ev="'+e.id+'">Pagar Pix pendente</button>';
+ if(!Number(e.sales_open))return '<span class="sm mut">Inscrições encerradas</span>';
+ if(e.left===0)return '<span class="sm mut">Esgotado</span>';
+ return '<button class="btn sm'+(e.price_cents?'':' alt')+'" data-ev="'+e.id+'">'+(e.price_cents?'Comprar':'Garantir vaga')+'</button>';
+}
+function paintEvents(){
+ $('eventsWrap').classList.toggle('hide',!events.length);
+ $('events').innerHTML=events.map(e=>'<div class="evc"'+(e.kind==='special_class'?' style="background:linear-gradient(150deg,#3b2a7a,#1d1540)"':'')+'><div><span class="sm" style="color:var(--yellow)">'+esc(when(e.starts_at))+' · '+(e.unit==='gym'?'Gym Pop':'Bike Pop')+'</span><h4>'+esc(e.name)+'</h4>'+(e.description?'<span class="sm" style="color:#f3dbe9">'+esc(e.description)+'</span>':'')+(e.left!=null&&e.left>0&&e.left<=10?'<div class="sm" style="color:var(--yellow);margin-top:4px">Restam '+e.left+' vagas</div>':'')+'</div><div class="top" style="margin-top:10px"><b>'+(e.price_cents?brl(e.price_cents):'Gratuito')+'</b>'+evButton(e)+'</div></div>').join('');
+}
+$('events').onclick=async ev=>{const b=ev.target.closest('[data-ev]');if(!b)return;const e=events.find(x=>String(x.id)===b.dataset.ev);if(!e)return;b.disabled=true;
+ try{const t=await call('pop-live-student',{method:'POST',body:JSON.stringify({event_id:e.id})},'&unit='+e.unit+'&action=ticket');
+  if(t.status==='confirmed'||t.status==='paid'){e.my_status=t.status;paintEvents();return}
+  if(t.status==='pending'&&t.orderId){e.my_status='pending';e.my_order=t.orderId;await payPix(e,t.orderId)}}
+ catch(err){alertBox(err.message)}finally{b.disabled=false}};
+function alertBox(t){$('pixBox').innerHTML='<div class="box warn">'+esc(t)+'</div><button class="btn alt" onclick="document.getElementById(\'pixSheet\').classList.add(\'hide\')">Fechar</button>';$('pixSheet').classList.remove('hide')}
+let pixTimer=null;
+async function payPix(e,orderId){
+ const pix=async(path,opts={})=>{const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},cache:'no-store'});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok){const m={PIX_PRODUCTION_DISABLED:'Pagamento por Pix indisponível no momento.',PIX_PRODUCTION_NOT_CONFIGURED:'Pix ainda não configurado nesta unidade. Fale com a recepção.',ITEM_INDISPONIVEL:'Inscrições encerradas para este evento.',PRECO_ALTERADO:'O valor do ingresso mudou. Tente de novo.',EMAIL_INVALIDO:'Atualize seu e-mail no cadastro para pagar com Pix.'};throw Error(m[d.error]||d.error||'Falha no Pix')}return d};
+ $('pixBox').innerHTML='<p class="mut">Gerando seu Pix…</p>';$('pixSheet').classList.remove('hide');
+ let p=await pix('/checkout/pix/create',{method:'POST',body:JSON.stringify({orderId})});
+ if(p.status==='approved')return done(e);
+ if(!p.qrCode&&!p.qrCodeBase64)p={...p,...await pix('/checkout/pix/details?orderId='+encodeURIComponent(orderId))};
+ $('pixBox').innerHTML='<p class="hi" style="margin-top:0">'+esc(e.name)+'</p><p class="mut sm" style="margin:0">'+brl(e.price_cents)+' · pague com Pix pelo app do seu banco</p>'+(p.qrCodeBase64?'<img alt="QR Code Pix" style="display:block;width:220px;height:220px;margin:14px auto;background:#fff;border-radius:12px;padding:8px" src="data:image/png;base64,'+esc(p.qrCodeBase64)+'">':'')+(p.qrCode?'<label for="pixCode">Pix copia e cola</label><input id="pixCode" readonly value="'+esc(p.qrCode)+'"><button class="btn" id="pixCopy">Copiar código Pix</button>':'')+'<p class="sm mut" id="pixWait" style="text-align:center">Aguardando o pagamento… a confirmação aparece aqui sozinha.</p><button class="btn alt" id="pixClose">Pagar depois</button>';
+ const cp=$('pixCopy');if(cp)cp.onclick=async()=>{try{await navigator.clipboard.writeText(p.qrCode);cp.textContent='Código copiado!'}catch{$('pixCode').select()}};
+ $('pixClose').onclick=()=>{clearInterval(pixTimer);$('pixSheet').classList.add('hide');paintEvents()};
+ clearInterval(pixTimer);pixTimer=setInterval(async()=>{try{const s=await pix('/checkout/pix/status?orderId='+encodeURIComponent(orderId));if(s.status==='approved'){clearInterval(pixTimer);done(e)}else if(['cancelled','expired','rejected'].includes(s.status)){clearInterval(pixTimer);e.my_status=null;e.my_order=null;$('pixWait').textContent='Este Pix expirou. Feche e gere um novo.'}}catch{}},4000);
+}
+function done(e){e.my_status='paid';paintEvents();$('pixBox').innerHTML='<div style="text-align:center;font-size:54px">✅</div><p class="hi" style="text-align:center">Ingresso confirmado!</p><p class="mut" style="text-align:center">'+esc(e.name)+' · '+esc(when(e.starts_at))+'</p><button class="btn" onclick="document.getElementById(\'pixSheet\').classList.add(\'hide\')">Fechar</button>'}
+
+// ---- Dash ----
+let unit='bike',me=null;try{unit=localStorage.getItem('clubpop_active_unit')==='gym'?'gym':'bike'}catch{}
+const dayLabel=iso=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||''));if(!m)return '';const t=new Date(Date.now()-3*3600e3).toISOString().slice(0,10),diff=Math.round((Date.UTC(+m[1],m[2]-1,+m[3])-Date.parse(t+'T00:00:00Z'))/864e5);return diff===0?'Hoje':diff===1?'Amanhã':['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][new Date(Date.UTC(+m[1],m[2]-1,+m[3])).getUTCDay()]+' '+m[3]+'/'+m[2]};
+const go=c=>'/pop-live-aluno.html?unit='+unit+'&class='+encodeURIComponent(c.id);
+const lessonRow=(c,booked)=>'<div class="lesson"><div class="lt"><b>'+esc(String(c.start_time||'').slice(0,5))+'</b><em>'+esc(dayLabel(c.activity_date))+'</em></div><div><b style="font-size:15.5px">'+esc(c.name)+(c.source==='manual'?' · especial':'')+'</b><small>'+esc(c.teacher||'Professor a confirmar')+'</small></div>'+(booked?'<span class="badge">✓ Agendado</span>':'<a class="btn sm alt" href="'+go(c)+'">Entrar</a>')+'</div>';
+async function paintDash(){
+ document.querySelectorAll('[data-unit]').forEach(b=>b.classList.toggle('on',b.dataset.unit===unit));
+ $('lessons').textContent='Carregando aulas…';$('nextBox').innerHTML='';
+ try{
+  const [cl,dash]=await Promise.all([call('pop-live-student',{},'&unit='+unit),call('pop-live-student',{},'&unit='+unit+'&action=dash').catch(()=>null)]);
+  const classes=cl.classes||[],booked=new Set((dash?.booked)||[]);
+  const mine=classes.find(c=>booked.has(String(c.id))),next=mine||classes[0];
+  if(next)$('nextBox').innerHTML='<div class="box next"><div class="top"><span class="sm" style="color:#f6d3e6">'+(mine?'Sua próxima aula · agendada':'Próxima aula')+'</span>'+(mine?'<span class="badge">✓ Agendado</span>':'')+'</div><div style="display:flex;gap:14px;align-items:center;margin-top:8px"><div class="lt"><b>'+esc(String(next.start_time||'').slice(0,5))+'</b><em>'+esc(dayLabel(next.activity_date))+'</em></div><div><b style="font-size:17px">'+esc(next.name)+'</b><small class="mut" style="display:block">'+esc(next.teacher||'')+'</small></div></div><a class="btn" href="'+go(next)+'">⚡ Conectar à aula</a></div>';
+  $('lessons').innerHTML=classes.length?classes.filter(c=>c!==next).slice(0,8).map(c=>lessonRow(c,booked.has(String(c.id)))).join('')||'<p class="mut sm">Sem outras aulas nos próximos dias.</p>':'<p class="mut sm">Nenhuma aula nos próximos dois dias nesta unidade.</p>';
+  if(dash){
+   const ev=dash.events||[];$('eventsWrap').classList.toggle('hide',!ev.length);
+   events=ev;paintEvents();
+   const f=dash.fit||{};$('fitK').innerHTML='<div><b>'+(f.week_classes||0)+'</b><span>aulas</span></div><div><b>'+(f.week_kcal||0).toLocaleString('pt-BR')+'</b><span>kcal</span></div><div><b>'+String(f.week_km||0).replace('.',',')+'</b><span>km</span></div>';
+   $('fitLast').innerHTML=(f.last||[]).length?'Último: '+esc(f.last[0].name)+' · '+f.last[0].calories+' kcal'+(f.last[0].distance_km?' · '+String(f.last[0].distance_km).replace('.',',')+' km':''):'Seu desempenho aparece aqui depois da primeira aula Pop Live.';
+  }
+ }catch(e){if(e.status===401){try{sessionStorage.removeItem('clubpop_token')}catch{}token=null;return boot()}$('lessons').textContent=e.message}
+}
+document.querySelectorAll('[data-unit]').forEach(b=>b.onclick=()=>{unit=b.dataset.unit;try{localStorage.setItem('clubpop_active_unit',unit)}catch{}paintDash()});
+
+async function boot(){
+ if(!token){try{if(localStorage.getItem('clubpop_remember')==='1'){const r=await fetch('/api/auth?route=restore-device',{method:'POST',headers:{'X-Clubpop-Device':'restore'},cache:'no-store'});if(r.ok){const d=await r.json();if(d.token){token=d.token;sessionStorage.setItem('clubpop_token',token)}}}}catch{}}
+ if(!token){$('access').classList.remove('hide');$('dash').classList.add('hide');$('tabs').classList.add('hide');step('stLogin');return}
+ try{me=(await call('me')).member}catch(e){if(e.status===401||e.status===403){try{sessionStorage.removeItem('clubpop_token')}catch{}token=null;$('access').classList.remove('hide');step('stLogin');if(e.code==='CONTRATO_INATIVO')msg('Entre com seu CPF e PIN para usar o Pop Live.');return}msg(e.message);return}
+ $('access').classList.add('hide');$('dash').classList.remove('hide');$('tabs').classList.remove('hide');$('toEntry').classList.add('hide');
+ const club=me.scope!=='live';$('tabClub').classList.toggle('hide',!club);
+ $('hello').textContent='Olá, '+String(me.firstName||'').trim().split(/\s+/)[0]+'!';$('who').textContent=club?'Aluno Club Pop':'Pop Live';
+ paintDash();
+}
+boot();
+}
+</script><script src="/student-app-analytics.js" defer></script></body></html>
