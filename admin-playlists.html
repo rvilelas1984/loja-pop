@@ -8,6 +8,11 @@ input,select,button,textarea{width:100%;padding:10px;border:1px solid #4a3b72;bo
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 6px;border-bottom:1px solid #33285a;text-align:left;vertical-align:top}th{color:#c9b6ec;font-weight:700;font-size:12px}td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bar{height:8px;border-radius:9px;background:linear-gradient(90deg,#7b3fd1,#c9a7ff);min-width:3px}.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:14px}
 .box{background:#140f28;border:1px solid #33285a;border-radius:12px;padding:12px;overflow-x:auto}.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;background:#3a2d5c;margin-left:4px}.tag.off{background:#5a2433}.tag.sug{background:#5b3a12}
+.chart{display:grid;gap:9px}.crow{display:grid;grid-template-columns:minmax(90px,34%) 1fr auto;align-items:center;gap:10px;font-size:13px;padding:2px 0;border-radius:8px}.crow:hover,.crow:focus{background:#ffffff0d;outline:none}
+.crow .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.crow .trk{height:14px;background:#2a2150;border-radius:4px;overflow:hidden}.crow .fill{height:100%;background:#a77bff;border-radius:0 4px 4px 0;min-width:4px}
+.crow .val{font-variant-numeric:tabular-nums;font-weight:700;min-width:64px;text-align:right}.crow .val small{color:#b9a9d6;font-weight:500}.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px;margin-top:14px}
+.ccard{background:#140f28;border:1px solid #33285a;border-radius:14px;padding:14px}.ccard h3{margin:0 0 2px}.ccard p{margin:0 0 12px}.hero{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}.hero b{font-size:44px;line-height:1}
+.pick{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.pick button{width:auto;margin:0;padding:6px 10px;font-size:12px;background:#3a2d5c;border-radius:99px}
 .chk{display:inline-flex;align-items:center;gap:6px;margin:4px 10px 4px 0;font-size:13px}.chk input{width:auto}.empty{color:#b9a9d6;font-size:13px;padding:8px 0}
 @media(max-width:520px){main{padding:10px}.panel{padding:12px}}
 </style></head><body>
@@ -52,7 +57,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 6px;b
   <div><label>Professor</label><select name="teacher" required></select></div><div><label>Ritmo</label><select name="rhythm_id"><option value="">—</option></select></div>
   <div><label>Nome da aula temática</label><input name="class_name" maxlength="80" required placeholder="Definido pelo professor"></div><div><label>Data</label><input type="date" name="class_date"></div><div><label>Horário</label><input type="time" name="class_time"></div>
   <div><label>Aula oficial (EVO)</label><select name="evo_session_id"><option value="">Vincular depois</option></select></div>
- </div><label>Sugestões aproveitadas (artistas)</label><input name="artists" maxlength="300" placeholder="Ex.: Dua Lipa, Anitta"><label>Observações</label><input name="notes" maxlength="300">
+ </div><label>Sugestões aproveitadas (artistas)</label><input name="artists" maxlength="300" placeholder="Ex.: Dua Lipa, Anitta"><div class="pick" id="themedPick"></div><p class="muted" style="margin:6px 0 0">Os alunos que pediram esse ritmo (ou esses artistas) nos últimos 3 meses recebem o aviso “Seu pedido virou aula!” no app até a data da aula.</p><label>Observações</label><input name="notes" maxlength="300">
  <button>Registrar aula temática</button></form>
  <div id="themedList" class="muted" style="margin-top:12px"></div>
 </details>
@@ -71,7 +76,7 @@ const why=e=>ERR[e.message]||e.message;
 async function api(q,opt={}){const r=await fetch('/api/admin-auth?route=playlists&'+q,{credentials:'include',cache:'no-store',headers:{'content-type':'application/json'},...opt});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw Error(d.error||'Erro na API');return d}
 const post=b=>api('action=write',{method:'POST',body:JSON.stringify(b)});
 const msg=(t,bad)=>{$('status').textContent=t;$('status').className=bad?'err':'ok'};
-let OV=null,CAT=null;
+let OV=null,CAT=null,RANK=null;
 const table=(head,rows,empty)=>rows.length?'<table><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr>'+rows.join('')+'</table>':'<div class="empty">'+(empty||'Sem respostas ainda.')+'</div>';
 const barRow=(cells,v,max)=>'<tr>'+cells.map(c=>'<td>'+c+'</td>').join('')+'<td style="width:30%"><div class="bar" style="width:'+Math.max(2,Math.round(v*100/(max||1)))+'%"></div></td><td class="n">'+v+'</td></tr>';
 async function init(){try{OV=await api('action=overview');
@@ -87,6 +92,16 @@ async function loadRank(){const q=new URLSearchParams({action:'rankings',month:$
  try{const d=await api(q.toString());const mx=a=>Math.max(1,...a.map(x=>x.votes));
   const kpi=(l,v)=>'<div class="kpi"><span>'+l+'</span><b>'+v+'</b></div>';
   let h='<div class="kpis" style="margin-top:12px">'+kpi('Alunos elegíveis',d.eligible)+kpi('Participantes'+(d.filtered?' (filtro)':''),d.participants)+kpi('Participação',d.participation_pct==null?'—':d.participation_pct.toLocaleString('pt-BR')+'%')+kpi('Artistas votados',d.artists_voted)+kpi('Ritmos selecionados',d.rhythms_selected)+'</div>';
+  // Visual summary: one series per chart (single hue), value + share of participants at the end of each bar.
+  const P=Math.max(1,d.participants),chart=(title,sub,list,label)=>{const top=list.slice(0,8),m=Math.max(1,...top.map(x=>x.votes));
+   return '<div class="ccard"><h3>'+title+'</h3><p class="muted">'+sub+'</p>'+(top.length?'<div class="chart" role="list">'+top.map(x=>{const pct=Math.round(x.votes*100/P);
+    return '<div class="crow" role="listitem" tabindex="0" title="'+esc(label(x))+': '+x.votes+' voto(s) · '+pct+'% dos participantes"><span class="lbl">'+esc(label(x))+'</span><span class="trk"><span class="fill" style="display:block;width:'+Math.max(2,Math.round(x.votes*100/m))+'%"></span></span><span class="val">'+x.votes+' <small>'+pct+'%</small></span></div>'}).join('')+'</div>':'<div class="empty">Sem respostas neste mês.</div>')+'</div>'};
+  const teach={};for(const t of d.teachers_by_rhythm)teach[t.teacher]=(teach[t.teacher]||0)+t.votes;
+  h+='<div class="charts">'+chart('Ritmos mais escolhidos','Alunos que escolheram cada ritmo',d.rhythms,x=>(x.emoji?x.emoji+' ':'')+x.name)+
+   chart('Artistas mais votados','Top 8 no geral',d.artists,x=>x.name+(x.suggested?' (sugestão)':''))+
+   chart('Professores mais indicados','Somando todos os ritmos',Object.entries(teach).map(([name,votes])=>({name,votes})).sort((a,b)=>b.votes-a.votes),x=>x.name)+
+   '<div class="ccard"><h3>Participação</h3><p class="muted">Alunos ativos do Bike Pop que responderam</p><div class="hero"><b>'+(d.participation_pct==null?'—':d.participation_pct.toLocaleString('pt-BR')+'%')+'</b><span class="muted">'+d.participants+' de '+d.eligible+' alunos</span></div><div class="trk" style="height:14px;background:#2a2150;border-radius:4px;margin-top:14px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,d.participation_pct||0)+'%;background:#a77bff;border-radius:0 4px 4px 0"></div></div></div></div>';
+  h+='<details style="margin-top:16px"><summary style="cursor:pointer;font-weight:700">Ver detalhes: comparativo mensal, rankings por ritmo e por professor</summary>';
   h+='<h3>Comparativo mensal</h3>'+table(['Mês','Participantes','Artistas','Ritmos'],d.history.map(x=>'<tr><td>'+mName(x.month)+'</td><td class="n">'+x.participants+'</td><td class="n">'+x.artists+'</td><td class="n">'+x.rhythms+'</td></tr>'),'Nenhuma pesquisa respondida ainda.');
   h+='<div class="cols"><div><h3>Ritmos mais votados</h3><div class="box">'+table(['Ritmo','',''],d.rhythms.map(r=>barRow([esc((r.emoji||'')+' '+r.name)],r.votes,mx(d.rhythms))))+'</div></div>'+
    '<div><h3>Artistas mais votados (geral)</h3><div class="box">'+table(['Artista','',''],d.artists.map(a=>barRow([esc(a.name)+(a.suggested?'<span class="tag sug">sugestão</span>':'')],a.votes,mx(d.artists))))+'</div></div></div>';
@@ -94,8 +109,8 @@ async function loadRank(){const q=new URLSearchParams({action:'rankings',month:$
   const byR=group(d.artists_by_rhythm,'rhythm'),tByR=group(d.teachers_by_rhythm,'rhythm'),aByT=group(d.artists_by_teacher,'teacher');
   h+='<h3>Artistas e professores por ritmo</h3><div class="cols">'+(Object.keys(byR).length?Object.keys(byR).map(r=>'<div class="box"><b>'+esc(r)+'</b>'+table(['Artista','Votos'],byR[r].slice(0,10).map(a=>'<tr><td>'+esc(a.name)+'</td><td class="n">'+a.votes+'</td></tr>'))+'<div class="muted" style="margin-top:8px">Professores indicados</div>'+table(['Professor','Indicações'],(tByR[r]||[]).map(t=>'<tr><td>'+esc(t.teacher)+'</td><td class="n">'+t.votes+'</td></tr>'))+'</div>').join(''):'<div class="empty">Sem respostas ainda.</div>')+'</div>';
   h+='<h3>Artistas sugeridos para cada professor</h3><div class="cols">'+(Object.keys(aByT).length?Object.keys(aByT).map(t=>'<div class="box"><b>'+esc(t)+'</b>'+table(['Ritmo','Artista','Votos'],aByT[t].slice(0,15).map(a=>'<tr><td>'+esc(a.rhythm)+'</td><td>'+esc(a.name)+'</td><td class="n">'+a.votes+'</td></tr>'))+'</div>').join(''):'<div class="empty">Sem respostas ainda.</div>')+'</div>';
-  h+='<h3>Novos artistas sugeridos pelos alunos</h3><div class="box">'+table(['Artista','Ritmo','Situação','Votos'],d.suggestions.map(s=>'<tr><td>'+esc(s.name)+'</td><td>'+esc(s.rhythm)+'</td><td>'+({pending:'Para analisar',added:'Incorporado',dismissed:'Descartado'}[s.status]||esc(s.status))+'</td><td class="n">'+s.votes+'</td></tr>'),'Nenhuma sugestão neste mês.')+'</div>';
-  $('rank').innerHTML=h}catch(e){$('rank').innerHTML='<p class="err">'+esc(why(e))+'</p>'}}
+  h+='<h3>Novos artistas sugeridos pelos alunos</h3><div class="box">'+table(['Artista','Ritmo','Situação','Votos'],d.suggestions.map(s=>'<tr><td>'+esc(s.name)+'</td><td>'+esc(s.rhythm)+'</td><td>'+({pending:'Para analisar',added:'Incorporado',dismissed:'Descartado'}[s.status]||esc(s.status))+'</td><td class="n">'+s.votes+'</td></tr>'),'Nenhuma sugestão neste mês.')+'</div></details>';
+  RANK=d;$('rank').innerHTML=h}catch(e){$('rank').innerHTML='<p class="err">'+esc(why(e))+'</p>'}}
 $('loadRank').onclick=loadRank;
 async function loadCatalog(paint=true){CAT=await api('action=catalog');
  const ro='<option value="">Todos</option>'+CAT.rhythms.map(r=>'<option value="'+r.id+'">'+esc(r.name)+'</option>').join('');$('fRhythm').innerHTML=ro;$('artistRhythmFilter').innerHTML=ro;
@@ -134,7 +149,14 @@ async function loadThemed(){const m=$('tMonth').value;$('themedList').textConten
   $('themedList').innerHTML=cmp+table(['Data','Aula temática','Professor','Ritmo','Sugestões aproveitadas','Presentes',''],d.list.map(t=>'<tr><td>'+(t.class_date?esc(t.class_date.slice(8,10)+'/'+t.class_date.slice(5,7)):'—')+' '+esc(t.class_time||'')+'</td><td>'+esc(t.class_name)+(t.notes?'<div class="muted">'+esc(t.notes)+'</div>':'')+'</td><td>'+esc(t.teacher_name)+'</td><td>'+esc(t.rhythm||'—')+'</td><td>'+esc(t.artists||'—')+'</td><td class="n">'+(t.attendance!=null?t.attendance:t.evo_session_id?'sem presença':'não vinculada')+'</td><td><button class="sm secondary" data-tdel="'+t.id+'">Excluir</button></td></tr>'),'Nenhuma aula temática registrada neste mês.');
  }catch(e){$('themedList').innerHTML='<p class="err">'+esc(why(e))+'</p>'}}
 $('pThemed').addEventListener('toggle',e=>{if(e.target.open)loadThemed()});$('tMonth').onchange=loadThemed;
-$('themedForm').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));try{await post({op:'themed_add',month:$('tMonth').value,...f});e.target.reset();msg('Aula temática registrada.');loadThemed()}catch(err){msg('Não foi possível: '+why(err),true)}};
+async function themedPicks(){const rid=document.querySelector('#themedForm [name=rhythm_id]').value,box=$('themedPick');box.innerHTML='';if(!rid)return;
+ const r=CAT.rhythms.find(x=>String(x.id)===rid);let d=RANK&&RANK.month===$('tMonth').value?RANK:null;
+ if(!d){try{d=await api('action=rankings&month='+$('tMonth').value)}catch{return}}
+ const top=d.artists_by_rhythm.filter(a=>a.rhythm===r?.name).slice(0,8);
+ box.innerHTML=top.length?'<span class="muted" style="align-self:center">Mais votados:</span>'+top.map(a=>'<button type="button" data-pick="'+esc(a.name)+'">+ '+esc(a.name)+' ('+a.votes+')</button>').join(''):'';}
+document.querySelector('#themedForm [name=rhythm_id]').addEventListener('change',themedPicks);
+$('themedPick').addEventListener('click',e=>{const b=e.target.closest('[data-pick]');if(!b)return;const inp=document.querySelector('#themedForm [name=artists]'),cur=inp.value.split(',').map(x=>x.trim()).filter(Boolean);if(!cur.includes(b.dataset.pick))cur.push(b.dataset.pick);inp.value=cur.join(', ');b.remove()});
+$('themedForm').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));try{const r=await post({op:'themed_add',month:$('tMonth').value,...f});e.target.reset();$('themedPick').innerHTML='';msg('Aula temática registrada.'+(r.notified?' '+r.notified+(r.notified===1?' aluno que pediu esse ritmo vai':' alunos que pediram esse ritmo vão')+' ver o aviso no app.':''));loadThemed()}catch(err){msg('Não foi possível: '+why(err),true)}};
 $('saveSettings').onclick=async()=>{try{await post({op:'settings',first_month:$('firstMonth').value});msg('Configuração salva.')}catch(e){msg('Não foi possível: '+why(e),true)}};
 init();
 </script></body></html>

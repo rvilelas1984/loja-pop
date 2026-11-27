@@ -105,15 +105,18 @@ $('nextBtn').onclick=async()=>{if(step<3){step++;paint();scrollTo(0,0);return}
  const b=$('nextBtn');b.disabled=true;b.textContent='Enviando…';
  try{const d=await api('submit',{method:'POST',body:JSON.stringify({recovered_from:recovered,rhythms:[...sel].map(([id,s])=>({rhythm_id:id,artist_ids:[...s.ids],suggestions:s.sug,teacher:s.teacher}))})});done(d,true)}
  catch(e){if(e.message==='JA_RESPONDEU_ESTE_MES'){start();return}b.disabled=false;b.textContent='Confirmar minhas escolhas';paint(why(e))}};
+const WD=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+function themedHtml(list){if(!list||!list.length)return '';return list.map(c=>{const dt=new Date(c.class_date+'T12:00:00');
+ return '<div class="hero" style="background:linear-gradient(150deg,#ff4fb6,#8b3dff);border-color:#ffd1ee"><div class="brand" style="color:#fff">🎉 SEU PEDIDO VIROU AULA!</div><h2 style="margin:8px 0 4px">'+esc(c.class_name)+'</h2><p style="margin:0;color:#fff">'+(c.emoji?esc(c.emoji)+' ':'')+esc(c.rhythm||'')+'<br><b>'+WD[dt.getDay()]+', '+c.class_date.slice(8,10)+'/'+c.class_date.slice(5,7)+(c.class_time?' às '+esc(String(c.class_time).slice(0,5)):'')+'</b> com <b>'+esc(c.teacher)+'</b>'+(c.your_teacher?' — o professor que você indicou!':'')+(c.your_artists&&c.your_artists.length?'<br>Com '+esc(c.your_artists.join(', '))+', que você escolheu.':'')+'</p><p class="sm" style="margin:8px 0 0;color:#ffe9f6">Parabéns! A sua escolha ajudou a criar essa aula. Garanta sua bike reservando pela agenda.</p></div>'}).join('')}
 function done(d,fresh){bar.classList.add('hide');
- app.innerHTML='<div class="hero" style="text-align:center"><div class="check">🎶</div><h1 style="margin-top:8px">'+(fresh?'Obrigado por participar!':'Suas escolhas de '+esc(monthName(d.month)))+'</h1><p style="margin:0;color:var(--lilac2)">'+(fresh?'Suas preferências de '+esc(monthName(d.month))+' foram registradas. Os professores vão usar as escolhas da turma para criar as aulas temáticas.':'Registradas'+(d.voted_at?' em '+esc(new Date(String(d.voted_at).replace(' ','T')+'Z').toLocaleDateString('pt-BR')):'')+'.')+'</p></div>'+
+ app.innerHTML=themedHtml(d.themed)+'<div class="hero" style="text-align:center"><div class="check">🎶</div><h1 style="margin-top:8px">'+(fresh?'Obrigado por participar!':'Suas escolhas de '+esc(monthName(d.month)))+'</h1><p style="margin:0;color:var(--lilac2)">'+(fresh?'Suas preferências de '+esc(monthName(d.month))+' foram registradas. Os professores vão usar as escolhas da turma para criar as aulas temáticas.':'Registradas'+(d.voted_at?' em '+esc(new Date(String(d.voted_at).replace(' ','T')+'Z').toLocaleDateString('pt-BR')):'')+'.')+'</p></div>'+
   summaryHtml(d.choices)+'<p class="mut sm" style="text-align:center">A próxima pesquisa abre em 1º de '+esc(MONTHS[(Number(String(d.month).slice(5,7)))%12])+'.</p><a class="btn alt" href="/">Voltar ao início</a>';scrollTo(0,0)}
 async function start(recover){
  step=0;sel=new Map();recovered=null;bar.classList.add('hide');app.innerHTML='<p class="mut" style="margin-top:30px">Carregando…</p>';
  try{const st=await api('status');
   if(st.voted){const d=await api('mine');done(d,false);return}
   if(!st.open){app.innerHTML=intro()+'<div class="msg ok">A pesquisa de '+esc(monthName(st.opens))+' abre no dia 1º. Volte para escolher suas playlists!</div>';return}
-  if(!recover){app.innerHTML=intro()+'<button class="btn" id="go">Escolher minhas playlists</button>'+(st.previous_month?'<button class="btn alt" id="reuse" style="margin-top:10px">Usar minhas escolhas de '+esc(monthName(st.previous_month))+'</button>':'');
+  if(!recover){app.innerHTML=themedHtml(st.themed)+intro()+'<button class="btn" id="go">Escolher minhas playlists</button>'+(st.previous_month?'<button class="btn alt" id="reuse" style="margin-top:10px">Usar minhas escolhas de '+esc(monthName(st.previous_month))+'</button>':'');
    $('go').onclick=()=>load(false);if($('reuse'))$('reuse').onclick=()=>load(true);return}
  }catch(e){app.innerHTML='<div class="msg err">'+esc(why(e))+'</div><a class="btn alt" href="/">Voltar ao início</a>';}
 }
