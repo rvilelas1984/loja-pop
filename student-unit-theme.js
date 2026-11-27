@@ -13,7 +13,7 @@ function applyTheme(d,u){if(!d||!d.backgroundColor)return;paintPage(d.background
 async function refresh(){const u=unit();document.documentElement.dataset.clubUnit=u;try{const cached=JSON.parse(localStorage.getItem(themeKey(u))||"null");if(cached)applyTheme(cached,u)}catch{}try{const r=await fetch("/api/evo-config?route=unit-theme&unit="+u,{cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok)return;try{localStorage.setItem(themeKey(u),JSON.stringify(d))}catch{}applyTheme(d,u)}catch(e){}}
 // One navigation definition for every student page, including promotion details.
 const studentLiveIcon="<path d='M3 12h4l2.5-6 4 12 2.5-6H21'/>",studentLogoutIcon="<path d='M15 4h4v16h-4'/><path d='M10 8l-4 4 4 4'/><path d='M6 12h10'/>";
-const studentNavItems=[["home", "Início", "/", "<path d='M3 10.5 12 3l9 7.5'/><path d='M5 9.5V21h14V9.5'/><path d='M9 21v-7h6v7'/>"], ["challenges", "Desafios", "/missoes.html", "<path d='m12 3 2.1 4.3 4.8.7-3.5 3.4.8 4.8L12 14l-4.2 2.2.8-4.8L5.1 8l4.8-.7L12 3Z'/><path d='M7 20h10'/>"], ["benefits", "Benefícios", "/beneficios.html", "<path d='M20 12v8H4v-8'/><path d='M2 7h20v5H2z'/><path d='M12 7v13'/><path d='M12 7H7.5A2.5 2.5 0 1 1 10 4.5L12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5L12 7Z'/>"], ["store", "Loja", "/loja.html", "<path d='M6 8h12l1 13H5L6 8Z'/><path d='M9 10V6a3 3 0 0 1 6 0v4'/>"], ["fit", "Pop Fit", "/pop-fit", "<path d=\"M4 18 9 13l4 3 7-9\"/><path d=\"M16 7h4v4\"/>"], ["profile", "Perfil", "/perfil.html", "<circle cx='12' cy='8' r='4'/><path d='M4.5 21a7.5 7.5 0 0 1 15 0'/>"]];
+const studentNavItems=[["home", "Início", "/", "<path d='M3 10.5 12 3l9 7.5'/><path d='M5 9.5V21h14V9.5'/><path d='M9 21v-7h6v7'/>"], ["challenges", "Desafios", "/missoes.html", "<path d='m12 3 2.1 4.3 4.8.7-3.5 3.4.8 4.8L12 14l-4.2 2.2.8-4.8L5.1 8l4.8-.7L12 3Z'/><path d='M7 20h10'/>"], ["benefits", "Benefícios", "/beneficios.html", "<path d='M20 12v8H4v-8'/><path d='M2 7h20v5H2z'/><path d='M12 7v13'/><path d='M12 7H7.5A2.5 2.5 0 1 1 10 4.5L12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5L12 7Z'/>"], ["store", "Loja", "/loja.html", "<path d='M6 8h12l1 13H5L6 8Z'/><path d='M9 10V6a3 3 0 0 1 6 0v4'/>"], ["live", "Pop Live", "/pop-live.html", "<path d='M3 12h4l2.5-6 4 12 2.5-6H21'/>"], ["fit", "Pop Fit", "/pop-fit", "<path d=\"M4 18 9 13l4 3 7-9\"/><path d=\"M16 7h4v4\"/>"]];
 function ensurePopFitNav(){
  const menus=document.querySelectorAll('.navwrap > nav');if(!menus.length)return;
  if(!document.getElementById('cp-student-navigation-css')){
@@ -23,6 +23,10 @@ function ensurePopFitNav(){
   .cp-student-navigation>button{all:unset!important;box-sizing:border-box!important;position:relative!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:5px!important;min-width:0!important;width:100%!important;height:70px!important;padding:0 2px!important;border-radius:18px!important;color:#8b929b!important;cursor:pointer!important;text-align:center!important}
   .cp-student-navigation>button[aria-current="page"]{color:#078fcb!important;background:#eaf8fe!important}
   .cp-student-navigation>button[aria-current="page"]:after{content:""!important;position:absolute!important;bottom:3px!important;width:20px!important;height:3px!important;border-radius:9px!important;background:#08a9e3!important}
+  .cp-student-navigation>button[data-student-nav="live"]:not([aria-current="page"]){color:#e4398f!important}
+  #avatar,.cp-header-avatar{box-shadow:0 0 0 3px #fff,0 0 0 5px #08a9e3!important}
+  .cp-profile-tip{position:fixed;z-index:60;max-width:220px;padding:12px 14px;border-radius:14px;background:#111;color:#fff;font:700 14px/1.35 Inter,system-ui,sans-serif;box-shadow:0 10px 30px #0004;cursor:pointer}
+  .cp-profile-tip:before{content:"";position:absolute;top:-7px;right:20px;border:7px solid transparent;border-top:0;border-bottom-color:#111}
   .cp-student-navigation>button:focus-visible{outline:2px solid #078fcb!important;outline-offset:-2px!important}
   .cp-student-navigation>button>svg{all:unset!important;display:block!important;flex:none!important;width:25px!important;height:25px!important;stroke:currentColor!important;fill:none!important;stroke-width:1.9!important;stroke-linecap:round!important;stroke-linejoin:round!important}
   .cp-student-navigation>button>span{all:unset!important;display:block!important;max-width:100%!important;white-space:nowrap!important;font-size:11px!important;line-height:13px!important;font-weight:800!important}
@@ -31,7 +35,7 @@ function ensurePopFitNav(){
   `;document.head.append(style);
  }
  const page=location.pathname.replace(/\.html$/,'').replace(/\/$/,'')||'/';
- const section=({'/':'home','/index':'home','/missoes':'challenges','/desafios':'challenges','/promocoes':'challenges','/promocao':'challenges','/meus-numeros':'challenges','/meu-hall-conquistas':'challenges','/beneficios':'benefits','/meus-vouchers':'benefits','/loja':'store','/minhas-compras':'store','/pop-fit':'fit','/perfil':'profile','/privacidade':'profile'})[page];
+ const section=({'/':'home','/index':'home','/missoes':'challenges','/desafios':'challenges','/promocoes':'challenges','/promocao':'challenges','/meus-numeros':'challenges','/meu-hall-conquistas':'challenges','/beneficios':'benefits','/meus-vouchers':'benefits','/loja':'store','/minhas-compras':'store','/pop-fit':'fit','/pop-live':'live','/pop-live-aluno':'live'})[page];
  menus.forEach(nav=>{
   if(nav.dataset.standardNavigation==='1')return;
   nav.dataset.standardNavigation='1';nav.className='cp-student-navigation';nav.setAttribute('aria-label','Menu do aluno');nav.parentElement.classList.add('cp-student-navigation-wrap');
@@ -41,8 +45,18 @@ function ensurePopFitNav(){
   if(liveOnly)nav.style.setProperty('grid-template-columns','repeat(3,minmax(0,1fr))','important');
   nav.replaceChildren(...items.map(([key,label,url,icon])=>{const button=document.createElement('button');button.type='button';button.dataset.studentNav=key;if(key===section)button.setAttribute('aria-current','page');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+icon+'</svg><span>'+label+'</span>';button.onclick=()=>{if(url==='#logout'){try{sessionStorage.removeItem('clubpop_token');sessionStorage.removeItem('clubpop_scope');localStorage.removeItem('clubpop_remember')}catch{}location.replace('/');return}location.href=url};return button}));
  });
+ // One-time tip: Perfil moved from the bottom menu to the avatar at the top.
+ try{if(!localStorage.getItem('cp_profile_tip_v1')&&sessionStorage.getItem('clubpop_scope')!=='live'){setTimeout(()=>{const av=document.querySelector('#avatar,.cp-header-avatar');if(!av||!av.getClientRects().length)return;const r=av.getBoundingClientRect(),tip=document.createElement('div');tip.className='cp-profile-tip';tip.setAttribute('role','status');tip.textContent='👤 Seu perfil agora fica aqui, na sua inicial.';tip.style.top=Math.round(r.bottom+12)+'px';tip.style.right=Math.max(10,Math.round(innerWidth-r.right-6))+'px';document.body.appendChild(tip);const close=()=>{tip.remove();try{localStorage.setItem('cp_profile_tip_v1','1')}catch{}};tip.onclick=close;av.addEventListener('click',close,{once:true});setTimeout(close,9000)},1800)}}catch{}
  const content=document.getElementById('dashboard')||document.querySelector('main.app,main.shell,.app,.shell')||document.querySelector('main');content?.classList.add('cp-student-navigation-content');
 }
 function unitChanged(){ensurePopFitNav();refresh()}
-if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>{ensurePopFitNav();refresh()});else{ensurePopFitNav();refresh()};window.addEventListener("pageshow",refresh);window.addEventListener("storage",e=>{if(e.key==="clubpop_active_unit")refresh()});document.addEventListener("click",()=>setTimeout(unitChanged,0),true);window.clubPopRefreshHeader=refresh;
+// Header avatar shows the student's profile photo (the same one on the TV), not only the initial.
+async function avatarPhoto(){
+ let url=null;const token=sessionStorage.getItem('clubpop_token');if(!token)return;
+ try{const c=JSON.parse(sessionStorage.getItem('clubpop_photo')||'null');if(c&&Date.now()-c.at<300000&&!/\/perfil(\.html)?$/.test(location.pathname))url=c.url;else{const r=await fetch('/api/auth?route=profile-photo',{headers:{Authorization:'Bearer '+token},cache:'no-store'});const d=await r.json().catch(()=>({}));url=r.ok&&d.ok?d.photoUrl||null:null;if(/\/perfil(\.html)?$/.test(location.pathname))sessionStorage.removeItem('clubpop_photo');else sessionStorage.setItem('clubpop_photo',JSON.stringify({url,at:Date.now()}))}}catch{}
+ const paint=()=>document.querySelectorAll('#avatar,.cp-header-avatar').forEach(el=>{if(url){el.style.backgroundImage='url("'+url+'")';el.style.backgroundSize='cover';el.style.backgroundPosition='center';el.style.color='transparent'}else{el.style.backgroundImage='';el.style.color=''}});
+ paint();setTimeout(paint,1500);setTimeout(paint,4000);
+}
+window.clubPopAvatarPhoto=()=>{try{sessionStorage.removeItem('clubpop_photo')}catch{}avatarPhoto()};
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>{ensurePopFitNav();refresh();avatarPhoto()});else{ensurePopFitNav();refresh();avatarPhoto()};window.addEventListener("pageshow",refresh);window.addEventListener("storage",e=>{if(e.key==="clubpop_active_unit")refresh()});document.addEventListener("click",()=>setTimeout(unitChanged,0),true);window.clubPopRefreshHeader=refresh;
 })();

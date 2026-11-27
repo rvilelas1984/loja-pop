@@ -44,11 +44,12 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
 .k div{background:#1a1226;border-radius:12px;padding:10px;text-align:center}.k b{display:block;font:800 20px system-ui;white-space:nowrap}.k span{font-size:11.5px;color:var(--mut)}
 .tabs{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(460px,100%);padding:0 10px max(10px,env(safe-area-inset-bottom));z-index:40}
 .tabs nav{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));align-items:center;height:84px;padding:6px;border:1px solid #e5e9ee;border-radius:24px;background:#fff;box-shadow:0 10px 30px #1112;font-family:Inter,system-ui,sans-serif}
-.tabs nav>a,.tabs nav>button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;height:70px;padding:0 2px;border:0;border-radius:18px;background:none;color:#8b929b;cursor:pointer;font:800 11px/13px Inter,system-ui,sans-serif;white-space:nowrap}
+.tabs nav>a,.tabs nav>button{min-width:0;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;height:70px;padding:0 2px;border:0;border-radius:18px;background:none;color:#8b929b;cursor:pointer;font:800 11px/13px Inter,system-ui,sans-serif;white-space:nowrap}
 .tabs nav>[aria-current=page]{color:#078fcb;background:#eaf8fe}
 .tabs nav>[aria-current=page]:after{content:"";position:absolute;bottom:3px;width:20px;height:3px;border-radius:9px;background:#08a9e3}
 .tabs svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .app{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
+@media(max-width:380px){.tabs nav>a,.tabs nav>button{font-size:9.5px}.tabs svg{width:23px;height:23px}}
 .hide{display:none!important}
 </style></head><body>
 <main class="app">
@@ -98,7 +99,7 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
 
  <!-- Official Pop Live dash -->
  <section id="dash" class="hide">
-  <div class="top" style="margin-top:10px"><p class="hi" id="hello" style="margin:0">Olá!</p><span class="badge" id="who"></span></div>
+  <div class="top" style="margin-top:10px"><div><p class="hi" id="hello" style="margin:0">Olá!</p><span class="badge" id="who"></span></div><a href="/perfil.html" id="profileBtn" class="hide" aria-label="Abrir perfil" style="width:48px;height:48px;border-radius:16px;background:#111;color:#fff;display:grid;place-items:center;font-weight:900;font-size:17px;box-shadow:0 0 0 3px #100d19,0 0 0 5px #fa4eaa"></a></div>
   <div class="seg"><button data-unit="bike">🚴 Bike Pop</button><button data-unit="gym">💗 Gym Pop</button></div>
   <div id="nextBox"></div>
   <h2>Próximas aulas</h2><div id="lessons" class="mut">Carregando aulas…</div>
@@ -108,10 +109,12 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
 </main>
 <div id="pixSheet" class="hide" style="position:fixed;inset:0;z-index:50;background:rgba(10,6,18,.86);display:flex;align-items:flex-end;justify-content:center"><div id="pixBox" class="box" style="width:min(480px,100%);margin:0;border-radius:22px 22px 0 0;padding:20px 18px calc(24px + env(safe-area-inset-bottom));max-height:92vh;overflow:auto"></div></div>
 <div class="tabs hide" id="tabs"><nav aria-label="Menu" id="tabNav">
-<a href="/" id="tabClub" class="hide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d='M3 10.5 12 3l9 7.5'/><path d='M5 9.5V21h14V9.5'/><path d='M9 21v-7h6v7'/></svg>Início</a>
+<a href="/" class="club hide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d='M3 10.5 12 3l9 7.5'/><path d='M5 9.5V21h14V9.5'/><path d='M9 21v-7h6v7'/></svg>Início</a>
+<a href="/missoes.html" class="club hide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d='m12 3 2.1 4.3 4.8.7-3.5 3.4.8 4.8L12 14l-4.2 2.2.8-4.8L5.1 8l4.8-.7L12 3Z'/><path d='M7 20h10'/></svg>Desafios</a>
+<a href="/beneficios.html" class="club hide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d='M20 12v8H4v-8'/><path d='M2 7h20v5H2z'/><path d='M12 7v13'/><path d='M12 7H7.5A2.5 2.5 0 1 1 10 4.5L12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5L12 7Z'/></svg>Benefícios</a>
+<a href="/loja.html" class="club hide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d='M6 8h12l1 13H5L6 8Z'/><path d='M9 10V6a3 3 0 0 1 6 0v4'/></svg>Loja</a>
 <a href="/pop-live.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d='M3 12h4l2.5-6 4 12 2.5-6H21'/></svg>Pop Live</a>
 <a href="/pop-fit.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18 9 13l4 3 7-9"/><path d="M16 7h4v4"/></svg>Pop Fit</a>
-<a href="/perfil.html" id="tabProfile" class="hide"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx='12' cy='8' r='4'/><path d='M4.5 21a7.5 7.5 0 0 1 15 0'/></svg>Perfil</a>
 <button type="button" id="logout" class="hide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d='M15 4h4v16h-4'/><path d='M10 8l-4 4 4 4'/><path d='M6 12h10'/></svg>Sair</button>
 </nav></div>
 <script>
@@ -204,7 +207,7 @@ async function boot(){
  if(!token){$('access').classList.remove('hide');$('dash').classList.add('hide');$('tabs').classList.add('hide');step('stLogin');return}
  try{me=(await call('me')).member}catch(e){if(e.status===401||e.status===403){try{sessionStorage.removeItem('clubpop_token')}catch{}token=null;$('access').classList.remove('hide');step('stLogin');if(e.code==='CONTRATO_INATIVO')msg('Entre com seu CPF e PIN para usar o Pop Live.');return}msg(e.message);return}
  $('access').classList.add('hide');$('dash').classList.remove('hide');$('tabs').classList.remove('hide');$('toEntry').classList.add('hide');
- const club=me.scope!=='live';try{sessionStorage.setItem('clubpop_scope',club?'club':'live')}catch{}['tabClub','tabProfile'].forEach(id=>$(id).classList.toggle('hide',!club));$('logout').classList.toggle('hide',club);$('tabNav').style.setProperty('--n',club?4:3);
+ const club=me.scope!=='live';try{sessionStorage.setItem('clubpop_scope',club?'club':'live')}catch{}document.querySelectorAll('#tabNav .club').forEach(a=>a.classList.toggle('hide',!club));$('logout').classList.toggle('hide',club);$('tabNav').style.setProperty('--n',club?6:3);$('profileBtn').classList.toggle('hide',!club);if(club)fetch('/api/auth?route=profile-photo',{headers:{Authorization:'Bearer '+token},cache:'no-store'}).then(r=>r.json()).then(d=>{if(d.ok&&d.photoUrl){const b=$('profileBtn');b.style.background='#111 center/cover url("'+d.photoUrl+'")';b.style.color='transparent'}}).catch(()=>{});$('profileBtn').textContent=(String(me.firstName||'A').trim()[0]||'A').toUpperCase()+(String(me.lastName||'').trim()[0]||'').toUpperCase();
  $('hello').textContent='Olá, '+String(me.firstName||'').trim().split(/\s+/)[0]+'!';$('who').textContent=club?'Aluno Club Pop':'Pop Live';
  paintDash();
 }
