@@ -134,6 +134,14 @@ sql.exec("UPDATE evo_attendance_sessions SET instructor_name='Douglas' WHERE id_
 const up=(await call('/member/pop-music?action=status',null,tShared)).body.upcoming_themed;assert.deepEqual(up.map(t=>[t.class_name,t.evo_session_id,t.class_date]),[['Divas do Pop','d1','2026-12-10'],['Rock Ride',null,'2026-12-20']]);
 const th=(await admin('action=themed&month=2026-12')).body;assert.equal(th.list[0].attendance,30);assert.equal(th.list.length,2);assert.deepEqual(th.comparison,{themed_avg:30,themed_classes:1,regular_avg:15,regular_classes:2});
 assert.equal((await admin('action=themed&month=2027-01')).body.comparison,null,'no fake indicators');
+// A themed class still to happen (EVO 'scheduled', 0 present) does not enter the occupancy comparison.
+sql.exec(`INSERT INTO evo_attendance_sessions VALUES('bike','f1','2026-12-28','07:00','Bike','Douglas','scheduled',0)`);
+await admin('',{op:'themed_add',month:'2026-12',teacher:'Douglas',class_name:'Natal Pop',rhythm_id:pop.id,class_date:'2026-12-28',evo_session_id:'f1'});
+const thc=(await admin('action=themed&month=2026-12')).body;assert.deepEqual(thc.comparison,{themed_avg:30,themed_classes:1,regular_avg:15,regular_classes:2});
+assert.equal(thc.list.find(t=>t.class_name==='Natal Pop').attendance,null);
+// "Playlists especiais" card data: all upcoming classes, the requested ones flagged.
+const upc=(await call('/member/pop-music?action=status',null,tShared)).body.upcoming_themed;assert.ok(upc.find(t=>t.class_name==='Natal Pop').mine,'Pop was requested by this student');
+assert.equal(upc.find(t=>t.class_name==='Rock Ride').mine,false);
 // Planned ahead without the official class: linked automatically by date + time once the EVO class is synced.
 sql.exec(`INSERT INTO evo_attendance_sessions VALUES('bike','d9','2026-12-20','19:00:00','Bike','Will','done',25)`);
 const th2=(await admin('action=themed&month=2026-12')).body.list.find(t=>t.class_name==='Rock Ride');assert.equal(th2.evo_session_id,'d9');assert.equal(th2.attendance,25);

@@ -148,8 +148,22 @@ function greet(){const g=GUEST||{};
  if($('gPhone'))$('gPhone').oninput=e=>e.target.value=maskPhone(e.target.value);
  $('go').onclick=()=>{if(!g.matched){const n=$('gName').value.trim(),p=$('gPhone').value.replace(/\D/g,'');
   if(n.length<3||!/^\d{10,11}$/.test(p)){$('gErr').innerHTML='<div class="msg err">Informe seu nome e um WhatsApp com DDD.</div>';return}CONTACT={name:n,phone:p}}load(false)};scrollTo(0,0)}
+// Full schedule of upcoming themed classes (dashboard "Ver agenda completa").
+let agendaRhythm='';
+function agenda(st){bar.classList.add('hide');const L=st.upcoming_themed||[],R=[...new Set(L.map(c=>c.rhythm).filter(Boolean))];
+ const list=L.filter(c=>!agendaRhythm||c.rhythm===agendaRhythm);let h='',last='';
+ for(const c of list){if(c.class_date!==last){const dt=new Date(c.class_date+'T12:00:00');h+='<div class="sm" style="font-weight:900;color:var(--lilac);margin:16px 2px 6px;text-transform:capitalize">'+WD[dt.getDay()]+', '+c.class_date.slice(8,10)+'/'+c.class_date.slice(5,7)+'</div>';last=c.class_date}
+  h+='<div class="sec" style="margin:0 0 8px;position:relative">'+(c.mine?'<span style="position:absolute;top:12px;right:12px;background:var(--pink);color:#fff;font-size:10px;font-weight:900;padding:3px 8px;border-radius:99px">SEU PEDIDO!</span>':'')+
+   '<b style="font-size:17px">'+esc(c.class_name)+'</b><div class="sm mut">'+esc([c.class_time?String(c.class_time).slice(0,5):'',c.teacher].filter(Boolean).join(' · '))+'</div><div class="chips" style="margin-top:8px">'+(c.rhythm?'<span class="chip on" style="cursor:default">'+esc((c.emoji?c.emoji+' ':'')+c.rhythm)+'</span>':'')+
+   String(c.artists||'').split(/\s*[,;]\s*/).filter(Boolean).map(a=>'<span class="chip" style="cursor:default">'+esc(a)+'</span>').join('')+'</div></div>'}
+ app.innerHTML='<h1>Playlists <em>especiais</em></h1><p class="mut" style="margin:0 0 6px">Aulas temáticas dos próximos 30 dias, criadas com as escolhas da turma. Reserve sua bike pelo app da academia.</p>'+
+  (R.length>1?'<div class="chips" id="agR" style="margin:10px 0 0"><button class="chip'+(agendaRhythm?'':' on')+'" data-ar="">Todas</button>'+R.map(r=>'<button class="chip'+(agendaRhythm===r?' on':'')+'" data-ar="'+esc(r)+'">'+esc(r)+'</button>').join('')+'</div>':'')+
+  (h||'<div class="msg ok">Nenhuma aula temática programada por enquanto. Vote no Pop Music e ajude a criar a próxima!</div>')+
+  '<a class="btn alt" href="/pop-music.html" style="margin-top:14px">'+(st.voted?'Consultar minhas escolhas do mês':'Escolher minhas playlists')+'</a>';
+ const ar=$('agR');if(ar)ar.onclick=e=>{const b=e.target.closest('[data-ar]');if(b){agendaRhythm=b.dataset.ar;agenda(st)}};scrollTo(0,0)}
 async function start(recover){
  if(LINK)return linkStart();
+ if(location.hash==='#agenda'&&!recover){try{agenda(await api('status'))}catch(e){app.innerHTML='<div class="msg err">'+esc(why(e))+'</div>'}return}
  step=0;sel=new Map();recovered=null;bar.classList.add('hide');app.innerHTML='<p class="mut" style="margin-top:30px">Carregando…</p>';
  try{const st=await api('status');
   if(st.voted){const d=await api('mine');done(d,false);return}
@@ -169,5 +183,6 @@ async function load(recover){app.innerHTML='<p class="mut" style="margin-top:30p
   step=recovered?3:0;if(recovered&&![...sel.keys()].every(id=>count(id)>=1&&sel.get(id).teacher))step=sel.size?1:0;paint();scrollTo(0,0)}
  catch(e){if(e.message==='JA_RESPONDEU_ESTE_MES'){start();return}app.innerHTML='<div class="msg err">'+esc(why(e))+'</div><a class="btn alt" href="/">Voltar ao início</a>'}}
 if(LINK){const b=document.querySelector('.back');if(b)b.remove()}
+addEventListener('hashchange',()=>{if(!LINK)start()});
 start();
 </script><script src="/student-app-analytics.js" defer></script></body></html>

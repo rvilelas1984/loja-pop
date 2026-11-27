@@ -254,6 +254,13 @@ html:has(#login[style*="display: block"]),body:has(#login[style*="display: block
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><div style="font-size:11px;letter-spacing:1.5px;font-weight:900;color:#ff8bd0">● POP LIVE</div><h2 style="margin:6px 0;font-size:22px">Sua aula ao vivo</h2><p style="margin:0 0 12px;color:#e8d9ef;font-size:13px;line-height:1.5">Escolha sua aula e conecte seu dispositivo para acompanhar seu desempenho.</p></div><div style="font-size:35px">💗</div></div>
 <a href="/pop-live.html" style="display:block;text-align:center;background:#f23b9b;color:white;text-decoration:none;border-radius:12px;padding:13px;font-weight:900">ACESSAR POP LIVE →</a>
 </section>
+<section id="popThemedCard" hidden aria-label="Playlists especiais" style="margin:0 0 18px;padding:18px;border-radius:20px;background:#fff;border:1px solid #eadcf7;box-shadow:0 7px 24px #27103c12;color:#1b1430">
+ <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><h2 style="margin:0;font-size:20px">🎧 Playlists especiais</h2><span id="popThemedCount" style="font-size:12px;font-weight:800;color:#5b23a8"></span></div>
+ <p style="margin:2px 0 6px;color:#625a78;font-size:13px">As próximas aulas temáticas do Bike Pop, criadas com as escolhas da turma.</p>
+ <div id="popThemedList"></div>
+ <a href="/pop-music.html#agenda" style="display:block;text-align:center;background:#5b23a8;color:#fff;text-decoration:none;border-radius:12px;padding:12px;font-weight:900;margin-top:12px">VER AGENDA COMPLETA →</a>
+ <p style="margin:8px 0 0;color:#625a78;font-size:12px;text-align:center">Reserve sua bike pelo app da academia.</p>
+</section>
 <section id="popMusicCard" hidden aria-label="Pop Music Experience" style="margin:0 0 18px;padding:18px;border-radius:20px;background:linear-gradient(140deg,#2a0e52,#5b23a8 70%,#7b3fd1);color:#fff;box-shadow:0 7px 24px #3b136a33">
  <div style="font-size:11px;letter-spacing:1.5px;font-weight:900;color:#e7d8ff">♫ POP MUSIC EXPERIENCE</div>
  <div id="popMusicBody"></div>
@@ -349,20 +356,31 @@ async function showNextClassThemed(unit,x){const el=document.getElementById('nex
   if(!c)return;const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   el.innerHTML='<div style="font-size:11px;letter-spacing:1.2px;font-weight:900;opacity:.9">♫ AULA TEMÁTICA · PLAYLIST ESPECIAL</div><div style="font-size:17px;font-weight:900;margin-top:3px">'+esc(c.class_name)+'</div>'+(c.rhythm?'<div>'+esc((c.emoji?c.emoji+' ':'')+c.rhythm)+'</div>':'')+(c.artists?'<div style="margin-top:2px">Na playlist: <b>'+esc(c.artists)+'</b></div>':'')+'<div style="margin-top:4px;opacity:.9">Tema escolhido pelos alunos no Pop Music Experience.</div>';el.hidden=false;
  }catch(e){}}
+// "Playlists especiais": the next themed classes (only shown when there is at least one), requested ones flagged.
+function paintPopThemedCard(list){const card=document.getElementById('popThemedCard');if(!card)return;
+ if(!list||!list.length){card.hidden=true;return}
+ const W=['dom','seg','ter','qua','qui','sex','sáb'],M=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'],esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+ document.getElementById('popThemedCount').textContent=list.length===1?'1 aula':list.length+' aulas';
+ document.getElementById('popThemedList').innerHTML=list.slice(0,3).map(c=>{const dt=new Date(c.class_date+'T12:00:00');
+  return '<div style="display:grid;grid-template-columns:52px 1fr;gap:12px;padding:12px 0;border-top:1px solid #eee6fb"><div style="border-radius:12px;background:#5b23a8;color:#fff;text-align:center;padding:6px 0;line-height:1.1"><small style="font-size:11px;text-transform:uppercase">'+W[dt.getDay()]+'</small><b style="display:block;font-size:20px">'+c.class_date.slice(8,10)+'</b><small style="font-size:11px;text-transform:uppercase">'+M[dt.getMonth()]+'</small></div>'+
+   '<div style="min-width:0"><b style="font-size:15px">'+esc(c.class_name)+'</b>'+(c.mine?' <span style="font-size:10px;font-weight:900;background:#ff4fb6;color:#fff;border-radius:99px;padding:2px 8px;vertical-align:middle">SEU PEDIDO!</span>':'')+
+   '<div style="font-size:13px;color:#625a78">'+esc([(c.emoji?c.emoji+' ':'')+(c.rhythm||''),c.class_time?String(c.class_time).slice(0,5):'',c.teacher].filter(Boolean).join(' · '))+'</div>'+(c.artists?'<div style="font-size:12px;color:#5b23a8;margin-top:2px;overflow-wrap:anywhere">♫ '+esc(c.artists)+'</div>':'')+'</div></div>'}).join('');
+ card.hidden=false}
 async function loadPopMusicCard(unit){const card=document.getElementById('popMusicCard');if(!card)return;
- if(unit!=='bike'||!allowedStudentUnits.includes('bike')){card.hidden=true;return}
+ if(unit!=='bike'||!allowedStudentUnits.includes('bike')){card.hidden=true;paintPopThemedCard(null);return}
  try{popMusicStatus=popMusicStatus||authFetch('/auth/pop-music?action=status');const d=await popMusicStatus;
+  paintPopThemedCard(d&&d.upcoming_themed);
   if(!d||!d.open){card.hidden=true;return}
   const M=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'],next=M[Number(String(d.month).slice(5,7))%12];
   const btn=(t,alt)=>'<a href="/pop-music.html" style="display:block;text-align:center;background:'+(alt?'#ffffff22':'#e7d8ff')+';color:'+(alt?'#fff':'#2a0e52')+';text-decoration:none;border-radius:12px;padding:13px;font-weight:900;margin-top:12px">'+t+'</a>';
   const W=['dom','seg','ter','qua','qui','sex','sáb'],when=c=>{const dt=new Date(c.class_date+'T12:00:00');return W[dt.getDay()]+', '+c.class_date.slice(8,10)+'/'+c.class_date.slice(5,7)+(c.class_time?' às '+String(c.class_time).slice(0,5):'')};
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const themed=(d.themed||[]).map(c=>'<div style="background:#ffffff1c;border:1px solid #e7d8ff55;border-radius:14px;padding:12px;margin:10px 0 2px"><div style="font-weight:900;font-size:15px">🎉 Seu pedido virou aula!</div><div style="font-size:13px;line-height:1.5;color:#f3ecff;margin-top:4px"><b>'+esc(c.class_name)+'</b>'+(c.rhythm?' · '+esc(c.rhythm):'')+'<br>'+when(c)+' com <b>'+esc(c.teacher)+'</b>'+(c.your_teacher?' (o professor que você indicou)':'')+(c.your_artists&&c.your_artists.length?'<br>Com '+esc(c.your_artists.join(', ')):'')+'</div></div>').join('');
-  document.getElementById('popMusicBody').innerHTML=themed+(d.voted
+  document.getElementById('popMusicBody').innerHTML=(d.voted
    ?'<h2 style="margin:6px 0;font-size:21px">Preferências do mês registradas ✓</h2><p style="margin:0;color:#e7d8ff;font-size:13px;line-height:1.5">Obrigado por participar! Suas escolhas vão inspirar as aulas temáticas. A próxima pesquisa abre em 1º de '+next+'.</p>'+btn('CONSULTAR MINHAS ESCOLHAS',true)
    :'<h2 style="margin:6px 0;font-size:22px">Você escolhe. A gente pedala!</h2><p style="margin:0;color:#e7d8ff;font-size:13px;line-height:1.5">Quais artistas você gostaria de ouvir nas aulas deste mês? Escolha seus ritmos favoritos e indique os professores.</p>'+btn('ESCOLHER MINHAS PLAYLISTS →'));
   card.hidden=false;
- }catch(e){popMusicStatus=null;card.hidden=true}}
+ }catch(e){popMusicStatus=null;card.hidden=true;paintPopThemedCard(null)}}
 async function applyUnit(unit){
  try{const me=await authFetch('/auth/me');setStudentUnitAccess(me.member);}catch(e){if(e.message==='CONTRATO_INATIVO')clubAccessNotice('CONTRATO_INATIVO');return;}
  if(!allowedStudentUnits.includes(unit)){await loadAuthenticated();return;}
