@@ -51,6 +51,9 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
 .app{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
 @media(max-width:380px){.tabs nav>a,.tabs nav>button{font-size:9.5px}.tabs svg{width:23px;height:23px}}
 .hide{display:none!important}
+.ev-head{border-radius:20px;padding:16px;margin:10px 0;background:linear-gradient(150deg,#7a1a52,#2b1030);border:1px solid #8a2d64}.ev-head h3{font:900 italic 26px/1.05 "Exo 2",system-ui;margin:6px 0}
+.act-btn{width:100%;text-align:left;color:#fff;font:inherit;cursor:pointer}.act-btn.mine{border-color:var(--green);background:#16261f}
+.seg button.on{border-color:var(--pink);background:#3a1430}
 </style></head><body>
 <main class="app">
  <div class="top"><div class="brand">POP <b>LIVE</b></div><a class="back" href="/" id="toEntry">← Início</a></div>
@@ -97,6 +100,7 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
   <p class="msg" id="msg" role="alert"></p>
  </section>
 
+ <section id="evView" class="hide"><button class="back" id="evBack">← Pop Live</button><div id="evBody"></div></section>
  <!-- Official Pop Live dash -->
  <section id="dash" class="hide">
   <div class="top" style="margin-top:10px"><div><p class="hi" id="hello" style="margin:0">Olá!</p><span class="badge" id="who"></span></div><a href="/perfil.html" id="profileBtn" class="hide" aria-label="Abrir perfil" style="width:48px;height:48px;border-radius:16px;background:#111;color:#fff;display:grid;place-items:center;font-weight:900;font-size:17px;box-shadow:0 0 0 3px #100d19,0 0 0 5px #fa4eaa"></a></div>
@@ -142,41 +146,94 @@ $('signup').onclick=async()=>{const pin=digits($('sPin').value);if(pin.length!==
  catch(e){if(e.code==='ALUNO_ENCONTRADO_USE_PRIMEIRO_ACESSO'){step('stFirst');$('fCpf').value=$('sCpf').value}msg(e.message)}finally{busy($('signup'),false)}};
 $('logout').onclick=async()=>{try{await call('logout',{method:'POST',body:'{}'})}catch{}try{sessionStorage.removeItem('clubpop_token');sessionStorage.removeItem('clubpop');sessionStorage.removeItem('clubpop_scope');localStorage.removeItem('clubpop_remember')}catch{}location.replace('/')};
 
-// ---- Events and tickets (free: spot at once; paid: Pix through the store checkout) ----
-let events=[];
-const brl=c=>(c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-const when=v=>{const m=/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/.exec(String(v||''));return m?dayLabel(m[1]+'-'+m[2]+'-'+m[3])+' · '+m[4]:''};
-function evButton(e){
- if(e.my_status==='paid')return '<span class="badge">✓ Ingresso pago</span>';
- if(e.my_status==='confirmed')return '<span class="badge">✓ Vaga garantida</span>';
- if(e.my_status==='pending'&&e.my_order)return '<button class="btn sm" data-ev="'+e.id+'">Pagar Pix pendente</button>';
- if(!Number(e.sales_open))return '<span class="sm mut">Inscrições encerradas</span>';
- if(e.left===0)return '<span class="sm mut">Esgotado</span>';
- return '<button class="btn sm'+(e.price_cents?'':' alt')+'" data-ev="'+e.id+'">'+(e.price_cents?'Comprar':'Garantir vaga')+'</button>';
-}
+// ---- Events: list on the dash, event view with balance and schedule, tickets (free or Pix), bookings ----
+let events=[],EV=null,evId=0;
+const brl=c=>c?(c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'Gratuito';
+const unitTxt={bike:'Bike Pop',gym:'Gym Pop',both:'Bike Pop e Gym Pop'};
+const when=e=>{const m=/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/.exec(String(e.starts_at||''));return m?dayLabel(m[1]+'-'+m[2]+'-'+m[3])+' · '+m[4]+(e.ends_at?' às '+String(e.ends_at).slice(11,16):''):''};
+const EERR={ESGOTADO:'Esgotado.',SEM_SALDO:'Você não tem saldo de atividades. Compre um ingresso.',SEM_DIREITO_ATIVIDADE_PRINCIPAL:'Atividade principal: cada ingresso dá direito a uma. O saldo de extras não vale para ela. Para fazer outra, compre mais um ingresso.',ESCOLHA_O_TAMANHO_DA_CAMISETA:'Escolha o tamanho da camiseta.',INGRESSO_NAO_DA_ACESSO_A_ATIVIDADE:'Esse ingresso não dá acesso a essa atividade.',SAIDA_ATE_2H_ANTES:'Só é possível sair até 2 horas antes da atividade.',ATIVIDADE_JA_COMECOU:'Essa atividade já começou.',INSCRICOES_ENCERRADAS:'Vendas encerradas.',EVENTO_ENCERRADO:'O evento já terminou.'};
+const eErr=e=>{const m=String(e.code||'');if(m.startsWith('HORARIO_CONFLITA:'))return 'Esse horário cruza com '+m.slice(17)+', em que você já está.';return EERR[m]||e.message};
+const ev=(action,opts={})=>call('pop-live-student',opts,'&unit='+unit+'&action='+action+'&event_id='+evId);
 function paintEvents(){
  $('eventsWrap').classList.toggle('hide',!events.length);
- $('events').innerHTML=events.map(e=>'<div class="evc"'+(e.kind==='special_class'?' style="background:linear-gradient(150deg,#3b2a7a,#1d1540)"':'')+'><div><span class="sm" style="color:var(--yellow)">'+esc(when(e.starts_at))+' · '+(e.unit==='gym'?'Gym Pop':'Bike Pop')+'</span><h4>'+esc(e.name)+'</h4>'+(e.description?'<span class="sm" style="color:#f3dbe9">'+esc(e.description)+'</span>':'')+(e.left!=null&&e.left>0&&e.left<=10?'<div class="sm" style="color:var(--yellow);margin-top:4px">Restam '+e.left+' vagas</div>':'')+'</div><div class="top" style="margin-top:10px"><b>'+(e.price_cents?brl(e.price_cents):'Gratuito')+'</b>'+evButton(e)+'</div></div>').join('');
+ $('events').innerHTML=events.map(e=>'<div class="evc"'+(e.kind==='special_class'?' style="background:linear-gradient(150deg,#3b2a7a,#1d1540)"':'')+'><div><span class="sm" style="color:var(--yellow)">'+esc(when(e))+' · '+esc(unitTxt[e.unit]||'')+'</span><h4>'+esc(e.name)+'</h4>'+(e.description?'<span class="sm" style="color:#f3dbe9">'+esc(e.description)+'</span>':'')+'</div><div class="top" style="margin-top:10px"><b>'+(Number(e.my_tickets)?'🎟 Seu ingresso':e.from_cents==null?'Em breve':e.from_cents?'A partir de '+brl(e.from_cents):'Gratuito')+'</b><button class="btn sm" data-evopen="'+e.id+'">Ver evento</button></div></div>').join('');
 }
-$('events').onclick=async ev=>{const b=ev.target.closest('[data-ev]');if(!b)return;const e=events.find(x=>String(x.id)===b.dataset.ev);if(!e)return;b.disabled=true;
- try{const t=await call('pop-live-student',{method:'POST',body:JSON.stringify({event_id:e.id})},'&unit='+e.unit+'&action=ticket');
-  if(t.status==='confirmed'||t.status==='paid'){e.my_status=t.status;paintEvents();return}
-  if(t.status==='pending'&&t.orderId){e.my_status='pending';e.my_order=t.orderId;await payPix(e,t.orderId)}}
- catch(err){alertBox(err.message)}finally{b.disabled=false}};
-function alertBox(t){$('pixBox').innerHTML='<div class="box warn">'+esc(t)+'</div><button class="btn alt" onclick="document.getElementById(\'pixSheet\').classList.add(\'hide\')">Fechar</button>';$('pixSheet').classList.remove('hide')}
+$('events').onclick=e=>{const b=e.target.closest('[data-evopen]');if(b)openEvent(+b.dataset.evopen)};
+async function openEvent(id){evId=id;$('dash').classList.add('hide');$('evView').classList.remove('hide');$('evBody').innerHTML='<p class="mut">Carregando evento…</p>';scrollTo(0,0);await loadEvent()}
+$('evBack').onclick=()=>{$('evView').classList.add('hide');$('dash').classList.remove('hide');closeSheet();paintDash()};
+async function loadEvent(){try{EV=await ev('event');paintEvent()}catch(e){$('evBody').innerHTML='<div class="box warn">'+esc(eErr(e))+'</div>'}}
+const aName=a=>a.name||a.activity_type;
+function balanceTxt(b){const p=[];for(const [n,m] of Object.entries(b.mains||{}))if(m.rights)p.push('★ '+esc(n)+': '+(m.rights-m.used>0?(m.rights-m.used)+' para agendar':'agendada'));if(b.extras.unlimited)p.push('Extras livres');else if(b.extras.total)p.push('Saldo de atividades: '+b.extras.left);return p.join(' · ')}
+function paintEvent(){
+ const e=EV.event,b=EV.balance,has=b.tickets.length,open=EV.tickets.filter(t=>!t.out),from=open.length?Math.min(...open.map(t=>t.price_cents)):null;
+ const gifts=b.tickets.filter(t=>t.gifts).map(t=>t.gifts+(t.shirt_size?' ('+t.shirt_size+')':''));
+ let h='<div class="ev-head"'+(e.kind==='special_class'?' style="background:linear-gradient(150deg,#3b2a7a,#1d1540)"':'')+'><span class="sm" style="color:var(--yellow);font-weight:800">'+esc(when(e))+'</span><h3>'+esc(e.name)+'</h3><p class="sm" style="margin:0;color:#f3dbe9">'+esc(unitTxt[e.unit]||'')+(e.location?' · '+esc(e.location):'')+(e.description?'<br>'+esc(e.description):'')+'</p>'+
+  '<div class="top" style="margin-top:12px;padding-top:12px;border-top:1px dashed #ffffff40">'+(has?'<div><b>🎟 '+esc(b.tickets.map(t=>t.name).join(' + '))+'</b><div class="sm" style="color:#f3dbe9">'+balanceTxt(b)+(gifts.length?' · '+esc(gifts.join(', '))+' (retirar na recepção)':'')+'</div></div><button class="btn sm alt" data-tlist>+ Ingresso</button>':'<b>'+(from==null?'Ingressos em breve':from?'A partir de '+brl(from):'Gratuito')+'</b>'+(from!=null?'<button class="btn sm" data-tlist>Ver ingressos</button>':''))+'</div></div>';
+ if(EV.pending&&EV.pending.order_id)h+='<div class="box warn"><b>Pix pendente · '+esc(EV.pending.name)+'</b><button class="btn sm" style="margin-top:8px" data-repay="'+esc(EV.pending.order_id)+'">Pagar agora</button></div>';
+ h+='<h2>Cronograma</h2><p class="sm mut" style="margin:0">★ = atividade principal (1 por ingresso). Toque para entrar.</p>';
+ h+=EV.activities.map(a=>'<button class="lesson act-btn'+(a.mine?' mine':'')+'" data-a="'+a.id+'"><div class="lt"><b>'+esc(a.starts_at)+'</b><em>até '+esc(a.ends_at)+'</em></div><div><b style="font-size:15px">'+(Number(a.is_main)?'<span style="color:var(--yellow)">★ </span>':'')+esc(aName(a))+'</b><small>'+(Number(a.is_main)?'Principal · ':'')+esc(unitTxt[a.unit])+(a.name?' · '+esc(a.activity_type):'')+'</small></div>'+(a.mine?'<span class="badge">✓ Confirmado</span>':'<span class="sm" style="font-weight:800;white-space:nowrap;color:'+(a.left?'var(--yellow)':'#ff8fa3')+'">'+(!a.left?'Esgotado':a.left===1?'1 vaga':a.left<=3?'Só '+a.left+' vagas':a.left+' vagas')+'</span>')+'</button>').join('')||'<p class="mut sm">Cronograma em breve.</p>';
+ $('evBody').innerHTML=h;
+}
+function sheetOpen(html){$('pixBox').innerHTML=html;$('pixSheet').classList.remove('hide')}
+function closeSheet(){clearInterval(pixTimer);$('pixSheet').classList.add('hide')}
+const aHead=a=>'<p class="sm" style="margin:0;color:var(--yellow);font-weight:800">'+esc(a.starts_at)+' às '+esc(a.ends_at)+' · '+esc(unitTxt[a.unit])+(Number(a.is_main)?' · ★ principal':'')+'</p><p class="hi" style="margin:4px 0 8px">'+esc(aName(a))+'</p>';
+function activitySheet(a){
+ const b=EV.balance;
+ if(a.mine)return sheetOpen(aHead(a)+'<p class="mut">Você está confirmado. Chegue 10 minutos antes.</p><button class="btn alt" data-close>Fechar</button><button class="btn" style="background:none;color:#ff8fa3" data-leave="'+a.id+'">Sair desta atividade (o direito volta para o seu saldo)</button>');
+ if(!a.left)return sheetOpen(aHead(a)+'<p style="color:#ff8fa3;font-weight:700">Esgotado. Escolha outro horário.</p><button class="btn alt" data-close>Fechar</button>');
+ if(!b.tickets.length)return sheetOpen(aHead(a)+'<p class="mut">'+(a.left<=3?'Restam só '+a.left+' vagas. ':'')+'Para entrar você precisa de um ingresso do evento.</p><button class="btn" data-tlist="'+a.id+'">Ver ingressos e entrar</button><button class="btn alt" data-close>Agora não</button>');
+ if(!a.can)return sheetOpen(aHead(a)+'<p style="color:var(--yellow);font-weight:700">'+(Number(a.is_main)?'Atividade principal: cada ingresso dá direito a uma.':'Seu saldo de atividades acabou.')+'</p><p class="mut">'+(Number(a.is_main)?'O saldo de extras não vale para ela. Para fazer outra, compre mais um ingresso que a inclua.':'Compre mais um ingresso para entrar.')+'</p><button class="btn" data-tlist="'+a.id+'">Comprar mais um ingresso</button><button class="btn alt" data-close>Fechar</button>');
+ sheetOpen(aHead(a)+'<p class="mut">'+(a.can==='main'?'Usa o direito de atividade principal do seu ingresso.':b.extras.unlimited?'Seu passe libera as atividades.':'Usa 1 do seu saldo. Saldo atual: '+b.extras.left+'.')+'</p><button class="btn" data-enroll="'+a.id+'">Entrar na atividade</button><button class="btn alt" data-close>Agora não</button>');
+}
+let wantAct=null;
+const tDesc=t=>[t.main_name?'★ '+t.main_name:'',Number(t.extra_credits)===-1?'todas as atividades':Number(t.extra_credits)>0?'+'+t.extra_credits+(Number(t.extra_credits)===1?' atividade à escolha':' atividades à escolha'):'',t.gifts||''].filter(Boolean).join(' · ');
+function ticketSheet(actId){
+ wantAct=actId?EV.activities.find(x=>x.id===actId):null;const a=wantAct;
+ const fits=t=>!a||(Number(a.is_main)?t.main_name===aName(a):Number(t.extra_credits)!==0);
+ sheetOpen('<p class="hi" style="margin:0">Escolha seu ingresso</p><p class="mut sm" style="margin:2px 0 8px">'+(a?'Para entrar em '+esc(aName(a))+'. Você já fica confirmado depois do pagamento.':'Depois você agenda as atividades no cronograma.')+'</p>'+
+  EV.tickets.map(t=>{const ok=!t.out&&fits(t);return '<button class="lesson" style="grid-template-columns:minmax(0,1fr) auto;width:100%;text-align:left;color:#fff;font:inherit;'+(ok?'':'opacity:.5')+'" '+(ok?'data-pick="'+t.id+'"':'disabled')+'><div><b style="font-size:15px">'+esc(t.name)+'</b><small>'+esc(tDesc(t))+'</small>'+(t.out?'<small style="color:#ff8fa3">Esgotado</small>':!fits(t)?'<small>'+(Number(a.is_main)?'Não inclui '+esc(aName(a)):'Sem atividades extras')+'</small>':t.stock&&t.stock-t.sold<=5?'<small style="color:var(--yellow)">Últimos '+(t.stock-t.sold)+'</small>':'')+'</div><b style="white-space:nowrap">'+brl(t.price_cents)+'</b></button>'}).join('')+'<button class="btn alt" data-close>Agora não</button>');
+}
+function buySheet(t){
+ const size=t.shirt?'<label>Tamanho da camiseta</label><div class="seg" style="grid-template-columns:repeat(5,1fr);margin:6px 0">'+['P','M','G','GG','XG'].map(z=>'<button type="button" data-size="'+z+'">'+z+'</button>').join('')+'</div>':'';
+ sheetOpen('<p class="hi" style="margin:0">'+esc(t.name)+'</p><p class="mut sm" style="margin:2px 0 8px">'+esc(tDesc(t))+' · '+brl(t.price_cents)+'</p>'+size+'<button class="btn" data-buy="'+t.id+'">'+(t.price_cents?'Pagar com Pix · '+brl(t.price_cents):'Garantir ingresso gratuito')+'</button><button class="btn alt" data-close>Voltar</button><p class="msg" id="buyMsg"></p>');
+}
+let pickedSize='';
+async function buy(t){
+ if(t.shirt&&!pickedSize){$('buyMsg').textContent='Escolha o tamanho da camiseta.';return}
+ try{const r=await ev('buy',{method:'POST',body:JSON.stringify({event_id:evId,ticket_type_id:t.id,activity_id:wantAct?.id||null,shirt_size:pickedSize||null,unit:wantAct?.unit||unit})});
+  if(r.status==='confirmed')return success(t.name,r.joined||[]);
+  if(r.orderId)return payPix(r.orderId,t.name,t.price_cents);
+ }catch(e){$('buyMsg').textContent=eErr(e)}
+}
 let pixTimer=null;
-async function payPix(e,orderId){
- const pix=async(path,opts={})=>{const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},cache:'no-store'});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok){const m={PIX_PRODUCTION_DISABLED:'Pagamento por Pix indisponível no momento.',PIX_PRODUCTION_NOT_CONFIGURED:'Pix ainda não configurado nesta unidade. Fale com a recepção.',ITEM_INDISPONIVEL:'Inscrições encerradas para este evento.',PRECO_ALTERADO:'O valor do ingresso mudou. Tente de novo.',EMAIL_INVALIDO:'Atualize seu e-mail no cadastro para pagar com Pix.'};throw Error(m[d.error]||d.error||'Falha no Pix')}return d};
- $('pixBox').innerHTML='<p class="mut">Gerando seu Pix…</p>';$('pixSheet').classList.remove('hide');
- let p=await pix('/checkout/pix/create',{method:'POST',body:JSON.stringify({orderId})});
- if(p.status==='approved')return done(e);
- if(!p.qrCode&&!p.qrCodeBase64)p={...p,...await pix('/checkout/pix/details?orderId='+encodeURIComponent(orderId))};
- $('pixBox').innerHTML='<p class="hi" style="margin-top:0">'+esc(e.name)+'</p><p class="mut sm" style="margin:0">'+brl(e.price_cents)+' · pague com Pix pelo app do seu banco</p>'+(p.qrCodeBase64?'<img alt="QR Code Pix" style="display:block;width:220px;height:220px;margin:14px auto;background:#fff;border-radius:12px;padding:8px" src="data:image/png;base64,'+esc(p.qrCodeBase64)+'">':'')+(p.qrCode?'<label for="pixCode">Pix copia e cola</label><input id="pixCode" readonly value="'+esc(p.qrCode)+'"><button class="btn" id="pixCopy">Copiar código Pix</button>':'')+'<p class="sm mut" id="pixWait" style="text-align:center">Aguardando o pagamento… a confirmação aparece aqui sozinha.</p><button class="btn alt" id="pixClose">Pagar depois</button>';
- const cp=$('pixCopy');if(cp)cp.onclick=async()=>{try{await navigator.clipboard.writeText(p.qrCode);cp.textContent='Código copiado!'}catch{$('pixCode').select()}};
- $('pixClose').onclick=()=>{clearInterval(pixTimer);$('pixSheet').classList.add('hide');paintEvents()};
- clearInterval(pixTimer);pixTimer=setInterval(async()=>{try{const s=await pix('/checkout/pix/status?orderId='+encodeURIComponent(orderId));if(s.status==='approved'){clearInterval(pixTimer);done(e)}else if(['cancelled','expired','rejected'].includes(s.status)){clearInterval(pixTimer);e.my_status=null;e.my_order=null;$('pixWait').textContent='Este Pix expirou. Feche e gere um novo.'}}catch{}},4000);
+async function payPix(orderId,name,cents){
+ const pix=async(path,opts={})=>{const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},cache:'no-store'});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok){const m={PIX_PRODUCTION_DISABLED:'Pagamento por Pix indisponível no momento.',PIX_PRODUCTION_NOT_CONFIGURED:'Pix ainda não configurado nesta unidade. Fale com a recepção.',ITEM_INDISPONIVEL:'Esse ingresso não está mais à venda.',PRECO_ALTERADO:'O valor mudou. Tente de novo.',EMAIL_INVALIDO:'Atualize seu e-mail no cadastro para pagar com Pix.'};throw Error(m[d.error]||d.error||'Falha no Pix')}return d};
+ sheetOpen('<p class="mut">Gerando seu Pix…</p>');
+ try{
+  let p=await pix('/checkout/pix/create',{method:'POST',body:JSON.stringify({orderId})});
+  if(p.status==='approved')return success(name,[]);
+  if(!p.qrCode&&!p.qrCodeBase64)p={...p,...await pix('/checkout/pix/details?orderId='+encodeURIComponent(orderId))};
+  sheetOpen('<p class="hi" style="margin:0">'+esc(name||'Ingresso')+'</p><p class="mut sm" style="margin:0">'+(cents?brl(cents)+' · ':'')+'pague com Pix pelo app do seu banco'+(wantAct?'. A vaga em '+esc(aName(wantAct))+' fica guardada por 30 min.':'')+'</p>'+(p.qrCodeBase64?'<img alt="QR Code Pix" style="display:block;width:220px;height:220px;margin:14px auto;background:#fff;border-radius:12px;padding:8px" src="data:image/png;base64,'+esc(p.qrCodeBase64)+'">':'')+(p.qrCode?'<label for="pixCode">Pix copia e cola</label><input id="pixCode" readonly value="'+esc(p.qrCode)+'"><button class="btn" id="pixCopy">Copiar código Pix</button>':'')+'<p class="sm mut" id="pixWait" style="text-align:center">Aguardando o pagamento… confirma sozinho.</p><button class="btn alt" data-close>Pagar depois</button>');
+  const cp=$('pixCopy');if(cp)cp.onclick=async()=>{try{await navigator.clipboard.writeText(p.qrCode);cp.textContent='Código copiado!'}catch{$('pixCode').select()}};
+  clearInterval(pixTimer);pixTimer=setInterval(async()=>{try{const s=await pix('/checkout/pix/status?orderId='+encodeURIComponent(orderId));if(s.status==='approved'){clearInterval(pixTimer);success(name,s.joined||[])}else if(['cancelled','expired','rejected'].includes(s.status)){clearInterval(pixTimer);$('pixWait').textContent='Este Pix expirou. Feche e gere um novo.'}}catch{}},4000);
+ }catch(e){sheetOpen('<div class="box warn">'+esc(e.message)+'</div><button class="btn alt" data-close>Fechar</button>')}
 }
-function done(e){e.my_status='paid';paintEvents();$('pixBox').innerHTML='<div style="text-align:center;font-size:54px">✅</div><p class="hi" style="text-align:center">Ingresso confirmado!</p><p class="mut" style="text-align:center">'+esc(e.name)+' · '+esc(when(e.starts_at))+'</p><button class="btn" onclick="document.getElementById(\'pixSheet\').classList.add(\'hide\')">Fechar</button>'}
+async function success(name,joined){
+ sheetOpen('<div style="text-align:center;font-size:54px">🎟️</div><p class="hi" style="text-align:center">Ingresso confirmado!</p><p class="mut" style="text-align:center">'+esc(name||'')+(joined.length?'<br>Você já está confirmado em <b style="color:#fff">'+esc(joined.join(' e '))+'</b>':'')+'</p><button class="btn" data-close>Ver cronograma</button>');
+ wantAct=null;pickedSize='';await loadEvent();
+}
+$('pixBox').addEventListener('click',async e=>{const t=e.target,g=k=>t.closest('['+k+']');
+ if(g('data-close')){closeSheet();return}
+ if(g('data-size')){pickedSize=g('data-size').dataset.size;g('data-size').parentElement.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===g('data-size')));return}
+ if(g('data-tlist'))return ticketSheet(+g('data-tlist').dataset.tlist||null);
+ if(g('data-pick')){pickedSize='';return buySheet(EV.tickets.find(x=>x.id===+g('data-pick').dataset.pick))}
+ if(g('data-buy'))return buy(EV.tickets.find(x=>x.id===+g('data-buy').dataset.buy));
+ if(g('data-enroll')){try{const r=await ev('enroll',{method:'POST',body:JSON.stringify({event_id:evId,activity_id:+g('data-enroll').dataset.enroll})});sheetOpen('<div style="text-align:center;font-size:54px">✅</div><p class="hi" style="text-align:center">Você está dentro!</p><p class="mut" style="text-align:center">'+esc(r.activity||'')+'</p><button class="btn" data-close>Ver cronograma</button>');await loadEvent()}catch(err){sheetOpen('<div class="box warn">'+esc(eErr(err))+'</div><button class="btn alt" data-close>Fechar</button>')}return}
+ if(g('data-leave')){try{await ev('leave',{method:'POST',body:JSON.stringify({event_id:evId,activity_id:+g('data-leave').dataset.leave})});closeSheet();await loadEvent()}catch(err){sheetOpen('<div class="box warn">'+esc(eErr(err))+'</div><button class="btn alt" data-close>Fechar</button>')}}});
+$('evBody').addEventListener('click',e=>{const t=e.target,g=k=>t.closest('['+k+']');
+ if(g('data-tlist'))return ticketSheet(null);
+ if(g('data-repay'))return payPix(g('data-repay').dataset.repay,EV.pending?.name,EV.pending?.amount_cents);
+ if(g('data-a'))return activitySheet(EV.activities.find(x=>x.id===+g('data-a').dataset.a))});
 
 // ---- Dash ----
 let unit='bike',me=null;try{unit=localStorage.getItem('clubpop_active_unit')==='gym'?'gym':'bike'}catch{}

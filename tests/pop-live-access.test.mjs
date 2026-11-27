@@ -82,28 +82,49 @@ globalThis.fetch=async(url,init={})=>{const u=String(url);
  return realFetch(url,init)};
 const adminCall=async(path,body,method)=>{const r=await worker.fetch(new Request('https://worker'+path,{method:method||(body?'POST':'GET'),headers:{'Content-Type':'application/json','x-clubpop-admin-cookie':'s=1'},...(body?{body:JSON.stringify(body)}:{})}),env,{waitUntil(){}});return {status:r.status,body:await r.json().catch(()=>({}))}};
 const day=new Date(Date.now()+10*864e5).toISOString().slice(0,10);
-admin='reception';assert.equal((await adminCall('/admin/pop-live-events',{unit:'bike',name:'Games',date:day,time:'09:00'})).status,403);admin='admin';
-assert.equal((await adminCall('/admin/pop-live-events',{unit:'bike',name:'Games',date:day,time:'09:00',paid:true,price:'0,50'})).body.error,'VALOR_INVALIDO');
-const free=await adminCall('/admin/pop-live-events',{unit:'gym',kind:'special_class',name:'Aula especial de Natal',date:day,time:'19:00',capacity:1,status:'published'});assert.equal(free.status,200,JSON.stringify(free.body));
-const paid=await adminCall('/admin/pop-live-events',{unit:'bike',name:'Bike Pop Games 1ª Edição',date:day,time:'09:00',capacity:20,paid:true,price:'49,90',status:'published',location:'Bike Pop'});assert.equal(paid.status,200);
-await adminCall('/admin/pop-live-events',{unit:'bike',name:'Rascunho',date:day,time:'10:00'});
-// Dash lists only published events.
-let evs=(await call('/pop-live/student?unit=bike&action=events',null,vt)).body.events;assert.deepEqual(evs.map(e=>e.name).sort(),['Aula especial de Natal','Bike Pop Games 1ª Edição']);
-// Free: confirmed at once; capacity 1 → sold out for the next person.
-assert.equal((await call('/pop-live/student?unit=gym&action=ticket',{event_id:free.body.id},vt)).body.status,'confirmed');
-assert.equal((await call('/pop-live/student?unit=gym&action=ticket',{event_id:free.body.id},cp.body.token)).body.error,'ESGOTADO');
-// Paid: a store Pix order, charged by the existing checkout; approval confirms the ticket.
-const tk=await call('/pop-live/student?unit=bike&action=ticket',{event_id:paid.body.id},vt);assert.equal(tk.body.status,'pending');assert.equal(tk.body.amountCents,4990);
-assert.equal((await call('/pop-live/student?unit=bike&action=ticket',{event_id:paid.body.id},vt)).body.orderId,tk.body.orderId,'same open order is reused');
+admin='reception';assert.equal((await adminCall('/admin/pop-live-events',{unit:'both',name:'Games',date:day,time:'08:00'})).status,403);admin='admin';
+const ev=await adminCall('/admin/pop-live-events',{unit:'both',kind:'event',name:'Bike Pop Games 1ª Edição',date:day,time:'08:00',end_time:'14:00',status:'published'});assert.equal(ev.status,200,JSON.stringify(ev.body));
+const E='/admin/pop-live-events?id='+ev.body.id,op=b=>adminCall(E,b);
+assert.equal((await op({op:'activity_add',unit:'bike',start:'09:00',end:'08:00',activity_type:'Autódromo Pop',seats:12})).body.error,'HORARIO_INVALIDO');
+const A={};
+A.m1=(await op({op:'activity_add',unit:'bike',start:'08:00',end:'08:45',activity_type:'Desafio de Distância',name:'Maratona Pop 5 km',seats:2,is_main:true})).body.activity_id;
+A.auto=(await op({op:'activity_add',unit:'bike',start:'09:00',end:'09:45',activity_type:'Autódromo Pop',seats:12})).body.activity_id;
+A.heart=(await op({op:'activity_add',unit:'gym',start:'09:00',end:'09:40',activity_type:'Batalha dos Batimentos',seats:10})).body.activity_id;
+A.surv=(await op({op:'activity_add',unit:'bike',start:'10:00',end:'10:30',activity_type:'Sobrevivência',seats:1})).body.activity_id;
+A.m2=(await op({op:'activity_add',unit:'bike',start:'13:00',end:'13:45',activity_type:'Desafio de Distância',name:'Maratona Pop 5 km',seats:12,is_main:true})).body.activity_id;
+assert.equal((await op({op:'ticket_add',name:'Sem nada',price:'10',extra_credits:0})).body.error,'INGRESSO_SEM_ATIVIDADES');
+const T={};
+T.mar=(await op({op:'ticket_add',name:'Maratona',price:'49,90',main_name:'Maratona Pop 5 km',extra_credits:0})).body.ticket_type_id;
+T.combo=(await op({op:'ticket_add',name:'Maratona + camiseta + 2 atividades',price:'119,90',main_name:'Maratona Pop 5 km',extra_credits:2,gifts:'Camiseta do evento',stock:30})).body.ticket_type_id;
+T.free=(await op({op:'ticket_add',name:'Experimente 1 atividade',price:'0',extra_credits:1})).body.ticket_type_id;
+// Student side: dash list, event detail, buying the combo from the Autódromo card.
+const S=(action,body,tok=vt,q='')=>call('/pop-live/student?unit=bike&action='+action+'&event_id='+ev.body.id+q,body,tok);
+let evs=(await S('events')).body.events;assert.equal(evs[0].from_cents,0);
+let d=(await S('event')).body;assert.equal(d.activities.length,5);assert.equal(d.tickets.length,3);assert.equal(d.tickets.find(t=>t.id===T.combo).shirt,true);
+assert.equal((await S('enroll',{activity_id:A.auto})).body.error,'SEM_SALDO','no ticket, no booking');
+assert.equal((await S('buy',{ticket_type_id:T.combo,activity_id:A.auto})).body.error,'ESCOLHA_O_TAMANHO_DA_CAMISETA');
+assert.equal((await S('buy',{ticket_type_id:T.mar,activity_id:A.auto})).body.error,'INGRESSO_NAO_DA_ACESSO_A_ATIVIDADE');
+const tk=await S('buy',{ticket_type_id:T.combo,activity_id:A.auto,shirt_size:'M'});assert.equal(tk.body.status,'pending');assert.equal(tk.body.amountCents,11990);
 const pix=await call('/checkout/pix/create',{orderId:tk.body.orderId},vt);assert.equal(pix.status,200,JSON.stringify(pix.body));assert.equal(pix.body.qrCode,'000201PIX');
-assert.equal((await call('/checkout/pix/status?orderId='+tk.body.orderId,null,vt)).body.status,'pending');
 const o=mp.get(pix.body.providerOrderId);o.status='processed';o.total_paid_amount=o.total_amount;o.transactions.payments[0].status='processed';
-const st=await call('/checkout/pix/status?orderId='+tk.body.orderId,null,vt);assert.equal(st.body.status,'approved',JSON.stringify(st.body));
-evs=(await call('/pop-live/student?unit=bike&action=events',null,vt)).body.events;assert.equal(evs.find(e=>e.id===paid.body.id).my_status,'paid');
-// Admin sees the tickets, with visitor flag; price cannot change once sold.
-const det=await adminCall('/admin/pop-live-events?id='+paid.body.id);assert.equal(det.body.tickets[0].status,'paid');assert.equal(det.body.tickets[0].visitor,1);
-assert.equal((await adminCall('/admin/pop-live-events?id='+paid.body.id,{unit:'bike',name:'Bike Pop Games 1ª Edição',date:day,time:'09:00',capacity:20,paid:true,price:'59,90',status:'published'},'PUT')).body.error,'VALOR_NAO_PODE_MUDAR_COM_INGRESSOS_VENDIDOS');
+const st=await call('/checkout/pix/status?orderId='+tk.body.orderId,null,vt);assert.equal(st.body.status,'approved',JSON.stringify(st.body));assert.deepEqual(st.body.joined,['Autódromo Pop']);
+d=(await S('event')).body;assert.equal(d.balance.extras.left,1);assert.deepEqual(d.balance.mains['Maratona Pop 5 km'],{rights:1,used:0});
+// The main right books one Maratona; the extra balance never books the other session.
+assert.equal((await S('enroll',{activity_id:A.m1})).body.kind,'main');
+assert.equal((await S('enroll',{activity_id:A.m2})).body.error,'SEM_DIREITO_ATIVIDADE_PRINCIPAL');
+assert.match((await S('enroll',{activity_id:A.heart})).body.error,/^HORARIO_CONFLITA:Autódromo Pop/);
+assert.equal((await S('enroll',{activity_id:A.surv})).body.kind,'extra');
+d=(await S('event')).body;assert.equal(d.balance.extras.left,0);assert.equal(d.activities.find(a=>a.id===A.surv).left,0);
+// Sold out: the free ticket cannot take the full Sobrevivência; another student gets the second Maratona seat with a new ticket.
+assert.equal((await S('buy',{ticket_type_id:T.free,activity_id:A.surv},cp.body.token)).body.error,'ESGOTADO');
+const fr=await S('buy',{ticket_type_id:T.free,activity_id:A.auto},cp.body.token);assert.equal(fr.body.status,'confirmed');assert.deepEqual(fr.body.joined,['Autódromo Pop']);
+// Leaving returns the right; admin sees buyers (shirt size) and bookings.
+assert.equal((await S('leave',{activity_id:A.surv})).body.status,'left');assert.equal((await S('event')).body.balance.extras.left,1);
+const det=(await adminCall(E)).body;assert.equal(det.purchases.find(p=>p.ticket==='Maratona + camiseta + 2 atividades').shirt_size,'M');assert.equal(det.purchases[0].visitor,1);
+assert.equal(det.enrollments.filter(n=>n.activity_id===A.auto).length,2);assert.equal(det.tickets.find(t=>t.id===T.combo).sold,1);
+assert.equal((await op({op:'ticket_delete',ticket_type_id:T.combo})).body.error,'INGRESSO_JA_VENDIDO_DESATIVE');
+assert.equal((await op({op:'activity_delete',activity_id:A.auto})).body.error,'ATIVIDADE_COM_INSCRITOS');
 // Visitor still cannot use store routes.
 assert.equal((await call('/checkout/pix/draft',{unit:'bike',itemType:'product',itemId:'x'},vt)).status,401);
 globalThis.fetch=realFetch;
-console.log('PASS Pop Live access: visitor signup, Pop Live-only session, Club rule kept, student through Pop Live, dash data, events with free and Pix tickets');
+console.log('PASS Pop Live access: visitor signup, Pop Live-only session, Club rule kept, student through Pop Live, dash data, events with schedule, main activities, ticket balance and Pix');
