@@ -113,8 +113,15 @@ adminPerms=['/admin-playlists.html'];assert.equal((await admin('action=overview'
 adminRole='admin';adminPerms=['*'];
 // Themed class linked to the official class: occupancy compared with regular classes of the same teacher.
 sql.exec(`INSERT INTO evo_attendance_sessions VALUES('bike','d1','2026-12-10','07:00','Bike','Douglas','done',30),('bike','d2','2026-12-11','07:00','Bike','Douglas','done',20),('bike','d3','2026-12-12','07:00','Bike','Douglas','done',10)`);
-assert.equal((await admin('',{op:'themed_add',month:'2026-12',teacher:'Douglas',class_name:'Divas do Pop',rhythm_id:pop.id,class_date:'2026-12-10',evo_session_id:'d1',artists:'Dua Lipa'})).status,200);
-const th=(await admin('action=themed&month=2026-12')).body;assert.equal(th.list[0].attendance,30);assert.deepEqual(th.comparison,{themed_avg:30,themed_classes:1,regular_avg:15,regular_classes:2});
+const ta=await admin('',{op:'themed_add',month:'2026-12',teacher:'Douglas',class_name:'Divas do Pop',rhythm_id:pop.id,class_date:'2026-12-10',evo_session_id:'d1',artists:'Dua Lipa'});assert.equal(ta.status,200);assert.equal(ta.body.notified,3,'students who asked for Pop');
+// The student sees "your request became a class": rhythm, the teacher they chose, their artists; only for matching requests.
+assert.equal((await admin('',{op:'themed_add',month:'2026-12',teacher:'Will',class_name:'Rock Ride',rhythm_id:rock.id,class_date:'2026-12-20',class_time:'19:00'})).body.notified,1);
+let th1=(await call('/member/pop-music?action=status',null,tBike)).body.themed;assert.deepEqual(th1.map(t=>t.class_name),['Divas do Pop','Rock Ride']);
+assert.equal(th1[0].your_teacher,true);assert.deepEqual(th1[0].your_artists,['Dua Lipa']);assert.equal(th1[1].your_teacher,true);
+assert.deepEqual((await call('/member/pop-music?action=status',null,tShared)).body.themed.map(t=>t.class_name),['Divas do Pop'],'no rock request, no rock notice');
+assert.equal((await call('/member/pop-music?action=status',null,tShared)).body.themed[0].your_teacher,true);
+assert.equal((await call('/member/pop-music?action=mine',null,tBike)).body.themed.length,2);
+const th=(await admin('action=themed&month=2026-12')).body;assert.equal(th.list[0].attendance,30);assert.equal(th.list.length,2);assert.deepEqual(th.comparison,{themed_avg:30,themed_classes:1,regular_avg:15,regular_classes:2});
 assert.equal((await admin('action=themed&month=2027-01')).body.comparison,null,'no fake indicators');
 
 // Monthly renewal: January opens alone; recovering December returns the old answer (without inactive Queen) and saves nothing until confirmed.

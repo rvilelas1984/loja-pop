@@ -347,9 +347,12 @@ async function loadPopMusicCard(unit){const card=document.getElementById('popMus
   if(!d||!d.open){card.hidden=true;return}
   const M=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'],next=M[Number(String(d.month).slice(5,7))%12];
   const btn=(t,alt)=>'<a href="/pop-music.html" style="display:block;text-align:center;background:'+(alt?'#ffffff22':'#e7d8ff')+';color:'+(alt?'#fff':'#2a0e52')+';text-decoration:none;border-radius:12px;padding:13px;font-weight:900;margin-top:12px">'+t+'</a>';
-  document.getElementById('popMusicBody').innerHTML=d.voted
+  const W=['dom','seg','ter','qua','qui','sex','sáb'],when=c=>{const dt=new Date(c.class_date+'T12:00:00');return W[dt.getDay()]+', '+c.class_date.slice(8,10)+'/'+c.class_date.slice(5,7)+(c.class_time?' às '+String(c.class_time).slice(0,5):'')};
+  const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const themed=(d.themed||[]).map(c=>'<div style="background:#ffffff1c;border:1px solid #e7d8ff55;border-radius:14px;padding:12px;margin:10px 0 2px"><div style="font-weight:900;font-size:15px">🎉 Seu pedido virou aula!</div><div style="font-size:13px;line-height:1.5;color:#f3ecff;margin-top:4px"><b>'+esc(c.class_name)+'</b>'+(c.rhythm?' · '+esc(c.rhythm):'')+'<br>'+when(c)+' com <b>'+esc(c.teacher)+'</b>'+(c.your_teacher?' (o professor que você indicou)':'')+(c.your_artists&&c.your_artists.length?'<br>Com '+esc(c.your_artists.join(', ')):'')+'</div></div>').join('');
+  document.getElementById('popMusicBody').innerHTML=themed+(d.voted
    ?'<h2 style="margin:6px 0;font-size:21px">Preferências do mês registradas ✓</h2><p style="margin:0;color:#e7d8ff;font-size:13px;line-height:1.5">Obrigado por participar! Suas escolhas vão inspirar as aulas temáticas. A próxima pesquisa abre em 1º de '+next+'.</p>'+btn('CONSULTAR MINHAS ESCOLHAS',true)
-   :'<h2 style="margin:6px 0;font-size:22px">Você escolhe. A gente pedala!</h2><p style="margin:0;color:#e7d8ff;font-size:13px;line-height:1.5">Quais artistas você gostaria de ouvir nas aulas deste mês? Escolha seus ritmos favoritos e indique os professores.</p>'+btn('ESCOLHER MINHAS PLAYLISTS →');
+   :'<h2 style="margin:6px 0;font-size:22px">Você escolhe. A gente pedala!</h2><p style="margin:0;color:#e7d8ff;font-size:13px;line-height:1.5">Quais artistas você gostaria de ouvir nas aulas deste mês? Escolha seus ritmos favoritos e indique os professores.</p>'+btn('ESCOLHER MINHAS PLAYLISTS →'));
   card.hidden=false;
  }catch(e){popMusicStatus=null;card.hidden=true}}
 async function applyUnit(unit){
