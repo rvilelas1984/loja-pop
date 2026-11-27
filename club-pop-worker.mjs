@@ -2386,10 +2386,9 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         const member=await authenticatedMember(request,env);
         if(!member)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const linkedGym=member.gym_client_id||((await env.DB.prepare("SELECT gym_client_id FROM gym_member_links WHERE member_id=? AND status='ACTIVE' ORDER BY rowid DESC LIMIT 1").bind(member.id).first())?.gym_client_id||null);
-        const activeUnits=await clubActiveUnits(env,member.evo_member_id,linkedGym);
-        if(!activeUnits.length)return json({ok:false,error:"CONTRATO_INATIVO"},403);
+        // Pop Live is open to everyone (students, former students and visitors) in both units.
         const unit=String(url.searchParams.get("unit")||"");
-        if(!["bike","gym"].includes(unit)||!activeUnits.includes(unit))return json({ok:false,error:"UNIDADE_NAO_AUTORIZADA",activeUnits},403);
+        if(!["bike","gym"].includes(unit))return json({ok:false,error:"UNIDADE_INVALIDA"},400);
         // Own EVO id in that unit; with shared access (e.g. Bike Pop recurring plan that also opens Gym Pop) the student
         // has no id in the other unit and checks in with the cross-unit id 800000000000+members.id, the same one the
         // tablet uses when the teacher adds that student by CPF (names, photo and results resolve from the home unit).
@@ -2417,7 +2416,8 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           const profile=await env.DB.prepare("SELECT height,initial_weight FROM pop_fit_profile WHERE member_id=?").bind(member.id).first();
           const recent=await env.DB.prepare("SELECT weight FROM pop_fit_entries WHERE member_id=? AND weight>0 ORDER BY updated_at DESC LIMIT 1").bind(member.id).first();
           const birth=String(member.birth_date||personal.birthDate||personal.birth_date||"").slice(0,10);
-          const sexRaw=String(personal.gender||personal.sex||personal.genderDescription||"").trim().toLowerCase();
+          const override=await env.DB.prepare("SELECT sex FROM pop_live_health_overrides WHERE member_id=?").bind(member.id).first().catch(()=>null);
+          const sexRaw=String(personal.gender||personal.sex||personal.genderDescription||override?.sex||"").trim().toLowerCase();
           const sex=["m","male","masculino"].includes(sexRaw)?"M":["f","female","feminino"].includes(sexRaw)?"F":"";
           const rawHeight=Number(String(profile?.height||personal.height||personal.altura||0).replace(',','.'));const height=rawHeight>=1&&rawHeight<=2.5?Math.round(rawHeight*1000)/10:rawHeight||null;
           const weight=Number(profile?.initial_weight||recent?.weight||0)||null;
@@ -2430,6 +2430,19 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           if(height!==null&&(!Number.isFinite(height)||height<100||height>230))return json({ok:false,error:"ALTURA_INVALIDA"},400);
           await env.DB.prepare("INSERT INTO pop_fit_profile(member_id,height,initial_weight,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET height=COALESCE(excluded.height,pop_fit_profile.height),initial_weight=excluded.initial_weight,updated_at=CURRENT_TIMESTAMP").bind(member.id,height,weight).run();
           return json({ok:true,health:{weight,height}});
+        }
+        if(action==="dash"&&request.method==="GET"){
+          // Pop Live dash: booked classes (EVO reservations of this student in this unit), upcoming events and Pop Fit summary.
+          const booked=crossUnit?[]:((await env.DB.prepare(`SELECT DISTINCT session_id FROM checkin_reservation_snapshots WHERE unit=? AND evo_member_id=? AND removed=0
+            AND activity_date BETWEEN date('now','-3 hours') AND date('now','-3 hours','+2 days')`).bind(unit,memberId).all().catch(()=>({results:[]}))).results||[]).map(r=>String(r.session_id));
+          const events=((await env.DB.prepare(`SELECT id,name,event_date,location FROM pop_live_game_events WHERE event_date>=date('now','-3 hours') ORDER BY event_date,id LIMIT 6`).all().catch(()=>({results:[]}))).results||[]);
+          const perf=((await env.DB.prepare(`SELECT s.class_name,s.starts_at,s.unit,p.calories_estimated calories,p.distance_km,p.duration_seconds FROM pop_live_member_performance p JOIN pop_live_sessions s ON s.id=p.session_id
+            WHERE p.member_id=? AND s.status='closed' ORDER BY s.starts_at DESC LIMIT 20`).bind(member.id).all().catch(()=>({results:[]}))).results||[]);
+          const weekAgo=new Date(Date.now()-3*3600e3-7*86400e3).toISOString().slice(0,10);
+          const week=perf.filter(p=>String(p.starts_at||"").slice(0,10)>=weekAgo);
+          return json({ok:true,unit,scope:member.session_scope==="live"?"live":"club",visitor:crossUnit,booked,events,
+            fit:{week_classes:week.length,week_kcal:Math.round(week.reduce((a,p)=>a+(Number(p.calories)||0),0)),week_km:Math.round(week.reduce((a,p)=>a+(Number(p.distance_km)||0),0)*10)/10,
+              last:perf.slice(0,3).map(p=>({name:p.class_name,starts_at:p.starts_at,unit:p.unit,calories:Math.round(Number(p.calories)||0),distance_km:Math.round((Number(p.distance_km)||0)*10)/10}))}});
         }
         if(!["classes","checkin"].includes(action))return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(request.method==="GET"){
@@ -3836,6 +3849,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
         const local=await clubFindLocal(env,cpf,email,birthDate);
         if(local.incomplete)return json({ok:false,error:"CADASTRO_INCOMPLETO",whatsappUrl:CLUB_DATA_URL},409);
+        if(local.missing&&body.app==="live")return json({ok:false,error:"NAO_ENCONTRADO",canSignup:true},404);
         if(!local.matched)return json({ok:false,error:"DADOS_NAO_CONFEREM"},401);
         const bike=local.profiles.find(p=>p.unit==="bike");
         const gym=local.profiles.find(p=>p.unit==="gym");
@@ -4023,7 +4037,8 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
 
         const registered=await env.DB.prepare("SELECT evo_member_id,gym_client_id FROM members WHERE id=?").bind(session.member_id).first();
         const activeUnits=await clubActiveUnits(env,registered?.evo_member_id,registered?.gym_client_id);
-        const auth = activeUnits.length?await createSession(env, session.member_id, body.rememberDevice === true):null;
+        const liveOnly=body.app==="live"&&!activeUnits.length;
+        const auth = activeUnits.length||liveOnly?await createSession(env, session.member_id, body.rememberDevice === true, liveOnly?"live":null):null;
 
         await audit(
           env,
@@ -4038,8 +4053,9 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           token: auth?.token||null,
           expiresAt: auth?.expiresAt||null,
           activeUnits,
-          accessBlocked:!activeUnits.length,
-          whatsappUrl:!activeUnits.length?CLUB_RECEPTION_URL:null,
+          accessBlocked:!activeUnits.length&&!liveOnly,
+          scope:liveOnly?"live":"club",
+          whatsappUrl:!activeUnits.length&&!liveOnly?CLUB_RECEPTION_URL:null,
         });
       }
 
@@ -4048,6 +4064,50 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
       // =====================================================
 
       // Recuperação pública: verifica cadastro, limita tentativas e só troca PIN após aceite do WhatsApp.
+      // Pop Live account for people who are not students (visitors). Same CPF + 6-digit PIN login; the session
+      // reaches only Pop Live and Pop Fit. Students found in EVO are sent to the first access instead.
+      if(request.method==="POST" && url.pathname==="/auth/pop-live-signup"){
+        await ensurePopLiveAccountTables(env);
+        const b=await readJson(request);
+        const cpf=normalizeCpf(b.cpf),email=normalizeEmail(b.email),birth=normalizeDate(b.birthDate),pin=String(b.pin||""),phone=String(b.phone||"").replace(/\D/g,"");
+        const name=String(b.name||"").replace(/[\u0000-\u001f]/g," ").replace(/\s+/g," ").trim().slice(0,120),sex=String(b.sex||"").toLowerCase();
+        if(!cpfValid(cpf))return json({ok:false,error:"CPF_INVALIDO"},400);
+        const parts=name.split(" ");
+        if(parts.length<2||name.length<5)return json({ok:false,error:"NOME_COMPLETO_OBRIGATORIO"},400);
+        if(!email||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return json({ok:false,error:"EMAIL_INVALIDO"},400);
+        const age=birth?Math.floor((Date.now()-Date.parse(birth+"T12:00:00Z"))/31557600000):NaN;
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(birth)||!(age>=12&&age<=110))return json({ok:false,error:"DATA_NASCIMENTO_INVALIDA"},400);
+        if(!/^\d{10,11}$/.test(phone))return json({ok:false,error:"CELULAR_INVALIDO"},400);
+        if(!["m","f"].includes(sex))return json({ok:false,error:"SEXO_OBRIGATORIO"},400);
+        if(!/^\d{6}$/.test(pin))return json({ok:false,error:"PIN_DEVE_TER_6_NUMEROS"},400);
+        if(b.terms!==true)return json({ok:false,error:"ACEITE_OS_TERMOS"},400);
+        const ipHash=await sha256(String(request.headers.get("CF-Connecting-IP")||"unknown"));
+        const recent=await env.DB.prepare("SELECT COUNT(*) n FROM pop_live_signup_attempts WHERE ip_hash=? AND created_at>datetime('now','-1 hour')").bind(ipHash).first();
+        if(Number(recent?.n||0)>=8)return json({ok:false,error:"MUITAS_TENTATIVAS_TENTE_MAIS_TARDE"},429);
+        await env.DB.prepare("INSERT INTO pop_live_signup_attempts(ip_hash) VALUES(?)").bind(ipHash).run();
+        const cpfHash=await sha256(cpf);
+        const existing=await env.DB.prepare("SELECT id,pin_hash FROM members WHERE cpf_hash=? LIMIT 1").bind(cpfHash).first();
+        if(existing?.pin_hash)return json({ok:false,error:"CONTA_JA_CRIADA",hasAccount:true},409);
+        const local=await clubFindLocal(env,cpf,email,birth);
+        if(!local.missing)return json({ok:false,error:"ALUNO_ENCONTRADO_USE_PRIMEIRO_ACESSO"},409);
+        const salt=randomToken(16),pinHash=await hashPin(pin,salt);
+        const first=parts[0],last=parts.slice(1).join(" ");
+        let memberId=existing?.id;
+        if(memberId){
+          await env.DB.prepare("UPDATE members SET cpf_last4=?,first_name=?,last_name=?,email=?,birth_date=?,pin_hash=?,pin_salt=?,pin_created_at=CURRENT_TIMESTAMP,failed_login_attempts=0,locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND pin_hash IS NULL").bind(cpf.slice(-4),first,last,email,birth,pinHash,salt,memberId).run();
+        }else{
+          const r=await env.DB.prepare("INSERT INTO members(evo_member_id,cpf_hash,cpf_last4,first_name,last_name,email,birth_date,pin_hash,pin_salt,pin_created_at) VALUES(NULL,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)").bind(cpfHash,cpf.slice(-4),first,last,email,birth,pinHash,salt).run();
+          memberId=Number(r.meta?.last_row_id);
+        }
+        await env.DB.batch([
+          env.DB.prepare("INSERT INTO pop_live_accounts(member_id,phone) VALUES(?,?) ON CONFLICT(member_id) DO UPDATE SET phone=excluded.phone").bind(memberId,phone),
+          env.DB.prepare("INSERT INTO pop_live_health_overrides(member_id,sex,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(member_id) DO UPDATE SET sex=excluded.sex,updated_at=CURRENT_TIMESTAMP").bind(memberId,sex)
+        ]);
+        const auth=await createSession(env,memberId,b.rememberDevice===true,"live");
+        await audit(env,"MEMBER",String(memberId),"POP_LIVE_ACCOUNT_CREATED");
+        return json({ok:true,token:auth.token,expiresAt:auth.expiresAt,member:{firstName:first,scope:"live"}});
+      }
+
       if(request.method==="POST" && url.pathname==="/auth/recover-pin"){
         const generic=()=>json({ok:true,message:"Se os dados estiverem corretos e o WhatsApp disponível, você receberá um novo PIN."});
         const b=await readJson(request),cpf=normalizeCpf(b.cpf),email=normalizeEmail(b.email),birth=normalizeDate(b.birthDate);
@@ -4199,8 +4259,10 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         `).bind(member.id).run();
 
         const activeUnits=await clubActiveUnits(env,member.evo_member_id,member.gym_client_id);
-        if(!activeUnits.length)return json({ok:false,error:"CONTRATO_INATIVO",whatsappUrl:CLUB_RECEPTION_URL},403);
-        const auth = await createSession(env, member.id, body.rememberDevice === true);
+        // Entering through Pop Live: anyone with an account gets in; without an active contract the session is Pop Live only.
+        const liveOnly=body.app==="live"&&!activeUnits.length;
+        if(!activeUnits.length&&!liveOnly)return json({ok:false,error:"CONTRATO_INATIVO",whatsappUrl:CLUB_RECEPTION_URL},403);
+        const auth = await createSession(env, member.id, body.rememberDevice === true, liveOnly?"live":null);
 
         await audit(
           env,
@@ -4213,7 +4275,7 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           ok: true,
           token: auth.token,
           expiresAt: auth.expiresAt,
-          member: {...publicMember(member),activeUnits},
+          member: {...publicMember(member),activeUnits,scope:liveOnly?"live":"club"},
         });
       }
 
@@ -4254,9 +4316,10 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
           }, 401);
         }
 
+        if(member.session_scope==="live")return json({ok:true,member:{...publicMember(member),activeUnits:[],scope:"live"}});
         const activeUnits=await clubActiveUnits(env,member.evo_member_id,member.gym_client_id);
         if(!activeUnits.length)return json({ok:false,error:"CONTRATO_INATIVO",whatsappUrl:CLUB_RECEPTION_URL},403);
-        return json({ok:true,member:{...publicMember(member),activeUnits}});
+        return json({ok:true,member:{...publicMember(member),activeUnits,scope:"club"}});
       }
 
       // =====================================================
@@ -5962,15 +6025,34 @@ async function findGymEvoMember(env, cpf) {
 // AUTENTICAÇÃO
 // =========================================================
 
+// Pop Live is open to everyone: visitors (and former students) get a "live" session that reaches only Pop Live,
+// Pop Fit and the profile. Club Pop sessions (active contract) are unchanged.
+const POP_LIVE_PATHS=new Set(["/auth/me","/auth/logout","/auth/change-pin","/pop-live/student","/member/pop-fit","/member/profile-photo","/member/app-analytics","/student-next-class"]);
+let popLiveTablesReady=false;
+async function ensurePopLiveAccountTables(env){
+  if(popLiveTablesReady)return;
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS auth_session_scopes(token_hash TEXT PRIMARY KEY,scope TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_live_accounts(member_id INTEGER PRIMARY KEY,phone TEXT,source TEXT NOT NULL DEFAULT 'pop_live_signup',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS pop_live_signup_attempts(id INTEGER PRIMARY KEY AUTOINCREMENT,ip_hash TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+  ]);
+  popLiveTablesReady=true;
+}
+function cpfValid(cpf){
+  if(!/^\d{11}$/.test(cpf)||/^(\d)\1{10}$/.test(cpf))return false;
+  const dv=n=>{let t=0;for(let i=0;i<n;i++)t+=Number(cpf[i])*(n+1-i);const r=(t*10)%11;return r===10?0:r};
+  return dv(9)===Number(cpf[9])&&dv(10)===Number(cpf[10]);
+}
 async function authenticatedMember(request, env) {
   const token = bearer(request);
 
   if (!token) return null;
 
   const tokenHash = await sha256(token);
+  await ensurePopLiveAccountTables(env);
 
   const member=await env.DB.prepare(`
-    SELECT m.*
+    SELECT m.*,(SELECT sc.scope FROM auth_session_scopes sc WHERE sc.token_hash=s.token_hash) AS session_scope
     FROM auth_sessions s
     JOIN members m ON m.id = s.member_id
     WHERE s.token_hash = ?
@@ -5982,10 +6064,14 @@ async function authenticatedMember(request, env) {
     tokenHash,
     new Date().toISOString()
   ).first();
+  if(member&&member.session_scope==="live"){
+    const path=new URL(request.url).pathname;
+    if(!POP_LIVE_PATHS.has(path))return null;
+  }
   return normalizeMemberIds(member);
 }
 
-async function createSession(env, memberId, rememberDevice = false) {
+async function createSession(env, memberId, rememberDevice = false, scope = null) {
   const token = randomToken(32);
   const tokenHash = await sha256(token);
 
@@ -6004,6 +6090,7 @@ async function createSession(env, memberId, rememberDevice = false) {
     tokenHash,
     expiresAt
   ).run();
+  if(scope){await ensurePopLiveAccountTables(env);await env.DB.prepare("INSERT OR REPLACE INTO auth_session_scopes(token_hash,scope) VALUES(?,?)").bind(tokenHash,scope).run();}
 
   return {
     token,
