@@ -74,9 +74,9 @@ const keyBytes=crypto.getRandomValues(new Uint8Array(32)),aes=await crypto.subtl
 const cipher=async v=>{const iv=crypto.getRandomValues(new Uint8Array(12)),c=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode('bike:production')},aes,new TextEncoder().encode(v));return Buffer.from(iv).toString('base64')+'.'+Buffer.from(c).toString('base64')};
 sql.prepare('INSERT INTO club_mp_credentials VALUES(?,?,?,?)').run('bike','production',await cipher('mp-token'),await cipher('mp-secret'));
 env.CLUB_PIX_PRODUCTION_ENABLED='true';env.MERCADOPAGO_CONFIG_ENCRYPTION_KEY=Buffer.from(keyBytes).toString('base64');
-const realFetch=globalThis.fetch,mp=new Map();let admin='admin';
+const realFetch=globalThis.fetch,mp=new Map();let admin='admin',perms=['*'];
 globalThis.fetch=async(url,init={})=>{const u=String(url);
- if(u.includes('/api/admin-auth?route=me'))return Response.json({role:admin});
+ if(u.includes('/api/admin-auth?route=me'))return Response.json({role:admin,permissions:perms});
  if(u==='https://api.mercadopago.com/v1/orders'&&init.method==='POST'){const b=JSON.parse(init.body),o={id:'MP'+(mp.size+1),external_reference:b.external_reference,total_amount:b.total_amount,status:'action_required',transactions:{payments:[{status:'pending',payment_method:{id:'pix',qr_code:'000201PIX',qr_code_base64:'QR'}}]}};mp.set(o.id,o);return Response.json(o)}
  const m=u.match(/^https:\/\/api\.mercadopago\.com\/v1\/orders\/(.+)$/);if(m)return Response.json(mp.get(decodeURIComponent(m[1])));
  return realFetch(url,init)};
@@ -145,6 +145,22 @@ assert.equal((await S('event')).body.activities.find(a=>a.id===A.surv).equipment
 const ne=(await S('enroll',{activity_id:A.surv,seat_number:1})).body;assert.equal(ne.status,'enrolled');assert.equal(ne.seat,null);assert.equal(ne.equipment,'none');
 assert.equal((await op({op:'ticket_delete',ticket_type_id:T.combo})).body.error,'INGRESSO_JA_VENDIDO_DESATIVE');
 assert.equal((await op({op:'activity_delete',activity_id:A.auto})).body.error,'ATIVIDADE_COM_INSCRITOS');
+// Counter sale: find the student by CPF / Pop Live ID and sell a ticket paid at the desk.
+assert.equal((await op({op:'member_find',identifier:'00000000191'})).body.error,'ALUNO_NAO_ENCONTRADO');
+const fm=(await op({op:'member_find',identifier:'529.982.247-25'})).body;assert.equal(fm.members.length,1);assert.equal(fm.members[0].visitor,0);
+assert.equal((await op({op:'member_find',identifier:String(800000000000+fm.members[0].id)})).body.members[0].id,fm.members[0].id);
+const evA=await S('event',undefined,cp.body.token);assert.ok(evA.body.balance,JSON.stringify(evA.body));const before=evA.body.balance.tickets.length;
+assert.equal((await op({op:'ticket_sell',ticket_type_id:T.combo,member_id:fm.members[0].id,payment_method:'credit'})).body.error,'ESCOLHA_O_TAMANHO_DA_CAMISETA');
+assert.equal((await op({op:'ticket_sell',ticket_type_id:T.combo,member_id:fm.members[0].id,payment_method:'cheque',shirt_size:'G'})).body.error,'FORMA_DE_PAGAMENTO_INVALIDA');
+assert.ok((await op({op:'ticket_sell',ticket_type_id:T.combo,member_id:fm.members[0].id,payment_method:'credit',shirt_size:'G'})).body.purchase_id);
+assert.equal((await S('event',undefined,cp.body.token)).body.balance.tickets.length,before+1,'sold ticket shows in the student balance');
+const sold=(await adminCall(E)).body.purchases.find(p=>p.payment_method==='credit');assert.equal(sold.amount_cents,11990);assert.equal(sold.shirt_size,'G');
+// Reception: only with the Central Pop Live page released, and only view + sell.
+admin='reception';perms=['/tela-checkin.html'];assert.equal((await adminCall(E)).status,403);
+perms=['/admin-dispositivos-pop-live.html'];assert.equal((await adminCall(E)).status,200);
+assert.equal((await op({op:'member_find',identifier:'52998224725'})).status,200);
+assert.equal((await op({op:'ticket_delete',ticket_type_id:T.free})).body.error,'APENAS_ADMIN');
+admin='admin';perms=['*'];
 // Visitor still cannot use store routes.
 assert.equal((await call('/checkout/pix/draft',{unit:'bike',itemType:'product',itemId:'x'},vt)).status,401);
 globalThis.fetch=realFetch;
