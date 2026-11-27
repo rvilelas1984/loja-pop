@@ -125,6 +125,9 @@ assert.equal((await call('/member/pop-music?action=mine',null,tBike)).body.theme
 const up=(await call('/member/pop-music?action=status',null,tShared)).body.upcoming_themed;assert.deepEqual(up.map(t=>[t.class_name,t.evo_session_id,t.class_date]),[['Divas do Pop','d1','2026-12-10'],['Rock Ride',null,'2026-12-20']]);
 const th=(await admin('action=themed&month=2026-12')).body;assert.equal(th.list[0].attendance,30);assert.equal(th.list.length,2);assert.deepEqual(th.comparison,{themed_avg:30,themed_classes:1,regular_avg:15,regular_classes:2});
 assert.equal((await admin('action=themed&month=2027-01')).body.comparison,null,'no fake indicators');
+// Planned ahead without the official class: linked automatically by date + time once the EVO class is synced.
+sql.exec(`INSERT INTO evo_attendance_sessions VALUES('bike','d9','2026-12-20','19:00:00','Bike','Will','done',25)`);
+const th2=(await admin('action=themed&month=2026-12')).body.list.find(t=>t.class_name==='Rock Ride');assert.equal(th2.evo_session_id,'d9');assert.equal(th2.attendance,25);
 
 // Monthly renewal: January opens alone; recovering December returns the old answer (without inactive Queen) and saves nothing until confirmed.
 at('2027-01-01T03:30:00Z');
