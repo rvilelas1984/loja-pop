@@ -50,5 +50,13 @@ function ensurePopFitNav(){
  const content=document.getElementById('dashboard')||document.querySelector('main.app,main.shell,.app,.shell')||document.querySelector('main');content?.classList.add('cp-student-navigation-content');
 }
 function unitChanged(){ensurePopFitNav();refresh()}
-if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>{ensurePopFitNav();refresh()});else{ensurePopFitNav();refresh()};window.addEventListener("pageshow",refresh);window.addEventListener("storage",e=>{if(e.key==="clubpop_active_unit")refresh()});document.addEventListener("click",()=>setTimeout(unitChanged,0),true);window.clubPopRefreshHeader=refresh;
+// Header avatar shows the student's profile photo (the same one on the TV), not only the initial.
+async function avatarPhoto(){
+ let url=null;const token=sessionStorage.getItem('clubpop_token');if(!token)return;
+ try{const c=JSON.parse(sessionStorage.getItem('clubpop_photo')||'null');if(c&&Date.now()-c.at<300000&&!/\/perfil(\.html)?$/.test(location.pathname))url=c.url;else{const r=await fetch('/api/auth?route=profile-photo',{headers:{Authorization:'Bearer '+token},cache:'no-store'});const d=await r.json().catch(()=>({}));url=r.ok&&d.ok?d.photoUrl||null:null;if(/\/perfil(\.html)?$/.test(location.pathname))sessionStorage.removeItem('clubpop_photo');else sessionStorage.setItem('clubpop_photo',JSON.stringify({url,at:Date.now()}))}}catch{}
+ const paint=()=>document.querySelectorAll('#avatar,.cp-header-avatar').forEach(el=>{if(url){el.style.backgroundImage='url("'+url+'")';el.style.backgroundSize='cover';el.style.backgroundPosition='center';el.style.color='transparent'}else{el.style.backgroundImage='';el.style.color=''}});
+ paint();setTimeout(paint,1500);setTimeout(paint,4000);
+}
+window.clubPopAvatarPhoto=()=>{try{sessionStorage.removeItem('clubpop_photo')}catch{}avatarPhoto()};
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>{ensurePopFitNav();refresh();avatarPhoto()});else{ensurePopFitNav();refresh();avatarPhoto()};window.addEventListener("pageshow",refresh);window.addEventListener("storage",e=>{if(e.key==="clubpop_active_unit")refresh()});document.addEventListener("click",()=>setTimeout(unitChanged,0),true);window.clubPopRefreshHeader=refresh;
 })();
