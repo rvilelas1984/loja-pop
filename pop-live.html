@@ -55,6 +55,7 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
 .seatgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px;margin:6px 0 4px;max-height:180px;overflow:auto}.seatgrid button{border:2px solid var(--line);background:var(--card);color:#fff;border-radius:10px;padding:8px 4px;font:800 14px system-ui;cursor:pointer}.seatgrid button:first-child{grid-column:span 2}.seatgrid button.on{border-color:var(--pink);background:#3a1430}.seatgrid button:disabled{opacity:.3;cursor:not-allowed}
 .act-btn{width:100%;text-align:left;color:#fff;font:inherit;cursor:pointer}.act-btn.mine{border-color:var(--green);background:#16261f}
 .seg button.on{border-color:var(--pink);background:#3a1430}
+.balbox{margin:14px 0 4px;padding:16px;border-radius:20px;background:linear-gradient(140deg,#ffd34a22,#ff2d9622);border:2px solid var(--yellow)}.balrow{display:flex;gap:14px;align-items:center}.balnum{min-width:64px;height:64px;border-radius:18px;background:var(--yellow);color:#1a1022;font-size:36px;font-weight:900;display:grid;place-items:center;padding:0 8px}.balchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.balchip{font-size:13px;font-weight:700;padding:6px 10px;border-radius:999px;background:#ffffff1a;color:#fff}.balchip.done{opacity:.6}
 </style></head><body>
 <main class="app">
  <div class="top"><div class="brand">POP <b>LIVE</b></div><a class="back" href="/" id="toEntry">← Início</a></div>
@@ -165,13 +166,24 @@ $('evBack').onclick=()=>{$('evView').classList.add('hide');$('dash').classList.r
 async function loadEvent(){try{EV=await ev('event');paintEvent()}catch(e){$('evBody').innerHTML='<div class="box warn">'+esc(eErr(e))+'</div>'}}
 const aName=a=>a.name||a.activity_type;
 function balanceTxt(b){const p=[];for(const [n,m] of Object.entries(b.mains||{}))if(m.rights)p.push('★ '+esc(n)+': '+(m.rights-m.used>0?(m.rights-m.used)+' para agendar':'agendada'));if(b.extras.unlimited)p.push('Extras livres');else if(b.extras.total)p.push('Saldo de atividades: '+b.extras.left);return p.join(' · ')}
+// Highlighted balance: how many activities the student can still book with the tickets bought.
+function balanceBox(b){
+ const mains=Object.entries(b.mains||{}).filter(([,m])=>m.rights).map(([n,m])=>({n,left:Math.max(0,m.rights-m.used)}));
+ const mainLeft=mains.reduce((s,m)=>s+m.left,0),extraLeft=b.extras.unlimited?0:Number(b.extras.left||0),total=mainLeft+extraLeft,free=!!b.extras.unlimited;
+ const nT=b.tickets.length,chips=mains.map(m=>'<span class="balchip'+(m.left?'':' done')+'">★ '+esc(m.n)+' · '+(m.left?m.left+' para agendar':'agendada ✓')+'</span>').join('')+
+  (free?'<span class="balchip">Atividades extras livres</span>':b.extras.total?'<span class="balchip'+(extraLeft?'':' done')+'">Atividades à escolha · '+(extraLeft?extraLeft+' para agendar':'usadas ✓')+'</span>':'');
+ const title=total?'Você tem '+total+(total===1?' atividade':' atividades')+' para agendar':free?'Seu passe libera as atividades':'Tudo agendado ✓';
+ return '<div class="balbox"><div class="balrow"><div class="balnum">'+(total?total:free?'∞':'✓')+'</div><div><b style="font-size:17px;line-height:1.2">'+title+'</b><div class="sm" style="color:#f3dbe9;margin-top:3px">🎟 '+nT+(nT===1?' ingresso':' ingressos')+' no seu Pop Live</div></div></div>'+
+  '<div class="balchips">'+chips+'</div>'+(total||free?'<button class="btn" data-sched style="margin-top:12px">Escolher atividade no cronograma ↓</button>':'')+'</div>';
+}
 function paintEvent(){
  const e=EV.event,b=EV.balance,has=b.tickets.length,open=EV.tickets.filter(t=>!t.out),from=open.length?Math.min(...open.map(t=>t.price_cents)):null;
  const gifts=b.tickets.filter(t=>t.gifts).map(t=>t.gifts+(t.shirt_size?' ('+t.shirt_size+')':''));
  let h='<div class="ev-head"'+(e.kind==='special_class'?' style="background:linear-gradient(150deg,#3b2a7a,#1d1540)"':'')+'><span class="sm" style="color:var(--yellow);font-weight:800">'+esc(when(e))+'</span><h3>'+esc(e.name)+'</h3><p class="sm" style="margin:0;color:#f3dbe9">'+esc(unitTxt[e.unit]||'')+(e.location?' · '+esc(e.location):'')+(e.description?'<br>'+esc(e.description):'')+'</p>'+
-  '<div class="top" style="margin-top:12px;padding-top:12px;border-top:1px dashed #ffffff40">'+(has?'<div><b>🎟 '+esc(b.tickets.map(t=>t.name).join(' + '))+'</b><div class="sm" style="color:#f3dbe9">'+balanceTxt(b)+(gifts.length?' · '+esc(gifts.join(', '))+' (retirar na recepção)':'')+'</div></div><button class="btn sm alt" data-tlist>+ Ingresso</button>':'<b>'+(from==null?'Ingressos em breve':from?'A partir de '+brl(from):'Gratuito')+'</b>'+(from!=null?'<button class="btn sm" data-tlist>Ver ingressos</button>':''))+'</div></div>';
+  '<div class="top" style="margin-top:12px;padding-top:12px;border-top:1px dashed #ffffff40">'+(has?'<div><b>🎟 '+esc(b.tickets.map(t=>t.name).join(' + '))+'</b>'+(gifts.length?'<div class="sm" style="color:#f3dbe9">'+esc(gifts.join(', '))+' (retirar na recepção)</div>':'')+'</div><button class="btn sm alt" data-tlist>+ Ingresso</button>':'<b>'+(from==null?'Ingressos em breve':from?'A partir de '+brl(from):'Gratuito')+'</b>'+(from!=null?'<button class="btn sm" data-tlist>Ver ingressos</button>':''))+'</div></div>';
  if(EV.pending&&EV.pending.order_id)h+='<div class="box warn"><b>Pix pendente · '+esc(EV.pending.name)+'</b><button class="btn sm" style="margin-top:8px" data-repay="'+esc(EV.pending.order_id)+'">Pagar agora</button></div>';
- h+='<h2>Cronograma</h2><p class="sm mut" style="margin:0">★ = atividade principal (1 por ingresso). Toque para entrar.</p>';
+ if(has)h+=balanceBox(b);
+ h+='<h2 id="evSched">Cronograma</h2><p class="sm mut" style="margin:0">★ = atividade principal (1 por ingresso). Toque para entrar.</p>';
  h+=EV.activities.map(a=>'<button class="lesson act-btn'+(a.mine?' mine':'')+'" data-a="'+a.id+'"><div class="lt"><b>'+esc(a.starts_at)+'</b><em>até '+esc(a.ends_at)+'</em></div><div><b style="font-size:15px">'+(Number(a.is_main)?'<span style="color:var(--yellow)">★ </span>':'')+esc(aName(a))+'</b><small>'+(Number(a.is_main)?'Principal · ':'')+esc(unitTxt[a.unit])+(a.name&&a.activity_type!=='Outra atividade'?' · '+esc(a.activity_type):'')+'</small></div>'+(a.mine?'<span class="badge">✓ '+(a.my_seat?eqName(a)+' '+pad2(a.my_seat):'Confirmado')+'</span>':'<span class="sm" style="font-weight:800;white-space:nowrap;color:'+(a.left?'var(--yellow)':'#ff8fa3')+'">'+(!a.left?'Esgotado':a.left===1?'1 vaga':a.left<=3?'Só '+a.left+' vagas':a.left+' vagas')+'</span>')+'</button>').join('')||'<p class="mut sm">Cronograma em breve.</p>';
  $('evBody').innerHTML=h;
 }
@@ -237,6 +249,7 @@ $('pixBox').addEventListener('click',async e=>{const t=e.target,g=k=>t.closest('
  if(g('data-enroll')){try{const r=await ev('enroll',{method:'POST',body:JSON.stringify({event_id:evId,activity_id:+g('data-enroll').dataset.enroll,seat_number:pickedSeat})});sheetOpen('<div style="text-align:center;font-size:54px">✅</div><p class="hi" style="text-align:center">Você está dentro!</p><p class="mut" style="text-align:center">'+esc(r.activity||'')+(r.seat?'<br>Sua '+(r.unit==='gym'?'relógio':'bike')+': <b style="color:#fff">'+pad2(r.seat)+'</b>':'')+'</p><button class="btn" data-close>Ver cronograma</button>');await loadEvent()}catch(err){sheetOpen('<div class="box warn">'+esc(eErr(err))+'</div><button class="btn alt" data-close>Fechar</button>')}return}
  if(g('data-leave')){try{await ev('leave',{method:'POST',body:JSON.stringify({event_id:evId,activity_id:+g('data-leave').dataset.leave})});closeSheet();await loadEvent()}catch(err){sheetOpen('<div class="box warn">'+esc(eErr(err))+'</div><button class="btn alt" data-close>Fechar</button>')}}});
 $('evBody').addEventListener('click',e=>{const t=e.target,g=k=>t.closest('['+k+']');
+ if(g('data-sched')){$('evSched').scrollIntoView({behavior:'smooth',block:'start'});return}
  if(g('data-tlist'))return ticketSheet(null);
  if(g('data-repay'))return payPix(g('data-repay').dataset.repay,EV.pending?.name,EV.pending?.amount_cents);
  if(g('data-a'))return activitySheet(EV.activities.find(x=>x.id===+g('data-a').dataset.a))});
