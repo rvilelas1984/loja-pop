@@ -2,6 +2,7 @@ import {studentPopMusic,adminPopMusic,publicPopMusic,ADMIN_PAGE as POP_MUSIC_PAG
 import {profilePhotoRoute} from './lib/profile-photo.mjs';
 import {readCheckinMirror,assertCheckinSessionDate} from './lib/checkin-mirror.mjs';
 import {popLiveOperation} from './lib/pop-live-operation.mjs';
+import {studentRecords,adminRecords} from './lib/pop-live-records.mjs';
 import {adminEvents,studentEvents,studentEventRoute,eventOrderValid,eventOrderSettled,EVENT_ITEM,TICKET_ITEM} from './lib/pop-live-events.mjs';
 import {memberUnitAccess,readAccessSettings,saveAccessSettings,accessCatalog} from './lib/unit-access.mjs';
 import {memberAttendanceIds,unitAttendanceHistory,unitAttendanceRows,unitStars} from './lib/unit-progress.mjs';
@@ -2305,6 +2306,12 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         }
         return json({ok:true,sessions:list});
       }
+      if(url.pathname==="/admin/pop-live-records"){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});const vd=await vr.json().catch(()=>({}));
+        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        return adminRecords(request,env.DB,url,json);
+      }
       if(url.pathname==="/admin/pop-live-events"){
         const ck=request.headers.get("x-clubpop-admin-cookie")||"";
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
@@ -2521,6 +2528,11 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
           return json({ok:true,unit,scope:member.session_scope==="live"?"live":"club",visitor:crossUnit,booked,events,
             fit:{week_classes:week.length,week_kcal:Math.round(week.reduce((a,p)=>a+(Number(p.calories)||0),0)),week_km:Math.round(week.reduce((a,p)=>a+(Number(p.distance_km)||0),0)*10)/10,
               last:perf.slice(0,3).map(p=>({name:p.class_name,starts_at:p.starts_at,unit:p.unit,calories:Math.round(Number(p.calories)||0),distance_km:Math.round((Number(p.distance_km)||0)*10)/10}))}});
+        }
+        // Pop Games records (Distância / Autódromo): rankings by race and sex, with the student's own position.
+        if(action==="records"&&request.method==="GET"){
+          const refs=[member.evo_member_id,member.gym_client_id,800000000000+Number(member.id)].filter(v=>v!=null&&v!=="").map(String);
+          return json(await studentRecords(env.DB,url,refs,null));
         }
         // Events: list, detail with schedule/tickets/balance, buy a ticket, book or leave an activity.
         if(["events","event","buy","enroll","leave"].includes(action)){

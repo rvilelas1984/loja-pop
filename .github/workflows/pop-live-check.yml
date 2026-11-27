@@ -2,7 +2,7 @@ name: Validate Pop Live operation
 on:
   push:
     branches: [main, work/pop-live-definitivo, fix/pop-live-api-routes-20261105]
-    paths: [lib/pop-live-games.mjs, lib/pop-live-events.mjs, tests/pop-live-access.test.mjs, club-pop-worker.mjs, tests/pop-live-games.test.mjs, lib/pop-live-photos.mjs, tests/pop-live-photos.test.mjs, lib/pop-live-operation.mjs, tests/pop-live-operation.test.mjs, tests/pop-live-refresh-suggested.test.mjs, migrations/20261104_pop_live_operation.sql, migrations/20261105_pop_live_manual_drafts.sql, migrations/20261105_pop_fit_weight_history.sql, .github/workflows/pop-live-check.yml]
+    paths: [lib/pop-live-games.mjs, lib/pop-live-records.mjs, tests/pop-live-records.test.mjs, lib/pop-live-events.mjs, tests/pop-live-access.test.mjs, club-pop-worker.mjs, tests/pop-live-games.test.mjs, lib/pop-live-photos.mjs, tests/pop-live-photos.test.mjs, lib/pop-live-operation.mjs, tests/pop-live-operation.test.mjs, tests/pop-live-refresh-suggested.test.mjs, migrations/20261104_pop_live_operation.sql, migrations/20261105_pop_live_manual_drafts.sql, migrations/20261105_pop_fit_weight_history.sql, .github/workflows/pop-live-check.yml]
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,4 +15,5 @@ jobs:
       - run: node tests/pop-live-games.test.mjs
       - run: node tests/pop-live-refresh-suggested.test.mjs
       - run: node tests/pop-live-photos.test.mjs
+      - run: node tests/pop-live-records.test.mjs
       - run: node tests/pop-live-access.test.mjs
