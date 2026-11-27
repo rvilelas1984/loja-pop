@@ -52,6 +52,12 @@
   <div><label>Forma de pagamento</label><select name="payment_method" required><option value="credit">Cartão de crédito</option><option value="debit">Cartão de débito</option><option value="pix">Pix no balcão</option><option value="cash">Dinheiro</option><option value="courtesy">Cortesia (R$ 0)</option></select></div>
   <div id="sellShirt" hidden><label>Tamanho da camiseta</label><select name="shirt_size"><option value="">Escolha</option><option>PP</option><option>P</option><option>M</option><option>G</option><option>GG</option><option>XG</option></select></div>
  </div><button id="sellBtn">Confirmar venda</button></div></form>
+ <section class="panel" id="eventFinance" hidden><h3>Indicadores financeiros</h3>
+ <div class="grid" id="financeTotals"></div><div id="financeReceipts"></div>
+ <h4>Auditoria de recebimentos por aula</h4><div id="attendanceAudit"></div><p id="auditMessage" role="status"></p>
+ <h4>Despesas do evento</h4><div id="financeExpenses"></div>
+ <form id="expenseForm"><div class="grid"><label>Descrição<input name="description" maxlength="140" placeholder="Ex.: compra de medalhas" required></label>
+ <label>Valor (R$)<input name="amount" inputmode="decimal" placeholder="0,00" required></label></div><button>Cadastrar despesa</button></form><p id="expenseStatus" role="status"></p></section>
  <h3>Compradores</h3><div id="emBuyers" class="muted"></div>
  <p id="emStatus" class="muted" role="status"></p>
 </section></details>
@@ -152,7 +158,72 @@ $('monitorSessions').addEventListener('click',async e=>{const b=e.target.closest
  $('events').onclick=ev=>{const ed=ev.target.closest('[data-ev-edit]'),op=ev.target.closest('[data-ev-open]');
   if(ed){const e=evList.find(x=>String(x.id)===ed.dataset.evEdit);if(!e)return;F('id').value=e.id;F('name').value=e.name;F('unit').value=e.unit;F('kind').value=e.kind;F('date').value=String(e.starts_at).slice(0,10);F('time').value=String(e.starts_at).slice(11,16);F('end_time').value=e.ends_at?String(e.ends_at).slice(11,16):'';F('location').value=e.location||'';F('status').value=e.status;F('sales_open').value=Number(e.sales_open)?'true':'false';F('description').value=e.description||'';$('cancelEventEdit').hidden=false;$('saveEvent').textContent='Salvar alterações';ef.scrollIntoView({behavior:'smooth'})}
   if(op)openEvent(op.dataset.evOpen)};
- async function openEvent(id){curId=Number(id);try{cur=await evApi(curId);}catch(e){msg('eventStatus',e.message);return}paintManage();$('eventManage').hidden=false;$('eventManage').scrollIntoView({behavior:'smooth'})}
+ const money=c=>(c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+ function paintFinance(f){
+  $('eventFinance').hidden=!f;if(!f)return;
+  renderAudit(f.audit||[]);
+  const status=f.balance>0?'positivo':f.balance<0?'negativo':'zerado';
+  $('financeTotals').innerHTML=[['Receita recebida',f.revenue],['Despesas',f.spent],['Saldo '+status,f.balance]].map(([label,value],i)=>'<div class="row">'+label+'<br><strong style="font-size:1.3rem;'+(i===2&&value?'color:'+(value>0?'#66e3a6':'#ff929e'):'')+'">'+money(value)+'</strong></div>').join('');
+  const methods={...PAYTXT,online_pix:'Pix pelo app',pix:'Pix no balcão'};
+  $('financeReceipts').textContent=f.receipts.map(r=>(methods[r.method]||r.method)+' · '+money(r.amount_cents)).join(' | ');
+  $('financeExpenses').innerHTML=f.expenses.map((x,i)=>'<div class="row">'+esc(x.description)+' · <b>'+money(x.amount_cents)+'</b> <button type="button" data-expense-edit="'+i+'">Editar</button> <button type="button" data-expense-delete="'+i+'">Excluir</button></div>').join('')||'Nenhuma despesa cadastrada.';
+ }
+ const auditLabels={review:'Conferir ingresso antigo do evento',paid:'Ingresso pago',free:'Ingresso gratuito',courtesy:'Cortesia',received:'Recebido no balcão',pending:'Pagamento pendente',missing:'Sem recebimento identificado'};
+ function renderAudit(list){
+  $('attendanceAudit').innerHTML=cur.activities.map(a=>{
+   const people=list.filter(p=>p.aid===a.id),pending=people.filter(p=>['missing','pending','review'].includes(p.state)).length;
+   const lines=people.map(p=>{
+    const evidence=[auditLabels[p.state],p.ticket,p.direct?money(p.direct_amount):'',p.method&&p.state!=='pending'?(PAYTXT[p.method]||'Pix pelo app'):'',p.recorded_by].filter(Boolean).map(esc).join(' · ');
+    const collect=p.state==='missing'||p.state==='pending';
+    return '<div class="row"><b>'+esc(p.person)+'</b> · '+(p.booked?'Com reserva':'Sem reserva')+' · '+(p.status==='planned'?'Em preparação':p.status==='running'?'Em aula':'Participou')+'<br>'+evidence+
+     (collect?'<details><summary>Registrar recebimento</summary><form data-audit-form data-sid="'+Number(p.sid)+'" data-raw="'+esc(p.raw)+'" data-pending="'+Number(p.pending_id||0)+'"><label>Forma de pagamento<select name="method" required><option value="">Escolha</option>'+Object.entries(PAYTXT).map(([k,v])=>'<option value="'+k+'">'+esc(v)+'</option>').join('')+'</select></label>'+
+     (p.pending_id?'Valor do ingresso: '+money(p.pending_amount):'<label>Valor recebido (R$)<input name="amount" inputmode="decimal" placeholder="0,00"></label>')+'<button>Confirmar recebimento</button></form></details>':'')+'</div>';
+   }).join('');
+   return '<details class="row"><summary><b>'+esc(a.starts_at)+' · '+esc(a.name||a.activity_type)+'</b> · '+people.length+' participante(s) · '+pending+' pendência(s)</summary>'+(lines||'Nenhum participante registrado na preparação ou execução.')+'</details>';
+  }).join('')||'Nenhuma atividade cadastrada.';
+ }
+ $('attendanceAudit').addEventListener('submit',async ev=>{
+  const form=ev.target.closest('[data-audit-form]');if(!form)return;ev.preventDefault();
+  const button=form.querySelector('button'),id=curId,method=form.elements.method.value;if(button.disabled)return;
+  const pending=Number(form.dataset.pending),raw=form.elements.amount?.value.trim()||'';
+  if(!pending&&method!=='courtesy'&&!/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(raw)){msg('auditMessage','Informe o valor recebido em reais.');return}
+  const amount=method==='courtesy'?0:Math.round(Number(raw.replace(/\./g,'').replace(',','.'))*100);
+  if(!pending&&method!=='courtesy'&&amount<=0){msg('auditMessage','O valor precisa ser maior que zero.');return}
+  if(!confirm('Confirmar '+(method==='courtesy'?'a cortesia':('o recebimento '+(pending?'do ingresso':money(amount))+' em '+PAYTXT[method]))+' para este participante?'))return;
+  button.disabled=true;
+  try{await post(pending?{op:'purchase_receive',purchase_id:pending,payment_method:method}:{op:'attendance_receive',session_id:Number(form.dataset.sid),participant_id:form.dataset.raw,payment_method:method,amount_cents:amount});
+   const updated=await evApi(id);if(curId===id){cur=updated;paintManage();msg('auditMessage','Recebimento conferido. Indicadores atualizados.')}}
+  catch(e){if(curId===id)msg('auditMessage',why(e))}finally{button.disabled=false}
+ });
+ $('financeExpenses').addEventListener('click',async ev=>{
+  const button=ev.target.closest('[data-expense-edit],[data-expense-delete]');if(!button||button.disabled)return;
+  const editing=button.hasAttribute('data-expense-edit'),id=curId,x=cur.finances?.expenses[Number(editing?button.dataset.expenseEdit:button.dataset.expenseDelete)];if(!x)return;
+  const payload={op:editing?'expense_update':'expense_delete',request_id:x.request_id};
+  if(editing){
+   const description=prompt('Descrição da despesa',x.description);if(description===null)return;
+   const raw=prompt('Valor da despesa (R$)',(x.amount_cents/100).toFixed(2).replace('.',','));if(raw===null)return;
+   const amount=Math.round(Number(raw.trim().replace(/\./g,'').replace(',','.'))*100);
+   if(!description.trim()||description.trim().length>140||!/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(raw.trim())||!Number.isSafeInteger(amount)||amount<=0||amount>99999999999){msg('expenseStatus','Informe uma descrição e um valor válido maior que zero.');return}
+   payload.description=description.trim();payload.amount_cents=amount;
+  }else if(!confirm('Excluir a despesa "'+x.description+'" de '+money(x.amount_cents)+'?'))return;
+  const buttons=$('financeExpenses').querySelectorAll('button');buttons.forEach(b=>b.disabled=true);
+  try{await post(payload);const updated=await evApi(id);if(curId===id){cur=updated;paintManage();msg('expenseStatus',editing?'Despesa atualizada.':'Despesa excluída.')}}
+  catch(e){if(curId===id)msg('expenseStatus',why(e))}finally{buttons.forEach(b=>b.disabled=false)}
+ });
+ const expenseForm=$('expenseForm');
+ expenseForm.onsubmit=async ev=>{
+  ev.preventDefault();const id=curId,button=expenseForm.querySelector('button');if(button.disabled)return;
+  const description=expenseForm.elements.description.value.trim(),raw=expenseForm.elements.amount.value.trim();
+  if(!description||! /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(raw)){msg('expenseStatus','Informe a descrição e um valor em reais, como 200,00.');return}
+  const amount=Math.round(Number(raw.replace(/\./g,'').replace(',','.'))*100);
+  if(amount<=0||amount>99999999999){msg('expenseStatus','Informe um valor válido maior que zero.');return}
+  const draft=JSON.stringify([id,description,amount]);if(expenseForm.dataset.draft!==draft){expenseForm.dataset.draft=draft;expenseForm.dataset.key=crypto.randomUUID()}
+  button.disabled=true;
+  try{await post({op:'expense_add',description,amount_cents:amount,request_id:expenseForm.dataset.key});
+   if(curId===id){expenseForm.reset();delete expenseForm.dataset.draft;msg('expenseStatus','Despesa registrada.');const updated=await evApi(id);if(curId===id){cur=updated;paintManage()}}
+  }catch(e){if(curId===id)msg('expenseStatus',why(e))}finally{button.disabled=false}
+ };
+ async function openEvent(id){if(curId!==Number(id)){expenseForm.reset();msg('expenseStatus','');delete expenseForm.dataset.draft}curId=Number(id);try{cur=await evApi(curId);}catch(e){msg('eventStatus',e.message);return}paintManage();$('eventManage').hidden=false;$('eventManage').scrollIntoView({behavior:'smooth'})}
  const aName=a=>a.name||a.activity_type;
  function paintManage(){const e=cur.event,af=$('actForm'),tf=$('ticketForm');
   $('emTitle').textContent=e.name;$('emSub').textContent=unitTxt[e.unit]+' · '+when(e)+' · '+(statusTxt[e.status]||e.status);
@@ -177,6 +248,7 @@ $('monitorSessions').addEventListener('click',async e=>{const b=e.target.closest
   $('emTickets').innerHTML=cur.tickets.length?cur.tickets.map(t=>'<div class="row"><b>'+esc(t.name)+'</b> · '+brl(t.price_cents)+(Number(t.active)?'':' · <span class="error">desativado</span>')+'<br><span class="muted">'+esc(cred(t))+(t.gifts?' · '+esc(t.gifts):'')+' · '+t.sold+(t.stock?'/'+t.stock:'')+' vendidos</span><br><button type="button" class="secondary" data-t-act="'+t.id+'" data-on="'+(Number(t.active)?0:1)+'">'+(Number(t.active)?'Desativar':'Ativar')+'</button><button type="button" class="secondary" data-t-del="'+t.id+'">Excluir</button></div>').join(''):'Nenhum ingresso ainda.';
   const st={confirmed:'Confirmado',paid:'Pago',pending:'Pix pendente'};
   {const sf=$('sellForm'),sel=sf.elements.ticket_type_id,keep=sel.value;sel.innerHTML=cur.tickets.length?cur.tickets.map(t=>'<option value="'+t.id+'">'+esc(t.name)+' · '+brl(t.price_cents)+(Number(t.active)?'':' (desativado)')+'</option>').join(''):'<option value="">Cadastre um ingresso primeiro</option>';if(keep)sel.value=keep;sellShirt()}
+  paintFinance(cur.finances);
   $('emBuyers').innerHTML=cur.purchases.length?cur.purchases.map(p=>'<div class="row">'+esc([p.first_name,p.last_name].filter(Boolean).join(' ')||'Aluno')+(p.cpf_last4?' · CPF •••'+esc(p.cpf_last4):'')+(p.visitor?' · visitante':' · aluno')+' · '+esc(p.ticket)+' · <b>'+(st[p.status]||esc(p.status))+'</b>'+(p.amount_cents?' · '+brl(p.amount_cents):'')+(p.payment_method?' · balcão: '+(PAYTXT[p.payment_method]||esc(p.payment_method)):'')+(p.shirt_size?' · camiseta '+esc(p.shirt_size):'')+(p.status==='pending'?'<div class="recv" style="margin-top:6px"><button type="button" data-recv="'+p.id+'" style="width:auto">Receber pagamento no balcão</button></div>':'')+'</div>').join(''):'Nenhuma compra ainda.';
  }
  // "Outra atividade": the name is the activity, so it becomes required.

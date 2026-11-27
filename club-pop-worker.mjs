@@ -2418,6 +2418,22 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!/^\d+$/.test(memberId))return json({ok:false,error:"ID_EVO_NAO_VINCULADO"},403);
         const homeUnit=crossUnit?(unit==="gym"?"bike":"gym"):unit,homeId=crossUnit?String((unit==="gym"?member.evo_member_id:linkedGym)||""):memberId;
         const action=String(url.searchParams.get("action")||(request.method==="GET"?"classes":"checkin"));
+        if(action==="devices"&&request.method==="GET"){
+          const classId=String(url.searchParams.get("class_id")||""),manual=/^manual-([1-9]\d*)$/.exec(classId);
+          if(!manual&&!/^\d+$/.test(classId))return json({ok:false,error:"AULA_INVALIDA"},400);
+          let session;
+          if(manual){
+            session=await env.DB.prepare("SELECT id,status FROM pop_live_sessions WHERE id=? AND unit=? AND source='manual' AND status IN ('planned','running')").bind(Number(manual[1]),unit).first();
+            if(!session)return json({ok:false,error:"AULA_ENCERRADA"},409);
+          }else{
+            const c=await env.DB.prepare("SELECT activity_date,start_time FROM evo_attendance_sessions WHERE unit=? AND id_activity_session=? AND lower(COALESCE(status,'')) NOT IN ('cancelled','canceled','cancelado','cancelada')").bind(unit,classId).first();
+            if(!c)return json({ok:false,error:"AULA_INVALIDA"},404);
+            session=await env.DB.prepare("SELECT id,status FROM pop_live_sessions WHERE unit=? AND source='d1' AND source_class_id=? AND starts_at=?").bind(unit,classId,c.activity_date+"T"+String(c.start_time).slice(0,5)+":00").first();
+            if(session&&!["planned","running"].includes(session.status))return json({ok:false,error:"AULA_ENCERRADA"},409);
+          }
+          const rows=await env.DB.prepare("SELECT d.reference_number,d.device_type,d.bike_number,d.sensor_code,CASE WHEN a.device_id IS NULL THEN 1 ELSE 0 END available FROM pop_live_devices d LEFT JOIN pop_live_session_devices a ON a.device_id=d.id AND a.session_id=? WHERE d.active=1 AND ((?='bike' AND d.unit_bike=1 AND d.device_type IN ('cadence','heart_rate')) OR (?='gym' AND d.unit_gym=1 AND d.device_type='heart_rate')) ORDER BY d.device_type,CAST(d.reference_number AS INTEGER)").bind(session?.id??null,unit,unit).all();
+          return json({ok:true,devices:rows.results||[]});
+        }
         if(action==="status"&&request.method==="GET"){
           const classId=String(url.searchParams.get("class_id")||"");
           const manual=/^manual-([1-9]\d*)$/.exec(classId);
