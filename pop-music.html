@@ -1,0 +1,131 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#1b0b33">
+<title>Pop Music Experience — Bike Pop</title>
+<style>
+:root{--bg:#140826;--card:#24123f;--card2:#2f1852;--line:#4a2d78;--lilac:#c9a7ff;--lilac2:#e7d8ff;--purple:#8b3dff;--pink:#ff4fb6;--mut:#bfa9df;--ok:#5ee0a0;--err:#ff8fa3;color-scheme:dark}
+*{box-sizing:border-box}html{background:var(--bg)}html,body{margin:0}body{min-height:100vh;background:radial-gradient(120% 520px at 50% -80px,#4b1d8c 0,#1b0b33 70%,var(--bg) 100%) no-repeat,var(--bg);color:#fff;font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:16px 16px 140px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px}.back{color:var(--lilac);text-decoration:none;font-weight:700;font-size:15px;background:none;border:0;padding:8px 0;cursor:pointer}
+.brand{font-weight:900;letter-spacing:.5px;font-size:13px;color:var(--lilac)}.brand b{color:#fff}
+h1{font-size:28px;line-height:1.1;margin:14px 0 6px;letter-spacing:-.5px}h1 em{font-style:normal;background:linear-gradient(90deg,var(--lilac),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:20px;margin:6px 0 4px}.mut{color:var(--mut)}.sm{font-size:13px}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:16px 0 6px}.steps i{height:6px;border-radius:9px;background:#ffffff1f}.steps i.on{background:linear-gradient(90deg,var(--purple),var(--lilac))}
+.steplbl{display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-bottom:12px}.steplbl b{color:var(--lilac2)}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.rh{border:2px solid var(--line);background:var(--card);border-radius:18px;padding:14px 12px;color:#fff;text-align:left;font:inherit;font-weight:800;cursor:pointer;display:flex;gap:10px;align-items:center;min-height:62px}
+.rh span{font-size:24px}.rh.on{border-color:var(--lilac);background:linear-gradient(140deg,#5b23a8,#2f1852);box-shadow:0 0 0 3px #c9a7ff33}.rh.on::after{content:"✓";margin-left:auto;color:var(--lilac2)}
+.sec{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:14px;margin:14px 0}
+.sechead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}.sechead b{font-size:17px}
+.count{font-size:12px;font-weight:800;padding:4px 10px;border-radius:99px;background:#ffffff14;color:var(--lilac2);white-space:nowrap}.count.full{background:var(--lilac);color:#2a0e52}.count.zero{background:#ff8fa322;color:var(--err)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chip{border:1.5px solid var(--line);background:#ffffff0a;color:#fff;border-radius:99px;padding:8px 13px;font:600 14px system-ui;cursor:pointer}
+.chip.on{background:var(--lilac);border-color:var(--lilac);color:#2a0e52;font-weight:800}.chip:disabled{opacity:.35;cursor:not-allowed}.chip.sug{border-style:dashed}
+input,select{width:100%;background:#120722;border:1.5px solid var(--line);color:#fff;border-radius:14px;padding:12px 14px;font:inherit}input:focus,select:focus{outline:2px solid var(--lilac);border-color:transparent}
+.search{margin-bottom:10px}.addsug{display:flex;gap:8px;margin-top:10px}.addsug input{flex:1}
+.btn{display:block;width:100%;border:0;border-radius:16px;padding:15px;font:800 16px system-ui;cursor:pointer;background:linear-gradient(90deg,var(--purple),#b04dff);color:#fff;text-align:center;text-decoration:none}
+.btn.alt{background:#ffffff14;color:var(--lilac2)}.btn.sm{width:auto;padding:10px 14px;font-size:14px;border-radius:12px}.btn:disabled{opacity:.45;cursor:not-allowed}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(0deg,#140826 70%,#14082600);z-index:5}.bar .in{max-width:560px;margin:0 auto;display:flex;gap:10px}.bar .btn.alt{flex:0 0 34%}
+.msg{border-radius:14px;padding:12px 14px;margin:12px 0;font-weight:700;font-size:14px}.msg.err{background:#ff8fa31f;color:var(--err)}.msg.ok{background:#5ee0a01f;color:var(--ok)}
+.hero{background:linear-gradient(150deg,#5b23a8,#2a0e52);border-radius:24px;padding:20px;margin:14px 0;border:1px solid #c9a7ff55}
+.slogan{font-size:13px;color:var(--lilac2);margin-top:10px;line-height:1.5}
+.sum h3{margin:0 0 6px;font-size:16px}.sum .t{font-size:14px;color:var(--lilac2);margin-top:8px}.sum ul{margin:6px 0 0;padding-left:18px}.sum li{margin:2px 0}
+.teach{display:flex;flex-direction:column;gap:6px}.hide{display:none!important}.empty{color:var(--mut);font-size:14px;padding:6px 0}
+.check{font-size:46px;line-height:1}
+@media(min-width:520px){.grid{grid-template-columns:repeat(3,1fr)}}
+</style></head><body><main>
+<div class="top"><a class="back" href="/">← Início</a><div class="brand"><b>BIKE POP</b> · POP MUSIC</div></div>
+<div id="app"><p class="mut" style="margin-top:30px">Carregando…</p></div>
+</main>
+<div class="bar hide" id="bar"><div class="in"><button class="btn alt" id="prevBtn">Voltar</button><button class="btn" id="nextBtn">Continuar</button></div></div>
+<script>
+const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const key=v=>String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+const MONTHS=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const monthName=m=>{const [y,mm]=String(m||'').split('-');return MONTHS[Number(mm)-1]?MONTHS[Number(mm)-1]+(y?' de '+y:''):m};
+const ERR={EXCLUSIVO_ALUNOS_BIKE_POP:'O Pop Music Experience é exclusivo para alunos ativos do Bike Pop.',JA_RESPONDEU_ESTE_MES:'Você já registrou suas preferências deste mês.',PESQUISA_AINDA_NAO_ABERTA:'A pesquisa deste mês ainda não abriu.',
+ ESCOLHA_AO_MENOS_UM_RITMO:'Escolha pelo menos um ritmo.',ESCOLHA_AO_MENOS_UM_ARTISTA_POR_RITMO:'Escolha pelo menos um artista em cada ritmo.',MAXIMO_5_ARTISTAS_POR_RITMO:'No máximo 5 artistas por ritmo.',
+ ESCOLHA_UM_PROFESSOR_POR_RITMO:'Indique um professor para cada ritmo.',ARTISTA_INVALIDO:'Um artista escolhido não está mais disponível. Revise sua seleção.',RITMO_INVALIDO:'Um ritmo escolhido não está mais disponível.',NAO_AUTORIZADO:'Sua sessão expirou. Entre novamente.'};
+const why=e=>ERR[e.message]||'Não foi possível concluir agora. Tente novamente.';
+async function api(action,opt={},q=''){
+ const token=sessionStorage.getItem('clubpop_token');if(!token){location.replace('/');throw Error('NAO_AUTORIZADO')}
+ const r=await fetch('/api/auth?route=pop-music&action='+action+q,{...opt,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},cache:'no-store'});
+ const d=await r.json().catch(()=>({}));if(r.status===401){location.replace('/');throw Error('NAO_AUTORIZADO')}if(!r.ok||!d.ok)throw Object.assign(Error(d.error||'ERRO'),{data:d});return d;
+}
+let F=null,step=0,sel=new Map(),recovered=null; // sel: rhythm_id -> {ids:Set, sug:[names], teacher}
+const MAX=5,app=$('app'),bar=$('bar');
+function rh(id){return F.rhythms.find(r=>r.id===id)}
+function count(id){const s=sel.get(id);return s?s.ids.size+s.sug.length:0}
+function stepsHead(title,sub){const names=['Ritmos','Artistas','Professores','Revisar'];
+ return '<div class="steps">'+names.map((_,i)=>'<i class="'+(i<=step?'on':'')+'"></i>').join('')+'</div><div class="steplbl"><span>Etapa '+(step+1)+' de 4 · <b>'+names[step]+'</b></span><span>'+esc(monthName(F.month))+'</span></div><h2>'+title+'</h2><p class="mut sm" style="margin:0 0 12px">'+sub+'</p>';}
+function paint(msg){
+ bar.classList.remove('hide');$('prevBtn').textContent=step?'Voltar':'Cancelar';
+ let h='';
+ if(step===0){
+  h=stepsHead('Quais ritmos você quer nas aulas?','Escolha um ou vários.')+'<div class="grid">'+F.rhythms.map(r=>'<button class="rh'+(sel.has(r.id)?' on':'')+'" data-r="'+r.id+'"><span>'+esc(r.emoji||'🎵')+'</span>'+esc(r.name)+'</button>').join('')+'</div>';
+  $('nextBtn').textContent=sel.size?'Escolher artistas ('+sel.size+(sel.size===1?' ritmo':' ritmos')+')':'Escolha um ritmo';$('nextBtn').disabled=!sel.size;
+ }else if(step===1){
+  h=stepsHead('Quem você quer ouvir?','De 1 a 5 artistas por ritmo. Não achou? Sugira um artista novo.');
+  for(const [id,s] of sel){const r=rh(id),n=count(id);
+   h+='<div class="sec" data-sec="'+id+'"><div class="sechead"><b>'+esc(r.emoji||'🎵')+' '+esc(r.name)+'</b><span class="count'+(n>=MAX?' full':n?'':' zero')+'">'+n+'/'+MAX+' artistas</span></div>'+
+    '<input class="search" type="search" placeholder="Buscar artista em '+esc(r.name)+'" data-search="'+id+'" autocomplete="off"><div class="chips" data-chips="'+id+'">'+chipsHtml(id,'')+'</div>'+
+    '<div class="addsug"><input maxlength="60" placeholder="Sugerir outro artista" data-sugin="'+id+'"><button class="btn sm" data-sugadd="'+id+'"'+(n>=MAX?' disabled':'')+'>Sugerir</button></div></div>';}
+  const ok=[...sel.keys()].every(id=>count(id)>=1);$('nextBtn').textContent=ok?'Escolher professores':'Escolha 1 artista em cada ritmo';$('nextBtn').disabled=!ok;
+ }else if(step===2){
+  h=stepsHead('Quem comanda cada ritmo?','Indique o professor que você gostaria de ver dando uma aula com esse estilo. Pode repetir o mesmo professor.');
+  if(!F.teachers.length)h+='<div class="msg err">A lista de professores não está disponível agora. Tente mais tarde.</div>';
+  for(const [id,s] of sel){const r=rh(id);h+='<div class="sec teach"><b>'+esc(r.emoji||'🎵')+' '+esc(r.name)+'</b><select data-teacher="'+id+'"><option value="">Escolha o professor</option>'+F.teachers.map(t=>'<option'+(s.teacher===t?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></div>'}
+  const ok=[...sel.values()].every(s=>s.teacher);$('nextBtn').textContent=ok?'Revisar minhas escolhas':'Escolha um professor para cada ritmo';$('nextBtn').disabled=!ok;
+ }else{
+  h=stepsHead('Confira antes de enviar','Depois de confirmar não dá para alterar neste mês.')+summaryHtml([...sel].map(([id,s])=>({name:rh(id).name,emoji:rh(id).emoji,teacher:s.teacher,artists:[...[...s.ids].map(a=>({name:rh(id).artists.find(x=>x.id===a)?.name})),...s.sug.map(x=>({suggestion:x}))]})));
+  $('nextBtn').textContent='Confirmar minhas escolhas';$('nextBtn').disabled=false;
+ }
+ if(recovered&&step<3)h='<div class="msg ok">Escolhas de '+esc(monthName(recovered))+' carregadas. Revise e confirme para registrar este mês.</div>'+h;
+ if(msg)h+='<div class="msg err">'+esc(msg)+'</div>';
+ app.innerHTML=h;
+}
+function chipsHtml(id,q){const s=sel.get(id),r=rh(id),k=key(q),full=count(id)>=MAX;
+ const list=r.artists.filter(a=>!k||key(a.name).includes(k)||s.ids.has(a.id));
+ return s.sug.map((n,i)=>'<button class="chip on sug" data-sugdel="'+id+'" data-i="'+i+'" title="Remover sugestão">✚ '+esc(n)+' ✕</button>').join('')+
+  (list.length?list.map(a=>{const on=s.ids.has(a.id);return '<button class="chip'+(on?' on':'')+'" data-a="'+a.id+'" data-rid="'+id+'"'+(!on&&full?' disabled':'')+'>'+esc(a.name)+'</button>'}).join(''):'<div class="empty">Nenhum artista encontrado. Use “Sugerir outro artista”.</div>');}
+function summaryHtml(list){return list.map(c=>'<div class="sec sum"><h3>'+esc(c.emoji||'🎵')+' '+esc(c.name)+'</h3><ul>'+c.artists.map(a=>'<li>'+(a.suggestion?esc(a.suggestion)+' <span class="mut sm">(sugestão)</span>':esc(a.name)+(a.active===0?' <span class="mut sm">(fora do catálogo)</span>':''))+'</li>').join('')+'</ul><div class="t">Professor indicado: <b>'+esc(c.teacher)+'</b></div></div>').join('')}
+app.addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;
+ if(t.dataset.r){const id=+t.dataset.r;sel.has(id)?sel.delete(id):sel.set(id,{ids:new Set(),sug:[],teacher:''});paint();return}
+ if(t.dataset.a){const id=+t.dataset.rid,s=sel.get(id),a=+t.dataset.a;if(s.ids.has(a))s.ids.delete(a);else if(count(id)<MAX)s.ids.add(a);refreshSec(id);return}
+ if(t.dataset.sugadd){const id=+t.dataset.sugadd,inp=app.querySelector('[data-sugin="'+id+'"]'),v=String(inp.value||'').replace(/\s+/g,' ').trim(),s=sel.get(id),r=rh(id);
+  if(key(v).length<2)return;if(count(id)>=MAX)return;
+  const hit=r.artists.find(a=>key(a.name)===key(v));if(hit)s.ids.add(hit.id);else if(!s.sug.some(x=>key(x)===key(v)))s.sug.push(v);inp.value='';refreshSec(id);return}
+ if(t.dataset.sugdel){const id=+t.dataset.sugdel;sel.get(id).sug.splice(+t.dataset.i,1);refreshSec(id);return}
+});
+function refreshSec(id){const q=app.querySelector('[data-search="'+id+'"]')?.value||'';const sec=app.querySelector('[data-sec="'+id+'"]'),n=count(id);
+ sec.querySelector('[data-chips]').innerHTML=chipsHtml(id,q);const c=sec.querySelector('.count');c.textContent=n+'/'+MAX+' artistas';c.className='count'+(n>=MAX?' full':n?'':' zero');
+ sec.querySelector('[data-sugadd]').disabled=n>=MAX;const ok=[...sel.keys()].every(x=>count(x)>=1);$('nextBtn').disabled=!ok;$('nextBtn').textContent=ok?'Escolher professores':'Escolha 1 artista em cada ritmo';}
+app.addEventListener('input',e=>{const s=e.target.dataset.search;if(s){const id=+s;app.querySelector('[data-chips="'+id+'"]').innerHTML=chipsHtml(id,e.target.value)}});
+app.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset.sugin){e.preventDefault();app.querySelector('[data-sugadd="'+e.target.dataset.sugin+'"]').click()}});
+app.addEventListener('change',e=>{const t=e.target.dataset.teacher;if(t){sel.get(+t).teacher=e.target.value;const ok=[...sel.values()].every(s=>s.teacher);$('nextBtn').disabled=!ok;$('nextBtn').textContent=ok?'Revisar minhas escolhas':'Escolha um professor para cada ritmo'}});
+$('prevBtn').onclick=()=>{if(!step){start();return}step--;paint();scrollTo(0,0)};
+$('nextBtn').onclick=async()=>{if(step<3){step++;paint();scrollTo(0,0);return}
+ const b=$('nextBtn');b.disabled=true;b.textContent='Enviando…';
+ try{const d=await api('submit',{method:'POST',body:JSON.stringify({recovered_from:recovered,rhythms:[...sel].map(([id,s])=>({rhythm_id:id,artist_ids:[...s.ids],suggestions:s.sug,teacher:s.teacher}))})});done(d,true)}
+ catch(e){if(e.message==='JA_RESPONDEU_ESTE_MES'){start();return}b.disabled=false;b.textContent='Confirmar minhas escolhas';paint(why(e))}};
+function done(d,fresh){bar.classList.add('hide');
+ app.innerHTML='<div class="hero" style="text-align:center"><div class="check">🎶</div><h1 style="margin-top:8px">'+(fresh?'Obrigado por participar!':'Suas escolhas de '+esc(monthName(d.month)))+'</h1><p style="margin:0;color:var(--lilac2)">'+(fresh?'Suas preferências de '+esc(monthName(d.month))+' foram registradas. Os professores vão usar as escolhas da turma para criar as aulas temáticas.':'Registradas'+(d.voted_at?' em '+esc(new Date(String(d.voted_at).replace(' ','T')+'Z').toLocaleDateString('pt-BR')):'')+'.')+'</p></div>'+
+  summaryHtml(d.choices)+'<p class="mut sm" style="text-align:center">A próxima pesquisa abre em 1º de '+esc(MONTHS[(Number(String(d.month).slice(5,7)))%12])+'.</p><a class="btn alt" href="/">Voltar ao início</a>';scrollTo(0,0)}
+async function start(recover){
+ step=0;sel=new Map();recovered=null;bar.classList.add('hide');app.innerHTML='<p class="mut" style="margin-top:30px">Carregando…</p>';
+ try{const st=await api('status');
+  if(st.voted){const d=await api('mine');done(d,false);return}
+  if(!st.open){app.innerHTML=intro()+'<div class="msg ok">A pesquisa de '+esc(monthName(st.opens))+' abre no dia 1º. Volte para escolher suas playlists!</div>';return}
+  if(!recover){app.innerHTML=intro()+'<button class="btn" id="go">Escolher minhas playlists</button>'+(st.previous_month?'<button class="btn alt" id="reuse" style="margin-top:10px">Usar minhas escolhas de '+esc(monthName(st.previous_month))+'</button>':'');
+   $('go').onclick=()=>load(false);if($('reuse'))$('reuse').onclick=()=>load(true);return}
+ }catch(e){app.innerHTML='<div class="msg err">'+esc(why(e))+'</div><a class="btn alt" href="/">Voltar ao início</a>';}
+}
+const intro=()=>'<div class="hero"><div class="brand">POP MUSIC EXPERIENCE</div><h1>Você escolhe.<br><em>A gente pedala!</em></h1><p style="margin:0;color:var(--lilac2)">Quais artistas você gostaria de ouvir nas aulas deste mês? Escolha seus ritmos favoritos e indique os professores.</p><p class="slogan">Você escolhe a música. O professor cria a experiência. O Bike Pop transforma em energia!</p></div>';
+async function load(recover){app.innerHTML='<p class="mut" style="margin-top:30px">Carregando catálogo…</p>';
+ try{F=await api('form',{},recover?'&previous=1':'');
+  if(recover&&F.previous){recovered=F.previous.month;
+   // Bring back only what still exists in the active catalog; nothing is saved until the student confirms.
+   for(const c of F.previous.choices){const r=rh(c.rhythm_id);if(!r)continue;const ids=new Set(c.artists.filter(a=>a.id&&r.artists.some(x=>x.id===a.id)).map(a=>a.id)),sug=c.artists.filter(a=>a.suggestion&&!r.artists.some(x=>key(x.name)===key(a.suggestion))).map(a=>a.suggestion);
+    for(const a of c.artists)if(a.suggestion){const hit=r.artists.find(x=>key(x.name)===key(a.suggestion));if(hit)ids.add(hit.id)}
+    const all=[...ids].slice(0,MAX);sel.set(r.id,{ids:new Set(all),sug:sug.slice(0,MAX-all.length),teacher:F.teachers.includes(c.teacher)?c.teacher:''})}}
+  step=recovered?3:0;if(recovered&&![...sel.keys()].every(id=>count(id)>=1&&sel.get(id).teacher))step=sel.size?1:0;paint();scrollTo(0,0)}
+ catch(e){if(e.message==='JA_RESPONDEU_ESTE_MES'){start();return}app.innerHTML='<div class="msg err">'+esc(why(e))+'</div><a class="btn alt" href="/">Voltar ao início</a>'}}
+start();
+</script><script src="/student-app-analytics.js" defer></script></body></html>
