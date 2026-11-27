@@ -106,6 +106,7 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
   <p class="msg" id="msg" role="alert"></p>
  </section>
 
+ <section id="recView" class="hide"><button class="back" id="recBack">← Pop Live</button><div id="recBody"></div></section>
  <section id="evView" class="hide"><button class="back" id="evBack">← Pop Live</button><div id="evBody"></div></section>
  <!-- Official Pop Live dash -->
  <section id="dash" class="hide">
@@ -114,6 +115,7 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
   <div id="nextBox"></div>
   <h2>Próximas aulas</h2><div id="lessons" class="mut">Carregando aulas…</div>
   <div id="eventsWrap" class="hide"><h2>Eventos e aulas especiais</h2><div class="ev" id="events"></div></div>
+  <button type="button" class="box" id="recEntry" style="display:block;width:100%;text-align:left;cursor:pointer;color:inherit;font:inherit;background:linear-gradient(135deg,#ffd34a,#ff9f1c);color:#2a0e52;border:0"><div class="top"><b>🏆 Recordes Pop Games</b><span class="sm" style="font-weight:800">ver ranking →</span></div><span class="sm" style="font-weight:600">Distância e Autódromo: quem é o mais rápido, masculino e feminino. Veja a sua posição.</span></button>
   <a class="box" href="/pop-fit.html" style="display:block"><div class="top"><b>📈 Pop Fit · últimos 7 dias</b><span class="mut sm">ver tudo →</span></div><div class="k" id="fitK"><div><b>–</b><span>aulas</span></div><div><b>–</b><span>kcal</span></div><div><b>–</b><span>km</span></div></div><div id="fitLast" class="sm mut" style="margin-top:8px"></div></a>
  </section>
 </main>
@@ -166,6 +168,24 @@ function paintEvents(){
 }
 $('events').onclick=e=>{const b=e.target.closest('[data-evopen]');if(b)openEvent(+b.dataset.evopen)};
 async function openEvent(id){evId=id;$('dash').classList.add('hide');$('evView').classList.remove('hide');$('evBody').innerHTML='<p class="mut">Carregando evento…</p>';scrollTo(0,0);await loadEvent()}
+// ===== Pop Games records: ranking per race and sex, the student's own position =====
+let REC={key:'',sex:''};
+const fmtT=v=>{v=Number(v);const m=Math.floor(v/60),sec=v-m*60;return m+':'+(sec<10?'0':'')+sec.toFixed(1).replace('.',',')};
+async function openRecords(){$('dash').classList.add('hide');$('recView').classList.remove('hide');$('recBody').innerHTML='<p class="mut">Carregando recordes…</p>';scrollTo(0,0);await loadRecords()}
+async function loadRecords(){try{const d=await call('pop-live-student',{},'&unit=bike&action=records'+(REC.key?'&key='+encodeURIComponent(REC.key):'')+(REC.sex?'&sex='+REC.sex:''));REC.key=d.key||'';REC.sex=d.sex;paintRecords(d)}catch(e){$('recBody').innerHTML='<p style="color:#ff8fa3">Não foi possível carregar os recordes.</p>'}}
+function paintRecords(d){const md=['🥇','🥈','🥉'];
+ let h='<p class="sm" style="margin:0;color:var(--yellow);font-weight:800">POP GAMES</p><p class="hi" style="margin:2px 0 6px">Recordes</p>';
+ if(!d.keys.length){$('recBody').innerHTML=h+'<p class="mut">Os rankings aparecem depois das primeiras provas de Distância e Autódromo. Participe e seja o primeiro! 🏁</p>';return}
+ h+='<div class="seg" style="flex-wrap:wrap">'+d.keys.map(k=>'<button data-rkey="'+esc(k.key)+'" class="'+(k.key===d.key?'on':'')+'">'+(k.key.startsWith('distance')?'🏁 ':'🏎️ ')+esc(k.label.replace(/^Distância · |^Autódromo · /,''))+'</button>').join('')+'</div>';
+ h+='<div class="seg"><button data-rsex="m" class="'+(d.sex==='m'?'on':'')+'">Masculino</button><button data-rsex="f" class="'+(d.sex==='f'?'on':'')+'">Feminino</button></div>';
+ const label=(d.keys.find(k=>k.key===d.key)||{}).label||'';h+='<h2 style="margin-top:12px">'+esc(label)+'</h2>';
+ if(d.me)h+='<div class="box" style="background:linear-gradient(135deg,#ffd34a,#ff9f1c);color:#2a0e52;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center"><b style="font-size:30px">'+d.me.position+'º</b><div><b>Você</b><div class="sm" style="font-weight:700">'+(d.me.position===1?'Recorde é seu! 🏆':d.me.gap_to_next!=null?'Faltam '+String(d.me.gap_to_next).replace('.',',')+' s para o '+(d.me.position-1)+'º lugar':'')+' · de '+d.me.of+'</div></div><b style="font-size:20px">'+fmtT(d.me.best)+'</b></div>';
+ else h+='<p class="sm mut">Você ainda não tem marca nessa prova. Participe de uma rodada no Pop Games!</p>';
+ h+=d.ranking.length?d.ranking.map(r=>'<div class="lesson" style="grid-template-columns:34px 1fr auto;'+(r.me?'border-color:var(--yellow)':'')+'"><b style="font-size:18px;color:'+(r.me?'var(--yellow)':'#c9a7ff')+'">'+r.position+'</b><div><b>'+esc(r.name||'Aluno')+'</b> '+(md[r.position-1]||'')+'<small>'+(r.position>1?'+'+String(Math.round((r.best-d.ranking[0].best)*10)/10).replace('.',',')+' s':'recorde')+(r.race_date?' · '+r.race_date.slice(8,10)+'/'+r.race_date.slice(5,7):'')+'</small></div><b style="font-size:17px">'+fmtT(r.best)+'</b></div>').join(''):'<p class="mut">Ninguém nesse ranking ainda.</p>';
+ $('recBody').innerHTML=h}
+$('recBody').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.rkey){REC.key=b.dataset.rkey;loadRecords()}else if(b.dataset.rsex){REC.sex=b.dataset.rsex;loadRecords()}});
+$('recEntry').onclick=openRecords;
+$('recBack').onclick=()=>{$('recView').classList.add('hide');$('dash').classList.remove('hide');paintDash()};
 $('evBack').onclick=()=>{$('evView').classList.add('hide');$('dash').classList.remove('hide');closeSheet();paintDash()};
 async function loadEvent(){try{EV=await ev('event');paintEvent()}catch(e){$('evBody').innerHTML='<div class="box warn">'+esc(eErr(e))+'</div>'}}
 const aName=a=>a.name||a.activity_type;
