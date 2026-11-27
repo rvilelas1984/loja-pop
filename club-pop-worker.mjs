@@ -715,6 +715,27 @@ async function runScheduledReservationSync(env) {
   for(const unit of ['bike','gym'])await processReservationSync(env,unit,getEvoConfig);
 }
 
+// Bike Pop: once a day, the official schedule of this week and the next one (2 requests, showFullWeek=true)
+// so Pop Music themed classes can be linked to future official classes. Called by the automatic attendance sync and
+// after a manual "Executar agora". Failures never affect the attendance sync.
+async function syncBikeFutureWeeks(env,date,evo){const unit="bike";
+ if(!evo){const cfg=await getEvoConfig(env,unit);evo=async(url,purpose)=>{const u=new URL(url),r=await fetch(u.href,{headers:{Authorization:"Basic "+btoa(cfg.dns+":"+cfg.token),Accept:"application/json"}});try{await env.DB.prepare("INSERT INTO evo_request_log(unit,purpose,method,endpoint,status,ok) VALUES(?,?,'GET',?,?,?)").bind(unit,purpose,u.pathname,r.status,r.ok?1:0).run()}catch{}return r}}
+ try{const once=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'future_weeks',?,'done')").bind(unit,date).run();
+        if(once.meta?.changes){let futureSaved=0;
+         for(const ref of [date,new Date(Date.parse(date+"T12:00:00Z")+7*864e5).toISOString().slice(0,10)]){
+          const wr=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+encodeURIComponent(ref)+"&showFullWeek=true&onlyAvailables=false&take=200","future_weeks");if(!wr.ok)break;
+          const wraw=await wr.json(),wl=Array.isArray(wraw)?wraw:(Array.isArray(wraw?.data)?wraw.data:[]),st=[];
+          for(const item of wl){const day=String(item?.activityDate||item?.date||"").slice(0,10),sid=item?.idAtividadeSessao??item?.idActivitySession??item?.idActivitieSession;
+           if(!(day>date)||!Number.isSafeInteger(Number(sid))||Number(sid)<=0||[4,6].includes(Number(item?.status)))continue;
+           const instructor=attendanceInstructorName(item),mt=String(item?.startTime||item?.time||item?.activityStartTime||"").trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);if(!instructor||!mt)continue;
+           let hr=Number(mt[1]);if(mt[3])hr=hr%12+(mt[3].toUpperCase()==="PM"?12:0);if(hr>23||Number(mt[2])>59)continue;
+           st.push(env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,instructor_name,synced_at) VALUES(?,?,?,?,?,'scheduled',0,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,instructor_name=excluded.instructor_name,synced_at=CURRENT_TIMESTAMP WHERE evo_attendance_sessions.status='scheduled'")
+            .bind(unit,String(sid),day,String(hr).padStart(2,"0")+":"+mt[2],String(item?.name||item?.activityName||item?.activity?.name||"Aula").slice(0,200),instructor));}
+          for(let i=0;i<st.length;i+=40)await env.DB.batch(st.slice(i,i+40));futureSaved+=st.length;
+         }
+         await env.DB.prepare("UPDATE evo_sync_schedule_runs SET detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='future_weeks' AND scheduled_minute=?").bind(JSON.stringify({futureSaved}),unit,date).run();
+        }}catch(fe){try{await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=? WHERE unit=? AND kind='future_weeks' AND scheduled_minute=?").bind(String(fe?.message||fe).slice(0,300),unit,date).run()}catch{}}
+}
 async function runScheduledAttendanceSync(env,forceUnit=null,forceKey=null,forceDate=null) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
   const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now),get=t=>parts.find(x=>x.type===t)?.value||"";
@@ -770,23 +791,7 @@ async function runScheduledAttendanceSync(env,forceUnit=null,forceKey=null,force
         if(stm.length)for(let i=0;i<stm.length;i+=40)await env.DB.batch(stm.slice(i,i+40));if(absenceStatements.length)for(let i=0;i<absenceStatements.length;i+=40)await env.DB.batch(absenceStatements.slice(i,i+40));saved+=stm.length;
         await env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,instructor_name,synced_at) VALUES(?,?,?,?,?, 'done',?,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,status='done',attendance_count=excluded.attendance_count,instructor_name=COALESCE(excluded.instructor_name,evo_attendance_sessions.instructor_name),synced_at=CURRENT_TIMESTAMP").bind(unit,s.id,date,st,String(d.name||"").slice(0,200),stm.length,attendanceInstructorName(d)).run();
       }
-      // Bike Pop: once a day, the official schedule of this week and the next one (2 requests, showFullWeek=true)
-      // so Pop Music themed classes can be linked to future official classes. Failures never affect the attendance sync.
-      if(unit==="bike"){try{const once=await env.DB.prepare("INSERT OR IGNORE INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status) VALUES(?,'future_weeks',?,'done')").bind(unit,date).run();
-        if(once.meta?.changes){let futureSaved=0;
-         for(const ref of [date,new Date(Date.parse(date+"T12:00:00Z")+7*864e5).toISOString().slice(0,10)]){
-          const wr=await evo("https://evo-integracao-api.w12app.com.br/api/v1/activities/schedule?date="+encodeURIComponent(ref)+"&showFullWeek=true&onlyAvailables=false&take=200","future_weeks");if(!wr.ok)break;
-          const wraw=await wr.json(),wl=Array.isArray(wraw)?wraw:(Array.isArray(wraw?.data)?wraw.data:[]),st=[];
-          for(const item of wl){const day=String(item?.activityDate||item?.date||"").slice(0,10),sid=item?.idAtividadeSessao??item?.idActivitySession??item?.idActivitieSession;
-           if(!(day>date)||!Number.isSafeInteger(Number(sid))||Number(sid)<=0||[4,6].includes(Number(item?.status)))continue;
-           const instructor=attendanceInstructorName(item),mt=String(item?.startTime||item?.time||item?.activityStartTime||"").trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);if(!instructor||!mt)continue;
-           let hr=Number(mt[1]);if(mt[3])hr=hr%12+(mt[3].toUpperCase()==="PM"?12:0);if(hr>23||Number(mt[2])>59)continue;
-           st.push(env.DB.prepare("INSERT INTO evo_attendance_sessions(unit,id_activity_session,activity_date,start_time,activity_name,status,attendance_count,instructor_name,synced_at) VALUES(?,?,?,?,?,'scheduled',0,?,CURRENT_TIMESTAMP) ON CONFLICT(unit,id_activity_session) DO UPDATE SET activity_date=excluded.activity_date,start_time=excluded.start_time,activity_name=excluded.activity_name,instructor_name=excluded.instructor_name,synced_at=CURRENT_TIMESTAMP WHERE evo_attendance_sessions.status='scheduled'")
-            .bind(unit,String(sid),day,String(hr).padStart(2,"0")+":"+mt[2],String(item?.name||item?.activityName||item?.activity?.name||"Aula").slice(0,200),instructor));}
-          for(let i=0;i<st.length;i+=40)await env.DB.batch(st.slice(i,i+40));futureSaved+=st.length;
-         }
-         await env.DB.prepare("UPDATE evo_sync_schedule_runs SET detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='future_weeks' AND scheduled_minute=?").bind(JSON.stringify({futureSaved}),unit,date).run();
-        }}catch(fe){try{await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=? WHERE unit=? AND kind='future_weeks' AND scheduled_minute=?").bind(String(fe?.message||fe).slice(0,300),unit,date).run()}catch{}}}
+      if(unit==="bike")await syncBikeFutureWeeks(env,date,evo);
       await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='done',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='attendance' AND scheduled_minute=?").bind(JSON.stringify({date,requests,classesFound,newClasses,presencesSaved:saved,diagnostic}).slice(0,1000),unit,dueKey).run();
     }catch(e){await env.DB.prepare("UPDATE evo_sync_schedule_runs SET status='failed',detail=?,updated_at=CURRENT_TIMESTAMP WHERE unit=? AND kind='attendance' AND scheduled_minute=?").bind(JSON.stringify({date,requests,classesFound,newClasses,presencesSaved:saved,error:String(e.message||e)}).slice(0,1000),unit,dueKey).run()}
   }
@@ -2895,7 +2900,10 @@ if(!/^\d{4}-\d{2}$/.test(start)||!/^\d{4}-\d{2}$/.test(end)||start>end)return js
         const b=await request.json().catch(()=>({})),unit=String(b.unit||"bike").toLowerCase()==="gym"?"gym":"bike",kind=["student","attendance","opportunity","client"].includes(String(b.kind))?String(b.kind):"";if(!kind)return json({ok:false,error:"TIPO_INVALIDO"},400);
         await env.DB.prepare("CREATE TABLE IF NOT EXISTS evo_sync_schedule_runs(unit TEXT NOT NULL,kind TEXT NOT NULL,scheduled_minute TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',detail TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(unit,kind,scheduled_minute))").run();
         const now=new Date(),p=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(now),g=t=>p.find(x=>x.type===t)?.value||"",key=g("year")+"-"+g("month")+"-"+g("day")+"T"+g("hour")+":"+g("minute")+":"+g("second")+"-manual-"+crypto.randomUUID().slice(0,6),status=["done","failed","pending"].includes(String(b.status))?String(b.status):"done";
-        await env.DB.prepare("INSERT INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status,detail,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)").bind(unit,kind,key,status,JSON.stringify(b.detail||{}).slice(0,1000)).run();return json({ok:true});
+        await env.DB.prepare("INSERT INTO evo_sync_schedule_runs(unit,kind,scheduled_minute,status,detail,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)").bind(unit,kind,key,status,JSON.stringify(b.detail||{}).slice(0,1000)).run();
+        // Manual "Executar agora" of Bike Pop attendance also brings the next weeks' schedule (once a day, 2 requests).
+        if(kind==="attendance"&&unit==="bike"&&status==="done")await syncBikeFutureWeeks(env,key.slice(0,10)).catch(()=>{});
+        return json({ok:true});
       }
 
       // Execução manual isolada da vinculação de professores; exige administrador autenticado.
