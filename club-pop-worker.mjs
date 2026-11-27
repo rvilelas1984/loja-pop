@@ -2268,7 +2268,8 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
         const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});
         const vd=await vr.json().catch(()=>({}));
-        if(!vr.ok||vd.role!=="admin")return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        // Reception with the Central Pop Live page released may view events and sell tickets at the desk (the lib limits its ops).
+        if(!vr.ok||!(vd.role==="admin"||vd.role==="reception"&&(vd.permissions||[]).some(p=>p==="*"||p==="/admin-dispositivos-pop-live.html")))return json({ok:false,error:"NAO_AUTORIZADO"},403);
         try{return await adminEvents(request,env.DB,url,json,{role:vd.role,user:vd.email||vd.name||vd.username||vd.role})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
       }
       if(["/admin/pop-live-devices","/admin/pop-live-sessions","/admin/pop-live-drafts"].includes(url.pathname)){
