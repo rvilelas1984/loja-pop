@@ -1,3 +1,4 @@
+import {studentPopMusic,adminPopMusic,ADMIN_PAGE as POP_MUSIC_PAGE} from './lib/pop-music.mjs';
 import {profilePhotoRoute} from './lib/profile-photo.mjs';
 import {readCheckinMirror,assertCheckinSessionDate} from './lib/checkin-mirror.mjs';
 import {popLiveOperation} from './lib/pop-live-operation.mjs';
@@ -1704,6 +1705,19 @@ return json({ok:false,error:"ACAO_INVALIDA"},400);
         if(!vr.ok||!["admin","reception"].includes(vd.role))return json({ok:false,error:"NAO_AUTORIZADO"},403);
         if(vd.role==="reception"&&(!(vd.permissions||[]).some(p=>p==="*"||p==="/admin-alunos-evo.html")||!(vd.units||[]).includes("gym")))return json({ok:false,error:"SEM_PERMISSAO_ALUNOS"},403);
         return json(await adminGymRanking(env.DB,url.searchParams));
+      }
+      if(url.pathname==='/member/pop-music'&&['GET','POST'].includes(request.method)){
+        const member=await authenticatedMember(request,env);
+        if(!member)return json({ok:false,error:'NAO_AUTORIZADO'},401);
+        const access=await memberUnitAccess(env.DB,member.evo_member_id,member.gym_client_id);
+        try{return await studentPopMusic(request,env.DB,url,json,{member,activeUnits:access.activeUnits})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
+      }
+      if(url.pathname==='/admin/pop-music'){
+        const ck=request.headers.get("x-clubpop-admin-cookie")||"";if(!ck)return json({ok:false,error:"NAO_AUTORIZADO"},401);
+        const vr=await fetch("https://loja-pop-green.vercel.app/api/admin-auth?route=me",{headers:{Cookie:ck,Accept:"application/json"},cache:"no-store"});const vd=await vr.json().catch(()=>({}));
+        // Admin, or reception with the Playlists page released (read only; the lib refuses writes).
+        if(!vr.ok||!(vd.role==="admin"||vd.role==="reception"&&(vd.permissions||[]).some(p=>p==="*"||p===POP_MUSIC_PAGE)))return json({ok:false,error:"NAO_AUTORIZADO"},403);
+        try{return await adminPopMusic(request,env.DB,url,json,{role:vd.role,user:vd.email||vd.name||vd.role})}catch(e){if(e.status)return json({ok:false,error:e.message},e.status);throw e}
       }
       if(url.pathname==='/member/attendance-history'&&request.method==='GET'){
         const member=await authenticatedMember(request,env);
