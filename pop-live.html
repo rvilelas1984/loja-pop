@@ -52,6 +52,7 @@ h2{font:800 17px system-ui;margin:20px 0 6px}
 @media(max-width:380px){.tabs nav>a,.tabs nav>button{font-size:9.5px}.tabs svg{width:23px;height:23px}}
 .hide{display:none!important}
 .ev-head{border-radius:20px;padding:16px;margin:10px 0;background:linear-gradient(150deg,#7a1a52,#2b1030);border:1px solid #8a2d64}.ev-head h3{font:900 italic 26px/1.05 "Exo 2",system-ui;margin:6px 0}
+.seatgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px;margin:6px 0 4px;max-height:180px;overflow:auto}.seatgrid button{border:2px solid var(--line);background:var(--card);color:#fff;border-radius:10px;padding:8px 4px;font:800 14px system-ui;cursor:pointer}.seatgrid button:first-child{grid-column:span 2}.seatgrid button.on{border-color:var(--pink);background:#3a1430}.seatgrid button:disabled{opacity:.3;cursor:not-allowed}
 .act-btn{width:100%;text-align:left;color:#fff;font:inherit;cursor:pointer}.act-btn.mine{border-color:var(--green);background:#16261f}
 .seg button.on{border-color:var(--pink);background:#3a1430}
 </style></head><body>
@@ -151,7 +152,7 @@ let events=[],EV=null,evId=0;
 const brl=c=>c?(c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'Gratuito';
 const unitTxt={bike:'Bike Pop',gym:'Gym Pop',both:'Bike Pop e Gym Pop'};
 const when=e=>{const m=/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/.exec(String(e.starts_at||''));return m?dayLabel(m[1]+'-'+m[2]+'-'+m[3])+' · '+m[4]+(e.ends_at?' às '+String(e.ends_at).slice(11,16):''):''};
-const EERR={ESGOTADO:'Esgotado.',SEM_SALDO:'Você não tem saldo de atividades. Compre um ingresso.',SEM_DIREITO_ATIVIDADE_PRINCIPAL:'Atividade principal: cada ingresso dá direito a uma. O saldo de extras não vale para ela. Para fazer outra, compre mais um ingresso.',ESCOLHA_O_TAMANHO_DA_CAMISETA:'Escolha o tamanho da camiseta.',INGRESSO_NAO_DA_ACESSO_A_ATIVIDADE:'Esse ingresso não dá acesso a essa atividade.',SAIDA_ATE_2H_ANTES:'Só é possível sair até 2 horas antes da atividade.',ATIVIDADE_JA_COMECOU:'Essa atividade já começou.',INSCRICOES_ENCERRADAS:'Vendas encerradas.',EVENTO_ENCERRADO:'O evento já terminou.'};
+const EERR={NUMERO_OCUPADO:'Esse número acabou de ser escolhido por outra pessoa. Escolha outro.',NUMERO_INVALIDO:'Número inválido.',ESGOTADO:'Esgotado.',SEM_SALDO:'Você não tem saldo de atividades. Compre um ingresso.',SEM_DIREITO_ATIVIDADE_PRINCIPAL:'Atividade principal: cada ingresso dá direito a uma. O saldo de extras não vale para ela. Para fazer outra, compre mais um ingresso.',ESCOLHA_O_TAMANHO_DA_CAMISETA:'Escolha o tamanho da camiseta.',INGRESSO_NAO_DA_ACESSO_A_ATIVIDADE:'Esse ingresso não dá acesso a essa atividade.',SAIDA_ATE_2H_ANTES:'Só é possível sair até 2 horas antes da atividade.',ATIVIDADE_JA_COMECOU:'Essa atividade já começou.',INSCRICOES_ENCERRADAS:'Vendas encerradas.',EVENTO_ENCERRADO:'O evento já terminou.'};
 const eErr=e=>{const m=String(e.code||'');if(m.startsWith('HORARIO_CONFLITA:'))return 'Esse horário cruza com '+m.slice(17)+', em que você já está.';return EERR[m]||e.message};
 const ev=(action,opts={})=>call('pop-live-student',opts,'&unit='+unit+'&action='+action+'&event_id='+evId);
 function paintEvents(){
@@ -171,21 +172,25 @@ function paintEvent(){
   '<div class="top" style="margin-top:12px;padding-top:12px;border-top:1px dashed #ffffff40">'+(has?'<div><b>🎟 '+esc(b.tickets.map(t=>t.name).join(' + '))+'</b><div class="sm" style="color:#f3dbe9">'+balanceTxt(b)+(gifts.length?' · '+esc(gifts.join(', '))+' (retirar na recepção)':'')+'</div></div><button class="btn sm alt" data-tlist>+ Ingresso</button>':'<b>'+(from==null?'Ingressos em breve':from?'A partir de '+brl(from):'Gratuito')+'</b>'+(from!=null?'<button class="btn sm" data-tlist>Ver ingressos</button>':''))+'</div></div>';
  if(EV.pending&&EV.pending.order_id)h+='<div class="box warn"><b>Pix pendente · '+esc(EV.pending.name)+'</b><button class="btn sm" style="margin-top:8px" data-repay="'+esc(EV.pending.order_id)+'">Pagar agora</button></div>';
  h+='<h2>Cronograma</h2><p class="sm mut" style="margin:0">★ = atividade principal (1 por ingresso). Toque para entrar.</p>';
- h+=EV.activities.map(a=>'<button class="lesson act-btn'+(a.mine?' mine':'')+'" data-a="'+a.id+'"><div class="lt"><b>'+esc(a.starts_at)+'</b><em>até '+esc(a.ends_at)+'</em></div><div><b style="font-size:15px">'+(Number(a.is_main)?'<span style="color:var(--yellow)">★ </span>':'')+esc(aName(a))+'</b><small>'+(Number(a.is_main)?'Principal · ':'')+esc(unitTxt[a.unit])+(a.name&&a.activity_type!=='Outra atividade'?' · '+esc(a.activity_type):'')+'</small></div>'+(a.mine?'<span class="badge">✓ Confirmado</span>':'<span class="sm" style="font-weight:800;white-space:nowrap;color:'+(a.left?'var(--yellow)':'#ff8fa3')+'">'+(!a.left?'Esgotado':a.left===1?'1 vaga':a.left<=3?'Só '+a.left+' vagas':a.left+' vagas')+'</span>')+'</button>').join('')||'<p class="mut sm">Cronograma em breve.</p>';
+ h+=EV.activities.map(a=>'<button class="lesson act-btn'+(a.mine?' mine':'')+'" data-a="'+a.id+'"><div class="lt"><b>'+esc(a.starts_at)+'</b><em>até '+esc(a.ends_at)+'</em></div><div><b style="font-size:15px">'+(Number(a.is_main)?'<span style="color:var(--yellow)">★ </span>':'')+esc(aName(a))+'</b><small>'+(Number(a.is_main)?'Principal · ':'')+esc(unitTxt[a.unit])+(a.name&&a.activity_type!=='Outra atividade'?' · '+esc(a.activity_type):'')+'</small></div>'+(a.mine?'<span class="badge">✓ '+(a.my_seat?eqName(a)+' '+pad2(a.my_seat):'Confirmado')+'</span>':'<span class="sm" style="font-weight:800;white-space:nowrap;color:'+(a.left?'var(--yellow)':'#ff8fa3')+'">'+(!a.left?'Esgotado':a.left===1?'1 vaga':a.left<=3?'Só '+a.left+' vagas':a.left+' vagas')+'</span>')+'</button>').join('')||'<p class="mut sm">Cronograma em breve.</p>';
  $('evBody').innerHTML=h;
 }
 function sheetOpen(html){$('pixBox').innerHTML=html;$('pixSheet').classList.remove('hide')}
 function closeSheet(){clearInterval(pixTimer);$('pixSheet').classList.add('hide')}
-const aHead=a=>'<p class="sm" style="margin:0;color:var(--yellow);font-weight:800">'+esc(a.starts_at)+' às '+esc(a.ends_at)+' · '+esc(unitTxt[a.unit])+(Number(a.is_main)?' · ★ principal':'')+'</p><p class="hi" style="margin:4px 0 8px">'+esc(aName(a))+'</p>';
+const aHead=a=>'<p class="sm" style="margin:0;color:var(--yellow);font-weight:800">'+esc(a.starts_at)+' às '+esc(a.ends_at)+' · '+esc(unitTxt[a.unit])+(Number(a.is_main)?' · ★ principal':'')+'</p><p class="hi" style="margin:4px 0 8px">'+esc(aName(a))+'</p><p class="sm mut" style="margin:0 0 8px">Equipamento: <b style="color:#fff">'+eqLabel[eqKind(a)]+'</b></p>';
 function activitySheet(a){
  const b=EV.balance;
- if(a.mine)return sheetOpen(aHead(a)+'<p class="mut">Você está confirmado. Chegue 10 minutos antes.</p><button class="btn alt" data-close>Fechar</button><button class="btn" style="background:none;color:#ff8fa3" data-leave="'+a.id+'">Sair desta atividade (o direito volta para o seu saldo)</button>');
+ if(a.mine)return sheetOpen(aHead(a)+'<p class="mut">Você está confirmado'+(a.my_seat?' na <b style="color:#fff">'+eqName(a)+' '+pad2(a.my_seat)+'</b>':'')+'. Chegue 10 minutos antes.</p><button class="btn alt" data-close>Fechar</button><button class="btn" style="background:none;color:#ff8fa3" data-leave="'+a.id+'">Sair desta atividade (o direito volta para o seu saldo)</button>');
  if(!a.left)return sheetOpen(aHead(a)+'<p style="color:#ff8fa3;font-weight:700">Esgotado. Escolha outro horário.</p><button class="btn alt" data-close>Fechar</button>');
  if(!b.tickets.length)return sheetOpen(aHead(a)+'<p class="mut">'+(a.left<=3?'Restam só '+a.left+' vagas. ':'')+'Para entrar você precisa de um ingresso do evento.</p><button class="btn" data-tlist="'+a.id+'">Ver ingressos e entrar</button><button class="btn alt" data-close>Agora não</button>');
  if(!a.can)return sheetOpen(aHead(a)+'<p style="color:var(--yellow);font-weight:700">'+(Number(a.is_main)?'Atividade principal: cada ingresso dá direito a uma.':'Seu saldo de atividades acabou.')+'</p><p class="mut">'+(Number(a.is_main)?'O saldo de extras não vale para ela. Para fazer outra, compre mais um ingresso que a inclua.':'Compre mais um ingresso para entrar.')+'</p><button class="btn" data-tlist="'+a.id+'">Comprar mais um ingresso</button><button class="btn alt" data-close>Fechar</button>');
- sheetOpen(aHead(a)+'<p class="mut">'+(a.can==='main'?'Usa o direito de atividade principal do seu ingresso.':b.extras.unlimited?'Seu passe libera as atividades.':'Usa 1 do seu saldo. Saldo atual: '+b.extras.left+'.')+'</p><button class="btn" data-enroll="'+a.id+'">Entrar na atividade</button><button class="btn alt" data-close>Agora não</button>');
+ sheetOpen(aHead(a)+'<p class="mut">'+(a.can==='main'?'Usa o direito de atividade principal do seu ingresso.':b.extras.unlimited?'Seu passe libera as atividades.':'Usa 1 do seu saldo. Saldo atual: '+b.extras.left+'.')+'</p>'+seatPicker(a)+'<button class="btn" data-enroll="'+a.id+'">Entrar na atividade</button><button class="btn alt" data-close>Agora não</button>');
 }
-let wantAct=null;
+let wantAct=null,pickedSeat=null;
+const eqKind=a=>a.equipment||(a.unit==='gym'?'hr_watch':'spin_bike'),eqName=a=>eqKind(a)==='hr_watch'?'Relógio':'Bike',eqLabel={spin_bike:'Bike de spinning',hr_watch:'Relógio cardíaco',none:'Sem equipamento'},pad2=n=>String(n).padStart(2,'0');
+// Equipment number: automatic by default; the student may pick a free one.
+function seatPicker(a){const used=new Set(a.taken_seats||[]);pickedSeat=null;if(eqKind(a)==='none')return '';
+ return '<label>Escolha '+(eqKind(a)==='hr_watch'?'seu relógio':'sua bike')+' (opcional)</label><div class="seatgrid"><button type="button" class="on" data-seat="">Automático</button>'+Array.from({length:a.seats},(_,k)=>k+1).map(n=>'<button type="button" data-seat="'+n+'"'+(used.has(n)?' disabled':'')+'>'+pad2(n)+'</button>').join('')+'</div>'}
 const tDesc=t=>[t.main_name?'★ '+t.main_name:'',Number(t.extra_credits)===-1?'todas as atividades':Number(t.extra_credits)>0?'+'+t.extra_credits+(Number(t.extra_credits)===1?' atividade à escolha':' atividades à escolha'):'',t.gifts||''].filter(Boolean).join(' · ');
 function ticketSheet(actId){
  wantAct=actId?EV.activities.find(x=>x.id===actId):null;const a=wantAct;
@@ -195,12 +200,12 @@ function ticketSheet(actId){
 }
 function buySheet(t){
  const size=t.shirt?'<label>Tamanho da camiseta</label><div class="seg" style="grid-template-columns:repeat(5,1fr);margin:6px 0">'+['P','M','G','GG','XG'].map(z=>'<button type="button" data-size="'+z+'">'+z+'</button>').join('')+'</div>':'';
- sheetOpen('<p class="hi" style="margin:0">'+esc(t.name)+'</p><p class="mut sm" style="margin:2px 0 8px">'+esc(tDesc(t))+' · '+brl(t.price_cents)+'</p>'+size+'<button class="btn" data-buy="'+t.id+'">'+(t.price_cents?'Pagar com Pix · '+brl(t.price_cents):'Garantir ingresso gratuito')+'</button><button class="btn alt" data-close>Voltar</button><p class="msg" id="buyMsg"></p>');
+ sheetOpen('<p class="hi" style="margin:0">'+esc(t.name)+'</p><p class="mut sm" style="margin:2px 0 8px">'+esc(tDesc(t))+' · '+brl(t.price_cents)+'</p>'+size+(wantAct?seatPicker(wantAct):'')+'<button class="btn" data-buy="'+t.id+'">'+(t.price_cents?'Pagar com Pix · '+brl(t.price_cents):'Garantir ingresso gratuito')+'</button><button class="btn alt" data-close>Voltar</button><p class="msg" id="buyMsg"></p>');
 }
 let pickedSize='';
 async function buy(t){
  if(t.shirt&&!pickedSize){$('buyMsg').textContent='Escolha o tamanho da camiseta.';return}
- try{const r=await ev('buy',{method:'POST',body:JSON.stringify({event_id:evId,ticket_type_id:t.id,activity_id:wantAct?.id||null,shirt_size:pickedSize||null,unit:wantAct?.unit||unit})});
+ try{const r=await ev('buy',{method:'POST',body:JSON.stringify({event_id:evId,ticket_type_id:t.id,activity_id:wantAct?.id||null,shirt_size:pickedSize||null,seat_number:wantAct?pickedSeat:null,unit:wantAct?.unit||unit})});
   if(r.status==='confirmed')return success(t.name,r.joined||[]);
   if(r.orderId)return payPix(r.orderId,t.name,t.price_cents);
  }catch(e){$('buyMsg').textContent=eErr(e)}
@@ -224,11 +229,12 @@ async function success(name,joined){
 }
 $('pixBox').addEventListener('click',async e=>{const t=e.target,g=k=>t.closest('['+k+']');
  if(g('data-close')){closeSheet();return}
+ if(g('data-seat')&&!g('data-seat').disabled){const b=g('data-seat');pickedSeat=b.dataset.seat?+b.dataset.seat:null;b.parentElement.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));return}
  if(g('data-size')){pickedSize=g('data-size').dataset.size;g('data-size').parentElement.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===g('data-size')));return}
  if(g('data-tlist'))return ticketSheet(+g('data-tlist').dataset.tlist||null);
  if(g('data-pick')){pickedSize='';return buySheet(EV.tickets.find(x=>x.id===+g('data-pick').dataset.pick))}
  if(g('data-buy'))return buy(EV.tickets.find(x=>x.id===+g('data-buy').dataset.buy));
- if(g('data-enroll')){try{const r=await ev('enroll',{method:'POST',body:JSON.stringify({event_id:evId,activity_id:+g('data-enroll').dataset.enroll})});sheetOpen('<div style="text-align:center;font-size:54px">✅</div><p class="hi" style="text-align:center">Você está dentro!</p><p class="mut" style="text-align:center">'+esc(r.activity||'')+'</p><button class="btn" data-close>Ver cronograma</button>');await loadEvent()}catch(err){sheetOpen('<div class="box warn">'+esc(eErr(err))+'</div><button class="btn alt" data-close>Fechar</button>')}return}
+ if(g('data-enroll')){try{const r=await ev('enroll',{method:'POST',body:JSON.stringify({event_id:evId,activity_id:+g('data-enroll').dataset.enroll,seat_number:pickedSeat})});sheetOpen('<div style="text-align:center;font-size:54px">✅</div><p class="hi" style="text-align:center">Você está dentro!</p><p class="mut" style="text-align:center">'+esc(r.activity||'')+(r.seat?'<br>Sua '+(r.unit==='gym'?'relógio':'bike')+': <b style="color:#fff">'+pad2(r.seat)+'</b>':'')+'</p><button class="btn" data-close>Ver cronograma</button>');await loadEvent()}catch(err){sheetOpen('<div class="box warn">'+esc(eErr(err))+'</div><button class="btn alt" data-close>Fechar</button>')}return}
  if(g('data-leave')){try{await ev('leave',{method:'POST',body:JSON.stringify({event_id:evId,activity_id:+g('data-leave').dataset.leave})});closeSheet();await loadEvent()}catch(err){sheetOpen('<div class="box warn">'+esc(eErr(err))+'</div><button class="btn alt" data-close>Fechar</button>')}}});
 $('evBody').addEventListener('click',e=>{const t=e.target,g=k=>t.closest('['+k+']');
  if(g('data-tlist'))return ticketSheet(null);
