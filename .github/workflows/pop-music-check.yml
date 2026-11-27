@@ -2,7 +2,7 @@ name: Validate Pop Music Experience
 on:
   push:
     branches: [main]
-    paths: [lib/pop-music.mjs, tests/pop-music.test.mjs, club-pop-worker.mjs, lib/unit-access.mjs, .github/workflows/pop-music-check.yml]
+    paths: [lib/pop-music.mjs, tests/pop-music.test.mjs, tests/evo-future-weeks.test.mjs, club-pop-worker.mjs, lib/unit-access.mjs, .github/workflows/pop-music-check.yml]
   pull_request:
     paths: [lib/pop-music.mjs, tests/pop-music.test.mjs, club-pop-worker.mjs, lib/unit-access.mjs]
 jobs:
@@ -14,3 +14,4 @@ jobs:
         with:
           node-version: 24
       - run: node tests/pop-music.test.mjs
+      - run: node tests/evo-future-weeks.test.mjs

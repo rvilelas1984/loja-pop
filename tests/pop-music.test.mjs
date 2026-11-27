@@ -122,6 +122,14 @@ assert.equal(th1[0].your_teacher,true);assert.deepEqual(th1[0].your_artists,['Du
 assert.deepEqual((await call('/member/pop-music?action=status',null,tShared)).body.themed.map(t=>t.class_name),['Divas do Pop'],'no rock request, no rock notice');
 assert.equal((await call('/member/pop-music?action=status',null,tShared)).body.themed[0].your_teacher,true);
 assert.equal((await call('/member/pop-music?action=mine',null,tBike)).body.themed.length,2);
+// Teacher replaced in EVO: students see the official teacher, the admin is warned and can update the record.
+sql.exec("UPDATE evo_attendance_sessions SET instructor_name='Will' WHERE id_activity_session='d1'");
+th1=(await call('/member/pop-music?action=status',null,tBike)).body.themed;assert.equal(th1[0].teacher,'Will');assert.equal(th1[0].your_teacher,false,'Douglas was the requested teacher');
+assert.equal((await call('/member/pop-music?action=status',null,tShared)).body.upcoming_themed[0].teacher,'Will');
+let tl=(await admin('action=themed&month=2026-12')).body.list.find(t=>t.class_name==='Divas do Pop');assert.equal(tl.teacher_changed,true);assert.equal(tl.evo_teacher,'Will');
+assert.equal((await admin('',{op:'themed_teacher_sync',id:tl.id})).body.teacher,'Will');
+tl=(await admin('action=themed&month=2026-12')).body.list.find(t=>t.class_name==='Divas do Pop');assert.equal(tl.teacher_changed,false);assert.equal(tl.teacher_name,'Will');
+sql.exec("UPDATE evo_attendance_sessions SET instructor_name='Douglas' WHERE id_activity_session='d1'");await admin('',{op:'themed_teacher_sync',id:tl.id});
 // Next-class card data: every upcoming themed class (theme is public), also for students who did not ask for it.
 const up=(await call('/member/pop-music?action=status',null,tShared)).body.upcoming_themed;assert.deepEqual(up.map(t=>[t.class_name,t.evo_session_id,t.class_date]),[['Divas do Pop','d1','2026-12-10'],['Rock Ride',null,'2026-12-20']]);
 const th=(await admin('action=themed&month=2026-12')).body;assert.equal(th.list[0].attendance,30);assert.equal(th.list.length,2);assert.deepEqual(th.comparison,{themed_avg:30,themed_classes:1,regular_avg:15,regular_classes:2});
