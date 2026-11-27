@@ -10,7 +10,7 @@ h1{font-size:28px;line-height:1.1;margin:14px 0 6px;letter-spacing:-.5px}h1 em{f
 h2{font-size:20px;margin:6px 0 4px}.mut{color:var(--mut)}.sm{font-size:13px}
 .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:16px 0 6px}.steps i{height:6px;border-radius:9px;background:#ffffff1f}.steps i.on{background:linear-gradient(90deg,var(--purple),var(--lilac))}
 .steplbl{display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-bottom:12px}.steplbl b{color:var(--lilac2)}
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .rh{border:2px solid var(--line);background:var(--card);border-radius:18px;padding:14px 12px;color:#fff;text-align:left;font:inherit;font-weight:800;cursor:pointer;display:flex;gap:10px;align-items:center;min-height:62px}
 .rh span{font-size:24px}.rh.on{border-color:var(--lilac);background:linear-gradient(140deg,#5b23a8,#2f1852);box-shadow:0 0 0 3px #c9a7ff33}.rh.on::after{content:"✓";margin-left:auto;color:var(--lilac2)}
 .sec{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:14px;margin:14px 0}
@@ -29,7 +29,14 @@ input,select{width:100%;background:#120722;border:1.5px solid var(--line);color:
 .sum h3{margin:0 0 6px;font-size:16px}.sum .t{font-size:14px;color:var(--lilac2);margin-top:8px}.sum ul{margin:6px 0 0;padding-left:18px}.sum li{margin:2px 0}
 .teach{display:flex;flex-direction:column;gap:6px}.hide{display:none!important}.empty{color:var(--mut);font-size:14px;padding:6px 0}
 .check{font-size:46px;line-height:1}
-@media(min-width:520px){.grid{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:520px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+/* Inside the Club Pop app: standard header and bottom menu, Pop Music content in a purple panel */
+body.inapp{background:var(--cp-unit-bg,#a9eaf5)}
+body.inapp main{background:radial-gradient(120% 420px at 50% -60px,#4b1d8c 0,#1b0b33 70%,var(--bg) 100%) no-repeat,var(--bg);border-radius:26px;margin:0 12px calc(118px + env(safe-area-inset-bottom,0px));max-width:560px;padding:16px 16px 120px;min-height:70vh}
+@media(min-width:600px){body.inapp main{margin-left:auto;margin-right:auto}}
+body.inapp .top{display:none}
+body.inapp .bar{bottom:calc(92px + env(safe-area-inset-bottom,0px));background:none;padding-bottom:8px}
+body.inapp .bar .in{background:#140826ee;border-radius:20px;padding:8px;box-shadow:0 8px 30px #0005}
 </style></head><body><main>
 <div class="top"><a class="back" href="/">← Início</a><div class="brand"><b>BIKE POP</b> · POP MUSIC</div></div>
 <div id="app"><p class="mut" style="margin-top:30px">Carregando…</p></div>
@@ -183,6 +190,8 @@ async function load(recover){app.innerHTML='<p class="mut" style="margin-top:30p
   step=recovered?3:0;if(recovered&&![...sel.keys()].every(id=>count(id)>=1&&sel.get(id).teacher))step=sel.size?1:0;paint();scrollTo(0,0)}
  catch(e){if(e.message==='JA_RESPONDEU_ESTE_MES'){start();return}app.innerHTML='<div class="msg err">'+esc(why(e))+'</div><a class="btn alt" href="/">Voltar ao início</a>'}}
 if(LINK){const b=document.querySelector('.back');if(b)b.remove()}
+else{document.body.classList.add('inapp');const nw=document.createElement('div');nw.className='navwrap';nw.innerHTML='<nav class="nav modern"></nav>';document.body.appendChild(nw);
+ const sc=document.createElement('script');sc.src='/student-unit-theme.js';document.body.appendChild(sc)}
 addEventListener('hashchange',()=>{if(!LINK)start()});
 start();
 </script><script src="/student-app-analytics.js" defer></script></body></html>
