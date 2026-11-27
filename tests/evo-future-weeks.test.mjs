@@ -23,7 +23,7 @@ const fetch=async url=>{const u=new URL(url);calls.push(u.searchParams.get('show
 const ctx={fetch,Response,URL,Intl,Date,JSON,Math,Number,String,Array,Map,Set,Promise,console:{error(){},log(){}},btoa:s=>Buffer.from(s).toString('base64'),encodeURIComponent,
  getEvoConfig:async()=>({dns:'d',token:'t'}),processReservationSync:async()=>{}};
 vm.createContext(ctx);
-vm.runInContext([fn('function attendanceInstructorName'),fn('function scheduledWeekday')||'',fn('function scheduledDaysAllowed'),fn('async function loadScheduledWeekdays'),fn('async function runScheduledAttendanceSync')].join('\n')+';this.run=runScheduledAttendanceSync',ctx);
+vm.runInContext([fn('function attendanceInstructorName'),fn('function scheduledWeekday')||'',fn('function scheduledDaysAllowed'),fn('async function loadScheduledWeekdays'),fn('async function syncBikeFutureWeeks'),fn('async function runScheduledAttendanceSync')].join('\n')+';this.run=runScheduledAttendanceSync;this.syncF=syncBikeFutureWeeks',ctx);
 await ctx.run({DB},'bike','k1','2026-12-01');
 assert.deepEqual(calls,['false:2026-12-01','true:2026-12-01','true:2026-12-08'],'daily grade + 2 week requests');
 const rows=sql.prepare("SELECT id_activity_session id,activity_date d,start_time t,instructor_name p,status s FROM evo_attendance_sessions ORDER BY id").all().map(r=>({...r}));
@@ -32,4 +32,7 @@ assert.deepEqual(rows,[{id:'900',d:'2026-12-03',t:'07:00',p:'Douglas',s:'done'},
 calls.length=0;await ctx.run({DB},'bike','k2','2026-12-01');assert.deepEqual(calls,['false:2026-12-01'],'once a day');
 calls.length=0;await ctx.run({DB},'gym','k3','2026-12-01');assert.deepEqual(calls,['false:2026-12-01'],'Bike Pop only');
 assert.equal(sql.prepare("SELECT COUNT(*) n FROM evo_request_log WHERE purpose='future_weeks'").get().n,2);
+// Manual "Executar agora" path: standalone call (own EVO client), still once a day.
+calls.length=0;await ctx.syncF({DB},'2026-12-02');assert.deepEqual(calls,['true:2026-12-02','true:2026-12-09'],'manual run of a new day');
+calls.length=0;await ctx.syncF({DB},'2026-12-02');assert.deepEqual(calls,[],'manual again the same day: nothing');
 console.log('PASS EVO future weeks: 2 requests a day for Bike Pop, future classes stored, done classes kept');
