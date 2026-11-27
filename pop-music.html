@@ -42,9 +42,17 @@ const MONTHS=['janeiro','fevereiro','março','abril','maio','junho','julho','ago
 const monthName=m=>{const [y,mm]=String(m||'').split('-');return MONTHS[Number(mm)-1]?MONTHS[Number(mm)-1]+(y?' de '+y:''):m};
 const ERR={EXCLUSIVO_ALUNOS_BIKE_POP:'O Pop Music Experience é exclusivo para alunos ativos do Bike Pop.',JA_RESPONDEU_ESTE_MES:'Você já registrou suas preferências deste mês.',PESQUISA_AINDA_NAO_ABERTA:'A pesquisa deste mês ainda não abriu.',
  ESCOLHA_AO_MENOS_UM_RITMO:'Escolha pelo menos um ritmo.',ESCOLHA_AO_MENOS_UM_ARTISTA_POR_RITMO:'Escolha pelo menos um artista em cada ritmo.',MAXIMO_5_ARTISTAS_POR_RITMO:'No máximo 5 artistas por ritmo.',
- ESCOLHA_UM_PROFESSOR_POR_RITMO:'Indique um professor para cada ritmo.',ARTISTA_INVALIDO:'Um artista escolhido não está mais disponível. Revise sua seleção.',RITMO_INVALIDO:'Um ritmo escolhido não está mais disponível.',NAO_AUTORIZADO:'Sua sessão expirou. Entre novamente.'};
+ ESCOLHA_UM_PROFESSOR_POR_RITMO:'Indique um professor para cada ritmo.',DADOS_NAO_CONFEREM:'Os dados não conferem com o cadastro. Confira a data de nascimento.',CPF_INVALIDO:'CPF inválido. Confira os números.',DATA_DE_NASCIMENTO_INVALIDA:'Informe sua data de nascimento.',
+ MUITAS_TENTATIVAS_TENTE_MAIS_TARDE:'Muitas tentativas. Tente de novo mais tarde.',INFORME_SEU_NOME:'Informe seu nome.',WHATSAPP_INVALIDO:'Informe um WhatsApp com DDD.',IDENTIFIQUE_SE:'Identifique-se para continuar.',ARTISTA_INVALIDO:'Um artista escolhido não está mais disponível. Revise sua seleção.',RITMO_INVALIDO:'Um ritmo escolhido não está mais disponível.',NAO_AUTORIZADO:'Sua sessão expirou. Entre novamente.'};
 const why=e=>ERR[e.message]||'Não foi possível concluir agora. Tente novamente.';
+// Link mode (/musica, shared on WhatsApp): no Club Pop login; the student identifies with CPF + birth date.
+const LINK=location.pathname.replace(/\/$/,'')==='/musica'||new URLSearchParams(location.search).has('link');
+let GUEST=null,CONTACT={name:'',phone:''};
 async function api(action,opt={},q=''){
+ if(LINK){let tk='';try{tk=sessionStorage.getItem('pm_link_token')||''}catch{}
+  const r=await fetch('/api/auth?route=pop-music-public&action='+action+q,{...opt,headers:{'Content-Type':'application/json',...(tk?{'X-PM-Token':tk}:{})},cache:'no-store'});
+  const d=await r.json().catch(()=>({}));if(r.status===401&&action!=='identify'){try{sessionStorage.removeItem('pm_link_token')}catch{};linkIdentify();throw Error('IDENTIFIQUE_SE')}
+  if(!r.ok||!d.ok)throw Object.assign(Error(d.error||'ERRO'),{data:d});return d}
  const token=sessionStorage.getItem('clubpop_token');if(!token){location.replace('/');throw Error('NAO_AUTORIZADO')}
  const r=await fetch('/api/auth?route=pop-music&action='+action+q,{...opt,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},cache:'no-store'});
  const d=await r.json().catch(()=>({}));if(r.status===401){location.replace('/');throw Error('NAO_AUTORIZADO')}if(!r.ok||!d.ok)throw Object.assign(Error(d.error||'ERRO'),{data:d});return d;
@@ -100,18 +108,48 @@ function refreshSec(id){const q=app.querySelector('[data-search="'+id+'"]')?.val
 app.addEventListener('input',e=>{const s=e.target.dataset.search;if(s){const id=+s;app.querySelector('[data-chips="'+id+'"]').innerHTML=chipsHtml(id,e.target.value)}});
 app.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset.sugin){e.preventDefault();app.querySelector('[data-sugadd="'+e.target.dataset.sugin+'"]').click()}});
 app.addEventListener('change',e=>{const t=e.target.dataset.teacher;if(t){sel.get(+t).teacher=e.target.value;const ok=[...sel.values()].every(s=>s.teacher);$('nextBtn').disabled=!ok;$('nextBtn').textContent=ok?'Revisar minhas escolhas':'Escolha um professor para cada ritmo'}});
-$('prevBtn').onclick=()=>{if(!step){start();return}step--;paint();scrollTo(0,0)};
+$('prevBtn').onclick=()=>{if(!step){LINK?greet():start();return}step--;paint();scrollTo(0,0)};
 $('nextBtn').onclick=async()=>{if(step<3){step++;paint();scrollTo(0,0);return}
  const b=$('nextBtn');b.disabled=true;b.textContent='Enviando…';
- try{const d=await api('submit',{method:'POST',body:JSON.stringify({recovered_from:recovered,rhythms:[...sel].map(([id,s])=>({rhythm_id:id,artist_ids:[...s.ids],suggestions:s.sug,teacher:s.teacher}))})});done(d,true)}
+ try{const d=await api('submit',{method:'POST',body:JSON.stringify({recovered_from:recovered,rhythms:[...sel].map(([id,s])=>({rhythm_id:id,artist_ids:[...s.ids],suggestions:s.sug,teacher:s.teacher})),...(LINK?CONTACT:{})})});done(d,true)}
  catch(e){if(e.message==='JA_RESPONDEU_ESTE_MES'){start();return}b.disabled=false;b.textContent='Confirmar minhas escolhas';paint(why(e))}};
 const WD=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
 function themedHtml(list){if(!list||!list.length)return '';return list.map(c=>{const dt=new Date(c.class_date+'T12:00:00');
  return '<div class="hero" style="background:linear-gradient(150deg,#ff4fb6,#8b3dff);border-color:#ffd1ee"><div class="brand" style="color:#fff">🎉 SEU PEDIDO VIROU AULA!</div><h2 style="margin:8px 0 4px">'+esc(c.class_name)+'</h2><p style="margin:0;color:#fff">'+(c.emoji?esc(c.emoji)+' ':'')+esc(c.rhythm||'')+'<br><b>'+WD[dt.getDay()]+', '+c.class_date.slice(8,10)+'/'+c.class_date.slice(5,7)+(c.class_time?' às '+esc(String(c.class_time).slice(0,5)):'')+'</b> com <b>'+esc(c.teacher)+'</b>'+(c.your_teacher?' — o professor que você indicou!':'')+(c.your_artists&&c.your_artists.length?'<br>Com '+esc(c.your_artists.join(', '))+', que você escolheu.':'')+'</p><p class="sm" style="margin:8px 0 0;color:#ffe9f6">Parabéns! A sua escolha ajudou a criar essa aula. Garanta sua bike reservando pela agenda.</p></div>'}).join('')}
 function done(d,fresh){bar.classList.add('hide');
  app.innerHTML=themedHtml(d.themed)+'<div class="hero" style="text-align:center"><div class="check">🎶</div><h1 style="margin-top:8px">'+(fresh?'Obrigado por participar!':'Suas escolhas de '+esc(monthName(d.month)))+'</h1><p style="margin:0;color:var(--lilac2)">'+(fresh?'Suas preferências de '+esc(monthName(d.month))+' foram registradas. Os professores vão usar as escolhas da turma para criar as aulas temáticas.':'Registradas'+(d.voted_at?' em '+esc(new Date(String(d.voted_at).replace(' ','T')+'Z').toLocaleDateString('pt-BR')):'')+'.')+'</p></div>'+
-  summaryHtml(d.choices)+'<p class="mut sm" style="text-align:center">A próxima pesquisa abre em 1º de '+esc(MONTHS[(Number(String(d.month).slice(5,7)))%12])+'.</p><a class="btn alt" href="/">Voltar ao início</a>';scrollTo(0,0)}
+  summaryHtml(d.choices)+'<p class="mut sm" style="text-align:center">A próxima pesquisa abre em 1º de '+esc(MONTHS[(Number(String(d.month).slice(5,7)))%12])+'.</p><a class="btn alt" href="/">'+(LINK?'Conhecer o app Club Pop':'Voltar ao início')+'</a>';scrollTo(0,0)}
+const maskCpf=v=>v.replace(/\D/g,'').slice(0,11).replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})\.(\d{3})(\d)/,'$1.$2.$3').replace(/(\d{3})-?(\d{1,2})$/,'$1-$2');
+const maskDate=v=>{const d=v.replace(/\D/g,'').slice(0,8);return d.length>4?d.slice(0,2)+'/'+d.slice(2,4)+'/'+d.slice(4):d.length>2?d.slice(0,2)+'/'+d.slice(2):d};
+const maskPhone=v=>{const d=v.replace(/\D/g,'').slice(0,11);return d.length>6?'('+d.slice(0,2)+') '+d.slice(2,d.length-4)+'-'+d.slice(-4):d.length>2?'('+d.slice(0,2)+') '+d.slice(2):d};
+async function linkStart(){bar.classList.add('hide');app.innerHTML='<p class="mut" style="margin-top:30px">Carregando…</p>';
+ try{const st=await api('status');if(!st.open){app.innerHTML=intro()+'<div class="msg ok">A pesquisa de '+esc(monthName(st.opens))+' abre no dia 1º. Volte para escolher suas playlists!</div>';return}
+  let tk='';try{tk=sessionStorage.getItem('pm_link_token')||''}catch{}
+  if(tk&&GUEST){greet();return}linkIdentify()}catch(e){if(e.message!=='IDENTIFIQUE_SE')app.innerHTML='<div class="msg err">'+esc(why(e))+'</div>'}}
+function linkIdentify(msg){bar.classList.add('hide');
+ app.innerHTML=intro()+'<div class="sec"><b style="font-size:17px">Vamos começar</b><p class="mut sm" style="margin:4px 0 6px">Para garantir um voto por aluno, confirme seus dados. Eles servem só para identificar você.</p>'+
+  '<label class="sm" style="display:block;margin:10px 0 4px">CPF</label><input id="lCpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00">'+
+  '<label class="sm" style="display:block;margin:10px 0 4px">Data de nascimento</label><input id="lBirth" inputmode="numeric" autocomplete="bday" placeholder="dd/mm/aaaa">'+
+  (msg?'<div class="msg err">'+esc(msg)+'</div>':'')+'<button class="btn" id="lGo" style="margin-top:14px">Começar minha pesquisa</button></div>';
+ $('lCpf').oninput=e=>e.target.value=maskCpf(e.target.value);$('lBirth').oninput=e=>e.target.value=maskDate(e.target.value);
+ $('lGo').onclick=async()=>{const cpf=$('lCpf').value.replace(/\D/g,''),b=$('lBirth').value.replace(/\D/g,'');
+  if(cpf.length!==11){linkIdentify('Digite os 11 números do CPF.');return}if(b.length!==8){linkIdentify('Digite a data de nascimento completa.');return}
+  const btn=$('lGo');btn.disabled=true;btn.textContent='Conferindo…';
+  try{const d=await api('identify',{method:'POST',body:JSON.stringify({cpf,birth_date:b.slice(4)+'-'+b.slice(2,4)+'-'+b.slice(0,2)})});
+   try{sessionStorage.setItem('pm_link_token',d.token)}catch{}GUEST=d;
+   if(d.voted){if(!d.choices.length){app.innerHTML=intro()+'<div class="msg ok">Este CPF já respondeu a pesquisa de '+esc(monthName(d.month))+'. Obrigado! 💜</div>';return}done({month:d.month,choices:d.choices,voted_at:d.voted_at},false);return}greet()}
+  catch(e){if(e.message==='EXCLUSIVO_ALUNOS_BIKE_POP'){app.innerHTML=intro()+'<div class="msg err">Esta pesquisa é para alunos ativos do Bike Pop. Se você acabou de se matricular, fale com a recepção. 💜</div>';return}linkIdentify(why(e))}};
+}
+function greet(){const g=GUEST||{};
+ app.innerHTML=g.matched?'<div class="hero" style="text-align:center"><div class="check">👋</div><h1 style="margin-top:8px">Olá, '+esc(g.first_name||'aluno')+'!</h1><p style="margin:0;color:var(--lilac2)">Que bom ter você aqui. Bora escolher as músicas que vão embalar as aulas deste mês?</p></div><button class="btn" id="go">Começar minha pesquisa</button>'
+  :'<div class="hero"><h2 style="margin:0 0 6px">Quase lá! 🎶</h2><p style="margin:0;color:var(--lilac2)">Não encontramos seu cadastro com esses dados, mas tudo bem: você responde normalmente e a nossa equipe confere depois.</p></div>'+
+   '<div class="sec"><label class="sm" style="display:block;margin:0 0 4px">Seu nome</label><input id="gName" maxlength="80" autocomplete="name" value="'+esc(CONTACT.name)+'">'+
+   '<label class="sm" style="display:block;margin:10px 0 4px">WhatsApp</label><input id="gPhone" inputmode="tel" autocomplete="tel" placeholder="(11) 90000-0000" value="'+esc(maskPhone(CONTACT.phone))+'"><div id="gErr"></div></div><button class="btn" id="go">Começar minha pesquisa</button>';
+ if($('gPhone'))$('gPhone').oninput=e=>e.target.value=maskPhone(e.target.value);
+ $('go').onclick=()=>{if(!g.matched){const n=$('gName').value.trim(),p=$('gPhone').value.replace(/\D/g,'');
+  if(n.length<3||!/^\d{10,11}$/.test(p)){$('gErr').innerHTML='<div class="msg err">Informe seu nome e um WhatsApp com DDD.</div>';return}CONTACT={name:n,phone:p}}load(false)};scrollTo(0,0)}
 async function start(recover){
+ if(LINK)return linkStart();
  step=0;sel=new Map();recovered=null;bar.classList.add('hide');app.innerHTML='<p class="mut" style="margin-top:30px">Carregando…</p>';
  try{const st=await api('status');
   if(st.voted){const d=await api('mine');done(d,false);return}
@@ -130,5 +168,6 @@ async function load(recover){app.innerHTML='<p class="mut" style="margin-top:30p
     const all=[...ids].slice(0,MAX);sel.set(r.id,{ids:new Set(all),sug:sug.slice(0,MAX-all.length),teacher:F.teachers.includes(c.teacher)?c.teacher:''})}}
   step=recovered?3:0;if(recovered&&![...sel.keys()].every(id=>count(id)>=1&&sel.get(id).teacher))step=sel.size?1:0;paint();scrollTo(0,0)}
  catch(e){if(e.message==='JA_RESPONDEU_ESTE_MES'){start();return}app.innerHTML='<div class="msg err">'+esc(why(e))+'</div><a class="btn alt" href="/">Voltar ao início</a>'}}
+if(LINK){const b=document.querySelector('.back');if(b)b.remove()}
 start();
 </script><script src="/student-app-analytics.js" defer></script></body></html>

@@ -37,9 +37,10 @@
 <main class="pm">
  <section class="pm-hero"><small>♫ POP MUSIC EXPERIENCE</small><h1>Playlists</h1><p>O que os alunos do Bike Pop querem ouvir — respostas reais da pesquisa mensal.</p>
   <div class="pm-months" id="months" role="tablist" aria-label="Mês"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="pm-btn sm" id="copyLink" style="background:#fff;color:#3b136a">🔗 Copiar link da pesquisa</button><a class="pm-btn sm" id="waLink" target="_blank" rel="noopener" style="background:#25d366;color:#fff;text-decoration:none">Enviar no WhatsApp</a></div>
   <div class="pm-kpis"><div class="pm-kpi"><span>Participação</span><b id="kPct">—</b></div><div class="pm-kpi"><span>Responderam</span><b id="kPart">—</b></div><div class="pm-kpi"><span>Elegíveis</span><b id="kElig">—</b></div></div>
  </section>
- <nav class="pm-tabs" id="tabs"><button data-tab="results" class="on">📊 Resultados</button><button data-tab="themed">🎉 Aulas temáticas</button><button data-tab="sugg">💡 Sugestões<i id="suggBadge" hidden></i></button><button data-tab="catalog">🎵 Catálogo</button><button data-tab="settings">⚙️ Configuração</button></nav>
+ <nav class="pm-tabs" id="tabs"><button data-tab="results" class="on">📊 Resultados</button><button data-tab="themed">🎉 Aulas temáticas</button><button data-tab="guests">👤 Identificar votos<i id="guestBadge" hidden></i></button><button data-tab="sugg">💡 Sugestões<i id="suggBadge" hidden></i></button><button data-tab="catalog">🎵 Catálogo</button><button data-tab="settings">⚙️ Configuração</button></nav>
 
  <section id="tab-results"><div id="filterBar"></div><div id="results"><div class="pm-empty">Carregando resultados…</div></div></section>
 
@@ -48,6 +49,10 @@
   <div id="themedCompare"></div><div id="themedList"></div>
  </section>
 
+ <section id="tab-guests" hidden>
+  <div class="pm-card"><h2>Votos pelo link para identificar</h2><div class="sub">Quem respondeu pelo link sem ser encontrado (CPF + nascimento). Busque o aluno e associe: se ele já tiver votado no mês, fica só a primeira resposta.</div>
+   <div class="pm-chips" id="guestFilter"><button class="pm-chip on" data-g="pending">Para identificar</button><button class="pm-chip" data-g="identified">Identificados</button></div><div id="guestList" style="margin-top:10px"></div></div>
+ </section>
  <section id="tab-sugg" hidden><div class="pm-card"><h2>Sugestões dos alunos</h2><div class="sub">Artistas fora do catálogo. Incorporar adiciona o artista no ritmo sugerido (os votos continuam no histórico).</div><div class="pm-chips" id="suggFilter"><button class="pm-chip on" data-s="pending">Para analisar</button><button class="pm-chip" data-s="added">Incorporadas</button><button class="pm-chip" data-s="dismissed">Descartadas</button></div><div class="pm-list" id="suggList" style="margin-top:10px"></div></div></section>
 
  <section id="tab-catalog" hidden>
@@ -59,7 +64,7 @@
 
  <section id="tab-settings" hidden><div class="pm-card"><h2>Campanha</h2><div class="sub">A pesquisa abre sozinha no dia 1º de cada mês (horário de Brasília). Antes do mês inicial o bloco não aparece para os alunos.</div>
   <label for="firstMonth">Primeiro mês da pesquisa</label><input type="month" id="firstMonth" style="max-width:260px"><button class="pm-btn" id="saveSettings" style="margin-top:12px">Salvar</button></div>
-  <div class="pm-card"><h2>Como funciona</h2><div class="sub" style="margin:6px 0 0;line-height:1.6">1. O aluno do Bike Pop escolhe ritmos, até 5 artistas por ritmo e um professor por ritmo (1 resposta por mês).<br>2. Em <b>Resultados</b> você vê o que a turma quer ouvir e quais professores foram indicados.<br>3. O professor cria a aula e você registra em <b>Aulas temáticas</b> — os alunos que pediram são avisados no app.<br>4. Em <b>Sugestões</b> você incorpora artistas novos ao catálogo.</div></div>
+  <div class="pm-card"><h2>Como funciona</h2><div class="sub" style="margin:6px 0 0;line-height:1.6">0. Compartilhe o <b>link da pesquisa</b> (botão no topo) no grupo do WhatsApp: o aluno entra com CPF + data de nascimento, sem precisar do app.<br>1. O aluno do Bike Pop escolhe ritmos, até 5 artistas por ritmo e um professor por ritmo (1 resposta por mês).<br>2. Em <b>Resultados</b> você vê o que a turma quer ouvir e quais professores foram indicados.<br>3. O professor cria a aula e você registra em <b>Aulas temáticas</b> — os alunos que pediram são avisados no app.<br>4. Em <b>Sugestões</b> você incorpora artistas novos ao catálogo.</div></div>
  </section>
 </main>
 <div class="pm pm-sheet" id="sheet" hidden><div id="sheetBody"></div></div>
@@ -72,26 +77,30 @@ const why=e=>ERR[e.message]||e.message;
 async function api(q,opt={}){const r=await fetch('/api/admin-auth?route=playlists&'+q,{credentials:'include',cache:'no-store',headers:{'content-type':'application/json'},...opt});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw Error(d.error||'Erro na API');return d}
 const post=b=>api('action=write',{method:'POST',body:JSON.stringify(b)});
 function toast(t,bad){const el=document.createElement('div');el.className='pm-toast'+(bad?' err':'');el.textContent=t;document.body.appendChild(el);setTimeout(()=>el.remove(),3200)}
-let OV=null,CAT=null,RANK=null,month='',F={rhythm:'',artist:'',teacher:''},tab='results',suggStatus='pending',catRhythm=0;
+let OV=null,CAT=null,RANK=null,month='',onlyIdentified=false,F={rhythm:'',artist:'',teacher:''},tab='results',suggStatus='pending',catRhythm=0;
 // ---------- shell ----------
 $('tabs').onclick=e=>{const b=e.target.closest('[data-tab]');if(!b)return;tab=b.dataset.tab;document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
- for(const t of ['results','themed','sugg','catalog','settings'])$('tab-'+t).hidden=t!==tab;
+ for(const t of ['results','themed','guests','sugg','catalog','settings'])$('tab-'+t).hidden=t!==tab;if(tab==='guests')loadGuests();
  if(tab==='themed')loadThemed();if(tab==='sugg')paintSugg();if(tab==='catalog')paintCatalog();};
 function paintMonths(){const list=[...new Set([OV.current_month,...OV.months])].sort().reverse();$('months').innerHTML=list.map(m=>'<button role="tab" data-m="'+m+'" class="'+(m===month?'on':'')+'">'+mName(m)+(m===OV.current_month?' · atual':'')+'</button>').join('')}
 $('months').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;month=b.dataset.m;F={rhythm:'',artist:'',teacher:''};paintMonths();loadResults();if(tab==='themed')loadThemed()};
-async function init(){try{OV=await api('action=overview');month=OV.current_month;paintMonths();$('firstMonth').value=OV.first_month;
+const LINK_URL=location.origin+'/musica';
+$('copyLink').onclick=async()=>{try{await navigator.clipboard.writeText(LINK_URL);toast('Link copiado: '+LINK_URL)}catch{prompt('Copie o link da pesquisa:',LINK_URL)}};
+$('waLink').href='https://wa.me/?text='+encodeURIComponent('🎶 Pop Music Experience — você escolhe a música, a gente pedala! Escolha os ritmos, artistas e professores das aulas temáticas deste mês: '+LINK_URL);
+async function init(){try{OV=await api('action=overview');loadGuests(true);month=OV.current_month;paintMonths();$('firstMonth').value=OV.first_month;
  CAT=await api('action=catalog');paintBadge();await loadResults()}catch(e){$('results').innerHTML='<div class="pm-card pm-empty">Não foi possível carregar: '+esc(why(e))+'</div>'}}
 // ---------- results ----------
 const bar=(key,id,label,votes,max,total,on)=>{const pct=total?Math.round(votes*100/total):0;key=id===''?'':key;return '<div role="'+(key?'button':'listitem')+'" tabindex="'+(key?0:-1)+'" class="pm-bar'+(on?' on':'')+'" data-f="'+key+'" data-id="'+esc(id)+'" title="'+esc(label)+': '+votes+' voto(s) · '+pct+'% de quem respondeu'+(key?' — toque para filtrar':'')+'"><span class="l">'+esc(label)+'</span><span class="t"><span class="f" data-w="'+Math.max(3,Math.round(votes*100/(max||1)))+'"></span></span><span class="v">'+votes+'<small>'+pct+'%</small></span></div>'};
 function chartCard(title,sub,items,key,more){const max=Math.max(1,...items.map(x=>x.votes)),P=Math.max(1,RANK.participants);
  return '<div class="pm-card"><h2>'+title+'</h2><div class="sub">'+sub+'</div>'+(items.length?items.map(x=>bar(key,x.id??x.name,x.label,x.votes,max,P,key&&F[key]!==''&&String(F[key])===String(x.id??x.name))).join(''):'<div class="pm-empty">Sem respostas neste mês.</div>')+(more||'')+'</div>'}
 async function loadResults(){$('results').innerHTML='<div class="pm-empty">Carregando…</div>';
- const q=new URLSearchParams({action:'rankings',month});for(const k of ['rhythm','artist','teacher'])if(F[k])q.set(k,F[k]);
+ const q=new URLSearchParams({action:'rankings',month});for(const k of ['rhythm','artist','teacher'])if(F[k])q.set(k,F[k]);if(onlyIdentified)q.set('identified','1');
  try{RANK=await api(q.toString());paintResults()}catch(e){$('results').innerHTML='<div class="pm-card pm-empty">'+esc(why(e))+'</div>'}}
 function paintResults(){const d=RANK;
  $('kPct').textContent=d.participation_pct==null?'—':d.participation_pct.toLocaleString('pt-BR')+'%';$('kPart').textContent=d.participants;$('kElig').textContent=d.eligible;
  const active=Object.entries(F).filter(([,v])=>v);const rn=id=>CAT.rhythms.find(r=>String(r.id)===String(id))?.name||id,an=id=>CAT.artists.find(a=>String(a.id)===String(id))?.name||id;
- $('filterBar').innerHTML=active.length?'<div class="pm-filter">Filtrando: '+active.map(([k,v])=>'<span class="pm-tag">'+esc(k==='rhythm'?rn(v):k==='artist'?an(v):v)+'</span>').join(' ')+' · '+d.participants+' aluno(s)<button class="pm-btn ghost sm" id="clearF">Limpar filtro ✕</button></div>':'';
+ const idBar=(d.via_link||onlyIdentified)?'<div class="pm-filter" style="border-style:solid;border-color:var(--pm-line)">'+(d.via_link?'🔗 '+d.via_link+' pelo link'+(d.to_identify?' · <b>'+d.to_identify+' a identificar</b> <button class="pm-btn ghost sm" data-go="guests">Identificar</button>':''):'')+'<label style="display:flex;gap:6px;align-items:center;margin:0 0 0 auto;font-weight:700"><input type="checkbox" id="onlyId" style="width:auto"'+(onlyIdentified?' checked':'')+'> Só identificados</label></div>':'';
+ $('filterBar').innerHTML=idBar+(active.length?'<div class="pm-filter">Filtrando: '+active.map(([k,v])=>'<span class="pm-tag">'+esc(k==='rhythm'?rn(v):k==='artist'?an(v):v)+'</span>').join(' ')+' · '+d.participants+' aluno(s)<button class="pm-btn ghost sm" id="clearF">Limpar filtro ✕</button></div>':'');
  if(!d.participants&&!active.length){$('results').innerHTML='<div class="pm-card pm-empty">Ninguém respondeu a pesquisa de '+mName(month)+' ainda.<br>Os gráficos aparecem aqui assim que chegarem as primeiras respostas.</div>'+history();return}
  const teach={};for(const t of d.teachers_by_rhythm)teach[t.teacher]=(teach[t.teacher]||0)+t.votes;
  const artistsByR={},teachByR={};for(const a of d.artists_by_rhythm)(artistsByR[a.rhythm]=artistsByR[a.rhythm]||[]).push(a);for(const t of d.teachers_by_rhythm)(teachByR[t.rhythm]=teachByR[t.rhythm]||[]).push(t);
@@ -107,10 +116,27 @@ function paintResults(){const d=RANK;
 }
 function history(){const H=(RANK?.history||[]).slice(0,6).reverse();if(H.length<2)return '';const mx=Math.max(1,...H.map(x=>x.participants));
  return '<div class="pm-card"><h2>Evolução mensal</h2><div class="sub">Alunos que responderam em cada mês</div><div class="pm-cols">'+H.map(x=>'<div title="'+mName(x.month)+': '+x.participants+' respostas, '+x.artists+' artistas, '+x.rhythms+' ritmos"><b>'+x.participants+'</b><i style="height:'+Math.max(4,Math.round(x.participants*90/mx))+'px"></i>'+mName(x.month)+'</div>').join('')+'</div></div>'}
+document.addEventListener('change',e=>{if(e.target.id==='onlyId'){onlyIdentified=e.target.checked;loadResults()}});
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.pm-bar[role=button]')){e.preventDefault();e.target.click()}});
 document.addEventListener('click',e=>{const b=e.target.closest('.pm-bar[data-f]');if(b&&b.dataset.f&&b.dataset.id){const k=b.dataset.f;F[k]=String(F[k])===b.dataset.id?'':b.dataset.id;loadResults();scrollTo({top:0,behavior:'smooth'});return}
  if(e.target.closest('#clearF')){F={rhythm:'',artist:'',teacher:''};loadResults();return}
  const g=e.target.closest('[data-go]');if(g){document.querySelector('#tabs [data-tab="'+g.dataset.go+'"]').click()}});
+// ---------- votes from the public link ----------
+let GUESTS=[],guestStatus='pending';
+async function loadGuests(badgeOnly){try{GUESTS=(await api('action=guests')).guests;const n=GUESTS.filter(g=>g.status==='pending').length;$('guestBadge').hidden=!n;$('guestBadge').textContent=n;if(!badgeOnly)paintGuests()}catch(e){if(!badgeOnly)$('guestList').innerHTML='<div class="pm-empty">'+esc(why(e))+'</div>'}}
+$('guestFilter').onclick=e=>{const b=e.target.closest('[data-g]');if(!b)return;guestStatus=b.dataset.g;$('guestFilter').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));paintGuests()};
+function paintGuests(){const L=GUESTS.filter(g=>g.status===guestStatus);
+ $('guestList').innerHTML=L.length?L.map(g=>'<div style="border:1px solid var(--pm-line);border-radius:14px;padding:12px;margin:0 0 10px"><div class="pm-row"><div><b>'+esc(g.name||g.first_name||'Sem nome')+'</b>'+(g.status==='identified'?' <span class="pm-tag ok">identificado'+(g.linked_by==='cpf+nascimento'?' pelo CPF':'')+'</span>':'')+
+  '<div class="meta" style="color:var(--pm-mut);font-size:12px;margin-top:2px">CPF •••'+esc(g.cpf_last4||'')+(g.phone?' · WhatsApp '+esc(g.phone):'')+(g.months?' · votou em '+String(g.months).split(',').map(mName).join(', '):'')+(g.evo_bike_id?' · ID EVO Bike '+esc(g.evo_bike_id):'')+'</div></div>'+
+  (g.status==='pending'?'<button class="pm-btn danger sm" data-gdis="'+g.id+'">Descartar</button>':'')+'</div>'+
+  (g.status==='pending'?'<div style="display:flex;gap:6px;margin-top:10px"><input placeholder="Buscar aluno: CPF, ID EVO ou nome" data-gq="'+g.id+'" value="'+esc(g.name||'')+'"><button class="pm-btn sm" data-gsearch="'+g.id+'">Buscar</button></div><div data-gres="'+g.id+'"></div>':'')+'</div>').join(''):'<div class="pm-empty">'+(guestStatus==='pending'?'Nenhum voto para identificar. 🎉':'Nenhum voto identificado pelo link ainda.')+'</div>'}
+document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.gsearch){const id=b.dataset.gsearch,q=document.querySelector('[data-gq="'+id+'"]').value.trim(),box=document.querySelector('[data-gres="'+id+'"]');if(q.length<3){box.innerHTML='<div class="pm-empty">Digite ao menos 3 caracteres.</div>';return}
+  box.innerHTML='<div class="pm-empty">Buscando…</div>';
+  try{const P=(await api('action=people&q='+encodeURIComponent(q))).people;box.innerHTML=P.length?'<div class="pm-list" style="margin-top:6px">'+P.map((p,i)=>'<div><div><b>'+esc(p.name||'Aluno')+'</b><div class="meta">'+(p.unit==='bike'?'Bike Pop':'Gym Pop')+' · ID EVO '+esc(p.evo_id)+(p.cpf_last4?' · CPF •••'+esc(p.cpf_last4):'')+' · '+(p.active_bike?'<span class="pm-tag ok">ativo no Bike</span>':'<span class="pm-tag warn">sem Bike ativo</span>')+'</div></div><button class="pm-btn sm" data-glink="'+id+'" data-p="'+i+'">Associar</button></div>').join('')+'</div>':'<div class="pm-empty">Ninguém encontrado. Tente o CPF completo ou o ID EVO.</div>';box._people=P}catch(err){box.innerHTML='<div class="pm-empty">'+esc(why(err))+'</div>'}return}
+ if(b.dataset.glink){const id=b.dataset.glink,p=document.querySelector('[data-gres="'+id+'"]')._people[+b.dataset.p];if(!confirm('Associar este voto a '+(p.name||'este aluno')+'?'))return;
+  try{const r=await post({op:'guest_link',guest_id:+id,member_id:p.member_id,evo_bike_id:p.unit==='bike'?p.evo_id:null,evo_gym_id:p.unit==='gym'?p.evo_id:null,first_name:p.first_name});toast('Voto associado a '+(p.name||'aluno')+'.'+(r.duplicates_removed?' Ele já tinha votado: ficou só a primeira resposta.':''));loadGuests();loadResults()}catch(err){toast('Não foi possível: '+why(err),true)}return}
+ if(b.dataset.gdis){if(!confirm('Descartar este voto? Ele sai dos resultados.'))return;try{await post({op:'guest_discard',guest_id:+b.dataset.gdis});toast('Voto descartado.');loadGuests();loadResults()}catch(err){toast('Não foi possível: '+why(err),true)}}});
 // ---------- suggestions ----------
 function paintBadge(){const n=CAT.suggestions.filter(s=>s.status==='pending').length;$('suggBadge').hidden=!n;$('suggBadge').textContent=n}
 $('suggFilter').onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;suggStatus=b.dataset.s;$('suggFilter').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));paintSugg()};

@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/musica",
+      "destination": "/pop-music.html"
+    },
+    {
       "source": "/api/profile-photo/image/:token",
       "destination": "https://club-pop-api.renato-vilelas-personal.workers.dev/member/profile-photo/image/:token"
     },
