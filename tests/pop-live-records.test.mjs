@@ -2,7 +2,7 @@
 // best mark per student, new record detection for the projector, student position, void and recalculate.
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {recordRound,studentRecords,adminRecords,recordKinds} from '../lib/pop-live-records.mjs';
+import {recordRound,studentRecords,adminRecords,recordKinds,recordAttempt,duelBoard} from '../lib/pop-live-records.mjs';
 const sql=new DatabaseSync(':memory:');
 sql.exec(`CREATE TABLE pop_live_sessions(id INTEGER PRIMARY KEY,source TEXT,source_class_id TEXT,unit TEXT,starts_at TEXT);
 CREATE TABLE pop_live_game_rounds(session_id INTEGER PRIMARY KEY,event_id INTEGER,game_type TEXT,config_json TEXT,result_json TEXT);
@@ -64,4 +64,16 @@ st=await studentRecords(db,u('key=distance:500&sex=m'),['101'],null);assert.equa
 sql.exec("UPDATE evo_member_master SET personal_json='{\"gender\":\"M\"}' WHERE evo_member_id='105'");
 await A('',{op:'recalculate'});
 ad=(await A('key=distance:500&sex=m')).body;assert.deepEqual(ad.ranking.map(r=>r.name),['Bruno Sem','Renato Vilelas'],'Bruno enters after the sex is completed; Will stays voided');assert.equal(ad.no_sex.length,0);
+// Modo Disputa: own ranking per distance, best attempt per person (also within one session), never from the final result.
+assert.deepEqual(recordKinds('distance',{m:200,duel:true}),[]);
+sql.prepare("INSERT INTO pop_live_sessions VALUES(99,'manual','manual-99','bike','2026-11-30 18:00')").run();
+const ren2={member_id:'101',name:'Renato Vilelas',sex:'m',watch:'01'},vis={member_id:'900000000007',name:'Visitante Teste',sex:'m',watch:'01'};
+let d=await recordAttempt(db,99,ren2,200,15.4);assert.equal(d.records[0].key,'duel:200');assert.equal(d.records[0].label,'Disputa · 200 m');
+d=await recordAttempt(db,99,vis,200,14.9);assert.equal(d.records[0].name,'Visitante Teste');assert.equal(d.records[0].previous.value_s,15.4);
+d=await recordAttempt(db,99,ren2,200,16.2);assert.equal(d.records.length,0);assert.equal(d.positions[0].personal_best,false);assert.equal(d.positions[0].position,2);
+d=await recordAttempt(db,99,ren2,200,14.1);assert.equal(d.records[0].name,'Renato Vilelas');
+assert.deepEqual((await duelBoard(db,200)).m.map(r=>[r.name,r.value_s]),[['Renato Vilelas',14.1],['Visitante Teste',14.9]]);
+assert.deepEqual((await duelBoard(db,100)).m,[]);
+st=await studentRecords(db,u('key=duel:200'),['101'],null);assert.equal(st.me.position,1);assert.ok(st.keys.some(k=>k.key==='duel:200'));
+await assert.rejects(()=>recordAttempt(db,99,ren2,200,0));
 console.log('PASS Pop Games records: distance and circuit (total + fastest lap) by sex, best mark per student, projector outcome, student position, void and recalculate');
