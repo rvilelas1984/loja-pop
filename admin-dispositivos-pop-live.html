@@ -54,6 +54,7 @@
  </div><button id="sellBtn">Confirmar venda</button></div></form>
  <section class="panel" id="eventFinance" hidden><h3>Indicadores financeiros</h3>
  <div class="grid" id="financeTotals"></div><div id="financeReceipts"></div>
+ <h4>Auditoria de recebimentos por aula</h4><div id="attendanceAudit"></div><p id="auditMessage" role="status"></p>
  <h4>Despesas do evento</h4><div id="financeExpenses"></div>
  <form id="expenseForm"><div class="grid"><label>Descrição<input name="description" maxlength="140" placeholder="Ex.: compra de medalhas" required></label>
  <label>Valor (R$)<input name="amount" inputmode="decimal" placeholder="0,00" required></label></div><button>Cadastrar despesa</button></form><p id="expenseStatus" role="status"></p></section>
@@ -160,12 +161,40 @@ $('monitorSessions').addEventListener('click',async e=>{const b=e.target.closest
  const money=c=>(c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
  function paintFinance(f){
   $('eventFinance').hidden=!f;if(!f)return;
+  renderAudit(f.audit||[]);
   const status=f.balance>0?'positivo':f.balance<0?'negativo':'zerado';
   $('financeTotals').innerHTML=[['Receita recebida',f.revenue],['Despesas',f.spent],['Saldo '+status,f.balance]].map(([label,value],i)=>'<div class="row">'+label+'<br><strong style="font-size:1.3rem;'+(i===2&&value?'color:'+(value>0?'#66e3a6':'#ff929e'):'')+'">'+money(value)+'</strong></div>').join('');
   const methods={...PAYTXT,online_pix:'Pix pelo app',pix:'Pix no balcão'};
   $('financeReceipts').textContent=f.receipts.map(r=>(methods[r.method]||r.method)+' · '+money(r.amount_cents)).join(' | ');
   $('financeExpenses').innerHTML=f.expenses.map(x=>'<div class="row">'+esc(x.description)+' · <b>'+money(x.amount_cents)+'</b></div>').join('')||'Nenhuma despesa cadastrada.';
  }
+ const auditLabels={review:'Conferir ingresso antigo do evento',paid:'Ingresso pago',free:'Ingresso gratuito',courtesy:'Cortesia',received:'Recebido no balcão',pending:'Pagamento pendente',missing:'Sem recebimento identificado'};
+ function renderAudit(list){
+  $('attendanceAudit').innerHTML=cur.activities.map(a=>{
+   const people=list.filter(p=>p.aid===a.id),pending=people.filter(p=>['missing','pending','review'].includes(p.state)).length;
+   const lines=people.map(p=>{
+    const evidence=[auditLabels[p.state],p.ticket,p.direct?money(p.direct_amount):'',p.method&&p.state!=='pending'?(PAYTXT[p.method]||'Pix pelo app'):'',p.recorded_by].filter(Boolean).map(esc).join(' · ');
+    const collect=p.state==='missing'||p.state==='pending';
+    return '<div class="row"><b>'+esc(p.person)+'</b> · '+(p.booked?'Com reserva':'Sem reserva')+' · '+(p.status==='planned'?'Em preparação':p.status==='running'?'Em aula':'Participou')+'<br>'+evidence+
+     (collect?'<details><summary>Registrar recebimento</summary><form data-audit-form data-sid="'+Number(p.sid)+'" data-raw="'+esc(p.raw)+'" data-pending="'+Number(p.pending_id||0)+'"><label>Forma de pagamento<select name="method" required><option value="">Escolha</option>'+Object.entries(PAYTXT).map(([k,v])=>'<option value="'+k+'">'+esc(v)+'</option>').join('')+'</select></label>'+
+     (p.pending_id?'Valor do ingresso: '+money(p.pending_amount):'<label>Valor recebido (R$)<input name="amount" inputmode="decimal" placeholder="0,00"></label>')+'<button>Confirmar recebimento</button></form></details>':'')+'</div>';
+   }).join('');
+   return '<details class="row"><summary><b>'+esc(a.starts_at)+' · '+esc(a.name||a.activity_type)+'</b> · '+people.length+' participante(s) · '+pending+' pendência(s)</summary>'+(lines||'Nenhum participante registrado na preparação ou execução.')+'</details>';
+  }).join('')||'Nenhuma atividade cadastrada.';
+ }
+ $('attendanceAudit').addEventListener('submit',async ev=>{
+  const form=ev.target.closest('[data-audit-form]');if(!form)return;ev.preventDefault();
+  const button=form.querySelector('button'),id=curId,method=form.elements.method.value;if(button.disabled)return;
+  const pending=Number(form.dataset.pending),raw=form.elements.amount?.value.trim()||'';
+  if(!pending&&method!=='courtesy'&&!/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(raw)){msg('auditMessage','Informe o valor recebido em reais.');return}
+  const amount=method==='courtesy'?0:Math.round(Number(raw.replace(/\./g,'').replace(',','.'))*100);
+  if(!pending&&method!=='courtesy'&&amount<=0){msg('auditMessage','O valor precisa ser maior que zero.');return}
+  if(!confirm('Confirmar '+(method==='courtesy'?'a cortesia':('o recebimento '+(pending?'do ingresso':money(amount))+' em '+PAYTXT[method]))+' para este participante?'))return;
+  button.disabled=true;
+  try{await post(pending?{op:'purchase_receive',purchase_id:pending,payment_method:method}:{op:'attendance_receive',session_id:Number(form.dataset.sid),participant_id:form.dataset.raw,payment_method:method,amount_cents:amount});
+   const updated=await evApi(id);if(curId===id){cur=updated;paintManage();msg('auditMessage','Recebimento conferido. Indicadores atualizados.')}}
+  catch(e){if(curId===id)msg('auditMessage',why(e))}finally{button.disabled=false}
+ });
  const expenseForm=$('expenseForm');
  expenseForm.onsubmit=async ev=>{
   ev.preventDefault();const id=curId,button=expenseForm.querySelector('button');if(button.disabled)return;
