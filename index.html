@@ -263,7 +263,7 @@ html:has(#login[style*="display: block"]),body:has(#login[style*="display: block
  <div id="nextClassList" class="next-class-list" aria-label="Lista de próximas aulas"></div><div id="nextClassTitle" class="next-class-title">Próxima aula</div>
  <div id="nextClassDetails" class="next-class-details" aria-live="polite">Consultando reservas...</div>
  <div id="nextClassTicket" class="next-class-ticket" hidden><div class="next-class-tile"><span id="nextClassDate" class="next-class-tile-label">DATA</span><strong id="nextClassTime">--:--</strong><small id="nextClassWeekday"></small></div><div class="next-class-tile next-class-bike"><span id="nextClassSlotLabel" class="next-class-tile-label">SUA BIKE</span><strong id="nextClassSlot">B--</strong><small>Posição reservada</small></div></div>
- <div id="nextClassTeacher" class="next-class-teacher" hidden>♙ &nbsp; Professor não informado</div>
+ <div id="nextClassThemed" hidden style="margin:10px 0;padding:12px 14px;border-radius:14px;background:linear-gradient(120deg,#ff4fb6,#8b3dff);color:#fff;font-size:13px;line-height:1.45"></div><div id="nextClassTeacher" class="next-class-teacher" hidden>♙ &nbsp; Professor não informado</div>
  <button id="nextClassChatButton" class="next-class-chat" type="button" disabled>◉ &nbsp; ENTRAR NO CHAT DA AULA</button>
  <button id="nextClassRefreshButton" class="next-class-refresh" type="button">↻ &nbsp; Atualizar minha reserva</button>
  <div id="nextClassSyncHint" class="next-class-hint">Chat disponível em breve</div>
@@ -341,6 +341,14 @@ function setStudentUnitAccess(member){
 }
 // Pop Music Experience: only for students with Bike Pop access, one status request per page load.
 let popMusicStatus=null;
+// "Next class" card: if the reserved class is a Pop Music themed class, show its theme and playlist.
+async function showNextClassThemed(unit,x){const el=document.getElementById('nextClassThemed');if(!el)return;el.hidden=true;
+ if(unit!=='bike'||!allowedStudentUnits.includes('bike'))return;
+ try{popMusicStatus=popMusicStatus||authFetch('/auth/pop-music?action=status');const d=await popMusicStatus;if(document.getElementById('nextClassBlock').dataset.sessionId!==String(x.session_id||''))return;
+  const t=String(x.start_time||'').slice(0,5),c=(d.upcoming_themed||[]).find(c=>(c.evo_session_id&&String(c.evo_session_id)===String(x.session_id))||(!c.evo_session_id&&c.class_date===x.activity_date&&String(c.class_time||'').slice(0,5)===t));
+  if(!c)return;const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  el.innerHTML='<div style="font-size:11px;letter-spacing:1.2px;font-weight:900;opacity:.9">♫ AULA TEMÁTICA · PLAYLIST ESPECIAL</div><div style="font-size:17px;font-weight:900;margin-top:3px">'+esc(c.class_name)+'</div>'+(c.rhythm?'<div>'+esc((c.emoji?c.emoji+' ':'')+c.rhythm)+'</div>':'')+(c.artists?'<div style="margin-top:2px">Na playlist: <b>'+esc(c.artists)+'</b></div>':'')+'<div style="margin-top:4px;opacity:.9">Tema escolhido pelos alunos no Pop Music Experience.</div>';el.hidden=false;
+ }catch(e){}}
 async function loadPopMusicCard(unit){const card=document.getElementById('popMusicCard');if(!card)return;
  if(unit!=='bike'||!allowedStudentUnits.includes('bike')){card.hidden=true;return}
  try{popMusicStatus=popMusicStatus||authFetch('/auth/pop-music?action=status');const d=await popMusicStatus;
@@ -439,7 +447,7 @@ function updateNextClassChat(x,settings){
 async function loadNextClassCard(unit){
  const card=document.getElementById("nextClassBlock"),box=document.getElementById("nextClassDetails"),hint=document.getElementById("nextClassSyncHint"),refresh=document.getElementById("nextClassRefreshButton"),ticket=document.getElementById("nextClassTicket"),status=document.getElementById("nextClassStatus"),title=document.getElementById("nextClassTitle"),teacher=document.getElementById("nextClassTeacher"),list=document.getElementById("nextClassList");
  if(!card)return;
- card.dataset.unit=unit;card.dataset.sessionId="";if(nextClassCountdown)clearInterval(nextClassCountdown);document.getElementById("nextClassChatButton").disabled=true;box.textContent="Consultando reservas...";ticket.hidden=true;teacher.hidden=true;status.textContent="Consultando";status.classList.add("waiting");if(refresh)refresh.disabled=true;
+ card.dataset.unit=unit;card.dataset.sessionId="";if(nextClassCountdown)clearInterval(nextClassCountdown);document.getElementById("nextClassChatButton").disabled=true;box.textContent="Consultando reservas...";ticket.hidden=true;teacher.hidden=true;document.getElementById("nextClassThemed").hidden=true;status.textContent="Consultando";status.classList.add("waiting");if(refresh)refresh.disabled=true;
  try{
   const d=await authFetch("/auth/student-next-class?unit="+encodeURIComponent(unit));if(unit!==currentUnit)return;
   const reservations=Array.isArray(d.reservations)?d.reservations:(d.reservation?[d.reservation]:[]);
@@ -459,6 +467,7 @@ async function loadNextClassCard(unit){
    document.getElementById("nextClassSlot").textContent=x.slot_number?(unit==="bike"?"B":"")+x.slot_number:"—";
    box.textContent="Sua reserva está confirmada.";ticket.hidden=false;teacher.hidden=!(x.instructor_name||x.instructor||x.teacher);
    if(!teacher.hidden)teacher.textContent="♙  Professor "+String(x.instructor_name||x.instructor||x.teacher);
+   showNextClassThemed(unit,x);
    updateNextClassChat(x,d.chatSettings);
   };
   reservations.forEach((x,i)=>{const b=document.createElement("button");b.type="button";b.className="next-class-list-item";b.style.cssText="width:100%;display:flex;justify-content:space-between;align-items:center;text-align:left;padding:12px 14px;margin:7px 0;background:#242638;color:#fff;border:1px solid #444458;border-radius:13px;cursor:pointer;gap:12px";const day=String(x.activity_date||"").split("-").reverse().join("/");b.textContent=day+" · "+String(x.start_time||"").slice(0,5)+" · "+(x.activity_name||"Aula")+" · "+(x.slot_number?(unit==="bike"?"B":"")+x.slot_number:"—");b.setAttribute("aria-expanded","false");b.onclick=()=>choose(x,b);list.appendChild(b);if(i===0)choose(x,b)});
