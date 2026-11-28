@@ -2,7 +2,7 @@
 // best mark per student, new record detection for the projector, student position, void and recalculate.
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {recordRound,studentRecords,adminRecords,recordKinds,recordAttempt,duelBoard} from '../lib/pop-live-records.mjs';
+import {recordRound,studentRecords,adminRecords,recordKinds,recordAttempt,duelBoard,duelBoards} from '../lib/pop-live-records.mjs';
 const sql=new DatabaseSync(':memory:');
 sql.exec(`CREATE TABLE pop_live_sessions(id INTEGER PRIMARY KEY,source TEXT,source_class_id TEXT,unit TEXT,starts_at TEXT);
 CREATE TABLE pop_live_game_rounds(session_id INTEGER PRIMARY KEY,event_id INTEGER,game_type TEXT,config_json TEXT,result_json TEXT);
@@ -74,6 +74,8 @@ d=await recordAttempt(db,99,ren2,200,16.2);assert.equal(d.records.length,0);asse
 d=await recordAttempt(db,99,ren2,200,14.1);assert.equal(d.records[0].name,'Renato Vilelas');
 assert.deepEqual((await duelBoard(db,200)).m.map(r=>[r.name,r.value_s]),[['Renato Vilelas',14.1],['Visitante Teste',14.9]]);
 assert.deepEqual((await duelBoard(db,100)).m,[]);
+await recordAttempt(db,99,{member_id:'103',name:'Jana Lima',sex:'f',watch:'01'},100,9.8);
+let all=await duelBoards(db);assert.deepEqual(Object.keys(all),['100','200']);assert.equal(all[100].f[0].name,'Jana Lima');assert.equal(all[200].m[0].value_s,14.1);
 st=await studentRecords(db,u('key=duel:200'),['101'],null);assert.equal(st.me.position,1);assert.ok(st.keys.some(k=>k.key==='duel:200'));
 await assert.rejects(()=>recordAttempt(db,99,ren2,200,0));
 console.log('PASS Pop Games records: distance and circuit (total + fastest lap) by sex, best mark per student, projector outcome, student position, void and recalculate');
